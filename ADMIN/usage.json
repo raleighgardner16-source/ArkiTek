@@ -1,0 +1,252 @@
+{
+  "raleighgardner": {
+    "totalTokens": 14354,
+    "totalInputTokens": 9561,
+    "totalOutputTokens": 4793,
+    "totalQueries": 1,
+    "totalPrompts": 2,
+    "monthlyUsage": {
+      "2026-01": {
+        "tokens": 14354,
+        "inputTokens": 9561,
+        "outputTokens": 4793,
+        "queries": 1,
+        "prompts": 2
+      }
+    },
+    "dailyUsage": {
+      "2026-01": {
+        "2026-01-27": {
+          "inputTokens": 2298,
+          "outputTokens": 2363,
+          "queries": 0,
+          "models": {
+            "xai-grok-4-1-fast-non-reasoning": {
+              "inputTokens": 176,
+              "outputTokens": 839
+            },
+            "google-gemini-3-pro": {
+              "inputTokens": 8,
+              "outputTokens": 1013
+            },
+            "xai-grok-4-1-fast-reasoning": {
+              "inputTokens": 2114,
+              "outputTokens": 511
+            }
+          }
+        },
+        "2026-01-28": {
+          "inputTokens": 7263,
+          "outputTokens": 2430,
+          "queries": 1,
+          "models": {
+            "google-gemini-2.5-flash-lite": {
+              "inputTokens": 1720,
+              "outputTokens": 576
+            },
+            "openai-gpt-4o-mini": {
+              "inputTokens": 1790,
+              "outputTokens": 370
+            },
+            "xai-grok-4-1-fast-reasoning": {
+              "inputTokens": 2552,
+              "outputTokens": 632
+            },
+            "openai-gpt-5.2": {
+              "inputTokens": 383,
+              "outputTokens": 261
+            },
+            "anthropic-claude-4.5-opus": {
+              "inputTokens": 425,
+              "outputTokens": 348
+            },
+            "google-gemini-3-pro": {
+              "inputTokens": 393,
+              "outputTokens": 243
+            }
+          }
+        }
+      }
+    },
+    "providers": {
+      "xai": {
+        "totalTokens": 6824,
+        "totalInputTokens": 4842,
+        "totalOutputTokens": 1982,
+        "totalQueries": 0,
+        "monthlyTokens": {
+          "2026-01": 6824
+        },
+        "monthlyInputTokens": {
+          "2026-01": 4842
+        },
+        "monthlyOutputTokens": {
+          "2026-01": 1982
+        },
+        "monthlyQueries": {
+          "2026-01": 0
+        }
+      },
+      "google": {
+        "totalTokens": 3953,
+        "totalInputTokens": 2121,
+        "totalOutputTokens": 1832,
+        "totalQueries": 0,
+        "monthlyTokens": {
+          "2026-01": 3953
+        },
+        "monthlyInputTokens": {
+          "2026-01": 2121
+        },
+        "monthlyOutputTokens": {
+          "2026-01": 1832
+        },
+        "monthlyQueries": {
+          "2026-01": 0
+        }
+      },
+      "openai": {
+        "totalTokens": 2804,
+        "totalInputTokens": 2173,
+        "totalOutputTokens": 631,
+        "totalQueries": 0,
+        "monthlyTokens": {
+          "2026-01": 2804
+        },
+        "monthlyInputTokens": {
+          "2026-01": 2173
+        },
+        "monthlyOutputTokens": {
+          "2026-01": 631
+        },
+        "monthlyQueries": {
+          "2026-01": 0
+        }
+      },
+      "anthropic": {
+        "totalTokens": 773,
+        "totalInputTokens": 425,
+        "totalOutputTokens": 348,
+        "totalQueries": 0,
+        "monthlyTokens": {
+          "2026-01": 773
+        },
+        "monthlyInputTokens": {
+          "2026-01": 425
+        },
+        "monthlyOutputTokens": {
+          "2026-01": 348
+        },
+        "monthlyQueries": {
+          "2026-01": 0
+        }
+      }
+    },
+    "models": {
+      "xai-grok-4-1-fast-non-reasoning": {
+        "totalTokens": 1015,
+        "totalInputTokens": 176,
+        "totalOutputTokens": 839,
+        "totalQueries": 0,
+        "totalPrompts": 1,
+        "provider": "xai",
+        "model": "grok-4-1-fast-non-reasoning",
+        "pricing": null
+      },
+      "google-gemini-3-pro": {
+        "totalTokens": 1657,
+        "totalInputTokens": 401,
+        "totalOutputTokens": 1256,
+        "totalQueries": 0,
+        "totalPrompts": 2,
+        "provider": "google",
+        "model": "gemini-3-pro",
+        "pricing": null
+      },
+      "xai-grok-4-1-fast-reasoning": {
+        "totalTokens": 5809,
+        "totalInputTokens": 4666,
+        "totalOutputTokens": 1143,
+        "totalQueries": 0,
+        "totalPrompts": 4,
+        "provider": "xai",
+        "model": "grok-4-1-fast-reasoning",
+        "pricing": null
+      },
+      "google-gemini-2.5-flash-lite": {
+        "totalTokens": 2296,
+        "totalInputTokens": 1720,
+        "totalOutputTokens": 576,
+        "totalQueries": 0,
+        "totalPrompts": 1,
+        "provider": "google",
+        "model": "gemini-2.5-flash-lite",
+        "pricing": null
+      },
+      "openai-gpt-4o-mini": {
+        "totalTokens": 2160,
+        "totalInputTokens": 1790,
+        "totalOutputTokens": 370,
+        "totalQueries": 0,
+        "totalPrompts": 1,
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "pricing": null
+      },
+      "openai-gpt-5.2": {
+        "totalTokens": 644,
+        "totalInputTokens": 383,
+        "totalOutputTokens": 261,
+        "totalQueries": 0,
+        "totalPrompts": 1,
+        "provider": "openai",
+        "model": "gpt-5.2",
+        "pricing": null
+      },
+      "anthropic-claude-4.5-opus": {
+        "totalTokens": 773,
+        "totalInputTokens": 425,
+        "totalOutputTokens": 348,
+        "totalQueries": 0,
+        "totalPrompts": 1,
+        "provider": "anthropic",
+        "model": "claude-4.5-opus",
+        "pricing": null
+      }
+    },
+    "promptHistory": [
+      {
+        "text": "So when using LLM provider api keys am I billed for reasoning tokens or do the providers such as openAi, gemini, claude, grok, mistral, deepseek, and meta encompass the reasoning tokens into the input and output tokens that the api returns to my backend?",
+        "category": "Tech",
+        "timestamp": "2026-01-28T04:11:55.999Z"
+      },
+      {
+        "text": "what are the best accomplishments of President Trump",
+        "category": "Politics/Law",
+        "timestamp": "2026-01-27T16:38:15.937Z"
+      }
+    ],
+    "categories": {
+      "Politics/Law": 1,
+      "Tech": 1
+    },
+    "categoryPrompts": {
+      "Politics/Law": [
+        {
+          "text": "what are the best accomplishments of President Trump",
+          "timestamp": "2026-01-27T16:38:15.937Z"
+        }
+      ],
+      "Tech": [
+        {
+          "text": "So when using LLM provider api keys am I billed for reasoning tokens or do the providers such as openAi, gemini, claude, grok, mistral, deepseek, and meta encompass the reasoning tokens into the input and output tokens that the api returns to my backend?",
+          "timestamp": "2026-01-28T04:11:55.999Z"
+        }
+      ]
+    },
+    "ratings": {},
+    "lastActiveDate": "2026-01-28",
+    "lastLoginDate": null,
+    "streakDays": 2
+  }
+}
