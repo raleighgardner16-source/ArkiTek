@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, Check, Trash2, X, XCircle, Flame, Sparkles, Info } from 'lucide-react'
+import { Send, ChevronDown, Check, Trash2, X, XCircle, Flame, Sparkles, Info, Trophy } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 import { detectCategory } from '../utils/categoryDetector'
@@ -757,7 +757,7 @@ const MainView = ({ onClearAll }) => {
               WebkitTextFillColor: 'transparent',
             }}
           >
-            Welcome to the Council of AIs
+            Welcome to the Council of the LLMs
           </h1>
           <p style={{ color: '#aaaaaa', fontSize: '0.95rem' }}>
             Select models and enter your prompt to compare responses side-by-side and a summary of the responses
@@ -916,6 +916,58 @@ const MainView = ({ onClearAll }) => {
           </motion.button>
             )
           })()}
+          
+          {/* Submit to Leaderboard Button */}
+          {currentPrompt.trim() && (
+            <motion.button
+              onClick={async () => {
+                if (!currentUser?.id) {
+                  alert('Please sign in to submit prompts to the leaderboard')
+                  return
+                }
+                
+                try {
+                  const response = await axios.post('http://localhost:3001/api/leaderboard/submit', {
+                    userId: currentUser.id,
+                    promptText: currentPrompt.trim(),
+                  })
+                  
+                  if (response.data.success) {
+                    alert('Prompt submitted to leaderboard!')
+                  }
+                } catch (error) {
+                  console.error('Error submitting to leaderboard:', error)
+                  alert(error.response?.data?.error || 'Failed to submit prompt to leaderboard')
+                }
+              }}
+              style={{
+                position: 'absolute',
+                bottom: '16px',
+                left: '16px',
+                padding: '8px 16px',
+                background: 'rgba(255, 170, 0, 0.2)',
+                border: '1px solid rgba(255, 170, 0, 0.5)',
+                borderRadius: '8px',
+                color: '#ffaa00',
+                fontSize: '0.85rem',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease',
+                zIndex: 10,
+              }}
+              whileHover={{ 
+                background: 'rgba(255, 170, 0, 0.3)',
+                borderColor: 'rgba(255, 170, 0, 0.7)',
+              }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Trophy size={16} />
+              Submit for Voting
+            </motion.button>
+          )}
         </div>
 
         {/* Provider Tabs - Always Visible */}

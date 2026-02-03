@@ -7,7 +7,7 @@ import ResponseComparison from './components/ResponseComparison'
 import NavigationBar from './components/NavigationBar'
 import MainView from './components/MainView'
 import SettingsView from './components/SettingsView'
-import VRView from './components/VRView'
+import LeaderboardView from './components/LeaderboardView'
 import StatisticsView from './components/StatisticsView'
 import SummaryWindow from './components/SummaryWindow'
 import AuthView from './components/AuthView'
@@ -71,11 +71,22 @@ function App() {
   
   // Clear all responses and windows
   const clearAllWindows = () => {
-    clearResponses()
-    setShowTokenUsageWindow(false)
-    setShowCostBreakdownWindow(false)
-    setShowCategoryDetectionWindow(false)
-    setQueryCount(0)
+    try {
+      clearResponses()
+      setShowTokenUsageWindow(false)
+      setShowCostBreakdownWindow(false)
+      setShowCategoryDetectionWindow(false)
+      setShowFactsWindow(false) // Close facts/sources window
+      setQueryCount(0)
+      // Minimize summary window (summary is already cleared by clearResponses)
+      const setSummaryMinimized = useStore.getState().setSummaryMinimized
+      if (setSummaryMinimized) {
+        setSummaryMinimized(true)
+      }
+    } catch (error) {
+      console.error('[clearAllWindows] Error clearing windows:', error)
+      // Don't let errors crash the page
+    }
   }
   const updateStats = useStore((state) => state.updateStats)
   const setVrMode = useStore((state) => state.setVrMode)
@@ -149,6 +160,8 @@ function App() {
     setIsLoading(true)
     clearResponses()
     clearRAGDebugData() // Clear previous debug data
+
+    try {
 
     // Detect category and determine if web search is needed using Gemini 2.5 Flash Lite
     // This is the FIRST step - Gemini 2.5 Flash Lite determines if a query is needed
@@ -310,24 +323,34 @@ function App() {
           const judge = ragData.judge_analysis
           let summaryText = ''
           
+          // Consensus score at the top
+          if (judge.consensus !== null && judge.consensus !== undefined) {
+            summaryText += `CONSENSUS: ${judge.consensus}%\n\n`
+          }
+          
           // Summary section
           if (judge.summary) {
-            summaryText += `${judge.summary}\n\n`
+            summaryText += `SUMMARY:\n${judge.summary}\n\n`
           }
           
           // Agreements section
           if (judge.agreements && judge.agreements.length > 0) {
-            summaryText += `**Agreements:**\n${judge.agreements.map(a => `• ${a}`).join('\n')}\n\n`
+            summaryText += `AGREEMENTS:\n${judge.agreements.map(a => `• ${a}`).join('\n')}\n\n`
+          } else {
+            summaryText += `AGREEMENTS:\nNone identified.\n\n`
           }
           
           // Disagreements section
           if (judge.disagreements && judge.disagreements.length > 0) {
-            summaryText += `**Disagreements:**\n${judge.disagreements.map(d => `• ${d}`).join('\n')}`
+            summaryText += `DISAGREEMENTS:\n${judge.disagreements.map(d => `• ${d}`).join('\n')}`
+          } else {
+            summaryText += `DISAGREEMENTS:\nNone identified.`
           }
           
           summary = {
             text: summaryText || judge.summary || 'No summary available',
             summary: judge.summary,
+            consensus: judge.consensus,
             agreements: judge.agreements || [],
             disagreements: judge.disagreements || []
           }
@@ -359,10 +382,23 @@ function App() {
         }
         console.error('[RAG Pipeline] Error details:', JSON.stringify(errorDetails, null, 2))
         console.error('[RAG Pipeline] Full error object:', ragError)
+        
+        // If it's a subscription error (403), don't fall back to direct LLM calls
+        // They will also fail with the same error
+        if (ragError.response?.status === 403 || ragError.response?.data?.subscriptionRequired) {
+          console.log('[RAG Pipeline] Subscription required - not falling back to direct LLM calls')
+          // Clear any partial responses from failed RAG attempt
+          responses = []
+          summary = null
+          setIsSearchingWeb(false)
+          // Re-throw the error so it's caught by the outer try-catch and handled properly
+          throw ragError
+        }
+        
         // Clear any partial responses from failed RAG attempt
         responses = []
         summary = null
-        // Fallback to direct LLM calls if RAG fails
+        // Fallback to direct LLM calls if RAG fails (only for non-subscription errors)
         console.log('[RAG Pipeline] Falling back to direct LLM calls')
         needsSearch = false // Set to false so we use direct LLM calls
         setIsSearchingWeb(false) // Clear searching indicator when RAG fails
@@ -545,8 +581,7 @@ function App() {
     }
 
     // Stop showing "fetching responses" loading, will show "working on summary" if needed
-    setIsLoading(false)
-    setIsSearchingWeb(false) // Ensure searching indicator is cleared when loading completes
+    // Note: setIsLoading(false) is now in the finally block to ensure it's always called
 
     // Track prompt submission (one per submission, regardless of models)
     if (currentUser?.id) {
@@ -602,23 +637,25 @@ function App() {
           .map((r) => `\n--- ${r.modelName}'s response ---\n${r.text}\n`)
           .join('')
         
-        const summaryPrompt = `You are an expert judge analyzing multiple AI model responses. Your task is to:
+        const summaryPrompt =  `You are an expert judge analyzing multiple AI model responses. Your task is to:
 
-1. Provide a summary of the council's responses
-2. Identify where the models agree
-3. Identify where the models disagree or contradict each other
-
-Original User Query: "${currentPrompt}"
-
-Council Model Responses:
-${responsesText}
-
-Please analyze these responses and provide ONLY these three sections:
-- **Summary**: A concise summary of what the council models collectively determined
-- **Agreements**: List specific points where models agree (bullet points)
-- **Disagreements**: List specific points where models disagree or contradict (bullet points)
-
-Format your response clearly with these three sections only.`
+        1. Calculate a consensus score (0-100%) based on how much the models agree
+        2. Provide a summary of the council's responses
+        3. Identify where the models agree
+        4. Identify where the models disagree or contradict each other
+        
+        Original User Query: "${currentPrompt}"
+        
+        Council Model Responses:
+        ${responsesText}
+        
+        Please analyze these responses and provide ONLY these four sections in this exact format:
+        - **Consensus of Agreement**: [A single number from 0-100 representing the percentage of agreement between all models]
+        - **SUMMARY**: A concise summary of what the council models collectively determined
+        - **AGREEMENTS**: List specific points where models agree (bullet points, one per line starting with - or •)
+        - **DISAGREEMENTS**: List specific points where models disagree or contradict (bullet points, one per line starting with - or •). If there are no disagreements, write "None identified."
+        
+        Format your response clearly with these four sections only.`
 
               // Use Grok's best summarizing model (grok-4-1-fast-reasoning for reasoning/summarization)
               const grokModel = 'grok-4-1-fast-reasoning' // Best for summarization and reasoning tasks
@@ -626,9 +663,86 @@ Format your response clearly with these three sections only.`
               const userId = currentUser?.id || null
               // Pass isSummary=true to indicate this is a summary call, not a user prompt
               const summaryResponse = await callLLM('xai', grokModel, summaryPrompt, userId, true)
-              const summaryText = typeof summaryResponse === 'string' ? summaryResponse : summaryResponse.text
+              const rawSummaryText = typeof summaryResponse === 'string' ? summaryResponse : summaryResponse.text
               const summaryTokens = typeof summaryResponse === 'object' ? summaryResponse.tokens : null
-        console.log('[Summary] Grok response received, length:', summaryText?.length)
+        console.log('[Summary] Grok response received, length:', rawSummaryText?.length)
+        
+        // Parse the response to extract sections (Consensus, Summary, Agreements, Disagreements)
+        // More flexible consensus matching - handles various formats like "Consensus: 85", "**Consensus**: 85%", "[85]", etc.
+        const consensusMatch = rawSummaryText.match(/(?:Consensus|consensus)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
+        const summaryMatch = rawSummaryText.match(/(?:Summary)[:\-]?\s*(.+?)(?=\n\n|\n(?:Agreements|Disagreements|Consensus)|$)/is)
+        const agreementsMatch = rawSummaryText.match(/(?:Agreements)[:\-]?\s*(.+?)(?=\n\n|\n(?:Disagreements|Summary|Consensus)|$)/is)
+        const disagreementsMatch = rawSummaryText.match(/(?:Disagreements)[:\-]?\s*(.+?)(?=\n\n|\n(?:Summary|Agreements|Consensus)|$)/is)
+        
+        // Extract consensus score (0-100)
+        let consensus = null
+        if (consensusMatch) {
+          const score = parseInt(consensusMatch[1], 10)
+          consensus = Math.max(0, Math.min(100, score)) // Clamp between 0-100
+          console.log(`[Summary] Extracted consensus score: ${consensus}%`)
+        } else {
+          // Try more flexible patterns
+          const patterns = [
+            /consensus[:\-]?\s*(\d+)\s*%/i,
+            /consensus[:\-]?\s*\[(\d+)\]/i,
+            /consensus[:\-]?\s*(\d+)/i,
+            /(\d+)\s*%\s*consensus/i,
+            /consensus.*?(\d+)/i
+          ]
+          
+          for (const pattern of patterns) {
+            const match = rawSummaryText.match(pattern)
+            if (match) {
+              const score = parseInt(match[1], 10)
+              consensus = Math.max(0, Math.min(100, score))
+              console.log(`[Summary] Extracted consensus score (fallback pattern): ${consensus}%`)
+              break
+            }
+          }
+          
+          if (!consensus) {
+            console.log(`[Summary] Warning: Could not extract consensus score from response. Content preview: ${rawSummaryText.substring(0, 500)}`)
+          }
+        }
+        
+        // Extract summary
+        let parsedSummary = summaryMatch ? summaryMatch[1].trim() : rawSummaryText.split(/\n\n/)[0].trim()
+        
+        // Extract agreements and disagreements as arrays
+        const agreements = agreementsMatch 
+          ? agreementsMatch[1].split('\n').filter(l => l.trim() && !l.match(/^[-•*]\s*$/)).map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(l => l && !l.toLowerCase().includes('none identified'))
+          : []
+        
+        const disagreements = disagreementsMatch 
+          ? disagreementsMatch[1].split('\n').filter(l => l.trim() && !l.match(/^[-•*]\s*$/)).map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(l => l && !l.toLowerCase().includes('none identified'))
+          : []
+        
+        // Format the summary text
+        let formattedSummaryText = ''
+        
+        // Consensus score at the top
+        if (consensus !== null && consensus !== undefined) {
+          formattedSummaryText += `CONSENSUS: ${consensus}%\n\n`
+        }
+        
+        // Summary section
+        if (parsedSummary) {
+          formattedSummaryText += `SUMMARY:\n${parsedSummary}\n\n`
+        }
+        
+        // Agreements section
+        if (agreements && agreements.length > 0) {
+          formattedSummaryText += `AGREEMENTS:\n${agreements.map(a => `• ${a}`).join('\n')}\n\n`
+        } else {
+          formattedSummaryText += `AGREEMENTS:\nNone identified.\n\n`
+        }
+        
+        // Disagreements section
+        if (disagreements && disagreements.length > 0) {
+          formattedSummaryText += `DISAGREEMENTS:\n${disagreements.map(d => `• ${d}`).join('\n')}`
+        } else {
+          formattedSummaryText += `DISAGREEMENTS:\nNone identified.`
+        }
         
         // Collect judge tokens and update token data
         if (summaryTokens) {
@@ -646,7 +760,11 @@ Format your response clearly with these three sections only.`
         }
         
         setSummary({
-          text: summaryText,
+          text: formattedSummaryText || rawSummaryText,
+          summary: parsedSummary,
+          consensus: consensus,
+          agreements: agreements,
+          disagreements: disagreements,
           timestamp: Date.now(),
         })
         // Ensure summary window is visible when it first appears
@@ -684,6 +802,46 @@ Format your response clearly with these three sections only.`
     }
 
     setCurrentPrompt('')
+    } catch (error) {
+      // Catch any unhandled errors to prevent the page from going black
+      console.error('[handlePromptSubmit] Unhandled error:', error)
+      console.error('[handlePromptSubmit] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        response: error.response?.data,
+        status: error.response?.status
+      })
+      
+      // Show error message to user
+      const errorMessage = error.response?.data?.error || error.message || 'An unexpected error occurred. Please try again.'
+      
+      // Add error response to show user what went wrong
+      addResponse({
+        id: `error-${Date.now()}`,
+        modelName: 'Error',
+        actualModelName: 'Error',
+        originalModelName: 'Error',
+        text: `Error: ${errorMessage}`,
+        error: true,
+      })
+      
+      // If it's a subscription error, show a helpful message
+      if (error.response?.status === 403 || error.response?.data?.subscriptionRequired) {
+        addResponse({
+          id: `subscription-error-${Date.now()}`,
+          modelName: 'Subscription Required',
+          actualModelName: 'Subscription Required',
+          originalModelName: 'Subscription Required',
+          text: 'Active subscription required. Please subscribe to use this service. You can manage your subscription in Settings.',
+          error: true,
+        })
+      }
+    } finally {
+      // Always clear loading state, even if an error occurred
+      setIsLoading(false)
+      setIsSearchingWeb(false)
+      setIsGeneratingSummary(false)
+    }
   }
 
   // Listen for prompt submission
@@ -785,8 +943,8 @@ Format your response clearly with these three sections only.`
                 {/* Main Content Area - Show based on active tab */}
                 {/* Note: AdminView is handled in early return above, so this should never render AdminView */}
                 {activeTab === 'home' && <MainView onClearAll={clearAllWindows} />}
+                {activeTab === 'leaderboard' && <LeaderboardView />}
                 {activeTab === 'settings' && <SettingsView />}
-                {activeTab === 'vr' && <VRView />}
                 {activeTab === 'statistics' && <StatisticsView />}
 
                 {/* Response Comparison - Only show on home tab (not on admin route) */}

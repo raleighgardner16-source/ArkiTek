@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, FolderOpen, X, Cpu } from 'lucide-react'
+import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, FolderOpen, X, Cpu, Trophy, Bell, Heart } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import axios from 'axios'
 import ConfirmationModal from './ConfirmationModal'
@@ -14,20 +14,51 @@ const StatisticsView = () => {
   const [expandedProviders, setExpandedProviders] = useState({})
   const [expandedModels, setExpandedModels] = useState({})
   const [expandedCategories, setExpandedCategories] = useState({})
-  const [activeTab, setActiveTab] = useState('tokens') // 'tokens', 'ratings', 'categories', 'models'
+  const [activeTab, setActiveTab] = useState('tokens') // 'tokens', 'ratings', 'categories', 'leaderboard'
   const [categoriesData, setCategoriesData] = useState(null)
   const [ratingsData, setRatingsData] = useState(null)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [categoryToClear, setCategoryToClear] = useState(null)
   const [hoveredDay, setHoveredDay] = useState(null) // Track which day is being hovered
+  const [leaderboardStats, setLeaderboardStats] = useState(null)
+  const [loadingLeaderboardStats, setLoadingLeaderboardStats] = useState(false)
 
   useEffect(() => {
     if (currentUser?.id) {
       fetchStats()
       fetchCategories()
       fetchRatings()
+      if (activeTab === 'leaderboard') {
+        fetchLeaderboardStats()
+      }
     }
-  }, [currentUser, statsRefreshTrigger])
+  }, [currentUser, statsRefreshTrigger, activeTab])
+
+  const fetchLeaderboardStats = async () => {
+    if (!currentUser?.id) return
+    
+    try {
+      setLoadingLeaderboardStats(true)
+      const response = await axios.get(`http://localhost:3001/api/leaderboard/user-stats/${currentUser.id}`)
+      setLeaderboardStats(response.data)
+    } catch (error) {
+      console.error('Error fetching leaderboard stats:', error)
+      setLeaderboardStats(null)
+    } finally {
+      setLoadingLeaderboardStats(false)
+    }
+  }
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
 
   const fetchStats = async () => {
     try {
@@ -76,6 +107,7 @@ const StatisticsView = () => {
       setRatingsData({})
     }
   }
+
 
   const handleClearCategoryPrompts = (category, e) => {
     if (e) {
@@ -426,7 +458,7 @@ const StatisticsView = () => {
             }}
           >
             <Star size={20} />
-            Ratings
+            Ratings & Models
           </button>
           <button
             onClick={() => setActiveTab('categories')}
@@ -449,15 +481,15 @@ const StatisticsView = () => {
             Categories
           </button>
           <button
-            onClick={() => setActiveTab('models')}
+            onClick={() => setActiveTab('leaderboard')}
             style={{
               padding: '12px 24px',
-              background: activeTab === 'models' ? 'rgba(0, 255, 255, 0.2)' : 'transparent',
+              background: activeTab === 'leaderboard' ? 'rgba(0, 255, 255, 0.2)' : 'transparent',
               border: 'none',
-              borderBottom: activeTab === 'models' ? '2px solid #00FFFF' : '2px solid transparent',
-              color: activeTab === 'models' ? '#00FFFF' : '#aaaaaa',
+              borderBottom: activeTab === 'leaderboard' ? '2px solid #00FFFF' : '2px solid transparent',
+              color: activeTab === 'leaderboard' ? '#00FFFF' : '#aaaaaa',
               fontSize: '1rem',
-              fontWeight: activeTab === 'models' ? '600' : '400',
+              fontWeight: activeTab === 'leaderboard' ? '600' : '400',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               display: 'flex',
@@ -465,8 +497,8 @@ const StatisticsView = () => {
               gap: '8px',
             }}
           >
-            <Cpu size={20} />
-            Models
+            <Trophy size={20} />
+            Leaderboard Stats
           </button>
         </div>
 
@@ -867,113 +899,340 @@ const StatisticsView = () => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
-              style={{ display: 'flex', gap: '20px', flexDirection: 'row', flexWrap: 'nowrap' }}
             >
-              {/* Favorite Provider - Separate container */}
-              <div style={{ 
-                background: 'rgba(0, 255, 255, 0.1)', 
-                border: '1px solid rgba(0, 255, 255, 0.3)',
-                padding: '28px', 
-                borderRadius: '16px',
-                flex: 1,
-                minWidth: '400px'
-              }}>
-                <p style={{ color: '#aaaaaa', fontSize: '1rem', marginBottom: '16px' }}>Your Favorite Provider:</p>
-                {ratingsStats.totalRatings > 0 && ratingsStats.favoriteProvider ? (
-                  <>
-                    <p style={{ color: '#00FFFF', fontSize: '2rem', fontWeight: 'bold', margin: '0 0 12px 0' }}>
-                      {LLM_PROVIDERS[ratingsStats.favoriteProvider]?.name || ratingsStats.favoriteProvider}
-                    </p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <p style={{ color: '#00FF00', fontSize: '1.1rem', margin: 0 }}>
-                          {ratingsStats.favoriteProviderAvg.toFixed(2)}
-                        </p>
-                        <Star size={20} fill="#FFD700" color="#FFD700" />
-                        <p style={{ color: '#aaaaaa', fontSize: '1.1rem', margin: 0 }}>
-                          / 5
-                        </p>
+              {/* Ratings Section */}
+              <div style={{ display: 'flex', gap: '20px', flexDirection: 'row', flexWrap: 'nowrap', marginBottom: '40px' }}>
+                {/* Favorite Provider - Separate container */}
+                <div style={{ 
+                  background: 'rgba(0, 255, 255, 0.1)', 
+                  border: '1px solid rgba(0, 255, 255, 0.3)',
+                  padding: '28px', 
+                  borderRadius: '16px',
+                  flex: 1,
+                  minWidth: '400px'
+                }}>
+                  <p style={{ color: '#aaaaaa', fontSize: '1rem', marginBottom: '16px' }}>Your Favorite Provider:</p>
+                  {ratingsStats.totalRatings > 0 && ratingsStats.favoriteProvider ? (
+                    <>
+                      <p style={{ color: '#00FFFF', fontSize: '2rem', fontWeight: 'bold', margin: '0 0 12px 0' }}>
+                        {LLM_PROVIDERS[ratingsStats.favoriteProvider]?.name || ratingsStats.favoriteProvider}
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <p style={{ color: '#00FF00', fontSize: '1.1rem', margin: 0 }}>
+                            {ratingsStats.favoriteProviderAvg.toFixed(2)}
+                          </p>
+                          <Star size={20} fill="#FFD700" color="#FFD700" />
+                          <p style={{ color: '#aaaaaa', fontSize: '1.1rem', margin: 0 }}>
+                            / 5
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p style={{ color: '#888888', fontSize: '1.5rem', margin: '0 0 12px 0' }}>
-                      Rate models first
-                    </p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <p style={{ color: '#888888', fontSize: '1.1rem', margin: 0 }}>
-                          —
-                        </p>
-                        <Star size={20} fill="#FFD700" color="#FFD700" />
-                        <p style={{ color: '#aaaaaa', fontSize: '1.1rem', margin: 0 }}>
-                          / 5
-                        </p>
+                    </>
+                  ) : (
+                    <>
+                      <p style={{ color: '#888888', fontSize: '1.5rem', margin: '0 0 12px 0' }}>
+                        Rate models first
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <p style={{ color: '#888888', fontSize: '1.1rem', margin: 0 }}>
+                            —
+                          </p>
+                          <Star size={20} fill="#FFD700" color="#FFD700" />
+                          <p style={{ color: '#aaaaaa', fontSize: '1.1rem', margin: 0 }}>
+                            / 5
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </>
-                )}
+                    </>
+                  )}
+                </div>
+                
+                {/* Favorite Model - Separate container */}
+                <div style={{ 
+                  background: 'rgba(0, 255, 0, 0.1)', 
+                  border: '1px solid rgba(0, 255, 0, 0.3)',
+                  padding: '28px', 
+                  borderRadius: '16px',
+                  flex: 1,
+                  minWidth: '400px'
+                }}>
+                  <p style={{ color: '#aaaaaa', fontSize: '1rem', marginBottom: '16px' }}>Your Favorite Model:</p>
+                  {ratingsStats.totalRatings > 0 && ratingsStats.favoriteModel ? (
+                    <>
+                      <p style={{ color: '#00FF00', fontSize: '2rem', fontWeight: 'bold', margin: '0 0 12px 0' }}>
+                        {(() => {
+                          const parts = ratingsStats.favoriteModel.split('-')
+                          if (parts.length >= 2) {
+                            const provider = parts[0]
+                            const modelName = parts.slice(1).join('-')
+                            return `${LLM_PROVIDERS[provider]?.name || provider} - ${modelName}`
+                          }
+                          return ratingsStats.favoriteModel
+                        })()}
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <p style={{ color: '#00FFFF', fontSize: '1.1rem', margin: 0 }}>
+                            {ratingsStats.favoriteModelAvg.toFixed(2)}
+                          </p>
+                          <Star size={20} fill="#FFD700" color="#FFD700" />
+                          <p style={{ color: '#aaaaaa', fontSize: '1.1rem', margin: 0 }}>
+                            / 5
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p style={{ color: '#888888', fontSize: '1.5rem', margin: '0 0 12px 0' }}>
+                        Rate models first
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <p style={{ color: '#888888', fontSize: '1.1rem', margin: 0 }}>
+                            —
+                          </p>
+                          <Star size={20} fill="#FFD700" color="#FFD700" />
+                          <p style={{ color: '#aaaaaa', fontSize: '1.1rem', margin: 0 }}>
+                            / 5
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-              
-              {/* Favorite Model - Separate container */}
-              <div style={{ 
-                background: 'rgba(0, 255, 0, 0.1)', 
-                border: '1px solid rgba(0, 255, 0, 0.3)',
-                padding: '28px', 
-                borderRadius: '16px',
-                flex: 1,
-                minWidth: '400px'
-              }}>
-                <p style={{ color: '#aaaaaa', fontSize: '1rem', marginBottom: '16px' }}>Your Favorite Model:</p>
-                {ratingsStats.totalRatings > 0 && ratingsStats.favoriteModel ? (
-                  <>
-                    <p style={{ color: '#00FF00', fontSize: '2rem', fontWeight: 'bold', margin: '0 0 12px 0' }}>
-                      {(() => {
-                        const parts = ratingsStats.favoriteModel.split('-')
-                        if (parts.length >= 2) {
-                          const provider = parts[0]
-                          const modelName = parts.slice(1).join('-')
-                          return `${LLM_PROVIDERS[provider]?.name || provider} - ${modelName}`
-                        }
-                        return ratingsStats.favoriteModel
-                      })()}
-                    </p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <p style={{ color: '#00FFFF', fontSize: '1.1rem', margin: 0 }}>
-                          {ratingsStats.favoriteModelAvg.toFixed(2)}
-                        </p>
-                        <Star size={20} fill="#FFD700" color="#FFD700" />
-                        <p style={{ color: '#aaaaaa', fontSize: '1.1rem', margin: 0 }}>
-                          / 5
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p style={{ color: '#888888', fontSize: '1.5rem', margin: '0 0 12px 0' }}>
-                      Rate models first
-                    </p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <p style={{ color: '#888888', fontSize: '1.1rem', margin: 0 }}>
-                          —
-                        </p>
-                        <Star size={20} fill="#FFD700" color="#FFD700" />
-                        <p style={{ color: '#aaaaaa', fontSize: '1.1rem', margin: 0 }}>
-                          / 5
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
+
+              {/* Models Section - Merged from Models tab */}
+              {Object.keys(userStats.providers || {}).length > 0 && (
+                <div
+                  style={{
+                    background: 'rgba(0, 255, 255, 0.1)',
+                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    borderRadius: '16px',
+                    padding: '30px',
+                  }}
+                >
+                  <h2 style={{ color: '#00FFFF', fontSize: '1.5rem', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <Cpu size={24} />
+                    Model Usage Statistics
+                  </h2>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {Object.entries(userStats.providers)
+                      .sort((a, b) => b[1].totalQueries - a[1].totalQueries)
+                      .map(([provider, data]) => {
+                        const isProviderExpanded = expandedProviders[provider]
+                        const providerModels = Object.entries(userStats.models || {})
+                          .filter(([modelKey]) => modelKey.startsWith(`${provider}-`))
+                          .sort((a, b) => b[1].totalQueries - a[1].totalQueries)
+
+                        return (
+                          <div
+                            key={provider}
+                            style={{
+                              background: 'rgba(0, 255, 255, 0.05)',
+                              border: '1px solid rgba(0, 255, 255, 0.2)',
+                              borderRadius: '12px',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {/* Provider Header - Clickable */}
+                            <div
+                              onClick={() => {
+                                setExpandedProviders((prev) => ({
+                                  ...prev,
+                                  [provider]: !prev[provider],
+                                }))
+                              }}
+                              style={{
+                                padding: '16px 20px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                transition: 'background 0.2s',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'rgba(0, 255, 255, 0.05)'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                                {isProviderExpanded ? (
+                                  <ChevronDown size={20} color="#00FFFF" />
+                                ) : (
+                                  <ChevronRight size={20} color="#00FFFF" />
+                                )}
+                                <h3 style={{ fontSize: '1.1rem', color: '#00FFFF', margin: 0, textTransform: 'capitalize' }}>
+                                  {provider}
+                                </h3>
+                                <span style={{ color: '#888888', fontSize: '0.85rem', marginLeft: '8px' }}>
+                                  ({providerModels.length} {providerModels.length === 1 ? 'model' : 'models'})
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+                                <div style={{ textAlign: 'right' }}>
+                                  <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: 0 }}>Prompts</p>
+                                  <p style={{ color: '#00FF00', fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
+                                    {formatNumber(data.totalPrompts || 0)}
+                                  </p>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                  <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: 0 }}>Tokens</p>
+                                  <p style={{ color: '#00FFFF', fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
+                                    {formatTokens((data.totalInputTokens || 0) + (data.totalOutputTokens || 0))}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Models List - Collapsible */}
+                            <AnimatePresence>
+                              {isProviderExpanded && providerModels.length > 0 && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2 }}
+                                  style={{ overflow: 'hidden' }}
+                                >
+                                  <div style={{ padding: '12px 20px 20px 20px', borderTop: '1px solid rgba(0, 255, 255, 0.2)' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                      {providerModels.map(([modelKey, modelData]) => {
+                                        const isModelExpanded = expandedModels[modelKey]
+                                        return (
+                                          <div
+                                            key={modelKey}
+                                            style={{
+                                              background: 'rgba(0, 255, 255, 0.03)',
+                                              border: '1px solid rgba(0, 255, 255, 0.15)',
+                                              borderRadius: '8px',
+                                              overflow: 'hidden',
+                                            }}
+                                          >
+                                            {/* Model Header - Clickable */}
+                                            <div
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                setExpandedModels((prev) => ({
+                                                  ...prev,
+                                                  [modelKey]: !prev[modelKey],
+                                                }))
+                                              }}
+                                              style={{
+                                                padding: '12px 16px',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                transition: 'background 0.2s',
+                                              }}
+                                              onMouseEnter={(e) => {
+                                                e.currentTarget.style.background = 'rgba(0, 255, 255, 0.08)'
+                                              }}
+                                              onMouseLeave={(e) => {
+                                                e.currentTarget.style.background = 'rgba(0, 255, 255, 0.03)'
+                                              }}
+                                            >
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                                                {isModelExpanded ? (
+                                                  <ChevronDown size={16} color="#cccccc" />
+                                                ) : (
+                                                  <ChevronRight size={16} color="#cccccc" />
+                                                )}
+                                                <span style={{ color: '#cccccc', fontSize: '0.9rem', fontWeight: '500' }}>
+                                                  {modelData.model}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            {/* Model Stats - Collapsible */}
+                                            <AnimatePresence>
+                                              {isModelExpanded && (
+                                                <motion.div
+                                                  initial={{ height: 0, opacity: 0 }}
+                                                  animate={{ height: 'auto', opacity: 1 }}
+                                                  exit={{ height: 0, opacity: 0 }}
+                                                  transition={{ duration: 0.2 }}
+                                                  style={{ overflow: 'hidden' }}
+                                                >
+                                                  <div
+                                                    style={{
+                                                      padding: '12px 16px 16px 40px',
+                                                      background: 'rgba(0, 0, 0, 0.2)',
+                                                      borderTop: '1px solid rgba(0, 255, 255, 0.1)',
+                                                    }}
+                                                  >
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span style={{ color: '#aaaaaa', fontSize: '0.85rem' }}>Total Prompts:</span>
+                                                        <span style={{ color: '#00FF00', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                                                          {formatNumber(modelData.totalPrompts || 0)}
+                                                        </span>
+                                                      </div>
+                                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span style={{ color: '#aaaaaa', fontSize: '0.85rem' }}>Total Tokens:</span>
+                                                        <span style={{ color: '#00FFFF', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                                                          {formatTokens((modelData.totalInputTokens || 0) + (modelData.totalOutputTokens || 0))}
+                                                        </span>
+                                                      </div>
+                                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span style={{ color: '#aaaaaa', fontSize: '0.85rem' }}>Pricing:</span>
+                                                        <span
+                                                          style={{
+                                                            color: modelData.pricing ? '#FFD700' : '#888888',
+                                                            fontSize: '0.9rem',
+                                                            fontWeight: modelData.pricing ? 'bold' : 'normal',
+                                                          }}
+                                                        >
+                                                          {modelData.pricing !== null && modelData.pricing !== undefined
+                                                            ? `$${modelData.pricing}`
+                                                            : 'TBD'}
+                                                        </span>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                </motion.div>
+                                              )}
+                                            </AnimatePresence>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {Object.keys(userStats.providers || {}).length === 0 && (
+                <div
+                  style={{
+                    background: 'rgba(0, 255, 255, 0.1)',
+                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    borderRadius: '16px',
+                    padding: '40px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <p style={{ color: '#aaaaaa', fontSize: '1.1rem' }}>
+                    No model statistics yet. Start using ArkTek to see your usage data!
+                  </p>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -1204,221 +1463,126 @@ const StatisticsView = () => {
                           </motion.div>
                         )}
 
-          {activeTab === 'models' && (
+          {activeTab === 'leaderboard' && (
             <motion.div
-              key="models"
+              key="leaderboard"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
             >
-              {/* Provider Stats */}
-              {Object.keys(userStats.providers || {}).length > 0 && (
-                <div
-                  style={{
-                    background: 'rgba(0, 255, 255, 0.1)',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
-                    borderRadius: '16px',
-                    padding: '30px',
-                    marginBottom: '40px',
-                  }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {Object.entries(userStats.providers)
-                      .sort((a, b) => b[1].totalQueries - a[1].totalQueries)
-                      .map(([provider, data]) => {
-                        const isProviderExpanded = expandedProviders[provider]
-                        const providerModels = Object.entries(userStats.models || {})
-                          .filter(([modelKey]) => modelKey.startsWith(`${provider}-`))
-                          .sort((a, b) => b[1].totalQueries - a[1].totalQueries)
-
-                        return (
-                          <div
-                            key={provider}
-                            style={{
-                              background: 'rgba(0, 255, 255, 0.05)',
-                              border: '1px solid rgba(0, 255, 255, 0.2)',
-                              borderRadius: '12px',
-                              overflow: 'hidden',
-                            }}
-                          >
-                            {/* Provider Header - Clickable */}
-                            <div
-                              onClick={() => {
-                                setExpandedProviders((prev) => ({
-                                  ...prev,
-                                  [provider]: !prev[provider],
-                                }))
-                              }}
-                              style={{
-                                padding: '16px 20px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                transition: 'background 0.2s',
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'rgba(0, 255, 255, 0.05)'
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
-                                {isProviderExpanded ? (
-                                  <ChevronDown size={20} color="#00FFFF" />
-                                ) : (
-                                  <ChevronRight size={20} color="#00FFFF" />
-                                )}
-                                <h3 style={{ fontSize: '1.1rem', color: '#00FFFF', margin: 0, textTransform: 'capitalize' }}>
-                                  {provider}
-                                </h3>
-                                <span style={{ color: '#888888', fontSize: '0.85rem', marginLeft: '8px' }}>
-                                  ({providerModels.length} {providerModels.length === 1 ? 'model' : 'models'})
-                                </span>
-                              </div>
-                              <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
-                                <div style={{ textAlign: 'right' }}>
-                                  <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: 0 }}>Prompts</p>
-                                  <p style={{ color: '#00FF00', fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
-                                    {formatNumber(data.totalPrompts || 0)}
-                                  </p>
-                                </div>
-                                <div style={{ textAlign: 'right' }}>
-                                  <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: 0 }}>Tokens</p>
-                                  <p style={{ color: '#00FFFF', fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
-                                    {formatTokens((data.totalInputTokens || 0) + (data.totalOutputTokens || 0))}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Models List - Collapsible */}
-                            <AnimatePresence>
-                              {isProviderExpanded && providerModels.length > 0 && (
-                                <motion.div
-                                  initial={{ height: 0, opacity: 0 }}
-                                  animate={{ height: 'auto', opacity: 1 }}
-                                  exit={{ height: 0, opacity: 0 }}
-                                  transition={{ duration: 0.2 }}
-                                  style={{ overflow: 'hidden' }}
-                                >
-                                  <div style={{ padding: '12px 20px 20px 20px', borderTop: '1px solid rgba(0, 255, 255, 0.2)' }}>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                      {providerModels.map(([modelKey, modelData]) => {
-                                        const isModelExpanded = expandedModels[modelKey]
-                                        return (
-                                          <div
-                                            key={modelKey}
-                                            style={{
-                                              background: 'rgba(0, 255, 255, 0.03)',
-                                              border: '1px solid rgba(0, 255, 255, 0.15)',
-                                              borderRadius: '8px',
-                                              overflow: 'hidden',
-                                            }}
-                                          >
-                                            {/* Model Header - Clickable */}
-                                            <div
-                                              onClick={(e) => {
-                                                e.stopPropagation()
-                                                setExpandedModels((prev) => ({
-                                                  ...prev,
-                                                  [modelKey]: !prev[modelKey],
-                                                }))
-                                              }}
-                                              style={{
-                                                padding: '12px 16px',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                transition: 'background 0.2s',
-                                              }}
-                                              onMouseEnter={(e) => {
-                                                e.currentTarget.style.background = 'rgba(0, 255, 255, 0.08)'
-                                              }}
-                                              onMouseLeave={(e) => {
-                                                e.currentTarget.style.background = 'rgba(0, 255, 255, 0.03)'
-                                              }}
-                                            >
-                                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-                                                {isModelExpanded ? (
-                                                  <ChevronDown size={16} color="#cccccc" />
-                                                ) : (
-                                                  <ChevronRight size={16} color="#cccccc" />
-                                                )}
-                                                <span style={{ color: '#cccccc', fontSize: '0.9rem', fontWeight: '500' }}>
-                                                  {modelData.model}
-                                                </span>
-                                              </div>
-                                            </div>
-
-                                            {/* Model Stats - Collapsible */}
-                                            <AnimatePresence>
-                                              {isModelExpanded && (
-                                                <motion.div
-                                                  initial={{ height: 0, opacity: 0 }}
-                                                  animate={{ height: 'auto', opacity: 1 }}
-                                                  exit={{ height: 0, opacity: 0 }}
-                                                  transition={{ duration: 0.2 }}
-                                                  style={{ overflow: 'hidden' }}
-                                                >
-                                                  <div
-                                                    style={{
-                                                      padding: '12px 16px 16px 40px',
-                                                      background: 'rgba(0, 0, 0, 0.2)',
-                                                      borderTop: '1px solid rgba(0, 255, 255, 0.1)',
-                                                    }}
-                                                  >
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ color: '#aaaaaa', fontSize: '0.85rem' }}>Total Prompts:</span>
-                                                        <span style={{ color: '#00FF00', fontSize: '0.9rem', fontWeight: 'bold' }}>
-                                                          {formatNumber(modelData.totalPrompts || 0)}
-                                                        </span>
-                                                      </div>
-                                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ color: '#aaaaaa', fontSize: '0.85rem' }}>Total Tokens:</span>
-                                                        <span style={{ color: '#00FFFF', fontSize: '0.9rem', fontWeight: 'bold' }}>
-                                                          {formatTokens((modelData.totalInputTokens || 0) + (modelData.totalOutputTokens || 0))}
-                                                        </span>
-                                                      </div>
-                                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ color: '#aaaaaa', fontSize: '0.85rem' }}>Pricing:</span>
-                                                        <span
-                                                          style={{
-                                                            color: modelData.pricing ? '#FFD700' : '#888888',
-                                                            fontSize: '0.9rem',
-                                                            fontWeight: modelData.pricing ? 'bold' : 'normal',
-                                                          }}
-                                                        >
-                                                          {modelData.pricing !== null && modelData.pricing !== undefined
-                                                            ? `$${modelData.pricing}`
-                                                            : 'TBD'}
-                                                        </span>
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                </motion.div>
-                                              )}
-                                            </AnimatePresence>
-                                          </div>
-                                        )
-                                      })}
-                                    </div>
-                                  </div>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
+              {loadingLeaderboardStats ? (
+                <div style={{ textAlign: 'center', padding: '40px' }}>
+                  <p style={{ color: '#aaaaaa', fontSize: '1.1rem' }}>Loading leaderboard stats...</p>
+                </div>
+              ) : currentUser ? (
+                <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                  {/* Wins Card */}
+                  <div
+                    style={{
+                      background: 'rgba(255, 215, 0, 0.1)',
+                      border: '1px solid rgba(255, 215, 0, 0.3)',
+                      borderRadius: '16px',
+                      padding: '24px',
+                      flex: 1,
+                      minWidth: '300px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                      <Trophy size={24} color="#FFD700" />
+                      <h3 style={{ color: '#FFD700', fontSize: '1.2rem', margin: 0 }}>Your Wins</h3>
+                    </div>
+                    <p style={{ color: '#ffffff', fontSize: '2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>
+                      {leaderboardStats?.winCount || 0}
+                    </p>
+                    {leaderboardStats?.wins && leaderboardStats.wins.length > 0 ? (
+                      <div style={{ marginTop: '12px' }}>
+                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', marginBottom: '8px' }}>Recent Wins:</p>
+                        {leaderboardStats.wins.slice(0, 3).map((win, index) => (
+                          <div key={index} style={{ marginBottom: '8px', padding: '8px', background: 'rgba(255, 215, 0, 0.05)', borderRadius: '6px' }}>
+                            <p style={{ color: '#cccccc', fontSize: '0.85rem', margin: '0 0 4px 0' }}>{win.promptText}</p>
+                            <p style={{ color: '#888888', fontSize: '0.75rem', margin: 0 }}>{formatDate(win.date)} • {win.likes} likes</p>
                           </div>
-                        )
-                      })}
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: '12px' }}>
+                        <p style={{ color: '#888888', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                          No wins yet. Submit prompts and get likes to win!
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Notifications Card */}
+                  <div
+                    style={{
+                      background: 'rgba(0, 255, 255, 0.1)',
+                      border: '1px solid rgba(0, 255, 255, 0.3)',
+                      borderRadius: '16px',
+                      padding: '24px',
+                      flex: 1,
+                      minWidth: '300px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                      <Bell size={24} color="#00FFFF" />
+                      <h3 style={{ color: '#00FFFF', fontSize: '1.2rem', margin: 0 }}>Recent Updates</h3>
+                    </div>
+                    {leaderboardStats?.notifications && leaderboardStats.notifications.length > 0 ? (
+                      <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                        {leaderboardStats.notifications.map((notif, index) => (
+                          <div key={index} style={{ marginBottom: '12px', padding: '12px', background: 'rgba(0, 255, 255, 0.05)', borderRadius: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                              <Heart size={16} color="#ff6b6b" fill="#ff6b6b" />
+                              <p style={{ color: '#ffffff', fontSize: '0.9rem', margin: 0, fontWeight: '600' }}>
+                                {notif.count} {notif.count === 1 ? 'person liked' : 'people liked'} your prompt
+                              </p>
+                            </div>
+                            <p style={{ color: '#cccccc', fontSize: '0.85rem', margin: '0 0 4px 0' }}>{notif.promptText}</p>
+                            <p style={{ color: '#888888', fontSize: '0.75rem', margin: 0 }}>{formatDate(notif.timestamp)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ color: '#888888', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                        No recent notifications. When people like your prompts, you'll see updates here!
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Additional Stats Card */}
+                  <div
+                    style={{
+                      background: 'rgba(0, 255, 0, 0.1)',
+                      border: '1px solid rgba(0, 255, 0, 0.3)',
+                      borderRadius: '16px',
+                      padding: '24px',
+                      flex: 1,
+                      minWidth: '300px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                      <Trophy size={24} color="#00FF00" />
+                      <h3 style={{ color: '#00FF00', fontSize: '1.2rem', margin: 0 }}>Your Stats</h3>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div>
+                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: '0 0 4px 0' }}>Total Prompts Submitted</p>
+                        <p style={{ color: '#00FF00', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                          {leaderboardStats?.totalPrompts || 0}
+                        </p>
+                      </div>
+                      <div>
+                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: '0 0 4px 0' }}>Total Likes Received</p>
+                        <p style={{ color: '#00FF00', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                          {leaderboardStats?.totalLikes || 0}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              )}
-
-              {Object.keys(userStats.providers || {}).length === 0 && (
+              ) : (
                 <div
                   style={{
                     background: 'rgba(0, 255, 255, 0.1)',
@@ -1428,14 +1592,14 @@ const StatisticsView = () => {
                     textAlign: 'center',
                   }}
                 >
-                  <p style={{ color: '#aaaaaa', fontSize: '1.1rem' }}>
-                    No statistics yet. Start using ArkTek to see your usage data!
+                  <p style={{ color: '#888888', fontSize: '1.1rem' }}>
+                    Please sign in to view your leaderboard stats.
                   </p>
                 </div>
               )}
             </motion.div>
           )}
-                      </AnimatePresence>
+        </AnimatePresence>
 
         {/* Confirmation Modal */}
         <ConfirmationModal

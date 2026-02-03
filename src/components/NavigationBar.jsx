@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Home, Settings, Eye, BarChart3, LogOut, Clock, X } from 'lucide-react'
+import { Home, Settings, BarChart3, LogOut, Clock, X, Trophy } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import axios from 'axios'
 import ConfirmationModal from './ConfirmationModal'
@@ -76,19 +76,19 @@ const NavigationBar = () => {
       label: 'Home',
     },
     {
-      id: 'settings',
-      icon: Settings,
-      label: 'Settings',
-    },
-    {
-      id: 'vr',
-      icon: Eye,
-      label: 'VR',
+      id: 'leaderboard',
+      icon: Trophy,
+      label: 'Leaderboard',
     },
     {
       id: 'statistics',
       icon: BarChart3,
       label: 'Statistics',
+    },
+    {
+      id: 'settings',
+      icon: Settings,
+      label: 'Settings',
     },
   ]
 

@@ -1,10 +1,10 @@
 {
   "raleighgardner": {
-    "totalTokens": 14354,
-    "totalInputTokens": 9561,
-    "totalOutputTokens": 4793,
-    "totalQueries": 1,
-    "totalPrompts": 2,
+    "totalTokens": 32009,
+    "totalInputTokens": 18169,
+    "totalOutputTokens": 13840,
+    "totalQueries": 2,
+    "totalPrompts": 6,
     "monthlyUsage": {
       "2026-01": {
         "tokens": 14354,
@@ -12,6 +12,13 @@
         "outputTokens": 4793,
         "queries": 1,
         "prompts": 2
+      },
+      "2026-02": {
+        "tokens": 17655,
+        "inputTokens": 8608,
+        "outputTokens": 9047,
+        "queries": 1,
+        "prompts": 4
       }
     },
     "dailyUsage": {
@@ -66,119 +73,180 @@
             }
           }
         }
+      },
+      "2026-02": {
+        "2026-02-03": {
+          "inputTokens": 8608,
+          "outputTokens": 9047,
+          "queries": 1,
+          "models": {
+            "google-gemini-2.5-flash-lite": {
+              "inputTokens": 1255,
+              "outputTokens": 478
+            },
+            "anthropic-claude-4.5-opus": {
+              "inputTokens": 536,
+              "outputTokens": 1290
+            },
+            "google-gemini-3-pro": {
+              "inputTokens": 488,
+              "outputTokens": 1556
+            },
+            "xai-grok-4-1-fast-reasoning": {
+              "inputTokens": 6039,
+              "outputTokens": 1922
+            },
+            "openai-gpt-5.2": {
+              "inputTokens": 72,
+              "outputTokens": 1102
+            },
+            "anthropic-claude-4.5-sonnet": {
+              "inputTokens": 16,
+              "outputTokens": 299
+            },
+            "google-gemini-3-flash": {
+              "inputTokens": 9,
+              "outputTokens": 1010
+            },
+            "openai-gpt-4.1": {
+              "inputTokens": 16,
+              "outputTokens": 531
+            },
+            "xai-grok-4-1-fast-non-reasoning": {
+              "inputTokens": 177,
+              "outputTokens": 859
+            }
+          }
+        }
       }
     },
     "providers": {
       "xai": {
-        "totalTokens": 6824,
-        "totalInputTokens": 4842,
-        "totalOutputTokens": 1982,
+        "totalTokens": 15821,
+        "totalInputTokens": 11058,
+        "totalOutputTokens": 4763,
         "totalQueries": 0,
         "monthlyTokens": {
-          "2026-01": 6824
+          "2026-01": 6824,
+          "2026-02": 8997
         },
         "monthlyInputTokens": {
-          "2026-01": 4842
+          "2026-01": 4842,
+          "2026-02": 6216
         },
         "monthlyOutputTokens": {
-          "2026-01": 1982
+          "2026-01": 1982,
+          "2026-02": 2781
         },
         "monthlyQueries": {
-          "2026-01": 0
+          "2026-01": 0,
+          "2026-02": 0
         }
       },
       "google": {
-        "totalTokens": 3953,
-        "totalInputTokens": 2121,
-        "totalOutputTokens": 1832,
+        "totalTokens": 8749,
+        "totalInputTokens": 3873,
+        "totalOutputTokens": 4876,
         "totalQueries": 0,
         "monthlyTokens": {
-          "2026-01": 3953
+          "2026-01": 3953,
+          "2026-02": 4796
         },
         "monthlyInputTokens": {
-          "2026-01": 2121
+          "2026-01": 2121,
+          "2026-02": 1752
         },
         "monthlyOutputTokens": {
-          "2026-01": 1832
+          "2026-01": 1832,
+          "2026-02": 3044
         },
         "monthlyQueries": {
-          "2026-01": 0
+          "2026-01": 0,
+          "2026-02": 0
         }
       },
       "openai": {
-        "totalTokens": 2804,
-        "totalInputTokens": 2173,
-        "totalOutputTokens": 631,
+        "totalTokens": 4525,
+        "totalInputTokens": 2261,
+        "totalOutputTokens": 2264,
         "totalQueries": 0,
         "monthlyTokens": {
-          "2026-01": 2804
+          "2026-01": 2804,
+          "2026-02": 1721
         },
         "monthlyInputTokens": {
-          "2026-01": 2173
+          "2026-01": 2173,
+          "2026-02": 88
         },
         "monthlyOutputTokens": {
-          "2026-01": 631
+          "2026-01": 631,
+          "2026-02": 1633
         },
         "monthlyQueries": {
-          "2026-01": 0
+          "2026-01": 0,
+          "2026-02": 0
         }
       },
       "anthropic": {
-        "totalTokens": 773,
-        "totalInputTokens": 425,
-        "totalOutputTokens": 348,
+        "totalTokens": 2914,
+        "totalInputTokens": 977,
+        "totalOutputTokens": 1937,
         "totalQueries": 0,
         "monthlyTokens": {
-          "2026-01": 773
+          "2026-01": 773,
+          "2026-02": 2141
         },
         "monthlyInputTokens": {
-          "2026-01": 425
+          "2026-01": 425,
+          "2026-02": 552
         },
         "monthlyOutputTokens": {
-          "2026-01": 348
+          "2026-01": 348,
+          "2026-02": 1589
         },
         "monthlyQueries": {
-          "2026-01": 0
+          "2026-01": 0,
+          "2026-02": 0
         }
       }
     },
     "models": {
       "xai-grok-4-1-fast-non-reasoning": {
-        "totalTokens": 1015,
-        "totalInputTokens": 176,
-        "totalOutputTokens": 839,
+        "totalTokens": 2051,
+        "totalInputTokens": 353,
+        "totalOutputTokens": 1698,
         "totalQueries": 0,
-        "totalPrompts": 1,
+        "totalPrompts": 2,
         "provider": "xai",
         "model": "grok-4-1-fast-non-reasoning",
         "pricing": null
       },
       "google-gemini-3-pro": {
-        "totalTokens": 1657,
-        "totalInputTokens": 401,
-        "totalOutputTokens": 1256,
+        "totalTokens": 3701,
+        "totalInputTokens": 889,
+        "totalOutputTokens": 2812,
         "totalQueries": 0,
-        "totalPrompts": 2,
+        "totalPrompts": 4,
         "provider": "google",
         "model": "gemini-3-pro",
         "pricing": null
       },
       "xai-grok-4-1-fast-reasoning": {
-        "totalTokens": 5809,
-        "totalInputTokens": 4666,
-        "totalOutputTokens": 1143,
+        "totalTokens": 13770,
+        "totalInputTokens": 10705,
+        "totalOutputTokens": 3065,
         "totalQueries": 0,
-        "totalPrompts": 4,
+        "totalPrompts": 7,
         "provider": "xai",
         "model": "grok-4-1-fast-reasoning",
         "pricing": null
       },
       "google-gemini-2.5-flash-lite": {
-        "totalTokens": 2296,
-        "totalInputTokens": 1720,
-        "totalOutputTokens": 576,
+        "totalTokens": 4029,
+        "totalInputTokens": 2975,
+        "totalOutputTokens": 1054,
         "totalQueries": 0,
-        "totalPrompts": 1,
+        "totalPrompts": 2,
         "provider": "google",
         "model": "gemini-2.5-flash-lite",
         "pricing": null
@@ -194,27 +262,77 @@
         "pricing": null
       },
       "openai-gpt-5.2": {
-        "totalTokens": 644,
-        "totalInputTokens": 383,
-        "totalOutputTokens": 261,
+        "totalTokens": 1818,
+        "totalInputTokens": 455,
+        "totalOutputTokens": 1363,
         "totalQueries": 0,
-        "totalPrompts": 1,
+        "totalPrompts": 2,
         "provider": "openai",
         "model": "gpt-5.2",
         "pricing": null
       },
       "anthropic-claude-4.5-opus": {
-        "totalTokens": 773,
-        "totalInputTokens": 425,
-        "totalOutputTokens": 348,
+        "totalTokens": 2599,
+        "totalInputTokens": 961,
+        "totalOutputTokens": 1638,
+        "totalQueries": 0,
+        "totalPrompts": 3,
+        "provider": "anthropic",
+        "model": "claude-4.5-opus",
+        "pricing": null
+      },
+      "anthropic-claude-4.5-sonnet": {
+        "totalTokens": 315,
+        "totalInputTokens": 16,
+        "totalOutputTokens": 299,
         "totalQueries": 0,
         "totalPrompts": 1,
         "provider": "anthropic",
-        "model": "claude-4.5-opus",
+        "model": "claude-4.5-sonnet",
+        "pricing": null
+      },
+      "google-gemini-3-flash": {
+        "totalTokens": 1019,
+        "totalInputTokens": 9,
+        "totalOutputTokens": 1010,
+        "totalQueries": 0,
+        "totalPrompts": 1,
+        "provider": "google",
+        "model": "gemini-3-flash",
+        "pricing": null
+      },
+      "openai-gpt-4.1": {
+        "totalTokens": 547,
+        "totalInputTokens": 16,
+        "totalOutputTokens": 531,
+        "totalQueries": 0,
+        "totalPrompts": 1,
+        "provider": "openai",
+        "model": "gpt-4.1",
         "pricing": null
       }
     },
     "promptHistory": [
+      {
+        "text": "Tell me about peoples different views on President Trump",
+        "category": "Politics/Law",
+        "timestamp": "2026-02-03T04:31:23.721Z"
+      },
+      {
+        "text": "When you're using LLM apis how can I create memory for the users so that when they use the same LLM thru the api that the LLM has the context of the conversation because when they send two api calls each call to the LLM the LLM has no memory or understanding of the other api call and convo?",
+        "category": "Tech",
+        "timestamp": "2026-02-03T04:14:21.705Z"
+      },
+      {
+        "text": "Will the subtle scars from my folliculitis ever go away or fade?",
+        "category": "Health",
+        "timestamp": "2026-02-03T03:51:37.448Z"
+      },
+      {
+        "text": "Will the subtle scars of folliculitis ever go away?",
+        "category": "Health",
+        "timestamp": "2026-02-03T03:18:54.178Z"
+      },
       {
         "text": "So when using LLM provider api keys am I billed for reasoning tokens or do the providers such as openAi, gemini, claude, grok, mistral, deepseek, and meta encompass the reasoning tokens into the input and output tokens that the api returns to my backend?",
         "category": "Tech",
@@ -227,11 +345,16 @@
       }
     ],
     "categories": {
-      "Politics/Law": 1,
-      "Tech": 1
+      "Politics/Law": 2,
+      "Tech": 2,
+      "Health": 2
     },
     "categoryPrompts": {
       "Politics/Law": [
+        {
+          "text": "Tell me about peoples different views on President Trump",
+          "timestamp": "2026-02-03T04:31:23.721Z"
+        },
         {
           "text": "what are the best accomplishments of President Trump",
           "timestamp": "2026-01-27T16:38:15.937Z"
@@ -239,14 +362,28 @@
       ],
       "Tech": [
         {
+          "text": "When you're using LLM apis how can I create memory for the users so that when they use the same LLM thru the api that the LLM has the context of the conversation because when they send two api calls each call to the LLM the LLM has no memory or understanding of the other api call and convo?",
+          "timestamp": "2026-02-03T04:14:21.705Z"
+        },
+        {
           "text": "So when using LLM provider api keys am I billed for reasoning tokens or do the providers such as openAi, gemini, claude, grok, mistral, deepseek, and meta encompass the reasoning tokens into the input and output tokens that the api returns to my backend?",
           "timestamp": "2026-01-28T04:11:55.999Z"
+        }
+      ],
+      "Health": [
+        {
+          "text": "Will the subtle scars from my folliculitis ever go away or fade?",
+          "timestamp": "2026-02-03T03:51:37.448Z"
+        },
+        {
+          "text": "Will the subtle scars of folliculitis ever go away?",
+          "timestamp": "2026-02-03T03:18:54.178Z"
         }
       ]
     },
     "ratings": {},
-    "lastActiveDate": "2026-01-28",
+    "lastActiveDate": "2026-02-03",
     "lastLoginDate": null,
-    "streakDays": 2
+    "streakDays": 1
   }
 }

@@ -8,6 +8,7 @@ import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import * as cheerio from 'cheerio'
 import { countTokens, extractTokensFromResponse, estimateTokensFallback } from './utils/tokenCounters.js'
+import Stripe from 'stripe'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -17,11 +18,21 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 3001
 
+// Initialize Stripe
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2024-11-20.acacia',
+})
+
+// Stripe configuration
+const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || '' // You'll need to create a $25/month price in Stripe Dashboard
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '' // For webhook signature verification
+
 // User data storage file
 const USERS_FILE = path.join(__dirname, 'ADMIN', 'users.json')
 const USAGE_FILE = path.join(__dirname, 'ADMIN', 'usage.json')
 const ADMINS_FILE = path.join(__dirname, 'ADMIN', 'admins.json')
 const DELETED_USERS_FILE = path.join(__dirname, 'ADMIN', 'deleted_users.json')
+const LEADERBOARD_FILE = path.join(__dirname, 'ADMIN', 'leaderboard.json')
 
 // Helper functions for user storage
 const readUsers = () => {
@@ -120,6 +131,30 @@ const writeUsage = (usage) => {
     fs.writeFileSync(USAGE_FILE, JSON.stringify(usage, null, 2))
   } catch (error) {
     console.error('Error writing usage file:', error)
+  }
+}
+
+// Helper functions for leaderboard storage
+const readLeaderboard = () => {
+  try {
+    if (fs.existsSync(LEADERBOARD_FILE)) {
+      const data = fs.readFileSync(LEADERBOARD_FILE, 'utf8')
+      if (data.trim() === '') {
+        return { prompts: [] }
+      }
+      return JSON.parse(data)
+    }
+  } catch (error) {
+    console.error('Error reading leaderboard file:', error)
+  }
+  return { prompts: [] }
+}
+
+const writeLeaderboard = (leaderboard) => {
+  try {
+    fs.writeFileSync(LEADERBOARD_FILE, JSON.stringify(leaderboard, null, 2))
+  } catch (error) {
+    console.error('Error writing leaderboard file:', error)
   }
 }
 
@@ -433,6 +468,12 @@ const API_KEYS = {
 
 // Middleware
 app.use(cors())
+
+// Stripe webhook endpoint needs raw body for signature verification
+// This must be BEFORE express.json() middleware
+app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }))
+
+// JSON parsing for all other routes
 app.use(express.json())
 
 // Authentication endpoints
@@ -473,6 +514,14 @@ app.post('/api/auth/signup', (req, res) => {
       email,
       password: hashedPassword,
       createdAt: new Date().toISOString(),
+      // Stripe subscription fields
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      subscriptionStatus: 'inactive', // 'active', 'inactive', 'canceled', 'past_due'
+      subscriptionEndDate: null,
+      // Usage billing fields
+      monthlyUsageCost: {}, // Track monthly costs: { "2025-01": 3.50, "2025-02": 7.25 }
+      monthlyOverageBilled: {}, // Track what's been billed: { "2025-01": 0.00, "2025-02": 2.25 }
     }
 
     const writeResult = writeUsers(users)
@@ -502,6 +551,8 @@ app.post('/api/auth/signup', (req, res) => {
         lastName,
         username,
         email,
+        subscriptionStatus: 'inactive',
+        subscriptionEndDate: null,
       },
     })
   } catch (error) {
@@ -596,6 +647,8 @@ app.post('/api/auth/signin', (req, res) => {
         lastName: user.lastName,
         username: user.username,
         email: user.email,
+        subscriptionStatus: user.subscriptionStatus || 'inactive',
+        subscriptionEndDate: user.subscriptionEndDate || null,
       },
     })
   } catch (error) {
@@ -846,6 +899,18 @@ app.get('/api/stats/:userId', (req, res) => {
   
   // Calculate percentage of free usage remaining
   const freeUsagePercentage = (remainingFreeAllocation / FREE_MONTHLY_ALLOCATION) * 100
+  
+  // Update user's monthly usage cost tracking
+  if (user) {
+    if (!user.monthlyUsageCost) {
+      user.monthlyUsageCost = {}
+    }
+    if (!user.monthlyOverageBilled) {
+      user.monthlyOverageBilled = {}
+    }
+    user.monthlyUsageCost[currentMonth] = monthlyCost
+    writeUsers(users)
+  }
 
   // Calculate daily usage with costs and percentages
   const dailyUsage = []
@@ -1148,6 +1213,49 @@ const estimateTokens = (text) => {
   return estimateTokensFallback(text)
 }
 
+// Helper function to check if user has active subscription
+const checkSubscriptionStatus = (userId) => {
+  if (!userId) {
+    console.log('[Subscription Check] No user ID provided')
+    return { hasAccess: false, reason: 'No user ID provided' }
+  }
+
+  const users = readUsers()
+  const user = users[userId]
+
+  if (!user) {
+    console.log(`[Subscription Check] User not found: ${userId}`)
+    return { hasAccess: false, reason: 'User not found' }
+  }
+
+  // Check subscription status
+  const status = user.subscriptionStatus || 'inactive'
+  console.log(`[Subscription Check] User ${userId} status: ${status}, customerId: ${user.stripeCustomerId || 'none'}, subscriptionId: ${user.stripeSubscriptionId || 'none'}`)
+
+  if (status === 'active') {
+    // Check if subscription hasn't expired
+    if (user.subscriptionEndDate) {
+      const endDate = new Date(user.subscriptionEndDate)
+      const now = new Date()
+      if (endDate < now) {
+        console.log(`[Subscription Check] Subscription expired for user ${userId}: ${endDate} < ${now}`)
+        return { hasAccess: false, reason: 'Subscription has expired' }
+      }
+    }
+    console.log(`[Subscription Check] Access granted for user ${userId}`)
+    return { hasAccess: true }
+  }
+
+  // Paused users don't have access (but are kept in database)
+  if (status === 'paused') {
+    console.log(`[Subscription Check] Access denied - subscription paused for user ${userId}`)
+    return { hasAccess: false, reason: 'Subscription is paused. Please reactivate to continue.' }
+  }
+
+  console.log(`[Subscription Check] Access denied for user ${userId}: status is ${status}`)
+  return { hasAccess: false, reason: `Subscription status: ${status}` }
+}
+
 // API endpoint to proxy LLM calls
 app.post('/api/llm', async (req, res) => {
   // Extract variables at the top level so they're available in catch block
@@ -1170,6 +1278,18 @@ app.post('/api/llm', async (req, res) => {
       return res.status(400).json({ 
         error: 'Missing required fields: provider, model, or prompt' 
       })
+    }
+
+    // Check subscription status (skip for summary calls to allow summaries even without subscription)
+    if (!isSummary && userId) {
+      const subscriptionCheck = checkSubscriptionStatus(userId)
+      if (!subscriptionCheck.hasAccess) {
+        return res.status(403).json({ 
+          error: 'Active subscription required. Please subscribe to use this service.',
+          subscriptionRequired: true,
+          reason: subscriptionCheck.reason
+        })
+      }
     }
 
     // Get API key from backend configuration (not from frontend)
@@ -2605,21 +2725,23 @@ const judgeFinalization = async (query, councilResponses, userId = null) => {
   
   const judgePrompt = `You are an expert judge analyzing multiple AI model responses. Your task is to:
 
-1. Provide a summary of the council's responses
-2. Identify where the models agree
-3. Identify where the models disagree or contradict each other
+1. Calculate a consensus score (0-100%) based on how much the models agree
+2. Provide a summary of the council's responses
+3. Identify where the models agree
+4. Identify where the models disagree or contradict each other
 
 Original User Query: "${query}"
 
 Council Model Responses:
 ${responsesText}
 
-Please analyze these responses and provide ONLY these three sections:
-- **Summary**: A concise summary of what the council models collectively determined
-- **Agreements**: List specific points where models agree (bullet points)
-- **Disagreements**: List specific points where models disagree or contradict (bullet points)
+Please analyze these responses and provide ONLY these four sections in this exact format:
+- **Consensus of Agreement**: [A single number from 0-100 representing the percentage of agreement between all models]
+- **SUMMARY**: A concise summary of what the council models collectively determined
+- **AGREEMENTS**: List specific points where models agree (bullet points, one per line starting with - or •)
+- **DISAGREEMENTS**: List specific points where models disagree or contradict (bullet points, one per line starting with - or •). If there are no disagreements, write "None identified."
 
-Format your response clearly with these three sections only.`
+Format your response clearly with these four sections only.`
   
   try {
     const apiKey = API_KEYS.xai
@@ -2674,24 +2796,58 @@ Format your response clearly with these three sections only.`
       }
     }
     
-    // Parse the response to extract sections (only Summary, Agreements, Disagreements)
-    const summaryMatch = content.match(/(?:Summary)[:\-]?\s*(.+?)(?=\n\n|\n(?:Agreements|Disagreements)|$)/is)
-    const agreementsMatch = content.match(/(?:Agreements)[:\-]?\s*(.+?)(?=\n\n|\n(?:Disagreements|Summary)|$)/is)
-    const disagreementsMatch = content.match(/(?:Disagreements)[:\-]?\s*(.+?)(?=\n\n|\n(?:Summary|Agreements)|$)/is)
+    // Parse the response to extract sections (Consensus, Summary, Agreements, Disagreements)
+    // More flexible consensus matching - handles various formats like "Consensus: 85", "**Consensus**: 85%", "[85]", etc.
+    const consensusMatch = content.match(/(?:Consensus|consensus)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
+    const summaryMatch = content.match(/(?:Summary)[:\-]?\s*(.+?)(?=\n\n|\n(?:Agreements|Disagreements|Consensus)|$)/is)
+    const agreementsMatch = content.match(/(?:Agreements)[:\-]?\s*(.+?)(?=\n\n|\n(?:Disagreements|Summary|Consensus)|$)/is)
+    const disagreementsMatch = content.match(/(?:Disagreements)[:\-]?\s*(.+?)(?=\n\n|\n(?:Summary|Agreements|Consensus)|$)/is)
+    
+    // Extract consensus score (0-100)
+    let consensus = null
+    if (consensusMatch) {
+      const score = parseInt(consensusMatch[1], 10)
+      consensus = Math.max(0, Math.min(100, score)) // Clamp between 0-100
+      console.log(`[Judge] Extracted consensus score: ${consensus}%`)
+    } else {
+      // Try more flexible patterns
+      const patterns = [
+        /consensus[:\-]?\s*(\d+)\s*%/i,
+        /consensus[:\-]?\s*\[(\d+)\]/i,
+        /consensus[:\-]?\s*(\d+)/i,
+        /(\d+)\s*%\s*consensus/i,
+        /consensus.*?(\d+)/i
+      ]
+      
+      for (const pattern of patterns) {
+        const match = content.match(pattern)
+        if (match) {
+          const score = parseInt(match[1], 10)
+          consensus = Math.max(0, Math.min(100, score))
+          console.log(`[Judge] Extracted consensus score (fallback pattern): ${consensus}%`)
+          break
+        }
+      }
+      
+      if (!consensus) {
+        console.log(`[Judge] Warning: Could not extract consensus score from response. Content preview: ${content.substring(0, 500)}`)
+      }
+    }
     
     // Extract summary - if no explicit summary section, use first part of content
     let summary = summaryMatch ? summaryMatch[1].trim() : content.split(/\n\n/)[0].trim()
     
     // Extract agreements and disagreements as arrays
     const agreements = agreementsMatch 
-      ? agreementsMatch[1].split('\n').filter(l => l.trim() && !l.match(/^[-•*]\s*$/)).map(l => l.replace(/^[-•*]\s*/, '').trim())
+      ? agreementsMatch[1].split('\n').filter(l => l.trim() && !l.match(/^[-•*]\s*$/)).map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(l => l && !l.toLowerCase().includes('none identified'))
       : []
     
     const disagreements = disagreementsMatch 
-      ? disagreementsMatch[1].split('\n').filter(l => l.trim() && !l.match(/^[-•*]\s*$/)).map(l => l.replace(/^[-•*]\s*/, '').trim())
+      ? disagreementsMatch[1].split('\n').filter(l => l.trim() && !l.match(/^[-•*]\s*$/)).map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(l => l && !l.toLowerCase().includes('none identified'))
       : []
     
     return {
+      consensus: consensus,
       summary: summary,
       agreements: agreements,
       disagreements: disagreements,
@@ -2702,6 +2858,7 @@ Format your response clearly with these three sections only.`
   } catch (error) {
     console.error(`[Judge] Error in finalization: ${error.message}`)
     return {
+      consensus: null,
       summary: `Error analyzing responses: ${error.message}`,
       agreements: [],
       disagreements: [],
@@ -2713,6 +2870,18 @@ Format your response clearly with these three sections only.`
 
 // RAG Pipeline endpoint
 app.post('/api/rag', async (req, res) => {
+  // Check subscription status
+  const { userId } = req.body || {}
+  if (userId) {
+    const subscriptionCheck = checkSubscriptionStatus(userId)
+    if (!subscriptionCheck.hasAccess) {
+      return res.status(403).json({ 
+        error: 'Active subscription required. Please subscribe to use this service.',
+        subscriptionRequired: true,
+        reason: subscriptionCheck.reason
+      })
+    }
+  }
   console.log('[RAG Pipeline] ===== ENDPOINT HIT =====')
   console.log('[RAG Pipeline] Request body:', JSON.stringify(req.body, null, 2))
   try {
@@ -3302,6 +3471,7 @@ ${factsWithSourcesText}`
       judgeFinalization: judgeAnalysis ? {
         prompt: judgeAnalysis.prompt,
         response: judgeAnalysis.response,
+        consensus: judgeAnalysis.consensus,
         summary: judgeAnalysis.summary,
         agreements: judgeAnalysis.agreements,
         disagreements: judgeAnalysis.disagreements
@@ -3749,6 +3919,859 @@ app.post('/api/admin/remove', (req, res) => {
     res.status(500).json({ error: 'Failed to remove admin' })
   }
 })
+
+// ==================== LEADERBOARD ENDPOINTS ====================
+
+// Submit a prompt to the leaderboard
+app.post('/api/leaderboard/submit', (req, res) => {
+  try {
+    const { userId, promptText } = req.body
+    
+    if (!userId || !promptText || !promptText.trim()) {
+      return res.status(400).json({ error: 'userId and promptText are required' })
+    }
+    
+    const users = readUsers()
+    const user = users[userId]
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+    
+    const leaderboard = readLeaderboard()
+    const promptId = `prompt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
+    const promptEntry = {
+      id: promptId,
+      userId: userId,
+      username: user.username || user.email || 'Anonymous',
+      promptText: promptText.trim(),
+      likes: [],
+      likeCount: 0,
+      createdAt: new Date().toISOString(),
+    }
+    
+    leaderboard.prompts.push(promptEntry)
+    writeLeaderboard(leaderboard)
+    
+    console.log(`[Leaderboard] Prompt submitted by user ${userId}: ${promptId}`)
+    res.json({ success: true, promptId })
+  } catch (error) {
+    console.error('[Leaderboard] Error submitting prompt:', error)
+    res.status(500).json({ error: 'Failed to submit prompt to leaderboard' })
+  }
+})
+
+// Get all leaderboard prompts (sorted by likes)
+app.get('/api/leaderboard', (req, res) => {
+  try {
+    const leaderboard = readLeaderboard()
+    const users = readUsers()
+    
+    // Sort by like count (descending), then by creation date (newest first)
+    const sortedPrompts = leaderboard.prompts
+      .map(prompt => {
+        const user = users[prompt.userId]
+        return {
+          ...prompt,
+          username: user?.username || user?.email || 'Anonymous',
+          likeCount: prompt.likes?.length || 0,
+        }
+      })
+      .sort((a, b) => {
+        if (b.likeCount !== a.likeCount) {
+          return b.likeCount - a.likeCount
+        }
+        return new Date(b.createdAt) - new Date(a.createdAt)
+      })
+    
+    res.json({ prompts: sortedPrompts })
+  } catch (error) {
+    console.error('[Leaderboard] Error fetching leaderboard:', error)
+    res.status(500).json({ error: 'Failed to fetch leaderboard' })
+  }
+})
+
+// Like/unlike a prompt
+app.post('/api/leaderboard/like', (req, res) => {
+  try {
+    const { userId, promptId } = req.body
+    
+    if (!userId || !promptId) {
+      return res.status(400).json({ error: 'userId and promptId are required' })
+    }
+    
+    const leaderboard = readLeaderboard()
+    const prompt = leaderboard.prompts.find(p => p.id === promptId)
+    
+    if (!prompt) {
+      return res.status(404).json({ error: 'Prompt not found' })
+    }
+    
+    // Users can't like their own prompts
+    if (prompt.userId === userId) {
+      return res.status(400).json({ error: 'You cannot like your own prompt' })
+    }
+    
+    // Initialize likes array if it doesn't exist
+    if (!prompt.likes) {
+      prompt.likes = []
+    }
+    
+    const likeIndex = prompt.likes.indexOf(userId)
+    
+    if (likeIndex > -1) {
+      // Unlike: remove the like
+      prompt.likes.splice(likeIndex, 1)
+      console.log(`[Leaderboard] User ${userId} unliked prompt ${promptId}`)
+    } else {
+      // Like: add the like
+      prompt.likes.push(userId)
+      console.log(`[Leaderboard] User ${userId} liked prompt ${promptId}`)
+    }
+    
+    prompt.likeCount = prompt.likes.length
+    writeLeaderboard(leaderboard)
+    
+    res.json({ 
+      success: true, 
+      liked: likeIndex === -1,
+      likeCount: prompt.likeCount 
+    })
+  } catch (error) {
+    console.error('[Leaderboard] Error liking prompt:', error)
+    res.status(500).json({ error: 'Failed to like/unlike prompt' })
+  }
+})
+
+// Get user leaderboard stats (wins, notifications)
+app.get('/api/leaderboard/user-stats/:userId', (req, res) => {
+  try {
+    const { userId } = req.params
+    const leaderboard = readLeaderboard()
+    const users = readUsers()
+    const user = users[userId]
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+    
+    // Get all prompts by this user
+    const userPrompts = leaderboard.prompts.filter(p => p.userId === userId)
+    
+    // Calculate wins (prompts that were #1 at some point or currently #1)
+    // For simplicity, we'll consider a prompt a "win" if it has the most likes
+    const sortedByLikes = [...leaderboard.prompts].sort((a, b) => {
+      const aLikes = a.likes?.length || 0
+      const bLikes = b.likes?.length || 0
+      if (bLikes !== aLikes) return bLikes - aLikes
+      return new Date(b.createdAt) - new Date(a.createdAt)
+    })
+    
+    const wins = []
+    userPrompts.forEach(prompt => {
+      const promptLikes = prompt.likes?.length || 0
+      // Check if this prompt is currently #1 or was #1
+      if (sortedByLikes[0]?.id === prompt.id && promptLikes > 0) {
+        wins.push({
+          promptId: prompt.id,
+          promptText: prompt.promptText.substring(0, 50) + '...',
+          likes: promptLikes,
+          date: prompt.createdAt,
+        })
+      }
+    })
+    
+    // Get recent notifications (likes on user's prompts)
+    const notifications = []
+    userPrompts.forEach(prompt => {
+      const recentLikes = prompt.likes || []
+      if (recentLikes.length > 0) {
+        // Get the most recent like timestamp (we'll use createdAt as approximation)
+        notifications.push({
+          type: 'like',
+          promptId: prompt.id,
+          promptText: prompt.promptText.substring(0, 50) + '...',
+          count: recentLikes.length,
+          timestamp: prompt.createdAt, // In a real app, you'd track when each like happened
+        })
+      }
+    })
+    
+    // Sort notifications by timestamp (most recent first)
+    notifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    
+    res.json({
+      wins: wins.sort((a, b) => new Date(b.date) - new Date(a.date)),
+      winCount: wins.length,
+      notifications: notifications.slice(0, 10), // Last 10 notifications
+      totalLikes: userPrompts.reduce((sum, p) => sum + (p.likes?.length || 0), 0),
+      totalPrompts: userPrompts.length,
+    })
+  } catch (error) {
+    console.error('[Leaderboard] Error fetching user stats:', error)
+    res.status(500).json({ error: 'Failed to fetch user stats' })
+  }
+})
+
+// Add a comment to a prompt
+app.post('/api/leaderboard/comment', (req, res) => {
+  try {
+    const { userId, promptId, commentText } = req.body
+    
+    if (!userId || !promptId || !commentText || !commentText.trim()) {
+      return res.status(400).json({ error: 'userId, promptId, and commentText are required' })
+    }
+    
+    const leaderboard = readLeaderboard()
+    const users = readUsers()
+    const user = users[userId]
+    const prompt = leaderboard.prompts.find(p => p.id === promptId)
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+    
+    if (!prompt) {
+      return res.status(404).json({ error: 'Prompt not found' })
+    }
+    
+    // Initialize comments array if it doesn't exist
+    if (!prompt.comments) {
+      prompt.comments = []
+    }
+    
+    const commentId = `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const comment = {
+      id: commentId,
+      userId: userId,
+      username: user.username || user.email || 'Anonymous',
+      text: commentText.trim(),
+      createdAt: new Date().toISOString(),
+      replies: [],
+    }
+    
+    prompt.comments.push(comment)
+    writeLeaderboard(leaderboard)
+    
+    console.log(`[Leaderboard] Comment added by user ${userId} on prompt ${promptId}`)
+    res.json({ success: true, comment })
+  } catch (error) {
+    console.error('[Leaderboard] Error adding comment:', error)
+    res.status(500).json({ error: 'Failed to add comment' })
+  }
+})
+
+// Reply to a comment
+app.post('/api/leaderboard/comment/reply', (req, res) => {
+  try {
+    const { userId, promptId, commentId, replyText } = req.body
+    
+    if (!userId || !promptId || !commentId || !replyText || !replyText.trim()) {
+      return res.status(400).json({ error: 'userId, promptId, commentId, and replyText are required' })
+    }
+    
+    const leaderboard = readLeaderboard()
+    const users = readUsers()
+    const user = users[userId]
+    const prompt = leaderboard.prompts.find(p => p.id === promptId)
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+    
+    if (!prompt || !prompt.comments) {
+      return res.status(404).json({ error: 'Prompt or comment not found' })
+    }
+    
+    const comment = prompt.comments.find(c => c.id === commentId)
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' })
+    }
+    
+    // Initialize replies array if it doesn't exist
+    if (!comment.replies) {
+      comment.replies = []
+    }
+    
+    const replyId = `reply-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const reply = {
+      id: replyId,
+      userId: userId,
+      username: user.username || user.email || 'Anonymous',
+      text: replyText.trim(),
+      createdAt: new Date().toISOString(),
+    }
+    
+    comment.replies.push(reply)
+    writeLeaderboard(leaderboard)
+    
+    console.log(`[Leaderboard] Reply added by user ${userId} to comment ${commentId}`)
+    res.json({ success: true, reply })
+  } catch (error) {
+    console.error('[Leaderboard] Error adding reply:', error)
+    res.status(500).json({ error: 'Failed to add reply' })
+  }
+})
+
+// ==================== STRIPE SUBSCRIPTION ENDPOINTS ====================
+
+// Sync subscription status from Stripe API
+const syncSubscriptionFromStripe = async (userId) => {
+  try {
+    const users = readUsers()
+    const user = users[userId]
+    
+    if (!user || !user.stripeCustomerId) {
+      return { synced: false, reason: 'No Stripe customer ID' }
+    }
+
+    // Get all subscriptions for this customer from Stripe
+    const subscriptions = await stripe.subscriptions.list({
+      customer: user.stripeCustomerId,
+      status: 'all',
+      limit: 10,
+    })
+
+    if (subscriptions.data.length === 0) {
+      // No subscriptions found in Stripe
+      if (user.subscriptionStatus !== 'inactive') {
+        user.subscriptionStatus = 'inactive'
+        user.stripeSubscriptionId = null
+        user.subscriptionEndDate = null
+        writeUsers(users)
+        console.log(`[Stripe] Synced subscription status to inactive for user: ${userId}`)
+        return { synced: true, status: 'inactive' }
+      }
+      return { synced: false, reason: 'No subscriptions in Stripe' }
+    }
+
+    // Get the most recent active subscription (or the most recent one if none are active)
+    const activeSubscription = subscriptions.data.find(sub => sub.status === 'active')
+    const subscription = activeSubscription || subscriptions.data[0]
+
+    // Update user's subscription info
+    const oldStatus = user.subscriptionStatus
+    user.stripeSubscriptionId = subscription.id
+    user.subscriptionStatus = subscription.status
+    user.subscriptionEndDate = new Date(subscription.current_period_end * 1000).toISOString()
+    
+    writeUsers(users)
+    
+    if (oldStatus !== subscription.status) {
+      console.log(`[Stripe] Synced subscription status from Stripe for user ${userId}: ${oldStatus} → ${subscription.status}`)
+    }
+    
+    return { 
+      synced: true, 
+      status: subscription.status,
+      subscriptionId: subscription.id,
+      endDate: user.subscriptionEndDate
+    }
+  } catch (error) {
+    console.error(`[Stripe] Error syncing subscription from Stripe for user ${userId}:`, error)
+    return { synced: false, error: error.message }
+  }
+}
+
+// Get subscription status for current user
+app.get('/api/stripe/subscription-status', async (req, res) => {
+  try {
+    const { userId, sync } = req.query
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+
+    const users = readUsers()
+    const user = users[userId]
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    // If sync=true or if user has customerId but status is inactive, sync from Stripe
+    const shouldSync = sync === 'true' || (user.stripeCustomerId && (!user.subscriptionStatus || user.subscriptionStatus === 'inactive'))
+    
+    if (shouldSync) {
+      const syncResult = await syncSubscriptionFromStripe(userId)
+      if (syncResult.synced) {
+        // Re-read users to get updated status
+        const updatedUsers = readUsers()
+        const updatedUser = updatedUsers[userId]
+        return res.json({
+          subscriptionStatus: updatedUser.subscriptionStatus || 'inactive',
+          subscriptionEndDate: updatedUser.subscriptionEndDate || null,
+          hasActiveSubscription: updatedUser.subscriptionStatus === 'active',
+          synced: true,
+        })
+      }
+    }
+
+    res.json({
+      subscriptionStatus: user.subscriptionStatus || 'inactive',
+      subscriptionEndDate: user.subscriptionEndDate || null,
+      hasActiveSubscription: user.subscriptionStatus === 'active',
+      synced: false,
+    })
+  } catch (error) {
+    console.error('[Stripe] Error getting subscription status:', error)
+    res.status(500).json({ error: 'Failed to get subscription status' })
+  }
+})
+
+// Create Stripe Checkout Session for subscription
+app.post('/api/stripe/create-checkout-session', async (req, res) => {
+  try {
+    const { userId } = req.body
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+
+    if (!STRIPE_PRICE_ID) {
+      return res.status(500).json({ error: 'Stripe price ID not configured' })
+    }
+
+    const users = readUsers()
+    const user = users[userId]
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    // Create or retrieve Stripe customer
+    let customerId = user.stripeCustomerId
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: `${user.firstName} ${user.lastName}`,
+        metadata: {
+          userId: userId,
+        },
+      })
+      customerId = customer.id
+
+      // Save customer ID to user
+      user.stripeCustomerId = customerId
+      writeUsers(users)
+    }
+
+    // Create checkout session
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: STRIPE_PRICE_ID,
+          quantity: 1,
+        },
+      ],
+      mode: 'subscription',
+      success_url: `${req.headers.origin || 'http://localhost:5173'}/settings?subscription=success`,
+      cancel_url: `${req.headers.origin || 'http://localhost:5173'}/settings?subscription=canceled`,
+      metadata: {
+        userId: userId,
+      },
+    })
+
+    res.json({ sessionId: session.id, url: session.url })
+  } catch (error) {
+    console.error('[Stripe] Error creating checkout session:', error)
+    res.status(500).json({ error: 'Failed to create checkout session' })
+  }
+})
+
+// Pause subscription - cancel recurring payments but keep user in database
+app.post('/api/stripe/pause-subscription', async (req, res) => {
+  try {
+    const { userId } = req.body
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+
+    const users = readUsers()
+    const user = users[userId]
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    if (!user.stripeSubscriptionId) {
+      return res.status(400).json({ error: 'No active subscription found' })
+    }
+
+    // Cancel the subscription in Stripe (this will stop recurring payments)
+    await stripe.subscriptions.cancel(user.stripeSubscriptionId)
+
+    // Update user status to 'paused' (keep user in database)
+    user.subscriptionStatus = 'paused'
+    user.subscriptionEndDate = null
+    // Keep stripeSubscriptionId for reference but subscription is canceled in Stripe
+    writeUsers(users)
+
+    console.log(`[Stripe] Subscription paused for user: ${userId}`)
+    res.json({ success: true, message: 'Subscription paused successfully' })
+  } catch (error) {
+    console.error('[Stripe] Error pausing subscription:', error)
+    res.status(500).json({ error: 'Failed to pause subscription' })
+  }
+})
+
+// Cancel subscription and delete account - remove everything
+app.post('/api/stripe/cancel-subscription-delete-account', async (req, res) => {
+  try {
+    const { userId } = req.body
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+
+    const users = readUsers()
+    const user = users[userId]
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    // Cancel subscription in Stripe if it exists
+    if (user.stripeSubscriptionId) {
+      try {
+        await stripe.subscriptions.cancel(user.stripeSubscriptionId)
+        console.log(`[Stripe] Subscription canceled for user: ${userId}`)
+      } catch (stripeError) {
+        console.error('[Stripe] Error canceling subscription (may already be canceled):', stripeError)
+        // Continue with deletion even if subscription cancel fails
+      }
+    }
+
+    // Delete user from database
+    delete users[userId]
+    writeUsers(users)
+
+    // Also delete user usage data if it exists
+    const usage = readUsage()
+    if (usage[userId]) {
+      delete usage[userId]
+      writeUsage(usage)
+    }
+
+    console.log(`[Stripe] Account deleted for user: ${userId}`)
+    res.json({ success: true, message: 'Account and subscription deleted successfully' })
+  } catch (error) {
+    console.error('[Stripe] Error canceling subscription and deleting account:', error)
+    res.status(500).json({ error: 'Failed to cancel subscription and delete account' })
+  }
+})
+
+// Calculate and record usage-based billing for overage
+const calculateAndRecordOverage = async (userId, month) => {
+  try {
+    const users = readUsers()
+    const user = users[userId]
+    
+    if (!user || !user.stripeCustomerId || user.subscriptionStatus !== 'active') {
+      console.log(`[Billing] Skipping overage calculation for ${userId}: no active subscription`)
+      return { overage: 0, billed: false }
+    }
+    
+    const usage = readUsage()
+    const userUsage = usage[userId]
+    if (!userUsage) {
+      return { overage: 0, billed: false }
+    }
+    
+    // Calculate monthly cost
+    const FREE_MONTHLY_ALLOCATION = 5.00
+    const pricing = getPricingData()
+    const dailyData = userUsage.dailyUsage?.[month] || {}
+    let monthlyCost = 0
+    
+    // Sum up costs from all days in the month
+    Object.keys(dailyData).forEach((dateStr) => {
+      const dayData = dailyData[dateStr]
+      if (dayData) {
+        // Calculate cost for each model used on this day
+        if (dayData.models) {
+          Object.keys(dayData.models).forEach((modelKey) => {
+            const modelDayData = dayData.models[modelKey]
+            const dayInputTokens = modelDayData.inputTokens || 0
+            const dayOutputTokens = modelDayData.outputTokens || 0
+            const dayCost = calculateModelCost(modelKey, dayInputTokens, dayOutputTokens, pricing)
+            monthlyCost += dayCost
+          })
+        }
+        
+        // Calculate cost for Serper queries on this day
+        const dayQueries = dayData.queries || 0
+        if (dayQueries > 0) {
+          const queryCost = calculateSerperQueryCost(dayQueries, pricing)
+          monthlyCost += queryCost
+        }
+      }
+    })
+    
+    // Calculate overage (cost above $5 free allocation)
+    const overage = Math.max(0, monthlyCost - FREE_MONTHLY_ALLOCATION)
+    
+    // Update user's monthly usage cost
+    if (!user.monthlyUsageCost) {
+      user.monthlyUsageCost = {}
+    }
+    if (!user.monthlyOverageBilled) {
+      user.monthlyOverageBilled = {}
+    }
+    
+    user.monthlyUsageCost[month] = monthlyCost
+    const alreadyBilled = user.monthlyOverageBilled[month] || 0
+    
+    // Only bill if there's overage and it hasn't been fully billed yet
+    if (overage > 0 && alreadyBilled < overage) {
+      const baseOverage = overage - alreadyBilled
+      
+      // Calculate amount to charge including Stripe fees (2.9% + $0.30)
+      // Formula: We need to charge X such that after Stripe fee, we get baseOverage
+      // Stripe fee = 0.029 * X + 0.30
+      // We need: X - (0.029 * X + 0.30) = baseOverage
+      // Solving: X - 0.029X - 0.30 = baseOverage
+      //         0.971X = baseOverage + 0.30
+      //         X = (baseOverage + 0.30) / 0.971
+      const amountToBill = (baseOverage + 0.30) / 0.971
+      
+      // Round to 2 decimal places for display, then convert to cents for Stripe
+      const amountToBillRounded = Math.round(amountToBill * 100) / 100
+      const amountInCents = Math.round(amountToBillRounded * 100)
+      
+      // Calculate what Stripe will take as fee
+      const stripeFee = (amountToBillRounded * 0.029) + 0.30
+      const netAmount = amountToBillRounded - stripeFee
+      
+      console.log(`[Billing] Overage calculation for ${userId}:`)
+      console.log(`  Base overage: $${baseOverage.toFixed(2)}`)
+      console.log(`  Amount to charge: $${amountToBillRounded.toFixed(2)}`)
+      console.log(`  Stripe fee (2.9% + $0.30): $${stripeFee.toFixed(2)}`)
+      console.log(`  Net after fee: $${netAmount.toFixed(2)}`)
+      
+      // Create invoice item for overage (with fee markup included)
+      await stripe.invoiceItems.create({
+        customer: user.stripeCustomerId,
+        amount: amountInCents, // Amount in cents
+        currency: 'usd',
+        description: `Overage usage for ${month} ($${monthlyCost.toFixed(2)} total - $${FREE_MONTHLY_ALLOCATION.toFixed(2)} included)`,
+        metadata: {
+          userId: userId,
+          month: month,
+          totalCost: monthlyCost.toFixed(2),
+          freeAllocation: FREE_MONTHLY_ALLOCATION.toFixed(2),
+          baseOverage: baseOverage.toFixed(2),
+          amountCharged: amountToBillRounded.toFixed(2),
+          stripeFee: stripeFee.toFixed(2),
+        },
+      })
+      
+      // Update billed amount
+      user.monthlyOverageBilled[month] = overage
+      writeUsers(users)
+      
+      console.log(`[Billing] Billed $${amountToBill.toFixed(2)} overage for user ${userId} for ${month}`)
+      return { overage, billed: true, amountBilled: amountToBill }
+    }
+    
+    writeUsers(users)
+    return { overage, billed: false }
+  } catch (error) {
+    console.error(`[Billing] Error calculating overage for ${userId}:`, error)
+    return { overage: 0, billed: false, error: error.message }
+  }
+}
+
+// Stripe webhook handler for subscription events
+app.post('/api/stripe/webhook', async (req, res) => {
+  const sig = req.headers['stripe-signature']
+  let event
+
+  try {
+    // Verify webhook signature
+    if (STRIPE_WEBHOOK_SECRET) {
+      event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET)
+    } else {
+      // In development, you might skip verification (not recommended for production)
+      console.warn('[Stripe] Webhook secret not set, skipping signature verification')
+      event = JSON.parse(req.body.toString())
+    }
+  } catch (err) {
+    console.error('[Stripe] Webhook signature verification failed:', err.message)
+    return res.status(400).send(`Webhook Error: ${err.message}`)
+  }
+
+  try {
+    const users = readUsers()
+
+    // Handle the event
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object
+        const userId = session.metadata?.userId
+
+        if (userId && users[userId]) {
+          // Subscription will be activated via customer.subscription.created or updated
+          console.log(`[Stripe] Checkout completed for user: ${userId}`)
+        }
+        break
+      }
+
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated': {
+        const subscription = event.data.object
+        const customerId = subscription.customer
+
+        // Find user by customer ID
+        const userId = Object.keys(users).find(
+          (id) => users[id].stripeCustomerId === customerId
+        )
+
+        if (userId) {
+          const user = users[userId]
+          user.stripeSubscriptionId = subscription.id
+          user.subscriptionStatus = subscription.status // 'active', 'canceled', 'past_due', etc.
+          user.subscriptionEndDate = new Date(subscription.current_period_end * 1000).toISOString()
+
+          writeUsers(users)
+          console.log(`[Stripe] Subscription ${event.type} for user: ${userId}, status: ${subscription.status}`)
+        }
+        break
+      }
+
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object
+        const customerId = subscription.customer
+
+        const userId = Object.keys(users).find(
+          (id) => users[id].stripeCustomerId === customerId
+        )
+
+        if (userId) {
+          const user = users[userId]
+          user.subscriptionStatus = 'canceled'
+          user.subscriptionEndDate = new Date(subscription.current_period_end * 1000).toISOString()
+          // Keep subscription ID for reference
+
+          writeUsers(users)
+          console.log(`[Stripe] Subscription canceled for user: ${userId}`)
+        }
+        break
+      }
+
+      case 'invoice.payment_succeeded': {
+        const invoice = event.data.object
+        const customerId = invoice.customer
+
+        const userId = Object.keys(users).find(
+          (id) => users[id].stripeCustomerId === customerId
+        )
+
+        if (userId && invoice.subscription) {
+          const user = users[userId]
+          // Update subscription end date on successful payment
+          const subscription = await stripe.subscriptions.retrieve(invoice.subscription)
+          user.subscriptionEndDate = new Date(subscription.current_period_end * 1000).toISOString()
+          user.subscriptionStatus = subscription.status
+
+          writeUsers(users)
+          console.log(`[Stripe] Payment succeeded for user: ${userId}`)
+        }
+        break
+      }
+
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object
+        const customerId = invoice.customer
+
+        const userId = Object.keys(users).find(
+          (id) => users[id].stripeCustomerId === customerId
+        )
+
+        if (userId) {
+          const user = users[userId]
+          user.subscriptionStatus = 'past_due'
+
+          writeUsers(users)
+          console.log(`[Stripe] Payment failed for user: ${userId}`)
+        }
+        break
+      }
+
+      case 'invoice.upcoming': {
+        // This fires a few days before the invoice is finalized
+        // Calculate and add overage billing for the previous billing period
+        const invoice = event.data.object
+        const customerId = invoice.customer
+        const subscriptionId = invoice.subscription
+
+        const userId = Object.keys(users).find(
+          (id) => users[id].stripeCustomerId === customerId
+        )
+
+        if (userId && subscriptionId) {
+          // Get the subscription to find the billing period
+          try {
+            const subscription = await stripe.subscriptions.retrieve(subscriptionId)
+            const periodStart = new Date(subscription.current_period_start * 1000)
+            const periodEnd = new Date(subscription.current_period_end * 1000)
+            
+            // Calculate month from period end (the month we're billing for)
+            const billingMonth = `${periodEnd.getFullYear()}-${String(periodEnd.getMonth() + 1).padStart(2, '0')}`
+            
+            console.log(`[Billing] Invoice upcoming for user ${userId}, calculating overage for ${billingMonth}`)
+            
+            // Calculate and bill overage for the billing period
+            const result = await calculateAndRecordOverage(userId, billingMonth)
+            
+            if (result.billed) {
+              console.log(`[Billing] Added $${result.amountBilled.toFixed(2)} overage to upcoming invoice for user ${userId}`)
+            }
+          } catch (error) {
+            console.error(`[Billing] Error processing invoice.upcoming for user ${userId}:`, error)
+          }
+        }
+        break
+      }
+
+      case 'invoice.finalized': {
+        // Invoice has been finalized - ensure overage was calculated
+        const invoice = event.data.object
+        const customerId = invoice.customer
+
+        const userId = Object.keys(users).find(
+          (id) => users[id].stripeCustomerId === customerId
+        )
+
+        if (userId && invoice.subscription) {
+          try {
+            const subscription = await stripe.subscriptions.retrieve(invoice.subscription)
+            const periodEnd = new Date(subscription.current_period_end * 1000)
+            const billingMonth = `${periodEnd.getFullYear()}-${String(periodEnd.getMonth() + 1).padStart(2, '0')}`
+            
+            // Double-check overage was calculated (in case invoice.upcoming was missed)
+            const result = await calculateAndRecordOverage(userId, billingMonth)
+            console.log(`[Billing] Invoice finalized for user ${userId}, overage check: $${result.overage.toFixed(2)}`)
+          } catch (error) {
+            console.error(`[Billing] Error processing invoice.finalized for user ${userId}:`, error)
+          }
+        }
+        break
+      }
+
+      default:
+        console.log(`[Stripe] Unhandled event type: ${event.type}`)
+    }
+
+    res.json({ received: true })
+  } catch (error) {
+    console.error('[Stripe] Error processing webhook:', error)
+    res.status(500).json({ error: 'Webhook processing failed' })
+  }
+})
+
+// ==================== END STRIPE ENDPOINTS ====================
 
 app.listen(PORT, () => {
   console.log(`🚀 Backend server running on http://localhost:${PORT}`)

@@ -10,6 +10,8 @@ const ResponseComparison = () => {
   const setRating = useStore((state) => state.setRating)
   const removeResponse = useStore((state) => state.removeResponse)
   const clearResponses = useStore((state) => state.clearResponses)
+  const setShowFactsWindow = useStore((state) => state.setShowFactsWindow)
+  const setSummaryMinimized = useStore((state) => state.setSummaryMinimized)
   const currentUser = useStore((state) => state.currentUser)
   const [expandedCards, setExpandedCards] = useState({})
   const [maximizedCard, setMaximizedCard] = useState(null)
@@ -215,17 +217,15 @@ const ResponseComparison = () => {
     return `${formattedProvider} ${modelVersion}`.trim()
   }
 
-  if (responses.length === 0) {
-    hasAutoMinimized.current = false // Reset when responses clear
-    return null
-  }
-
   // Auto-minimize only once when responses first appear (so summary is seen first)
   useEffect(() => {
     if (responses.length > 0 && !hasAutoMinimized.current) {
       // Auto-minimize council responses so summary is seen first (only once)
       setIsMinimized(true)
       hasAutoMinimized.current = true
+    } else if (responses.length === 0) {
+      // Reset when responses clear
+      hasAutoMinimized.current = false
     }
   }, [responses.length])
 
@@ -244,7 +244,12 @@ const ResponseComparison = () => {
         setMinimizedCards(prev => ({ ...prev, ...newMinimizedCards }))
       }
     }
-  }, [responses.length])
+  }, [responses.length, minimizedCards])
+
+  // Early return check - must be after all hooks
+  if (responses.length === 0) {
+    return null
+  }
 
   // Always show individual cards (no "Council Responses" button)
   // Individual cards will be minimized by default
@@ -1051,11 +1056,19 @@ const ResponseComparison = () => {
               // Gap from flex container handles spacing
             }}
             onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              // Only clear the Council response windows, not Facts and Sources or Summary
-              // Clear responses array directly without clearing other data
-              useStore.setState({ responses: [] })
+              try {
+                e.preventDefault()
+                e.stopPropagation()
+                // Clear all responses and related data (summary, debug data, etc.)
+                clearResponses()
+                // Close facts/sources window
+                setShowFactsWindow(false)
+                // Minimize summary window
+                setSummaryMinimized(true)
+              } catch (error) {
+                console.error('[ResponseComparison] Error clearing responses:', error)
+                // Don't let errors crash the page
+              }
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.borderColor = 'rgba(255, 0, 0, 0.5)'
