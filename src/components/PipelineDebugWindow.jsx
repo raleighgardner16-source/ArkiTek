@@ -1,8 +1,11 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Search, FileText, ChevronDown, ChevronUp, Brain, Users, Gavel, Code } from 'lucide-react'
+import TokenUsageWindow from './TokenUsageWindow'
+import CostBreakdownWindow from './CostBreakdownWindow'
+import CategoryDetectionWindow from './CategoryDetectionWindow'
 
-const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse }) => {
+const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse, tokenData, queryCount, categoryDetectionData }) => {
   const [isMinimized, setIsMinimized] = useState(false) // Start expanded by default
   const [expandedSection, setExpandedSection] = useState('refiner') // Start with refiner expanded
 
@@ -25,7 +28,8 @@ const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse }) => {
     { key: 'search', label: 'Search (Serper)', icon: Search, color: '#00ff88' },
     { key: 'refiner', label: 'Refiner Models', icon: FileText, color: '#ffaa00' },
     { key: 'council', label: 'Council Models', icon: Users, color: '#aa00ff' },
-    { key: 'judgeFinalization', label: 'Judge Finalization', icon: Gavel, color: '#ff0088' }
+    { key: 'judgeFinalization', label: 'Judge Finalization', icon: Gavel, color: '#ff0088' },
+    { key: 'conversationContext', label: 'Conversation Context (5 Summaries)', icon: Brain, color: '#00ffff' }
   ]
 
   const renderCategoryDetection = () => {
@@ -358,6 +362,62 @@ const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse }) => {
     )
   }
 
+  const renderConversationContext = () => {
+    if (!debugData.conversationContext || !Array.isArray(debugData.conversationContext)) return null
+    
+    const context = debugData.conversationContext
+    
+    if (context.length === 0) {
+      return (
+        <div style={{ color: '#888', fontSize: '12px', fontStyle: 'italic' }}>
+          No conversation context available (no previous judge conversations)
+        </div>
+      )
+    }
+    
+    return (
+      <div style={{ marginBottom: '16px' }}>
+        <div style={{ color: '#00ffff', fontWeight: 'bold', marginBottom: '8px' }}>
+          Last {context.length} Summary{context.length !== 1 ? 'ies' : ''} (Max 5):
+        </div>
+        {context.map((ctx, index) => (
+          <div key={index} style={{ 
+            marginBottom: '12px', 
+            padding: '12px', 
+            backgroundColor: '#0a0a0a', 
+            borderRadius: '6px',
+            border: '1px solid rgba(0, 255, 255, 0.2)'
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              marginBottom: '6px'
+            }}>
+              <div style={{ color: '#00ffff', fontSize: '11px', fontWeight: 'bold' }}>
+                Summary #{index + 1} ({ctx.tokens || 'N/A'} tokens)
+              </div>
+              {ctx.timestamp && (
+                <div style={{ color: '#888', fontSize: '10px' }}>
+                  {new Date(ctx.timestamp).toLocaleString()}
+                </div>
+              )}
+            </div>
+            <div style={{ 
+              color: '#ccc', 
+              fontSize: '11px',
+              lineHeight: '1.5',
+              whiteSpace: 'pre-wrap',
+              fontFamily: 'monospace'
+            }}>
+              {ctx.summary || 'No summary available'}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   const renderSectionContent = (sectionKey) => {
     switch (sectionKey) {
       case 'categoryDetection':
@@ -370,6 +430,8 @@ const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse }) => {
         return renderCouncil()
       case 'judgeFinalization':
         return renderJudgeFinalization()
+      case 'conversationContext':
+        return renderConversationContext()
       default:
         return null
     }
@@ -454,6 +516,68 @@ const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse }) => {
               maxHeight: 'calc(85vh - 60px)',
             }}
           >
+            {/* Token Usage, Cost Breakdown, and Category Detection Windows */}
+            <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {tokenData && tokenData.length > 0 && (
+                <div style={{ 
+                  border: '1px solid rgba(0, 255, 255, 0.3)', 
+                  borderRadius: '8px', 
+                  overflow: 'hidden',
+                  backgroundColor: '#0a0a0a',
+                  position: 'relative',
+                  zIndex: 1
+                }}>
+                  <div style={{ position: 'relative', zIndex: 1 }}>
+                  <TokenUsageWindow
+                    isOpen={true}
+                    onClose={() => {}}
+                    tokenData={tokenData}
+                    inline={true}
+                  />
+                  </div>
+                </div>
+              )}
+              {tokenData && tokenData.length > 0 && (
+                <div style={{ 
+                  border: '1px solid rgba(255, 215, 0, 0.3)', 
+                  borderRadius: '8px', 
+                  overflow: 'hidden',
+                  backgroundColor: '#0a0a0a',
+                  position: 'relative',
+                  zIndex: 1
+                }}>
+                  <div style={{ position: 'relative', zIndex: 1 }}>
+                  <CostBreakdownWindow
+                    isOpen={true}
+                    onClose={() => {}}
+                    tokenData={tokenData}
+                    queryCount={queryCount || 0}
+                    inline={true}
+                  />
+                  </div>
+                </div>
+              )}
+              {categoryDetectionData && (
+                <div style={{ 
+                  border: '1px solid rgba(0, 170, 255, 0.3)', 
+                  borderRadius: '8px', 
+                  overflow: 'hidden',
+                  backgroundColor: '#0a0a0a',
+                  position: 'relative',
+                  zIndex: 1
+                }}>
+                  <div style={{ position: 'relative', zIndex: 1 }}>
+                  <CategoryDetectionWindow
+                    isOpen={true}
+                    onClose={() => {}}
+                    detectionData={categoryDetectionData}
+                    inline={true}
+                  />
+                  </div>
+                </div>
+              )}
+            </div>
+
             {sections.map((section) => {
               const Icon = section.icon
               const isExpanded = expandedSection === section.key

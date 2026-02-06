@@ -436,7 +436,7 @@ const AdminView = () => {
         gap: '60px',
       }}
     >
-      {/* ArkTek Logo */}
+      {/* ArkiTek Logo */}
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -456,7 +456,7 @@ const AdminView = () => {
             letterSpacing: '4px',
           }}
         >
-          ArkTek
+          ArkiTek
         </h1>
         <p style={{ color: '#aaaaaa', fontSize: '1.2rem', marginTop: '12px' }}>
           Admin Dashboard

@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, ChevronDown, ChevronUp, ChevronRight, FileText, Maximize2, Minimize2 } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import { getTheme } from '../utils/theme'
 
 const FactsAndSourcesWindow = ({ debugData, onClose }) => {
   const [isMinimized, setIsMinimized] = useState(true) // Start minimized by default
   const [isMaximized, setIsMaximized] = useState(false)
   const activeTab = useStore((state) => state.activeTab)
+  const theme = useStore((state) => state.theme || 'dark')
+  const currentTheme = getTheme(theme)
 
   // Reset maximized state when minimized
   useEffect(() => {
@@ -52,7 +55,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
           left: 0,
           width: '100vw',
           height: '100vh',
-          background: 'rgba(0, 0, 0, 0.95)',
+          background: theme === 'light' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(0, 0, 0, 0.95)',
           zIndex: 300,
           display: 'flex',
           alignItems: 'center',
@@ -69,8 +72,8 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
           animate={{ scale: 1, opacity: 1 }}
           onClick={(e) => e.stopPropagation()}
           style={{
-            background: 'rgba(0, 0, 0, 0.95)',
-            border: '1px solid rgba(0, 255, 255, 0.3)',
+            background: theme === 'light' ? '#ffffff' : 'rgba(0, 0, 0, 0.95)',
+            border: `1px solid ${currentTheme.borderLight}`,
             borderRadius: '16px',
             padding: '30px',
             maxWidth: '900px',
@@ -78,7 +81,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
             maxHeight: '80vh',
             overflowY: 'auto',
             position: 'relative',
-            boxShadow: '0 0 40px rgba(0, 255, 255, 0.4)',
+            boxShadow: `0 0 40px ${currentTheme.shadow}`,
           }}
         >
           <button
@@ -90,11 +93,11 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
               position: 'absolute',
               top: '20px',
               right: '20px',
-              background: 'rgba(0, 255, 255, 0.1)',
-              border: '1px solid rgba(0, 255, 255, 0.3)',
+              background: currentTheme.buttonBackground,
+              border: `1px solid ${currentTheme.borderLight}`,
               borderRadius: '8px',
               padding: '8px',
-              color: '#00FFFF',
+              color: currentTheme.accent,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -108,12 +111,13 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
 
           <div style={{ marginBottom: '24px', paddingRight: '40px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <FileText size={28} color="#00FFFF" />
+              <FileText size={28} color={currentTheme.accent} />
               <h2
+                key={`facts-title-maximized-${theme}`}
                 style={{
                   fontSize: '1.8rem',
                   margin: 0,
-                  background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                  background: currentTheme.accentGradient,
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
                 }}
@@ -126,7 +130,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
           {/* Serper Search Results Section */}
           {debugData.search && debugData.search.results && debugData.search.results.length > 0 && (
             <div style={{ marginBottom: '24px' }}>
-              <div style={{ color: '#00ff88', fontSize: '16px', fontWeight: 'bold', marginBottom: '16px' }}>
+              <div style={{ color: currentTheme.accentSecondary, fontSize: '16px', fontWeight: 'bold', marginBottom: '16px' }}>
                 Serper Search Results ({debugData.search.results.length})
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -135,16 +139,16 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                     key={index}
                     style={{
                       padding: '16px',
-                      backgroundColor: '#0a0a0a',
+                      backgroundColor: theme === 'light' ? currentTheme.backgroundSecondary : '#0a0a0a',
                       borderRadius: '8px',
-                      border: '1px solid #333',
+                      border: `1px solid ${currentTheme.border}`,
                     }}
                   >
-                    <div style={{ color: '#fff', marginBottom: '12px', fontWeight: '500', fontSize: '16px' }}>
+                    <div style={{ color: currentTheme.text, marginBottom: '12px', fontWeight: '500', fontSize: '16px' }}>
                       {result.title || 'No title'}
                     </div>
                     {result.snippet && (
-                      <div style={{ color: '#aaa', fontSize: '14px', marginBottom: '12px', lineHeight: '1.6' }}>
+                      <div style={{ color: currentTheme.textSecondary, fontSize: '14px', marginBottom: '12px', lineHeight: '1.6' }}>
                         {result.snippet}
                       </div>
                     )}
@@ -154,13 +158,13 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{
-                          color: '#00FFFF',
+                          color: currentTheme.accent,
                           fontSize: '13px',
                           textDecoration: 'underline',
                           wordBreak: 'break-all',
                         }}
-                        onMouseEnter={(e) => e.target.style.color = '#00FF88'}
-                        onMouseLeave={(e) => e.target.style.color = '#00FFFF'}
+                        onMouseEnter={(e) => e.target.style.color = currentTheme.accentSecondary}
+                        onMouseLeave={(e) => e.target.style.color = currentTheme.accent}
                       >
                         🔗 {result.link}
                       </a>
@@ -173,7 +177,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
           
           {factsWithCitations && factsWithCitations.length > 0 ? (
             <div>
-              <div style={{ color: '#00aaff', fontSize: '16px', fontWeight: 'bold', marginBottom: '20px' }}>
+              <div style={{ color: currentTheme.accent, fontSize: '16px', fontWeight: 'bold', marginBottom: '20px' }}>
                 Extracted Facts & Sources ({factsWithCitations.length})
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -187,22 +191,22 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                       key={index}
                       style={{
                         padding: '20px',
-                        backgroundColor: '#0a0a0a',
+                        backgroundColor: theme === 'light' ? currentTheme.backgroundSecondary : '#0a0a0a',
                         borderRadius: '8px',
-                        border: '1px solid #333',
+                        border: `1px solid ${currentTheme.border}`,
                       }}
                     >
-                      <div style={{ color: '#fff', marginBottom: '16px', fontWeight: '500', fontSize: '16px', lineHeight: '1.6' }}>
+                      <div style={{ color: currentTheme.text, marginBottom: '16px', fontWeight: '500', fontSize: '16px', lineHeight: '1.6' }}>
                         {fact}
                       </div>
                       {sourceQuote && (
                         <div
                           style={{
-                            color: '#00aaff',
+                            color: currentTheme.accent,
                             fontSize: '14px',
                             fontStyle: 'italic',
                             paddingLeft: '20px',
-                            borderLeft: '3px solid #00aaff',
+                            borderLeft: `3px solid ${currentTheme.accent}`,
                             lineHeight: '1.8',
                             marginBottom: '12px',
                           }}
@@ -217,13 +221,13 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{
-                              color: '#00FFFF',
+                              color: currentTheme.accent,
                               fontSize: '14px',
                               textDecoration: 'underline',
                               wordBreak: 'break-all',
                             }}
-                            onMouseEnter={(e) => e.target.style.color = '#00FF88'}
-                            onMouseLeave={(e) => e.target.style.color = '#00FFFF'}
+                            onMouseEnter={(e) => e.target.style.color = currentTheme.accentSecondary}
+                            onMouseLeave={(e) => e.target.style.color = currentTheme.accent}
                           >
                             🔗 View Source: {sourceUrl}
                           </a>
@@ -237,9 +241,9 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
           ) : (
             <div style={{ 
               padding: '32px', 
-              backgroundColor: '#1a0a0a', 
+              backgroundColor: theme === 'light' ? currentTheme.backgroundSecondary : '#1a0a0a', 
               borderRadius: '8px', 
-              border: '1px solid #ff4444',
+              border: '1px solid rgba(255, 68, 68, 0.5)',
               textAlign: 'center'
             }}>
               <div style={{ color: '#ff4444', fontSize: '16px', fontWeight: 'bold' }}>
@@ -290,7 +294,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                 height: '24px',
                 borderRadius: '50%',
                 border: 'none', // No border
-                background: 'rgba(0, 0, 0, 0.9)',
+                background: theme === 'light' ? '#ffffff' : currentTheme.backgroundOverlayLight,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -298,19 +302,19 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                 padding: 0,
                 zIndex: 1001, // Above the container
                 pointerEvents: 'auto',
-                boxShadow: '0 0 10px rgba(255, 255, 255, 0.4)',
+                boxShadow: theme === 'light' ? '0 0 10px rgba(0, 0, 0, 0.2)' : '0 0 10px rgba(255, 255, 255, 0.4)',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'rgba(255, 0, 0, 0.3)'
-                e.currentTarget.style.boxShadow = '0 0 15px rgba(255, 255, 255, 0.5)'
+                e.currentTarget.style.boxShadow = theme === 'light' ? '0 0 15px rgba(0, 0, 0, 0.3)' : '0 0 15px rgba(255, 255, 255, 0.5)'
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(0, 0, 0, 0.9)'
-                e.currentTarget.style.boxShadow = '0 0 10px rgba(255, 255, 255, 0.4)'
+                e.currentTarget.style.background = currentTheme.backgroundOverlayLight
+                e.currentTarget.style.boxShadow = theme === 'light' ? '0 0 10px rgba(0, 0, 0, 0.2)' : '0 0 10px rgba(255, 255, 255, 0.4)'
               }}
               title="Close"
             >
-              <X size={16} color="#ffffff" />
+              <X size={16} color={currentTheme.text} />
             </button>
           )}
           <motion.div
@@ -328,10 +332,10 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
             width: cardWidth,
             maxWidth: cardWidth,
             maxHeight: isMinimized ? 'auto' : 'calc(85vh - 40px)',
-            backgroundColor: 'rgba(0, 0, 0, 0.9)',
-            border: '1px solid rgba(0, 255, 255, 0.3)',
+            backgroundColor: theme === 'light' ? '#ffffff' : currentTheme.backgroundOverlayLight,
+            border: `1px solid ${currentTheme.borderLight}`,
             borderRadius: '12px',
-            boxShadow: '0 0 20px rgba(0, 255, 255, 0.2)',
+            boxShadow: `0 0 20px ${currentTheme.shadowLight}`,
             zIndex: 1000, // Below the badge
             display: 'flex',
             flexDirection: 'column',
@@ -343,14 +347,14 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
           }}
         onMouseEnter={(e) => {
           if (isMinimized) {
-            e.currentTarget.style.borderColor = 'rgba(0, 255, 255, 0.5)'
-            e.currentTarget.style.boxShadow = '0 0 30px rgba(0, 255, 255, 0.3)'
+            e.currentTarget.style.borderColor = currentTheme.borderActive
+            e.currentTarget.style.boxShadow = `0 0 30px ${currentTheme.shadow}`
           }
         }}
         onMouseLeave={(e) => {
           if (isMinimized) {
-            e.currentTarget.style.borderColor = 'rgba(0, 255, 255, 0.3)'
-            e.currentTarget.style.boxShadow = '0 0 20px rgba(0, 255, 255, 0.2)'
+            e.currentTarget.style.borderColor = currentTheme.borderLight
+            e.currentTarget.style.boxShadow = `0 0 20px ${currentTheme.shadowLight}`
           }
         }}
       >
@@ -366,11 +370,12 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <FileText size={16} color="#00FFFF" />
+            <FileText size={16} color={currentTheme.accent} />
             <h3
+              key={`facts-title-${theme}`}
               style={{
                 fontSize: '0.9rem',
-                background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                background: currentTheme.accentGradient,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 margin: 0,
@@ -382,7 +387,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {isMinimized ? (
-              <ChevronRight size={16} color="#00FFFF" style={{ marginRight: '20px' }} />
+              <ChevronRight size={16} color={currentTheme.accent} style={{ marginRight: '20px' }} />
             ) : (
               <>
                 <button
@@ -391,11 +396,11 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                     setIsMaximized(true)
                   }}
                   style={{
-                    background: 'rgba(0, 255, 255, 0.1)',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    background: currentTheme.buttonBackground,
+                    border: `1px solid ${currentTheme.borderLight}`,
                     borderRadius: '4px',
                     padding: '4px',
-                    color: '#00FFFF',
+                    color: currentTheme.accent,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
@@ -410,11 +415,11 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                     setIsMinimized(true)
                   }}
                   style={{
-                    background: 'rgba(0, 255, 255, 0.1)',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    background: currentTheme.buttonBackground,
+                    border: `1px solid ${currentTheme.borderLight}`,
                     borderRadius: '4px',
                     padding: '4px',
-                    color: '#00FFFF',
+                    color: currentTheme.accent,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
@@ -458,7 +463,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
             {/* Serper Search Results Section */}
             {debugData.search && debugData.search.results && debugData.search.results.length > 0 && (
               <div style={{ marginBottom: '24px' }}>
-                <div style={{ color: '#00ff88', fontSize: '14px', fontWeight: 'bold', marginBottom: '12px' }}>
+                <div style={{ color: currentTheme.accentSecondary, fontSize: '14px', fontWeight: 'bold', marginBottom: '12px' }}>
                   Serper Search Results ({debugData.search.results.length})
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -467,16 +472,16 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                       key={index}
                       style={{
                         padding: '12px',
-                        backgroundColor: '#0a0a0a',
+                        backgroundColor: theme === 'light' ? currentTheme.backgroundSecondary : '#0a0a0a',
                         borderRadius: '8px',
-                        border: '1px solid #333',
+                        border: `1px solid ${currentTheme.border}`,
                       }}
                     >
-                      <div style={{ color: '#fff', marginBottom: '8px', fontWeight: '500', fontSize: '13px' }}>
+                      <div style={{ color: currentTheme.text, marginBottom: '8px', fontWeight: '500', fontSize: '13px' }}>
                         {result.title || 'No title'}
                       </div>
                       {result.snippet && (
-                        <div style={{ color: '#aaa', fontSize: '12px', marginBottom: '8px', lineHeight: '1.5' }}>
+                        <div style={{ color: currentTheme.textSecondary, fontSize: '12px', marginBottom: '8px', lineHeight: '1.5' }}>
                           {result.snippet}
                         </div>
                       )}
@@ -486,13 +491,13 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{
-                            color: '#00FFFF',
+                            color: currentTheme.accent,
                             fontSize: '11px',
                             textDecoration: 'underline',
                             wordBreak: 'break-all',
                           }}
-                          onMouseEnter={(e) => e.target.style.color = '#00FF88'}
-                          onMouseLeave={(e) => e.target.style.color = '#00FFFF'}
+                          onMouseEnter={(e) => e.target.style.color = currentTheme.accentSecondary}
+                          onMouseLeave={(e) => e.target.style.color = currentTheme.accent}
                         >
                           🔗 {result.link}
                         </a>
@@ -505,7 +510,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
             
             {factsWithCitations && factsWithCitations.length > 0 ? (
               <div>
-                <div style={{ color: '#00aaff', fontSize: '14px', fontWeight: 'bold', marginBottom: '16px' }}>
+                <div style={{ color: currentTheme.accent, fontSize: '14px', fontWeight: 'bold', marginBottom: '16px' }}>
                   Extracted Facts & Sources ({factsWithCitations.length})
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -519,22 +524,22 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                         key={index}
                         style={{
                           padding: '16px',
-                          backgroundColor: '#0a0a0a',
+                          backgroundColor: theme === 'light' ? currentTheme.backgroundSecondary : '#0a0a0a',
                           borderRadius: '8px',
-                          border: '1px solid #333',
+                          border: `1px solid ${currentTheme.border}`,
                         }}
                       >
-                        <div style={{ color: '#fff', marginBottom: '12px', fontWeight: '500', fontSize: '14px', lineHeight: '1.5' }}>
+                        <div style={{ color: currentTheme.text, marginBottom: '12px', fontWeight: '500', fontSize: '14px', lineHeight: '1.5' }}>
                           {fact}
                         </div>
                         {sourceQuote && (
                           <div
                             style={{
-                              color: '#00aaff',
+                              color: currentTheme.accent,
                               fontSize: '12px',
                               fontStyle: 'italic',
                               paddingLeft: '16px',
-                              borderLeft: '3px solid #00aaff',
+                              borderLeft: `3px solid ${currentTheme.accent}`,
                               lineHeight: '1.6',
                               marginBottom: '8px',
                             }}
@@ -549,13 +554,13 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                               target="_blank"
                               rel="noopener noreferrer"
                               style={{
-                                color: '#00FFFF',
+                                color: currentTheme.accent,
                                 fontSize: '12px',
                                 textDecoration: 'underline',
                                 wordBreak: 'break-all',
                               }}
-                              onMouseEnter={(e) => e.target.style.color = '#00FF88'}
-                              onMouseLeave={(e) => e.target.style.color = '#00FFFF'}
+                              onMouseEnter={(e) => e.target.style.color = currentTheme.accentSecondary}
+                              onMouseLeave={(e) => e.target.style.color = currentTheme.accent}
                             >
                               🔗 View Source: {sourceUrl}
                             </a>
@@ -569,9 +574,9 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
             ) : (
               <div style={{ 
                 padding: '24px', 
-                backgroundColor: '#1a0a0a', 
+                backgroundColor: theme === 'light' ? currentTheme.backgroundSecondary : '#1a0a0a', 
                 borderRadius: '8px', 
-                border: '1px solid #ff4444',
+                border: '1px solid rgba(255, 68, 68, 0.5)',
                 textAlign: 'center'
               }}>
                 <div style={{ color: '#ff4444', fontSize: '14px', fontWeight: 'bold' }}>

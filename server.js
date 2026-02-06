@@ -137,6 +137,12 @@ const writeUsage = (usage) => {
 // Helper functions for leaderboard storage
 const readLeaderboard = () => {
   try {
+    // Ensure ADMIN directory exists
+    const adminDir = path.dirname(LEADERBOARD_FILE)
+    if (!fs.existsSync(adminDir)) {
+      fs.mkdirSync(adminDir, { recursive: true })
+    }
+    
     if (fs.existsSync(LEADERBOARD_FILE)) {
       const data = fs.readFileSync(LEADERBOARD_FILE, 'utf8')
       if (data.trim() === '') {
@@ -144,17 +150,27 @@ const readLeaderboard = () => {
       }
       return JSON.parse(data)
     }
+    // File doesn't exist, create it with empty structure
+    const emptyLeaderboard = { prompts: [] }
+    writeLeaderboard(emptyLeaderboard)
+    return emptyLeaderboard
   } catch (error) {
     console.error('Error reading leaderboard file:', error)
+    return { prompts: [] }
   }
-  return { prompts: [] }
 }
 
 const writeLeaderboard = (leaderboard) => {
   try {
+    // Ensure ADMIN directory exists
+    const adminDir = path.dirname(LEADERBOARD_FILE)
+    if (!fs.existsSync(adminDir)) {
+      fs.mkdirSync(adminDir, { recursive: true })
+    }
     fs.writeFileSync(LEADERBOARD_FILE, JSON.stringify(leaderboard, null, 2))
   } catch (error) {
     console.error('Error writing leaderboard file:', error)
+    throw error // Re-throw so calling code can handle it
   }
 }
 
@@ -170,7 +186,7 @@ const getCurrentMonth = () => {
 }
 
 // Track a prompt submission (one per user submission, regardless of models called)
-const trackPrompt = (userId, promptText, category) => {
+const trackPrompt = (userId, promptText, category, promptData = {}) => {
   const usage = readUsage()
   if (!usage[userId]) {
     usage[userId] = {
@@ -190,6 +206,7 @@ const trackPrompt = (userId, promptText, category) => {
       lastActiveDate: null,
       lastLoginDate: null,
       streakDays: 0,
+      judgeConversationContext: [], // Store last 5 summaries from judge model conversations
     }
   }
 
@@ -234,6 +251,10 @@ const trackPrompt = (userId, promptText, category) => {
   if (userUsage.streakDays === undefined) {
     userUsage.streakDays = 0
   }
+  // Migration: Ensure judge conversation context exists
+  if (!userUsage.judgeConversationContext) {
+    userUsage.judgeConversationContext = []
+  }
 
   // Update prompt totals
   const oldTotal = userUsage.totalPrompts || 0
@@ -254,11 +275,51 @@ const trackPrompt = (userId, promptText, category) => {
 
   // Track prompt history (keep last 100, we'll return last 20 to frontend)
   if (promptText) {
-    userUsage.promptHistory.unshift({
+    const promptEntry = {
       text: promptText.substring(0, 500), // Limit to 500 chars
       category: category || 'general',
       timestamp: new Date().toISOString(),
-    })
+    }
+    
+    // Add responses, summary, facts, and sources if provided
+    if (promptData.responses && Array.isArray(promptData.responses)) {
+      promptEntry.responses = promptData.responses.map(r => ({
+        modelName: r.modelName,
+        actualModelName: r.actualModelName,
+        originalModelName: r.originalModelName,
+        text: r.text,
+        error: r.error || false,
+        tokens: r.tokens || null,
+      }))
+    }
+    
+    if (promptData.summary) {
+      promptEntry.summary = {
+        text: promptData.summary.text,
+        consensus: promptData.summary.consensus,
+        summary: promptData.summary.summary,
+        agreements: promptData.summary.agreements || [],
+        disagreements: promptData.summary.disagreements || [],
+        singleModel: promptData.summary.singleModel || false,
+      }
+    }
+    
+    if (promptData.facts && Array.isArray(promptData.facts)) {
+      promptEntry.facts = promptData.facts.map(f => ({
+        fact: f.fact || f,
+        source_quote: f.source_quote || null,
+      }))
+    }
+    
+    if (promptData.sources && Array.isArray(promptData.sources)) {
+      promptEntry.sources = promptData.sources.map(s => ({
+        title: s.title,
+        link: s.link,
+        snippet: s.snippet,
+      }))
+    }
+    
+    userUsage.promptHistory.unshift(promptEntry)
     // Keep only last 100 prompts
     if (userUsage.promptHistory.length > 100) {
       userUsage.promptHistory = userUsage.promptHistory.slice(0, 100)
@@ -278,10 +339,50 @@ const trackPrompt = (userId, promptText, category) => {
       userUsage.categoryPrompts[cat] = []
     }
     // Add new prompt to the beginning
-    userUsage.categoryPrompts[cat].unshift({
+    const categoryPromptEntry = {
       text: promptText.substring(0, 500), // Limit to 500 chars
       timestamp: new Date().toISOString(),
-    })
+    }
+    
+    // Add responses, summary, facts, and sources if provided
+    if (promptData.responses && Array.isArray(promptData.responses)) {
+      categoryPromptEntry.responses = promptData.responses.map(r => ({
+        modelName: r.modelName,
+        actualModelName: r.actualModelName,
+        originalModelName: r.originalModelName,
+        text: r.text,
+        error: r.error || false,
+        tokens: r.tokens || null,
+      }))
+    }
+    
+    if (promptData.summary) {
+      categoryPromptEntry.summary = {
+        text: promptData.summary.text,
+        consensus: promptData.summary.consensus,
+        summary: promptData.summary.summary,
+        agreements: promptData.summary.agreements || [],
+        disagreements: promptData.summary.disagreements || [],
+        singleModel: promptData.summary.singleModel || false,
+      }
+    }
+    
+    if (promptData.facts && Array.isArray(promptData.facts)) {
+      categoryPromptEntry.facts = promptData.facts.map(f => ({
+        fact: f.fact || f,
+        source_quote: f.source_quote || null,
+      }))
+    }
+    
+    if (promptData.sources && Array.isArray(promptData.sources)) {
+      categoryPromptEntry.sources = promptData.sources.map(s => ({
+        title: s.title,
+        link: s.link,
+        snippet: s.snippet,
+      }))
+    }
+    
+    userUsage.categoryPrompts[cat].unshift(categoryPromptEntry)
     // Keep only last 8 prompts per category
     if (userUsage.categoryPrompts[cat].length > 8) {
       userUsage.categoryPrompts[cat] = userUsage.categoryPrompts[cat].slice(0, 8)
@@ -667,9 +768,18 @@ app.post('/api/stats/prompt', (req, res) => {
       return res.status(400).json({ error: 'userId is required' })
     }
 
-    const { promptText, category } = req.body
+    const { promptText, category, responses, summary, facts, sources } = req.body
     console.log('[Prompt Tracking] Received prompt tracking request for user:', userId, 'category:', category)
-    trackPrompt(userId, promptText, category)
+    console.log('[Prompt Tracking] Additional data:', {
+      hasResponses: !!responses,
+      responseCount: responses?.length || 0,
+      hasSummary: !!summary,
+      hasFacts: !!facts,
+      factsCount: facts?.length || 0,
+      hasSources: !!sources,
+      sourcesCount: sources?.length || 0,
+    })
+    trackPrompt(userId, promptText, category, { responses, summary, facts, sources })
     console.log('[Prompt Tracking] Prompt tracking completed for user:', userId)
     res.json({ success: true, message: 'Prompt tracked' })
   } catch (error) {
@@ -897,8 +1007,35 @@ app.get('/api/stats/:userId', (req, res) => {
   
   remainingFreeAllocation = Math.max(0, FREE_MONTHLY_ALLOCATION - monthlyCost)
   
-  // Calculate percentage of free usage remaining
-  const freeUsagePercentage = (remainingFreeAllocation / FREE_MONTHLY_ALLOCATION) * 100
+  // Get purchased credits
+  let purchasedCredits = userUsage.purchasedCredits || { total: 0, remaining: 0, purchases: [] }
+  
+  // Calculate how much of the overage should be deducted from purchased credits
+  const overage = Math.max(0, monthlyCost - FREE_MONTHLY_ALLOCATION)
+  let purchasedCreditsRemaining = purchasedCredits.remaining || 0
+  
+  // If there's overage, deduct from purchased credits first
+  if (overage > 0 && purchasedCreditsRemaining > 0) {
+    const deductFromPurchased = Math.min(overage, purchasedCreditsRemaining)
+    purchasedCreditsRemaining = purchasedCreditsRemaining - deductFromPurchased
+    
+    // Update the stored purchased credits if it changed
+    if (purchasedCreditsRemaining !== (purchasedCredits.remaining || 0)) {
+      userUsage.purchasedCredits = {
+        ...purchasedCredits,
+        remaining: purchasedCreditsRemaining
+      }
+      writeUsage(usage)
+    }
+  }
+  
+  // Total available balance = remaining free allocation + remaining purchased credits
+  const totalAvailableBalance = remainingFreeAllocation + purchasedCreditsRemaining
+  const totalAllocation = FREE_MONTHLY_ALLOCATION + (purchasedCredits.total || 0)
+  
+  // Calculate percentage based on what's left vs what was available (free + all purchased ever)
+  const usedAmount = monthlyCost
+  const freeUsagePercentage = totalAllocation > 0 ? (totalAvailableBalance / (FREE_MONTHLY_ALLOCATION + purchasedCreditsRemaining)) * 100 : 0
   
   // Update user's monthly usage cost tracking
   if (user) {
@@ -979,6 +1116,13 @@ app.get('/api/stats/:userId', (req, res) => {
     monthlyCost: monthlyCost,
     remainingFreeAllocation: remainingFreeAllocation,
     freeUsagePercentage: freeUsagePercentage,
+    totalAvailableBalance: totalAvailableBalance,
+    purchasedCredits: {
+      total: purchasedCredits.total || 0,
+      remaining: purchasedCreditsRemaining,
+      purchaseCount: purchasedCredits.purchases?.length || 0,
+      lastPurchase: purchasedCredits.purchases?.[purchasedCredits.purchases.length - 1] || null
+    },
     dailyUsage: dailyUsage,
     providers: providerStats,
     models: modelStats,
@@ -1016,6 +1160,378 @@ app.delete('/api/stats/:userId/history', (req, res) => {
   
   console.log(`[Clear History] Successfully cleared prompt history for user: ${userId}`)
   res.json({ success: true, message: 'Prompt history cleared' })
+})
+
+// Get judge conversation context
+// Support both path parameter and query parameter (query parameter handles special characters better)
+app.get('/api/judge/context/:userId', (req, res) => {
+  try {
+    let userId = req.query.userId || req.params.userId
+    
+    if (!userId || userId === 'undefined') {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+    
+    // Decode the userId in case it was URL encoded (handles colons and special characters)
+    const decodedUserId = decodeURIComponent(userId)
+    console.log('[Judge Context] Fetching context for userId:', decodedUserId)
+    
+    const usage = readUsage()
+    const userUsage = usage[decodedUserId] || {}
+    const context = (userUsage.judgeConversationContext || []).slice(0, 5)
+    
+    console.log('[Judge Context] Found context entries:', context.length)
+    res.json({ context })
+  } catch (error) {
+    console.error('[Judge Context] Error fetching context:', error)
+    res.status(500).json({ error: 'Failed to fetch conversation context: ' + error.message })
+  }
+})
+
+// Also support query-only endpoint for better compatibility
+app.get('/api/judge/context', (req, res) => {
+  try {
+    const userId = req.query.userId
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId query parameter is required' })
+    }
+    
+    // Decode the userId in case it was URL encoded
+    const decodedUserId = decodeURIComponent(userId)
+    console.log('[Judge Context] Fetching context for userId (query):', decodedUserId)
+    
+    const usage = readUsage()
+    const userUsage = usage[decodedUserId] || {}
+    const context = (userUsage.judgeConversationContext || []).slice(0, 5)
+    
+    console.log('[Judge Context] Found context entries:', context.length)
+    res.json({ context })
+  } catch (error) {
+    console.error('[Judge Context] Error fetching context:', error)
+    res.status(500).json({ error: 'Failed to fetch conversation context: ' + error.message })
+  }
+})
+
+// Clear judge conversation context (called when user starts new prompt or clears)
+app.post('/api/judge/clear-context', (req, res) => {
+  try {
+    const { userId } = req.body
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+    
+    const usage = readUsage()
+    if (usage[userId]) {
+      usage[userId].judgeConversationContext = []
+      writeUsage(usage)
+      console.log(`[Judge Context] Cleared context for user ${userId}`)
+    }
+    
+    res.json({ success: true, message: 'Context cleared' })
+  } catch (error) {
+    console.error('[Judge Context] Error clearing context:', error)
+    res.status(500).json({ error: 'Failed to clear conversation context: ' + error.message })
+  }
+})
+
+// Helper function to detect category and determine if search is needed
+const detectCategoryForJudge = async (prompt, userId = null) => {
+  const categoryPrompt = `Classify the user prompt into EXACTLY ONE category from the list below.
+Also decide if a web search is needed (ONLY if information after 2023 is required).
+
+Output ONLY this JSON:
+{
+  "category": "CategoryName",
+  "needsSearch": true
+}
+
+Categories:
+1 Science
+2 Tech
+3 Business
+4 Health
+5 Politics/Law
+6 History/Geography
+7 Philosophy/Religion
+8 Arts/Culture
+9 Lifestyle/Self-Improvement
+10 General Knowledge/Other
+
+User prompt:
+"${prompt}"`
+
+  try {
+    const apiKey = API_KEYS.google
+    if (!apiKey) {
+      throw new Error('Google API key not configured')
+    }
+
+    // Use gemini-2.5-flash-lite (same as main page category detection)
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+      {
+        contents: [{
+          parts: [{
+            text: categoryPrompt
+          }]
+        }],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 200
+        }
+      }
+    )
+    
+    // Track tokens for category detection
+    if (userId) {
+      const responseTokens = extractTokensFromResponse(response.data, 'google')
+      if (responseTokens) {
+        trackUsage(userId, 'google', 'gemini-2.5-flash-lite', responseTokens.inputTokens || 0, responseTokens.outputTokens || 0)
+      }
+    }
+
+    const categoryResponse = response.data.candidates[0].content.parts[0].text.trim()
+    const lowerResponse = categoryResponse.toLowerCase()
+
+    // Parse JSON response
+    let needsSearch = false
+    let category = 'General Knowledge/Other'
+
+    try {
+      let jsonContent = categoryResponse
+      if (jsonContent.includes('```json')) {
+        jsonContent = jsonContent.split('```json')[1].split('```')[0].trim()
+      } else if (jsonContent.includes('```')) {
+        jsonContent = jsonContent.split('```')[1].split('```')[0].trim()
+      }
+      
+      const parsed = JSON.parse(jsonContent)
+      needsSearch = parsed.needsSearch === true
+      category = parsed.category || 'General Knowledge/Other'
+    } catch (parseError) {
+      // Fallback: check for keywords
+      needsSearch = lowerResponse.includes('"needsSearch":true') || 
+                   lowerResponse.includes('needsSearch: true') ||
+                   (lowerResponse.includes('yes') && (lowerResponse.includes('search') || lowerResponse.includes('web')))
+      
+      // Determine category from keywords
+      if (lowerResponse.includes('science')) category = 'Science'
+      else if (lowerResponse.includes('tech') || lowerResponse.includes('technology')) category = 'Tech'
+      else if (lowerResponse.includes('business')) category = 'Business'
+      else if (lowerResponse.includes('health')) category = 'Health'
+      else if (lowerResponse.includes('politics') || lowerResponse.includes('law')) category = 'Politics/Law'
+      else if (lowerResponse.includes('history') || lowerResponse.includes('geography')) category = 'History/Geography'
+      else if (lowerResponse.includes('philosophy') || lowerResponse.includes('religion')) category = 'Philosophy/Religion'
+      else if (lowerResponse.includes('arts') || lowerResponse.includes('culture')) category = 'Arts/Culture'
+      else if (lowerResponse.includes('lifestyle') || lowerResponse.includes('self-improvement')) category = 'Lifestyle/Self-Improvement'
+    }
+
+    return { category, needsSearch }
+  } catch (error) {
+    console.error('[Category Detection] Error:', error)
+    return { category: 'General Knowledge/Other', needsSearch: false }
+  }
+}
+
+// Quick endpoint to check if a query needs web search (for showing search indicator)
+app.post('/api/detect-search-needed', async (req, res) => {
+  try {
+    const { query, userId } = req.body
+    
+    if (!query) {
+      return res.status(400).json({ error: 'query is required' })
+    }
+    
+    const { category, needsSearch } = await detectCategoryForJudge(query, userId)
+    
+    res.json({ 
+      needsSearch, 
+      category 
+    })
+  } catch (error) {
+    console.error('[Detect Search] Error:', error)
+    res.json({ needsSearch: false, category: 'General Knowledge/Other' })
+  }
+})
+
+// Continue judge conversation with RAG pipeline support
+app.post('/api/judge/conversation', async (req, res) => {
+  try {
+    const { userId, userMessage, conversationContext } = req.body
+    
+    if (!userId || !userMessage) {
+      return res.status(400).json({ error: 'userId and userMessage are required' })
+    }
+    
+    // Check subscription status
+    const subscriptionCheck = checkSubscriptionStatus(userId)
+    if (!subscriptionCheck.hasAccess) {
+      return res.status(403).json({ 
+        error: 'Active subscription required. Please subscribe to use this service.',
+        subscriptionRequired: true,
+        reason: subscriptionCheck.reason
+      })
+    }
+    
+    console.log('[Judge Conversation] Processing message with Grok (conversational mode, with RAG support)')
+    
+    // Step 1: Detect category and determine if search is needed (using same model as main page)
+    const { category, needsSearch } = await detectCategoryForJudge(userMessage, userId)
+    console.log(`[Judge Conversation] Category: ${category}, Needs Search: ${needsSearch}`)
+    
+    // Get last 5 summaries from context or fetch from storage
+    const usage = readUsage()
+    const contextSummaries = conversationContext || (usage[userId]?.judgeConversationContext || []).slice(0, 5)
+    
+    // Build context string with the user's recent conversation history
+    // Position 0 is full response, positions 1-4 are summarized
+    const contextString = contextSummaries.length > 0
+      ? `Here is context from your recent conversation with this user:\n\n${contextSummaries.map((ctx, idx) => {
+          const promptPart = ctx.originalPrompt ? `User asked: ${ctx.originalPrompt}\n` : ''
+          // Use full response for position 0 (isFull=true), summary for others
+          const responsePart = ctx.isFull && ctx.response 
+            ? `Your response: ${ctx.response}`
+            : `Your response (summary): ${ctx.summary}`
+          return `${idx + 1}. ${promptPart}${responsePart}`
+        }).join('\n\n')}\n\n`
+      : ''
+    
+    let judgePrompt = ''
+    let refinedData = null
+    let searchResults = []
+    
+    // Step 2: If search is needed, run RAG pipeline (search + refiner)
+    if (needsSearch) {
+      console.log('[Judge Conversation] Search needed, running RAG pipeline...')
+      
+      // Perform search (top 5 sources, same as main pipeline)
+      const serperApiKey = API_KEYS.serper
+      if (!serperApiKey) {
+        console.warn('[Judge Conversation] Serper API key not configured, skipping search')
+      } else {
+        try {
+          const serperData = await performSerperSearch(userMessage, 5) // Get top 5 sources (same as main pipeline)
+          searchResults = (serperData?.organic || []).map(r => ({
+            title: r.title,
+            link: r.link,
+            snippet: r.snippet
+          }))
+          
+          console.log(`[Judge Conversation] Search completed, found ${searchResults.length} results`)
+          
+          // Run refiner step (using Gemini 2.5 Flash Lite)
+          if (searchResults.length > 0) {
+            refinedData = await refinerStep(userMessage, searchResults, false, userId)
+            console.log(`[Judge Conversation] Refiner completed, extracted ${refinedData.facts_with_citations?.length || 0} facts`)
+          }
+        } catch (searchError) {
+          console.error('[Judge Conversation] Search/refiner error:', searchError)
+          // Continue without refined data
+        }
+      }
+    }
+    
+    // Step 3: Build prompt for Grok (conversational, not judge mode)
+    // After the initial judge summary, the user is just talking to Grok naturally
+    if (refinedData && refinedData.facts_with_citations && refinedData.facts_with_citations.length > 0) {
+      // Include refined facts in the prompt
+      const factsText = refinedData.facts_with_citations
+        .map((fact, idx) => `${idx + 1}. ${fact.fact}${fact.source_quote ? `\n   Source: "${fact.source_quote}"` : ''}`)
+        .join('\n\n')
+      
+      judgePrompt = `${contextString}Here is verified information from a recent web search that may help:\n\n${factsText}\n\nUser's question: ${userMessage}`
+    } else {
+      // No search or no facts found, use direct conversational prompt
+      judgePrompt = `${contextString}User: ${userMessage}`
+    }
+    
+    // Step 4: Call Grok
+    const apiKey = API_KEYS.xai
+    if (!apiKey) {
+      return res.status(500).json({ error: 'xAI API key not configured' })
+    }
+    
+    const response = await axios.post(
+      'https://api.x.ai/v1/chat/completions',
+      {
+        model: 'grok-4-1-fast-reasoning',
+        messages: [{ role: 'user', content: judgePrompt }],
+        temperature: 0.7
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    )
+    
+    const responseText = response.data.choices[0].message.content
+    
+    // Track usage for Grok call
+    const responseTokens = extractTokensFromResponse(response.data, 'xai')
+    let inputTokens = 0
+    let outputTokens = 0
+    
+    if (responseTokens) {
+      inputTokens = responseTokens.inputTokens || 0
+      outputTokens = responseTokens.outputTokens || 0
+    } else {
+      inputTokens = await countTokens(judgePrompt, 'xai', 'grok-4-1-fast-reasoning')
+      outputTokens = await countTokens(responseText, 'xai', 'grok-4-1-fast-reasoning')
+    }
+    
+    trackUsage(userId, 'xai', 'grok-4-1-fast-reasoning', inputTokens, outputTokens)
+    
+    // Summarize the response and store it (async, don't wait) - pass just the user message as originalPrompt
+    storeJudgeContext(userId, responseText, userMessage).catch(err => {
+      console.error('[Judge Conversation] Error storing context:', err)
+    })
+    
+    // Build debug data for frontend (same structure as main RAG pipeline)
+    const debugData = needsSearch ? {
+      search: {
+        query: userMessage,
+        results: searchResults
+      },
+      refiner: refinedData ? {
+        primary: {
+          facts_with_citations: refinedData.facts_with_citations || [],
+          data_points: refinedData.data_points || [],
+          tokens: refinedData.tokens || null
+        }
+      } : null,
+      categoryDetection: {
+        category: category,
+        needsSearch: needsSearch
+      }
+    } : null
+    
+    res.json({ 
+      response: responseText,
+      tokens: {
+        input: inputTokens,
+        output: outputTokens,
+        total: inputTokens + outputTokens
+      },
+      category: category,
+      needsSearch: needsSearch,
+      usedSearch: needsSearch && refinedData !== null,
+      // Include debug data so frontend can update Facts/Sources and Pipeline Debug windows
+      debugData: debugData,
+      searchResults: searchResults,
+      refinedData: refinedData ? {
+        facts_with_citations: refinedData.facts_with_citations || [],
+        data_points: refinedData.data_points || [],
+        tokens: refinedData.tokens || null
+      } : null
+    })
+  } catch (error) {
+    console.error('[Judge Conversation] Error:', error)
+    res.status(500).json({ error: 'Failed to get judge response: ' + error.message })
+  }
 })
 
 // Get categories stats
@@ -1363,10 +1879,15 @@ app.post('/api/llm', async (req, res) => {
           }
         }
         
+        // Some models only support default temperature (1) and don't accept the temperature parameter
+        // gpt-5-mini only supports the default temperature value (1)
+        const modelsWithFixedTemperature = ['gpt-5-mini']
+        const shouldUseDefaultTemperature = modelsWithFixedTemperature.includes(mappedModel) || modelsWithFixedTemperature.includes(model)
+        
         const apiRequestBody = {
           model: mappedModel, // Use mapped model name (or original if no mapping)
           messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7,
+          ...(shouldUseDefaultTemperature ? {} : { temperature: 0.7 }),
         }
         
         console.log(`[Backend] API Request URL: ${baseUrls[provider]}/chat/completions`)
@@ -2719,30 +3240,39 @@ const judgeFinalization = async (query, councilResponses, userId = null) => {
     }
   }
   
+  // Build model list for clarity
+  const modelNames = validResponses.map(r => r.model_name).join(', ')
+  
   const responsesText = validResponses
-    .map((r) => `\n--- ${r.model_name}'s response ---\n${r.response}\n`)
+    .map((r, idx) => `\n--- Response ${idx + 1}: ${r.model_name} ---\n${r.response}\n`)
     .join('')
   
-  const judgePrompt = `You are an expert judge analyzing multiple AI model responses. Your task is to:
-
-1. Calculate a consensus score (0-100%) based on how much the models agree
-2. Provide a summary of the council's responses
-3. Identify where the models agree
-4. Identify where the models disagree or contradict each other
+  const judgePrompt = `You are a judge analyzing responses from multiple AI models.
 
 Original User Query: "${query}"
 
 Council Model Responses:
 ${responsesText}
 
-Please analyze these responses and provide ONLY these four sections in this exact format:
-- **Consensus of Agreement**: [A single number from 0-100 representing the percentage of agreement between all models]
-- **SUMMARY**: A concise summary of what the council models collectively determined
-- **AGREEMENTS**: List specific points where models agree (bullet points, one per line starting with - or •)
-- **DISAGREEMENTS**: List specific points where models disagree or contradict (bullet points, one per line starting with - or •). If there are no disagreements, write "None identified."
+CRITICAL INSTRUCTIONS READ CAREFULLY & ONLY respond with EXACTLY these 4 sections below
 
-Format your response clearly with these four sections only.`
-  
+1. **CONCENSUS: Calculate a CONSENSUS score [0-100]% based on how much the models agree. Example: CONSENSUS: 48%
+
+SUMMARY:
+[Write a comprehensive summary of what the council collectively determined. Attribute statements to specific models like 
+"Gemini states...", "GPT and Claude agree that...". 
+Include source citations from the models like [source 2] if they cited sources.]
+
+3. LIST AGREEMENTS - This is MANDATORY! Even if consensus is 100%, you MUST list the specific points the models agree on. 
+NEVER write "None identified" unless the models literally disagree on everything. 
+Example: [First specific point all/most models agree on - name which models], [Second point they agree on - name which models], etc.
+
+DISAGREEMENTS:
+- [Any points where models disagree - explain the difference]
+[If no disagreements exist, write "None identified."]`
+
+
+
   try {
     const apiKey = API_KEYS.xai
     if (!apiKey) {
@@ -2797,11 +3327,16 @@ Format your response clearly with these four sections only.`
     }
     
     // Parse the response to extract sections (Consensus, Summary, Agreements, Disagreements)
+    console.log('[Judge] Raw response content:', content.substring(0, 1000))
+    
     // More flexible consensus matching - handles various formats like "Consensus: 85", "**Consensus**: 85%", "[85]", etc.
     const consensusMatch = content.match(/(?:Consensus|consensus)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
-    const summaryMatch = content.match(/(?:Summary)[:\-]?\s*(.+?)(?=\n\n|\n(?:Agreements|Disagreements|Consensus)|$)/is)
-    const agreementsMatch = content.match(/(?:Agreements)[:\-]?\s*(.+?)(?=\n\n|\n(?:Disagreements|Summary|Consensus)|$)/is)
-    const disagreementsMatch = content.match(/(?:Disagreements)[:\-]?\s*(.+?)(?=\n\n|\n(?:Summary|Agreements|Consensus)|$)/is)
+    
+    // More robust section extraction - look for section headers with various formats
+    // Handles: "SUMMARY:", "**SUMMARY**:", "Summary:", etc.
+    const summaryMatch = content.match(/(?:^|\n)\s*(?:\*\*)?SUMMARY(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\*\*)?AGREEMENTS(?:\*\*)?[:\-]|$)/im)
+    const agreementsMatch = content.match(/(?:^|\n)\s*(?:\*\*)?AGREEMENTS(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\*\*)?DISAGREEMENTS(?:\*\*)?[:\-]|$)/im)
+    const disagreementsMatch = content.match(/(?:^|\n)\s*(?:\*\*)?DISAGREEMENTS(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)$/im)
     
     // Extract consensus score (0-100)
     let consensus = null
@@ -2834,17 +3369,69 @@ Format your response clearly with these four sections only.`
       }
     }
     
-    // Extract summary - if no explicit summary section, use first part of content
-    let summary = summaryMatch ? summaryMatch[1].trim() : content.split(/\n\n/)[0].trim()
+    // Log what we found
+    console.log('[Judge] Parsed sections:', {
+      hasConsensus: !!consensusMatch,
+      hasSummary: !!summaryMatch,
+      hasAgreements: !!agreementsMatch,
+      hasDisagreements: !!disagreementsMatch
+    })
+    
+    // Extract summary - if no explicit summary section, try to extract everything between consensus and agreements
+    let summary = ''
+    if (summaryMatch) {
+      summary = summaryMatch[1].trim()
+    } else {
+      // Fallback: try to get content between CONSENSUS line and AGREEMENTS
+      const fallbackMatch = content.match(/CONSENSUS[:\-]?\s*\d+%?\s*\n+([\s\S]+?)(?=\n\s*(?:\*\*)?AGREEMENTS|$)/im)
+      if (fallbackMatch) {
+        summary = fallbackMatch[1].trim()
+        console.log('[Judge] Using fallback summary extraction')
+      } else {
+        // Last resort: use the whole response minus the first line (consensus)
+        const lines = content.split('\n').filter(l => l.trim())
+        summary = lines.slice(1).join('\n').trim()
+        console.log('[Judge] Using last resort summary extraction')
+      }
+    }
+    
+    // Clean the summary to remove any embedded sections or duplicated headers
+    summary = summary
+      // Remove embedded CONSENSUS lines
+      .replace(/[-•*]\s*\*?\*?CONSENSUS[^:]*:[^\n]*/gi, '')
+      .replace(/\*?\*?CONSENSUS\s+of\s+Agreement\*?\*?[:\-]?\s*\d+%?/gi, '')
+      // Remove embedded SUMMARY headers
+      .replace(/[-•*]\s*\*?\*?SUMMARY\*?\*?[:\-]?\s*/gi, '')
+      // Remove embedded AGREEMENTS sections
+      .replace(/[-•]\s*\*\*AGREEMENTS\*\*[:\-]?\s*[\s\S]*?(?=[-•]\s*\*\*DISAGREEMENTS\*\*|$)/gi, '')
+      .replace(/[-•]\s*\*\*DISAGREEMENTS\*\*[:\-]?\s*[\s\S]*/gi, '')
+      .replace(/\*\*AGREEMENTS\*\*[:\-]?\s*[\s\S]*?(?=\*\*DISAGREEMENTS\*\*|$)/gi, '')
+      .replace(/\*\*DISAGREEMENTS\*\*[:\-]?\s*[\s\S]*/gi, '')
+      // Clean up any remaining artifacts
+      .replace(/^[-•*]\s*/, '') // Remove leading bullets
+      .replace(/\n\s*\n\s*\n/g, '\n\n') // Collapse multiple newlines
+      .trim()
     
     // Extract agreements and disagreements as arrays
-    const agreements = agreementsMatch 
-      ? agreementsMatch[1].split('\n').filter(l => l.trim() && !l.match(/^[-•*]\s*$/)).map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(l => l && !l.toLowerCase().includes('none identified'))
-      : []
+    let agreements = []
+    if (agreementsMatch) {
+      agreements = agreementsMatch[1]
+        .split('\n')
+        .filter(l => l.trim() && !l.match(/^[-•*]\s*$/))
+        .map(l => l.replace(/^[-•*]\s*/, '').trim())
+        .filter(l => l && !l.toLowerCase().includes('none identified') && !l.match(/^\*+:?$/) && l.length > 5)
+      console.log('[Judge] Extracted agreements:', agreements.length)
+    }
     
-    const disagreements = disagreementsMatch 
-      ? disagreementsMatch[1].split('\n').filter(l => l.trim() && !l.match(/^[-•*]\s*$/)).map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(l => l && !l.toLowerCase().includes('none identified'))
-      : []
+    let disagreements = []
+    if (disagreementsMatch) {
+      disagreements = disagreementsMatch[1]
+        .split('\n')
+        .filter(l => l.trim() && !l.match(/^[-•*]\s*$/))
+        .map(l => l.replace(/^[-•*]\s*/, '').trim())
+        .filter(l => l && !l.toLowerCase().includes('none identified') && !l.match(/^\*+:?$/) && l.length > 5)
+      console.log('[Judge] Extracted disagreements:', disagreements.length)
+    }
     
     return {
       consensus: consensus,
@@ -2867,6 +3454,168 @@ Format your response clearly with these four sections only.`
     }
   }
 }
+
+// Summarize Grok response using Gemini 2.5 Flash Lite (max 75 tokens)
+const summarizeGrokResponse = async (grokResponse, userId = null) => {
+  console.log('[Summarize] Summarizing Grok response using Gemini 2.5 Flash Lite')
+  
+  const summaryPrompt = `Summarize this response in 75 tokens or less. Be concise but preserve key information and context:
+
+${grokResponse}
+
+Provide only the summary (max 75 tokens):`
+  
+  try {
+    const apiKey = API_KEYS.google
+    if (!apiKey) {
+      console.warn('[Summarize] Google API key not configured, using fallback truncation')
+      // Fallback: simple truncation
+      return { 
+        summary: grokResponse.substring(0, 200) + (grokResponse.length > 200 ? '...' : ''), 
+        tokens: 50 // Estimate
+      }
+    }
+    
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+      {
+        contents: [{ parts: [{ text: summaryPrompt }] }],
+        generationConfig: {
+          maxOutputTokens: 100, // Limit output to help stay under 75 tokens
+          temperature: 0.3
+        }
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    )
+    
+    let summary = response.data.candidates[0].content.parts[0].text.trim()
+    
+    // Count tokens using existing token counter
+    let tokens = await countTokens(summary, 'google', 'gemini-2.5-flash-lite')
+    
+    // If over 75 tokens, truncate intelligently
+    if (tokens > 75) {
+      console.log(`[Summarize] Summary is ${tokens} tokens, truncating to 75...`)
+      // Truncate by words, checking token count
+      const words = summary.split(' ')
+      let truncated = ''
+      let tokenCount = 0
+      
+      for (const word of words) {
+        const wordTokens = await countTokens(word + ' ', 'google', 'gemini-2.5-flash-lite')
+        if (tokenCount + wordTokens > 75) break
+        truncated += (truncated ? ' ' : '') + word
+        tokenCount += wordTokens
+      }
+      
+      summary = truncated + (truncated.length < summary.length ? '...' : '')
+      tokens = tokenCount
+    }
+    
+    // Track usage if userId is provided
+    if (userId) {
+      const responseTokens = extractTokensFromResponse(response.data, 'google')
+      let inputTokens = 0
+      let outputTokens = 0
+      
+      if (responseTokens) {
+        inputTokens = responseTokens.inputTokens || 0
+        outputTokens = responseTokens.outputTokens || 0
+      } else {
+        inputTokens = await countTokens(summaryPrompt, 'google', 'gemini-2.5-flash-lite')
+        outputTokens = await countTokens(summary, 'google', 'gemini-2.5-flash-lite')
+      }
+      
+      trackUsage(userId, 'google', 'gemini-2.5-flash-lite', inputTokens, outputTokens)
+    }
+    
+    console.log(`[Summarize] Summary created: ${tokens} tokens`)
+    return { summary, tokens }
+  } catch (error) {
+    console.error('[Summarize] Error summarizing Grok response:', error)
+    // Fallback: simple truncation
+    return { 
+      summary: grokResponse.substring(0, 200) + (grokResponse.length > 200 ? '...' : ''), 
+      tokens: 50 // Estimate
+    }
+  }
+}
+
+// Store judge conversation context (rolling window of 5 - position 0 is full, positions 1-4 are summarized)
+const storeJudgeContext = async (userId, grokResponse, originalPrompt = null) => {
+  if (!userId) return
+  
+  try {
+    const usage = readUsage()
+    if (!usage[userId]) {
+      usage[userId] = {
+        judgeConversationContext: []
+      }
+    }
+    
+    if (!usage[userId].judgeConversationContext) {
+      usage[userId].judgeConversationContext = []
+    }
+    
+    const context = usage[userId].judgeConversationContext
+    
+    // If there's an existing item at position 0 (full response), summarize it before shifting
+    if (context.length > 0 && context[0].isFull) {
+      console.log('[Judge Context] Summarizing previous full response before adding new one')
+      const { summary, tokens } = await summarizeGrokResponse(context[0].response, userId)
+      context[0] = {
+        summary,
+        tokens,
+        originalPrompt: context[0].originalPrompt,
+        timestamp: context[0].timestamp,
+        isFull: false // Now it's summarized
+      }
+    }
+    
+    // Add new FULL response at position 0 (not summarized yet)
+    context.unshift({
+      response: grokResponse, // Store full response
+      summary: null, // Will be summarized when pushed to position 1
+      tokens: null,
+      originalPrompt: originalPrompt || null, // Just the user's prompt
+      timestamp: new Date().toISOString(),
+      isFull: true // Flag to indicate this is a full response
+    })
+    
+    // Keep only last 5
+    if (context.length > 5) {
+      usage[userId].judgeConversationContext = context.slice(0, 5)
+    }
+    
+    writeUsage(usage)
+    console.log(`[Judge Context] Stored full response for user ${userId}, total context entries: ${usage[userId].judgeConversationContext.length}`)
+  } catch (error) {
+    console.error('[Judge Context] Error storing context:', error)
+  }
+}
+
+// Store initial summary from summary window (when first created)
+app.post('/api/judge/store-initial-summary', async (req, res) => {
+  try {
+    const { userId, summaryText, originalPrompt } = req.body
+    
+    if (!userId || !summaryText) {
+      return res.status(400).json({ error: 'userId and summaryText are required' })
+    }
+    
+    // Store the initial summary in conversation context
+    await storeJudgeContext(userId, summaryText, originalPrompt)
+    
+    res.json({ success: true, message: 'Initial summary stored' })
+  } catch (error) {
+    console.error('[Store Initial Summary] Error:', error)
+    res.status(500).json({ error: 'Failed to store initial summary: ' + error.message })
+  }
+})
 
 // RAG Pipeline endpoint
 app.post('/api/rag', async (req, res) => {
@@ -3169,10 +3918,15 @@ ${factsWithSourcesText}`
           console.log(`[RAG Pipeline] Provider: ${providerKey}`)
           console.log(`[RAG Pipeline] Model: ${mappedModel}${model !== mappedModel ? ` (mapped from ${model})` : ' (no mapping needed)'}`)
           
+          // Some models only support default temperature (1) and don't accept the temperature parameter
+          // gpt-5-mini only supports the default temperature value (1)
+          const modelsWithFixedTemperature = ['gpt-5-mini']
+          const shouldUseDefaultTemperature = modelsWithFixedTemperature.includes(mappedModel) || modelsWithFixedTemperature.includes(model)
+          
           const apiRequestBody = {
             model: mappedModel,
             messages: [{ role: 'user', content: councilPrompt }],
-            temperature: 0.7,
+            ...(shouldUseDefaultTemperature ? {} : { temperature: 0.7 }),
           }
           
           console.log(`[RAG Pipeline] API Request URL: ${baseUrls[providerKey]}/chat/completions`)
@@ -3223,12 +3977,14 @@ ${factsWithSourcesText}`
           let outputTokens = 0
           let tokenSource = 'none'
           
+          let reasoningTokens = 0
           if (userId && responseText) {
             const responseTokens = extractTokensFromResponse(response.data, providerKey)
             
             if (responseTokens) {
               inputTokens = responseTokens.inputTokens || 0
               outputTokens = responseTokens.outputTokens || 0
+              reasoningTokens = responseTokens.reasoningTokens || 0
               tokenSource = 'api_response'
             } else {
               inputTokens = await countTokens(councilPrompt, providerKey, mappedModel)
@@ -3244,7 +4000,7 @@ ${factsWithSourcesText}`
             input: inputTokens,
             output: outputTokens,
             total: inputTokens + outputTokens,
-            reasoningTokens: responseTokens?.reasoningTokens || 0, // Reasoning tokens from API metadata
+            reasoningTokens: reasoningTokens, // Reasoning tokens from API metadata
             provider: providerKey,
             model: model,
             source: tokenSource
@@ -3418,6 +4174,13 @@ ${factsWithSourcesText}`
     if (selectedModels.length >= 2) {
       console.log('[RAG Pipeline] Stage 4: Judge finalization (2+ models detected)...')
       judgeAnalysis = await judgeFinalization(query, councilResponses, userId)
+      
+      // Store the initial summary in conversation context (summarize with Gemini and store)
+      if (userId && judgeAnalysis?.response) {
+        storeJudgeContext(userId, judgeAnalysis.response, judgeAnalysis.prompt || null).catch(err => {
+          console.error('[RAG Pipeline] Error storing initial judge summary:', err)
+        })
+      }
     } else {
       console.log('[RAG Pipeline] Skipping judge finalization (only 1 model selected)')
     }
@@ -3924,10 +4687,12 @@ app.post('/api/admin/remove', (req, res) => {
 
 // Submit a prompt to the leaderboard
 app.post('/api/leaderboard/submit', (req, res) => {
+  console.log('[Leaderboard] Submit endpoint hit:', { userId: req.body?.userId, hasPromptText: !!req.body?.promptText })
   try {
-    const { userId, promptText } = req.body
+    const { userId, promptText, responses, summary, facts, sources } = req.body
     
     if (!userId || !promptText || !promptText.trim()) {
+      console.log('[Leaderboard] Missing required fields:', { userId: !!userId, promptText: !!promptText })
       return res.status(400).json({ error: 'userId and promptText are required' })
     }
     
@@ -3951,6 +4716,23 @@ app.post('/api/leaderboard/submit', (req, res) => {
       createdAt: new Date().toISOString(),
     }
     
+    // Add responses, summary, facts, and sources if provided
+    if (responses && Array.isArray(responses)) {
+      promptEntry.responses = responses
+    }
+    
+    if (summary) {
+      promptEntry.summary = summary
+    }
+    
+    if (facts && Array.isArray(facts)) {
+      promptEntry.facts = facts
+    }
+    
+    if (sources && Array.isArray(sources)) {
+      promptEntry.sources = sources
+    }
+    
     leaderboard.prompts.push(promptEntry)
     writeLeaderboard(leaderboard)
     
@@ -3963,29 +4745,76 @@ app.post('/api/leaderboard/submit', (req, res) => {
 })
 
 // Get all leaderboard prompts (sorted by likes)
+// Supports query parameters:
+// - ?filter=today - Today's favorites (all prompts from today)
+// - ?filter=alltime - All time favorites (top 15 most liked)
+// - ?filter=profile&userId=xxx - User's profile (all prompts by user)
 app.get('/api/leaderboard', (req, res) => {
   try {
     const leaderboard = readLeaderboard()
     const users = readUsers()
+    const { filter, userId } = req.query
     
-    // Sort by like count (descending), then by creation date (newest first)
-    const sortedPrompts = leaderboard.prompts
-      .map(prompt => {
-        const user = users[prompt.userId]
-        return {
-          ...prompt,
-          username: user?.username || user?.email || 'Anonymous',
-          likeCount: prompt.likes?.length || 0,
-        }
+    // Map prompts with user info and like count
+    let prompts = leaderboard.prompts.map(prompt => {
+      const user = users[prompt.userId]
+      return {
+        ...prompt,
+        username: user?.username || user?.email || 'Anonymous',
+        likeCount: prompt.likes?.length || 0,
+      }
+    })
+    
+    // Apply filters based on query parameter
+    if (filter === 'today') {
+      // Today's Favorites: All prompts from today
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const todayEnd = new Date(today)
+      todayEnd.setHours(23, 59, 59, 999)
+      
+      prompts = prompts.filter(prompt => {
+        const promptDate = new Date(prompt.createdAt)
+        return promptDate >= today && promptDate <= todayEnd
       })
-      .sort((a, b) => {
+      
+      // Sort by like count (descending), then by creation date (newest first)
+      prompts.sort((a, b) => {
         if (b.likeCount !== a.likeCount) {
           return b.likeCount - a.likeCount
         }
         return new Date(b.createdAt) - new Date(a.createdAt)
       })
+    } else if (filter === 'alltime') {
+      // All Time Favorites: Top 15 most liked prompts of all time
+      prompts.sort((a, b) => {
+        if (b.likeCount !== a.likeCount) {
+          return b.likeCount - a.likeCount
+        }
+        return new Date(b.createdAt) - new Date(a.createdAt)
+      })
+      
+      // Take only top 15
+      prompts = prompts.slice(0, 15)
+    } else if (filter === 'profile' && userId) {
+      // My Profile: All prompts submitted by the user
+      prompts = prompts.filter(prompt => prompt.userId === userId)
+      
+      // Sort by creation date (newest first)
+      prompts.sort((a, b) => {
+        return new Date(b.createdAt) - new Date(a.createdAt)
+      })
+    } else {
+      // Default: Sort by like count (descending), then by creation date (newest first)
+      prompts.sort((a, b) => {
+        if (b.likeCount !== a.likeCount) {
+          return b.likeCount - a.likeCount
+        }
+        return new Date(b.createdAt) - new Date(a.createdAt)
+      })
+    }
     
-    res.json({ prompts: sortedPrompts })
+    res.json({ prompts })
   } catch (error) {
     console.error('[Leaderboard] Error fetching leaderboard:', error)
     res.status(500).json({ error: 'Failed to fetch leaderboard' })
@@ -4215,6 +5044,282 @@ app.post('/api/leaderboard/comment/reply', (req, res) => {
 })
 
 // ==================== STRIPE SUBSCRIPTION ENDPOINTS ====================
+
+// Get user's payment method info (last 4 digits, brand, etc.)
+app.get('/api/stripe/payment-method', async (req, res) => {
+  try {
+    const { userId } = req.query
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+    
+    const users = readUsers()
+    const user = users[userId]
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+    
+    if (!user.stripeCustomerId) {
+      return res.json({ paymentMethod: null, message: 'No Stripe customer ID' })
+    }
+    
+    // Get the customer's default payment method from Stripe
+    const customer = await stripe.customers.retrieve(user.stripeCustomerId, {
+      expand: ['invoice_settings.default_payment_method']
+    })
+    
+    let paymentMethod = null
+    
+    // Check if there's a default payment method
+    if (customer.invoice_settings?.default_payment_method) {
+      const pm = customer.invoice_settings.default_payment_method
+      paymentMethod = {
+        id: pm.id,
+        brand: pm.card?.brand || 'unknown',
+        last4: pm.card?.last4 || '****',
+        expMonth: pm.card?.exp_month,
+        expYear: pm.card?.exp_year,
+      }
+    } else {
+      // Try to get any payment method attached to customer
+      const paymentMethods = await stripe.paymentMethods.list({
+        customer: user.stripeCustomerId,
+        type: 'card',
+        limit: 1,
+      })
+      
+      if (paymentMethods.data.length > 0) {
+        const pm = paymentMethods.data[0]
+        paymentMethod = {
+          id: pm.id,
+          brand: pm.card?.brand || 'unknown',
+          last4: pm.card?.last4 || '****',
+          expMonth: pm.card?.exp_month,
+          expYear: pm.card?.exp_year,
+        }
+      }
+    }
+    
+    res.json({ paymentMethod })
+    
+  } catch (error) {
+    console.error('[Stripe] Error fetching payment method:', error)
+    res.status(500).json({ error: 'Failed to fetch payment method' })
+  }
+})
+
+// Create a setup session to add a payment method (card)
+app.post('/api/stripe/setup-card', async (req, res) => {
+  try {
+    const { userId } = req.body
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+    
+    const users = readUsers()
+    const user = users[userId]
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+    
+    // Get or create Stripe customer
+    let customerId = user.stripeCustomerId
+    
+    if (!customerId) {
+      // Create new Stripe customer
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.displayName || userId,
+        metadata: {
+          userId: userId
+        }
+      })
+      customerId = customer.id
+      
+      // Save customer ID to user
+      user.stripeCustomerId = customerId
+      writeUsers(users)
+      console.log(`[Stripe] Created new customer ${customerId} for user ${userId}`)
+    }
+    
+    // Create a Checkout session in setup mode (just to save card, no payment)
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      mode: 'setup',
+      success_url: `${req.headers.origin || 'http://localhost:5173'}/statistics?card_added=success`,
+      cancel_url: `${req.headers.origin || 'http://localhost:5173'}/statistics?card_added=canceled`,
+      metadata: {
+        userId: userId,
+        type: 'add_card'
+      }
+    })
+    
+    console.log(`[Stripe] Created setup session ${session.id} for user ${userId}`)
+    
+    res.json({ sessionId: session.id, url: session.url })
+    
+  } catch (error) {
+    console.error('[Stripe] Error creating setup session:', error)
+    res.status(500).json({ error: 'Failed to create card setup session' })
+  }
+})
+
+// Buy additional usage credits
+app.post('/api/stripe/buy-usage', async (req, res) => {
+  try {
+    const { userId, amount, fee, total } = req.body
+    
+    if (!userId || !amount || amount <= 0) {
+      return res.status(400).json({ error: 'userId and valid amount are required' })
+    }
+    
+    // Validate amounts
+    if (amount < 1 || amount > 500) {
+      return res.status(400).json({ error: 'Amount must be between $1 and $500' })
+    }
+    
+    const users = readUsers()
+    const user = users[userId]
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+    
+    if (!user.stripeCustomerId) {
+      return res.status(400).json({ error: 'No payment method on file. Please subscribe first.' })
+    }
+    
+    // Get the customer's default payment method
+    let paymentMethodId = null
+    
+    const customer = await stripe.customers.retrieve(user.stripeCustomerId, {
+      expand: ['invoice_settings.default_payment_method']
+    })
+    
+    if (customer.invoice_settings?.default_payment_method) {
+      paymentMethodId = customer.invoice_settings.default_payment_method.id
+    } else {
+      // Try to get any payment method attached to customer
+      const paymentMethods = await stripe.paymentMethods.list({
+        customer: user.stripeCustomerId,
+        type: 'card',
+        limit: 1,
+      })
+      
+      if (paymentMethods.data.length > 0) {
+        paymentMethodId = paymentMethods.data[0].id
+      }
+    }
+    
+    if (!paymentMethodId) {
+      return res.status(400).json({ error: 'No payment method on file' })
+    }
+    
+    // Calculate total with 5% fee
+    const calculatedFee = amount * 0.05
+    const calculatedTotal = amount + calculatedFee
+    
+    // Convert to cents for Stripe
+    const totalCents = Math.round(calculatedTotal * 100)
+    
+    console.log(`[Buy Usage] User ${userId} purchasing $${amount} usage credits (+ $${calculatedFee.toFixed(2)} fee = $${calculatedTotal.toFixed(2)} total)`)
+    
+    // Create a payment intent and confirm it immediately
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: totalCents,
+      currency: 'usd',
+      customer: user.stripeCustomerId,
+      payment_method: paymentMethodId,
+      confirm: true,
+      off_session: true,
+      description: `Usage credits purchase: $${amount.toFixed(2)}`,
+      metadata: {
+        userId: userId,
+        usageAmount: amount.toString(),
+        fee: calculatedFee.toFixed(2),
+        type: 'usage_purchase'
+      }
+    })
+    
+    if (paymentIntent.status !== 'succeeded') {
+      console.error(`[Buy Usage] Payment failed with status: ${paymentIntent.status}`)
+      return res.status(400).json({ error: 'Payment failed. Please try again.' })
+    }
+    
+    console.log(`[Buy Usage] Payment successful! PaymentIntent: ${paymentIntent.id}`)
+    
+    // Add usage credits to the user's account
+    const usage = readUsage()
+    if (!usage[userId]) {
+      usage[userId] = {
+        totalTokens: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalQueries: 0,
+        totalPrompts: 0,
+        monthlyUsage: {},
+        dailyUsage: {},
+        providers: {},
+        models: {},
+        promptHistory: [],
+        categories: {},
+        categoryPrompts: {},
+        ratings: {},
+        lastActiveDate: null,
+        lastLoginDate: null,
+        streakDays: 0,
+        judgeConversationContext: [],
+      }
+    }
+    
+    // Initialize purchasedCredits if not exists
+    if (!usage[userId].purchasedCredits) {
+      usage[userId].purchasedCredits = {
+        total: 0,
+        remaining: 0,
+        purchases: []
+      }
+    }
+    
+    // Add the purchase
+    usage[userId].purchasedCredits.total += amount
+    usage[userId].purchasedCredits.remaining += amount
+    usage[userId].purchasedCredits.purchases.push({
+      amount: amount,
+      fee: calculatedFee,
+      total: calculatedTotal,
+      paymentIntentId: paymentIntent.id,
+      timestamp: new Date().toISOString()
+    })
+    
+    writeUsage(usage)
+    
+    console.log(`[Buy Usage] Added $${amount} usage credits to user ${userId}. New balance: $${usage[userId].purchasedCredits.remaining}`)
+    
+    res.json({
+      success: true,
+      message: `Successfully purchased $${amount.toFixed(2)} in usage credits`,
+      creditsAdded: amount,
+      newBalance: usage[userId].purchasedCredits.remaining,
+      paymentIntentId: paymentIntent.id
+    })
+    
+  } catch (error) {
+    console.error('[Buy Usage] Error:', error)
+    
+    // Handle specific Stripe errors
+    if (error.type === 'StripeCardError') {
+      return res.status(400).json({ error: error.message || 'Card declined' })
+    }
+    
+    res.status(500).json({ error: 'Failed to process payment. Please try again.' })
+  }
+})
 
 // Sync subscription status from Stripe API
 const syncSubscriptionFromStripe = async (userId) => {
@@ -4778,6 +5883,7 @@ app.listen(PORT, () => {
   console.log(`📡 Ready to proxy LLM API calls`)
   console.log(`🔍 Serper search API ready`)
   console.log(`👑 Admin endpoints ready`)
+  console.log(`🏆 Leaderboard endpoints ready`)
 })
 
 

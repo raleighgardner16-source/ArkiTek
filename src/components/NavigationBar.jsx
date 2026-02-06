@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Home, Settings, BarChart3, LogOut, Clock, X, Trophy } from 'lucide-react'
+import { Home, Settings, BarChart3, LogOut, Clock, X, Trophy, Sun, Moon } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import ConfirmationModal from './ConfirmationModal'
 
@@ -14,10 +15,14 @@ const NavigationBar = () => {
   const clearResponses = useStore((state) => state.clearResponses)
   const setCurrentPrompt = useStore((state) => state.setCurrentPrompt)
   const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
+  const theme = useStore((state) => state.theme || 'dark')
+  const toggleTheme = useStore((state) => state.toggleTheme)
   const [isHovered, setIsHovered] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [promptHistory, setPromptHistory] = useState([])
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  
+  const currentTheme = getTheme(theme)
 
   // Debug: Log when tab changes
   React.useEffect(() => {
@@ -108,8 +113,8 @@ const NavigationBar = () => {
         top: 0,
         height: '100vh',
         width: isExpanded ? '240px' : '60px',
-        background: 'rgba(0, 0, 0, 0.9)',
-        borderRight: '1px solid rgba(0, 255, 255, 0.3)',
+        background: currentTheme.backgroundOverlay,
+        borderRight: `1px solid ${currentTheme.borderLight}`,
         zIndex: 150,
         display: 'flex',
         flexDirection: 'column',
@@ -130,15 +135,19 @@ const NavigationBar = () => {
       >
         {isExpanded ? (
           <div
+            key={`nav-title-${theme}`}
             style={{
               fontSize: '1.3rem',
               fontWeight: 'bold',
-              background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+              background: currentTheme.accentGradient,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              color: currentTheme.accent,
+              display: 'inline-block',
             }}
           >
-            ArkTek
+            ArkiTek
           </div>
         ) : (
           <div
@@ -146,7 +155,7 @@ const NavigationBar = () => {
               width: '36px',
               height: '36px',
               borderRadius: '50%',
-              background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+              background: currentTheme.accentGradient,
             }}
           />
         )}
@@ -157,33 +166,33 @@ const NavigationBar = () => {
         {tabs.map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.id
+          const [isTabHovered, setIsTabHovered] = useState(false)
+          const shouldHighlight = isActive || isTabHovered
+          
           return (
             <motion.button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              onMouseEnter={() => setIsTabHovered(true)}
+              onMouseLeave={() => setIsTabHovered(false)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '16px',
                 padding: '14px 20px',
-                background: isActive
-                  ? 'rgba(0, 255, 255, 0.2)'
+                background: shouldHighlight
+                  ? currentTheme.buttonBackgroundActive
                   : 'transparent',
                 border: 'none',
-                borderLeft: isActive
-                  ? '3px solid #00FFFF'
+                borderLeft: shouldHighlight
+                  ? `3px solid ${currentTheme.accent}`
                   : '3px solid transparent',
-                color: isActive ? '#00FFFF' : '#ffffff',
+                color: shouldHighlight ? currentTheme.accent : currentTheme.text,
                 cursor: 'pointer',
                 textAlign: 'left',
                 width: '100%',
                 position: 'relative',
                 transition: 'all 0.2s ease',
-              }}
-              whileHover={{
-                background: isActive
-                  ? 'rgba(0, 255, 255, 0.25)'
-                  : 'rgba(0, 255, 255, 0.1)',
               }}
               whileTap={{ scale: 0.95 }}
             >
@@ -205,13 +214,14 @@ const NavigationBar = () => {
                   style={{
                     position: 'absolute',
                     left: '70px',
-                    background: 'rgba(0, 0, 0, 0.95)',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    background: currentTheme.backgroundOverlay,
+                    border: `1px solid ${currentTheme.borderLight}`,
                     borderRadius: '6px',
                     padding: '8px 12px',
                     whiteSpace: 'nowrap',
                     pointerEvents: 'none',
                     zIndex: 200,
+                    color: currentTheme.text,
                   }}
                 >
                   {tab.label}
@@ -229,7 +239,7 @@ const NavigationBar = () => {
             marginTop: 'auto',
             marginBottom: '16px',
             padding: '0 20px',
-            borderTop: '1px solid rgba(0, 255, 255, 0.2)',
+            borderTop: `1px solid ${currentTheme.border}`,
             paddingTop: '16px',
             maxHeight: '300px',
             overflowY: 'auto',
@@ -237,8 +247,8 @@ const NavigationBar = () => {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Clock size={18} color="#00FFFF" />
-              <h3 style={{ fontSize: '0.9rem', color: '#00FFFF', fontWeight: '600', margin: 0 }}>
+              <Clock size={18} color={currentTheme.accent} />
+              <h3 style={{ fontSize: '0.9rem', color: currentTheme.accent, fontWeight: '600', margin: 0 }}>
                 Search History
               </h3>
             </div>
@@ -283,11 +293,11 @@ const NavigationBar = () => {
                   key={index}
                   style={{
                     padding: '8px 12px',
-                    background: 'rgba(0, 255, 255, 0.05)',
-                    border: '1px solid rgba(0, 255, 255, 0.1)',
+                    background: currentTheme.buttonBackground,
+                    border: `1px solid ${currentTheme.border}`,
                     borderRadius: '6px',
                     fontSize: '0.75rem',
-                    color: '#cccccc',
+                    color: currentTheme.textSecondary,
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
                     overflow: 'hidden',
@@ -295,7 +305,7 @@ const NavigationBar = () => {
                     whiteSpace: 'nowrap',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
+                    e.currentTarget.style.background = currentTheme.buttonBackgroundHover
                     e.currentTarget.style.whiteSpace = 'normal'
                     e.currentTarget.style.overflow = 'visible'
                     e.currentTarget.style.zIndex = '1000'
@@ -316,13 +326,53 @@ const NavigationBar = () => {
                 </div>
               ))
             ) : (
-              <p style={{ color: '#888888', fontSize: '0.75rem', fontStyle: 'italic', textAlign: 'center', padding: '8px' }}>
+              <p style={{ color: currentTheme.textMuted, fontSize: '0.75rem', fontStyle: 'italic', textAlign: 'center', padding: '8px' }}>
                 No search history yet
               </p>
             )}
           </div>
         </div>
       )}
+
+      {/* Theme Toggle Button */}
+      <motion.button
+        onClick={toggleTheme}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+          padding: '14px 20px',
+          background: 'transparent',
+          border: 'none',
+          borderTop: `1px solid ${currentTheme.border}`,
+          color: currentTheme.accent,
+          cursor: 'pointer',
+          textAlign: 'left',
+          width: '100%',
+          marginTop: 'auto',
+          transition: 'all 0.2s ease',
+        }}
+        whileHover={{
+          background: currentTheme.buttonBackgroundHover,
+        }}
+        whileTap={{ scale: 0.95 }}
+      >
+        {theme === 'dark' ? (
+          <Sun size={24} style={{ flexShrink: 0 }} />
+        ) : (
+          <Moon size={24} style={{ flexShrink: 0 }} />
+        )}
+        {isExpanded && (
+          <motion.span
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            style={{ fontSize: '1rem' }}
+          >
+            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+          </motion.span>
+        )}
+      </motion.button>
 
       {/* Sign Out Button */}
       {currentUser && (
@@ -341,12 +391,11 @@ const NavigationBar = () => {
             padding: '14px 20px',
             background: 'transparent',
             border: 'none',
-            borderTop: '1px solid rgba(0, 255, 255, 0.2)',
+            borderTop: `1px solid ${currentTheme.border}`,
             color: '#ff6b6b',
             cursor: 'pointer',
             textAlign: 'left',
             width: '100%',
-            marginTop: 'auto',
             transition: 'all 0.2s ease',
           }}
           whileHover={{

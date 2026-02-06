@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { LogIn, UserPlus, Mail, Lock, User } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import { getTheme } from '../utils/theme'
 import axios from 'axios'
 
 const AuthView = () => {
@@ -15,6 +16,8 @@ const AuthView = () => {
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const theme = useStore((state) => state.theme || 'dark')
+  const currentTheme = getTheme(theme)
   const setCurrentUser = useStore((state) => state.setCurrentUser)
   const setShowWelcome = useStore((state) => state.setShowWelcome)
   const clearSelectedModels = useStore((state) => state.clearSelectedModels)
@@ -69,8 +72,8 @@ const AuthView = () => {
           input[name="username"],
           input[name="email"],
           input[name="password"] {
-            background: rgba(0, 255, 255, 0.05) !important;
-            color: #ffffff !important;
+            background: ${currentTheme.buttonBackground} !important;
+            color: ${currentTheme.text} !important;
           }
           input[name="firstName"]:-webkit-autofill,
           input[name="firstName"]:-webkit-autofill:hover,
@@ -92,10 +95,10 @@ const AuthView = () => {
           input[name="password"]:-webkit-autofill:hover,
           input[name="password"]:-webkit-autofill:focus,
           input[name="password"]:-webkit-autofill:active {
-            -webkit-box-shadow: 0 0 0 1000px rgba(0, 255, 255, 0.05) inset !important;
-            -webkit-text-fill-color: #ffffff !important;
-            background-color: rgba(0, 255, 255, 0.05) !important;
-            caret-color: #ffffff !important;
+            -webkit-box-shadow: 0 0 0 1000px ${currentTheme.buttonBackground} inset !important;
+            -webkit-text-fill-color: ${currentTheme.text} !important;
+            background-color: ${currentTheme.buttonBackground} !important;
+            caret-color: ${currentTheme.text} !important;
             transition: background-color 5000s ease-in-out 0s !important;
           }
           input[name="firstName"]:focus,
@@ -103,17 +106,17 @@ const AuthView = () => {
           input[name="username"]:focus,
           input[name="email"]:focus,
           input[name="password"]:focus {
-            background: rgba(0, 255, 255, 0.05) !important;
-            border-color: rgba(0, 255, 255, 0.5) !important;
-            -webkit-box-shadow: 0 0 0 1000px rgba(0, 255, 255, 0.05) inset !important;
+            background: ${currentTheme.buttonBackground} !important;
+            border-color: ${currentTheme.borderActive} !important;
+            -webkit-box-shadow: 0 0 0 1000px ${currentTheme.buttonBackground} inset !important;
           }
           input[name="firstName"]::selection,
           input[name="lastName"]::selection,
           input[name="username"]::selection,
           input[name="email"]::selection,
           input[name="password"]::selection {
-            background: rgba(0, 255, 255, 0.3) !important;
-            color: #ffffff !important;
+            background: ${currentTheme.buttonBackgroundActive} !important;
+            color: ${currentTheme.text} !important;
           }
         `}
       </style>
@@ -127,7 +130,7 @@ const AuthView = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)',
+          background: theme === 'dark' ? 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)' : 'linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%)',
           zIndex: 1000,
         }}
       >
@@ -138,26 +141,29 @@ const AuthView = () => {
           width: '100%',
           maxWidth: '450px',
           padding: '40px',
-          background: 'rgba(0, 0, 0, 0.8)',
-          border: '1px solid rgba(0, 255, 255, 0.3)',
+          background: currentTheme.backgroundOverlay,
+          border: `1px solid ${currentTheme.borderLight}`,
           borderRadius: '20px',
-          boxShadow: '0 0 40px rgba(0, 255, 255, 0.2)',
+          boxShadow: `0 0 40px ${currentTheme.shadowLight}`,
         }}
       >
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
           <h1
+            key={`title-${theme}`}
             style={{
               fontSize: '2.5rem',
               marginBottom: '10px',
-              background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+              background: currentTheme.accentGradient,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
+              color: currentTheme.accent,
+              display: 'inline-block',
             }}
           >
-            ArkTek
+            ArkiTek
           </h1>
-          <p style={{ color: '#aaaaaa', fontSize: '1rem' }}>
+          <p style={{ color: currentTheme.textSecondary, fontSize: '1rem' }}>
             {isSignUp ? 'Create your account' : 'Sign in to your account'}
           </p>
         </div>
@@ -192,7 +198,7 @@ const AuthView = () => {
                     alignItems: 'center',
                     gap: '8px',
                     marginBottom: '8px',
-                    color: '#ffffff',
+                    color: currentTheme.text,
                     fontSize: '0.9rem',
                   }}
                 >
@@ -238,7 +244,7 @@ const AuthView = () => {
                     alignItems: 'center',
                     gap: '8px',
                     marginBottom: '8px',
-                    color: '#ffffff',
+                    color: currentTheme.text,
                     fontSize: '0.9rem',
                   }}
                 >

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Minimize2, Maximize2 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 
-const TokenUsageWindow = ({ isOpen, onClose, tokenData }) => {
+const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
   const [isMinimized, setIsMinimized] = useState(false)
   const activeTab = useStore((state) => state.activeTab)
 
@@ -56,6 +56,75 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData }) => {
   const totalReasoning = tokenData.reduce((sum, item) => sum + (item.tokens?.reasoningTokens || 0), 0)
   // Total is simply input + output (excludes reasoning tokens)
   const totalTokens = totalInput + totalOutput
+
+  // If inline mode, render without modal overlay
+  if (inline) {
+    // Group tokens by provider and aggregate totals
+    const groupedByProvider = {}
+    tokenData.forEach((item) => {
+      if (!item.tokens) return
+      const provider = item.tokens.provider || 'unknown'
+      if (!groupedByProvider[provider]) {
+        groupedByProvider[provider] = {
+          totalInput: 0,
+          totalOutput: 0,
+          totalReasoning: 0,
+          totalTokens: 0,
+          models: []
+        }
+      }
+      groupedByProvider[provider].totalInput += item.tokens.inputTokens || 0
+      groupedByProvider[provider].totalOutput += item.tokens.outputTokens || 0
+      groupedByProvider[provider].totalReasoning += item.tokens.reasoningTokens || 0
+      groupedByProvider[provider].totalTokens += (item.tokens.inputTokens || 0) + (item.tokens.outputTokens || 0)
+      groupedByProvider[provider].models.push(item)
+    })
+
+    const totalTokens = Object.values(groupedByProvider).reduce((sum, provider) => sum + provider.totalTokens, 0)
+    const totalReasoning = Object.values(groupedByProvider).reduce((sum, provider) => sum + provider.totalReasoning, 0)
+
+    return (
+      <div style={{ padding: '16px' }}>
+        <h3 style={{ color: '#00FFFF', fontSize: '1.2rem', margin: '0 0 16px 0', fontWeight: 'bold' }}>
+          Token Usage by Model/Provider
+        </h3>
+        {/* Content from the original component */}
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
+            <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
+              <strong style={{ color: '#00FFFF' }}>Total Tokens:</strong> {totalTokens.toLocaleString()}
+            </div>
+            {totalReasoning > 0 && (
+              <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
+                <strong style={{ color: '#ffaa00' }}>Reasoning Tokens:</strong> {totalReasoning.toLocaleString()}
+              </div>
+            )}
+          </div>
+          {Object.entries(groupedByProvider).map(([provider, data]) => (
+            <div key={provider} style={{ marginBottom: '20px', padding: '12px', background: 'rgba(0, 255, 255, 0.05)', borderRadius: '8px', border: '1px solid rgba(0, 255, 255, 0.2)' }}>
+              <h4 style={{ color: '#00FFFF', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
+                {provider === 'openai' ? 'Chatgpt' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
+              </h4>
+              <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', fontSize: '0.85rem', color: '#aaaaaa' }}>
+                <div><strong style={{ color: '#00FFFF' }}>Input:</strong> {data.totalInput.toLocaleString()}</div>
+                <div><strong style={{ color: '#00FF00' }}>Output:</strong> {data.totalOutput.toLocaleString()}</div>
+                {data.totalReasoning > 0 && (
+                  <div><strong style={{ color: '#ffaa00' }}>Reasoning:</strong> {data.totalReasoning.toLocaleString()}</div>
+                )}
+                <div><strong style={{ color: '#ffffff' }}>Total:</strong> {data.totalTokens.toLocaleString()}</div>
+              </div>
+              {data.models.map((item, idx) => (
+                <div key={idx} style={{ marginLeft: '12px', marginBottom: '8px', fontSize: '0.8rem', color: '#cccccc' }}>
+                  {item.modelName}: {((item.tokens?.inputTokens || 0) + (item.tokens?.outputTokens || 0)).toLocaleString()} tokens
+                  {item.tokens?.reasoningTokens > 0 && ` (+${item.tokens.reasoningTokens.toLocaleString()} reasoning)`}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   // Show minimized state - just a small button to restore
   // Stacked above Summary window (60px offset for button height + gap)

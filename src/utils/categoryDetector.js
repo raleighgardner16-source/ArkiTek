@@ -40,7 +40,9 @@ export const detectCategory = async (prompt, selectedProviders = []) => {
 
   const categoryPrompt = `Classify the user prompt into EXACTLY ONE category from the list below.
 Also decide if a web search is needed (ONLY if information after 2023 is required). 
-Recommend a model type: reasoning, versatile, or fast.
+Recommend a SINGLE model type that will be used for ALL providers.
+
+CRITICAL: The recommendedModelType you choose will be applied to EVERY provider. Choose ONE type and stick to it.
 
 Output ONLY this JSON:
 ${jsonStructure}
@@ -57,15 +59,15 @@ Categories:
 9 Lifestyle/Self-Improvement
 10 General Knowledge/Other
 
-Model types:
-reasoning = complex logic, math, or coding
-versatile = general or multi-purpose tasks
-fast = simple, low-latency tasks
+Model types (choose ONE for ALL providers):
+reasoning = complex logic, math, coding, analysis, step-by-step thinking
+versatile = general conversation, writing, multi-purpose tasks  
+fast = simple queries, quick responses, low-latency needs
 
 User prompt:
 "${prompt}"${modelsList}
 
-${selectedProviders.length > 0 ? 'Select ONE model per provider. Prefer same model type across providers. Return the model IDs (e.g., "openai-gpt-5.2", "google-gemini-3-pro") in recommendedModels.' : ''}`
+${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You MUST use the SAME model type (reasoning, versatile, or fast) for ALL providers - no exceptions! Return the model IDs (e.g., "openai-gpt-5.2", "google-gemini-3-pro") in recommendedModels.' : ''}`
 
   try {
     const response = await fetch('http://localhost:3001/api/llm', {

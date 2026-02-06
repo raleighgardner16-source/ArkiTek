@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, Check, Trash2, X, XCircle, Flame, Sparkles, Info, Trophy } from 'lucide-react'
+import { Send, ChevronDown, Check, Trash2, X, XCircle, Flame, Sparkles, Info, Trophy, Search } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 import { detectCategory } from '../utils/categoryDetector'
+import { getTheme } from '../utils/theme'
 import axios from 'axios'
+import { ProviderIcon } from './ProviderIcons'
 
 const MainView = ({ onClearAll }) => {
   const selectedModels = useStore((state) => state.selectedModels)
@@ -15,12 +17,17 @@ const MainView = ({ onClearAll }) => {
   const responses = useStore((state) => state.responses || [])
   const clearResponses = useStore((state) => state.clearResponses)
   const currentUser = useStore((state) => state.currentUser)
+  const summary = useStore((state) => state.summary)
+  const ragDebugData = useStore((state) => state.ragDebugData)
   const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
+  const theme = useStore((state) => state.theme || 'dark')
+  const currentTheme = getTheme(theme)
   const [streakDays, setStreakDays] = useState(0)
   const gpt4oMiniResponse = useStore((state) => state.gpt4oMiniResponse)
   const setGpt4oMiniResponse = useStore((state) => state.setGpt4oMiniResponse)
   const clearGpt4oMiniResponse = useStore((state) => state.clearGpt4oMiniResponse)
   const isSearchingWeb = useStore((state) => state.isSearchingWeb)
+  const [showNoModelNotification, setShowNoModelNotification] = useState(false)
   // Mode selection removed - always use Independent Research Mode
 
   // Fetch streak data
@@ -48,7 +55,6 @@ const MainView = ({ onClearAll }) => {
   // Group models by provider
   const modelsByProvider = availableModels.reduce((acc, model) => {
     // Filter out deepseek, meta, and mistral from main app (keep them for admin page)
-    // NOTE: Mistral is temporarily disabled in main app - code remains intact for future use
     if (model.provider === 'deepseek' || model.provider === 'meta' || model.provider === 'mistral') {
       return acc
     }
@@ -63,30 +69,8 @@ const MainView = ({ onClearAll }) => {
     return acc
   }, {})
 
-  // Add placeholder providers (greyed out, non-selectable)
-  const placeholderProviders = {
-    deepseek: {
-      providerName: 'DeepSeek',
-      models: [],
-      isPlaceholder: true
-    },
-    meta: {
-      providerName: 'Meta (Llama)',
-      models: [],
-      isPlaceholder: true
-    },
-    mistral: {
-      providerName: 'Mistral AI',
-      models: [],
-      isPlaceholder: true
-    }
-  }
-
-  // Merge placeholder providers into modelsByProvider
-  Object.assign(modelsByProvider, placeholderProviders)
-
-  // Define the order for provider tabs (left to right) - includes placeholders
-  const providerOrder = ['openai', 'anthropic', 'google', 'xai', 'deepseek', 'meta', 'mistral']
+  // Define the order for provider tabs (left to right)
+  const providerOrder = ['openai', 'anthropic', 'google', 'xai']
   
   // Sort providers according to the specified order
   const sortedProviders = Object.entries(modelsByProvider).sort((a, b) => {
@@ -100,10 +84,6 @@ const MainView = ({ onClearAll }) => {
     
     return indexA - indexB
   }).map(([providerKey, providerData]) => {
-    // Override display name for OpenAI to "ChatGPT"
-    if (providerKey === 'openai') {
-      return [providerKey, { ...providerData, providerName: 'ChatGPT' }]
-    }
     return [providerKey, providerData]
   })
 
@@ -152,9 +132,16 @@ const MainView = ({ onClearAll }) => {
       return
     }
     
+    e.preventDefault()
     e.stopPropagation()
+    
     const providerData = modelsByProvider[providerKey]
-    if (!providerData) return
+    if (!providerData) {
+      console.warn('[handleProviderTabClick] Provider data not found for:', providerKey)
+      return
+    }
+    
+    console.log('[handleProviderTabClick] Clicked provider:', providerKey)
     
     // Check if any models from this provider are already selected
     const selectedFromProvider = providerData.models.filter(model => 
@@ -405,6 +392,9 @@ const MainView = ({ onClearAll }) => {
     // If no models selected and no Auto Smart enabled, can't submit
     if (!hasSelectedModels && providersWithAutoSmart.length === 0) {
       console.warn('[Submit] No models selected and no Auto Smart enabled')
+      setShowNoModelNotification(true)
+      // Auto-hide after 4 seconds
+      setTimeout(() => setShowNoModelNotification(false), 4000)
       return
     }
     
@@ -517,8 +507,17 @@ const MainView = ({ onClearAll }) => {
                 modelToUse = modelByType.id
                 console.log(`[Auto Smart] ✓ Selected ${modelToUse} (${recommendedModelType} type) for ${providerKey}`)
               } else {
-                console.warn(`[Auto Smart] ✗ No ${recommendedModelType} model found for ${providerKey}, available types:`, 
-                  providerData.models.map(m => `${m.id}: ${m.type}`))
+                // Fallback: try versatile, then any available model
+                const versatileModel = providerData.models.find(m => m.type === 'versatile')
+                if (versatileModel) {
+                  modelToUse = versatileModel.id
+                  console.warn(`[Auto Smart] ⚠ No ${recommendedModelType} model for ${providerKey}, falling back to versatile: ${modelToUse}`)
+                } else if (providerData.models.length > 0) {
+                  modelToUse = providerData.models[0].id
+                  console.warn(`[Auto Smart] ⚠ No ${recommendedModelType} or versatile for ${providerKey}, using first available: ${modelToUse}`)
+                } else {
+                  console.error(`[Auto Smart] ✗ No models available for ${providerKey}`)
+                }
               }
             }
             
@@ -633,11 +632,11 @@ const MainView = ({ onClearAll }) => {
             style={{
               width: '400px',
               maxHeight: '500px',
-              background: 'rgba(0, 0, 0, 0.95)',
-              border: '2px solid #00FFFF',
+              background: currentTheme.backgroundOverlay,
+              border: `2px solid ${currentTheme.accent}`,
               borderRadius: '12px',
               padding: '20px',
-              boxShadow: '0 4px 20px rgba(0, 255, 255, 0.3)',
+              boxShadow: `0 4px 20px ${currentTheme.shadow}`,
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
@@ -645,7 +644,7 @@ const MainView = ({ onClearAll }) => {
             }}
           >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ color: '#00FFFF', fontSize: '1.1rem', margin: 0, fontWeight: 'bold' }}>
+            <h3 style={{ color: currentTheme.accent, fontSize: '1.1rem', margin: 0, fontWeight: 'bold' }}>
               GPT-4o-mini Response
             </h3>
             <button
@@ -668,7 +667,7 @@ const MainView = ({ onClearAll }) => {
             style={{
               flex: 1,
               overflowY: 'auto',
-              color: '#cccccc',
+              color: currentTheme.textSecondary,
               fontSize: '0.85rem',
               fontFamily: 'monospace',
               whiteSpace: 'pre-wrap',
@@ -749,17 +748,21 @@ const MainView = ({ onClearAll }) => {
         <div style={{ marginBottom: '8px' }}>
           <div>
           <h1
+            key={`title-${theme}`}
             style={{
               fontSize: '2rem',
               marginBottom: '8px',
-              background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+              color: currentTheme.accent,
+              background: currentTheme.accentGradient,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              display: 'inline-block',
             }}
           >
             Welcome to the Council of the LLMs
           </h1>
-          <p style={{ color: '#aaaaaa', fontSize: '0.95rem' }}>
+          <p style={{ color: currentTheme.textSecondary, fontSize: '0.95rem' }}>
             Select models and enter your prompt to compare responses side-by-side and a summary of the responses
           </p>
           </div>
@@ -774,6 +777,52 @@ const MainView = ({ onClearAll }) => {
             marginBottom: '20px',
           }}
         >
+          {/* Web Searching Icon - Top Right Corner (to the left of streak) */}
+          {isSearchingWeb && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '12px',
+                right: streakDays > 0 ? '140px' : '12px', // Position to left of streak if streak exists
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '6px 10px',
+                zIndex: 10,
+              }}
+            >
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  color: currentTheme.accent,
+                  fontSize: '0.75rem',
+                  fontWeight: 'bold',
+                }}
+              >
+                <Search size={14} color={currentTheme.accent} />
+                <span>Searching the web</span>
+                <motion.span
+                  animate={{ opacity: [1, 0.3, 1] }}
+                  transition={{
+                    duration: 1.5,
+                    repeat: Infinity,
+                    ease: 'easeInOut'
+                  }}
+                >
+                  ...
+                </motion.span>
+              </motion.div>
+            </div>
+          )}
+
           {/* Streak Icon - Top Right Corner of Prompt Container */}
           {streakDays > 0 && (
             <div
@@ -791,8 +840,8 @@ const MainView = ({ onClearAll }) => {
                 zIndex: 10,
               }}
             >
-              <Flame size={14} color="#FF6B00" />
-              <span style={{ color: '#FF6B00', fontSize: '0.75rem', fontWeight: 'bold' }}>
+              <Flame size={14} color="#FF6B00" /> {/* Keep orange for streak */}
+              <span style={{ color: '#FF6B00', fontSize: '0.75rem', fontWeight: 'bold' }}> {/* Keep orange for streak */}
                 {streakDays} day streak
               </span>
             </div>
@@ -809,40 +858,13 @@ const MainView = ({ onClearAll }) => {
           >
             <label
               style={{
-              color: '#ffffff',
+              color: currentTheme.text,
               fontSize: '1.1rem',
               fontWeight: '500',
             }}
             >
               Enter your prompt
             </label>
-            {isSearchingWeb && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  color: '#00FFFF',
-                  fontSize: '0.9rem',
-                  fontWeight: '500',
-                }}
-              >
-                <span>Searching the web</span>
-                <motion.span
-                  animate={{ opacity: [1, 0.3, 1] }}
-                  transition={{
-                    duration: 1.5,
-                    repeat: Infinity,
-                    ease: 'easeInOut'
-                  }}
-                >
-                  ...
-                </motion.span>
-              </motion.div>
-            )}
           </div>
           <textarea
             value={currentPrompt}
@@ -854,10 +876,10 @@ const MainView = ({ onClearAll }) => {
               height: '200px',
               padding: '20px',
               paddingRight: '60px', // Make room for the send button
-              background: 'rgba(0, 255, 255, 0.05)',
-              border: '1px solid rgba(0, 255, 255, 0.3)',
+              background: currentTheme.buttonBackground,
+              border: `1px solid ${currentTheme.borderLight}`,
               borderRadius: '12px',
-              color: '#ffffff',
+              color: currentTheme.text,
               fontSize: '1rem',
               fontFamily: 'inherit',
               resize: 'vertical',
@@ -868,8 +890,14 @@ const MainView = ({ onClearAll }) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault() // Prevent default newline
                 const hasAutoSmart = Object.values(autoSmartProviders).some(enabled => enabled)
-                if (currentPrompt.trim() && (selectedModels.length > 0 || hasAutoSmart)) {
-                  handleSubmit()
+                if (currentPrompt.trim()) {
+                  if (selectedModels.length > 0 || hasAutoSmart) {
+                    handleSubmit()
+                  } else {
+                    // Show notification when trying to submit without models
+                    setShowNoModelNotification(true)
+                    setTimeout(() => setShowNoModelNotification(false), 4000)
+                  }
                 }
               }
             }}
@@ -877,12 +905,21 @@ const MainView = ({ onClearAll }) => {
           {/* Send Icon Button - Bottom Right Corner */}
           {(() => {
             const hasAutoSmart = Object.values(autoSmartProviders).some(enabled => enabled)
-            const canSubmit = currentPrompt.trim() && (selectedModels.length > 0 || hasAutoSmart)
+            const hasModels = selectedModels.length > 0 || hasAutoSmart
+            const canSubmit = currentPrompt.trim() && hasModels
+            const hasPromptOnly = currentPrompt.trim() && !hasModels
             
             return (
           <motion.button
-            onClick={handleSubmit}
-                disabled={!canSubmit}
+            onClick={() => {
+              if (canSubmit) {
+                handleSubmit()
+              } else if (hasPromptOnly) {
+                // Show notification when trying to submit without models
+                setShowNoModelNotification(true)
+                setTimeout(() => setShowNoModelNotification(false), 4000)
+              }
+            }}
             style={{
               position: 'absolute',
               bottom: '16px',
@@ -891,82 +928,178 @@ const MainView = ({ onClearAll }) => {
               height: '44px',
               borderRadius: '50%',
                   background: canSubmit
-                  ? 'linear-gradient(135deg, #00FFFF, #00FF00)'
-                  : 'rgba(128, 128, 128, 0.3)',
+                  ? currentTheme.accentGradient
+                  : hasPromptOnly 
+                    ? 'rgba(255, 170, 0, 0.5)'
+                    : 'rgba(128, 128, 128, 0.3)',
               border: 'none',
-                  color: canSubmit ? '#000000' : '#666666',
-                  cursor: canSubmit ? 'pointer' : 'not-allowed',
+                  color: canSubmit ? (theme === 'dark' ? '#000000' : '#ffffff') : hasPromptOnly ? '#ffffff' : currentTheme.textMuted,
+                  cursor: (canSubmit || hasPromptOnly) ? 'pointer' : 'not-allowed',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
                   boxShadow: canSubmit
-                  ? '0 4px 12px rgba(0, 255, 255, 0.4)'
+                  ? `0 4px 12px ${currentTheme.shadow}`
                   : 'none',
               transition: 'all 0.2s ease',
               zIndex: 10,
             }}
             whileHover={
-                  canSubmit
-                ? { scale: 1.1, boxShadow: '0 6px 16px rgba(0, 255, 255, 0.6)' }
+                  (canSubmit || hasPromptOnly)
+                ? { scale: 1.1, boxShadow: `0 6px 16px ${currentTheme.shadow}` }
                 : {}
             }
-                whileTap={canSubmit ? { scale: 0.95 } : {}}
+                whileTap={(canSubmit || hasPromptOnly) ? { scale: 0.95 } : {}}
           >
             <Send size={20} />
           </motion.button>
             )
           })()}
           
-          {/* Submit to Leaderboard Button */}
-          {currentPrompt.trim() && (
-            <motion.button
-              onClick={async () => {
-                if (!currentUser?.id) {
-                  alert('Please sign in to submit prompts to the leaderboard')
-                  return
-                }
-                
-                try {
-                  const response = await axios.post('http://localhost:3001/api/leaderboard/submit', {
-                    userId: currentUser.id,
-                    promptText: currentPrompt.trim(),
-                  })
-                  
-                  if (response.data.success) {
-                    alert('Prompt submitted to leaderboard!')
-                  }
-                } catch (error) {
-                  console.error('Error submitting to leaderboard:', error)
-                  alert(error.response?.data?.error || 'Failed to submit prompt to leaderboard')
-                }
-              }}
+          {/* Submit to Leaderboard Button - Only show after prompt has been submitted (responses exist) */}
+          {responses.length > 0 && currentPrompt.trim() && (
+            <div
               style={{
                 position: 'absolute',
                 bottom: '16px',
                 left: '16px',
-                padding: '8px 16px',
-                background: 'rgba(255, 170, 0, 0.2)',
-                border: '1px solid rgba(255, 170, 0, 0.5)',
-                borderRadius: '8px',
-                color: '#ffaa00',
-                fontSize: '0.85rem',
-                fontWeight: '500',
-                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.2s ease',
+                gap: '8px',
                 zIndex: 10,
               }}
-              whileHover={{ 
-                background: 'rgba(255, 170, 0, 0.3)',
-                borderColor: 'rgba(255, 170, 0, 0.7)',
-              }}
-              whileTap={{ scale: 0.95 }}
             >
-              <Trophy size={16} />
-              Submit for Voting
-            </motion.button>
+              <motion.button
+                onClick={async () => {
+                  if (!currentUser?.id) {
+                    alert('Please sign in to submit prompts to the leaderboard')
+                    return
+                  }
+                  
+                  try {
+                    // Prepare facts and sources from RAG debug data
+                    let facts = null
+                    let sources = null
+                    
+                    if (ragDebugData) {
+                      // Extract facts with citations from refined data
+                      if (ragDebugData.refiner?.primary?.facts_with_citations) {
+                        facts = ragDebugData.refiner.primary.facts_with_citations.map(f => ({
+                          fact: f.fact,
+                          source_quote: f.source_quote || null,
+                        }))
+                      } else if (ragDebugData.refiner?.backup?.facts_with_citations) {
+                        facts = ragDebugData.refiner.backup.facts_with_citations.map(f => ({
+                          fact: f.fact,
+                          source_quote: f.source_quote || null,
+                        }))
+                      }
+                      
+                      // Extract search results (sources)
+                      if (ragDebugData.search?.results && Array.isArray(ragDebugData.search.results)) {
+                        sources = ragDebugData.search.results.map(s => ({
+                          title: s.title,
+                          link: s.link,
+                          snippet: s.snippet,
+                        }))
+                      }
+                    }
+                    
+                    const response = await axios.post('http://localhost:3001/api/leaderboard/submit', {
+                      userId: currentUser.id,
+                      promptText: currentPrompt.trim(),
+                      responses: responses.length > 0 ? responses.map(r => ({
+                        modelName: r.modelName,
+                        actualModelName: r.actualModelName,
+                        originalModelName: r.originalModelName,
+                        text: r.text,
+                        error: r.error || false,
+                        tokens: r.tokens || null,
+                      })) : null,
+                      summary: summary || null,
+                      facts: facts,
+                      sources: sources,
+                    })
+                    
+                    if (response.data.success) {
+                      alert('Prompt submitted to leaderboard!')
+                    }
+                  } catch (error) {
+                    console.error('Error submitting to leaderboard:', error)
+                    alert(error.response?.data?.error || 'Failed to submit prompt to leaderboard')
+                  }
+                }}
+                style={{
+                  padding: '8px 16px',
+                  background: 'rgba(255, 170, 0, 0.2)',
+                  border: '1px solid rgba(255, 170, 0, 0.5)',
+                  borderRadius: '8px',
+                  color: '#ffaa00', // Keep orange for tooltip
+                  fontSize: '0.85rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease',
+                }}
+                whileHover={{ 
+                  background: 'rgba(255, 170, 0, 0.3)',
+                  borderColor: 'rgba(255, 170, 0, 0.7)',
+                }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Trophy size={16} />
+                Submit for Voting
+              </motion.button>
+              
+              {/* Info Icon with Tooltip */}
+              <div
+                style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                onMouseEnter={(e) => {
+                  const tooltip = e.currentTarget.querySelector('[data-tooltip]')
+                  if (tooltip) tooltip.style.display = 'block'
+                }}
+                onMouseLeave={(e) => {
+                  const tooltip = e.currentTarget.querySelector('[data-tooltip]')
+                  if (tooltip) tooltip.style.display = 'none'
+                }}
+              >
+                <Info 
+                  size={18} 
+                  color="#ffaa00" 
+                  style={{ cursor: 'help' }}
+                />
+                <div
+                  data-tooltip
+                  style={{
+                    display: 'none',
+                    position: 'absolute',
+                    bottom: '100%',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    marginBottom: '8px',
+                    padding: '14px 18px',
+                    background: 'rgba(0, 0, 0, 0.95)',
+                    border: '1px solid rgba(255, 170, 0, 0.5)',
+                    borderRadius: '10px',
+                    color: currentTheme.text,
+                    fontSize: '0.9rem',
+                    lineHeight: '1.6',
+                    width: '320px',
+                    textAlign: 'left',
+                    zIndex: 1000,
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+                  }}
+                >
+                  Submit your prompt/model responses to the leaderboard for other users to vote on. The top 5 most liked prompts each day at 12 AM receive $10 of token usage credit!
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
@@ -975,7 +1108,7 @@ const MainView = ({ onClearAll }) => {
           <>
             {/* Explanation Text */}
             <div style={{ 
-              color: '#ffffff', 
+              color: currentTheme.text, 
               fontSize: '0.8rem', 
               marginBottom: '12px',
               textAlign: 'center'
@@ -986,13 +1119,13 @@ const MainView = ({ onClearAll }) => {
             <div
               style={{
                 position: 'relative',
-                background: 'rgba(0, 0, 0, 0.95)',
-                border: '1px solid rgba(0, 255, 255, 0.3)',
+                background: currentTheme.backgroundOverlay,
+                border: `1px solid ${currentTheme.borderLight}`,
                 borderRadius: '12px',
                 padding: '20px',
                 overflow: 'visible',
                 zIndex: 1000,
-                boxShadow: '0 0 30px rgba(0, 255, 255, 0.3)',
+                boxShadow: `0 0 30px ${currentTheme.shadow}`,
               }}
             >
               {/* Provider Tabs - Horizontal Row with Even Spacing + Clear Selected Button */}
@@ -1010,7 +1143,7 @@ const MainView = ({ onClearAll }) => {
                   flexWrap: 'nowrap',
                   position: 'relative',
                   overflowX: 'auto',
-                  overflowY: 'visible',
+                  overflowY: 'hidden',
                   scrollbarWidth: 'thin',
                   scrollbarColor: 'rgba(0, 255, 255, 0.5) rgba(0, 0, 0, 0.1)',
                 }}
@@ -1126,7 +1259,7 @@ const MainView = ({ onClearAll }) => {
                       <span
                         style={{
                           background: 'rgba(255, 0, 0, 0.3)',
-                          color: '#FF0000',
+                          color: '#FF0000', // Keep red for clear button
                           padding: '3px 8px',
                           borderRadius: '10px',
                           fontSize: '0.75rem',
@@ -1143,10 +1276,10 @@ const MainView = ({ onClearAll }) => {
                 {sortedProviders.map(([providerKey, providerData]) => {
                   const isPlaceholder = providerData.isPlaceholder || false
                   const isExpanded = expandedProviders[providerKey]
-                  const selectedCount = providerData.models.filter(m => 
+                  // Check if any model from this provider is selected (only one should be possible)
+                  const hasSelectedModels = providerData.models.some(m => 
                     selectedModels.includes(m.id)
-                  ).length
-                  const hasSelectedModels = selectedCount > 0
+                  )
                   const hasAutoSmart = autoSmartProviders[providerKey] || false
                   const isActive = isExpanded || hasSelectedModels || hasAutoSmart
                   
@@ -1155,10 +1288,11 @@ const MainView = ({ onClearAll }) => {
                       key={providerKey}
                       style={{
                         position: 'relative',
-                        flex: '0 0 auto',
+                        flex: '1 1 0',
+                        minWidth: '180px',
                         display: 'flex',
                         flexDirection: 'column',
-                        overflow: 'visible',
+                        overflow: 'hidden',
                       }}
                     >
                       {/* Provider Tab Button */}
@@ -1171,41 +1305,52 @@ const MainView = ({ onClearAll }) => {
                         onClick={(e) => {
                           if (!isPlaceholder) {
                             handleProviderTabClick(providerKey, e)
+                            // Blur the button to prevent Enter key from re-triggering
+                            e.currentTarget.blur()
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          // Prevent Enter from re-triggering the button
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
                           }
                         }}
                         disabled={isPlaceholder}
                         style={{
-                          padding: '14px 20px',
+                          padding: '12px 16px',
                           background: isPlaceholder
                             ? 'rgba(128, 128, 128, 0.1)'
                             : isActive
-                            ? 'rgba(0, 255, 255, 0.3)'
-                            : 'rgba(0, 255, 255, 0.05)',
+                            ? currentTheme.buttonBackgroundActive
+                            : currentTheme.buttonBackground,
                           border: isPlaceholder
                             ? '1px solid rgba(128, 128, 128, 0.3)'
                             : isActive
-                            ? '2px solid rgba(0, 255, 255, 0.8)'
-                            : '1px solid rgba(0, 255, 255, 0.2)',
+                            ? `2px solid ${currentTheme.borderActive}`
+                            : `1px solid ${currentTheme.border}`,
                           borderRadius: '8px',
-                          color: isPlaceholder ? '#666666' : '#ffffff',
+                          color: isPlaceholder ? currentTheme.textMuted : currentTheme.text,
                           cursor: isPlaceholder ? 'not-allowed' : 'pointer',
-                          fontSize: '1rem',
+                          fontSize: '1.1rem',
                           fontWeight: isActive ? '600' : '500',
                           whiteSpace: 'nowrap',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center',
+                          justifyContent: 'space-between',
                           gap: '10px',
                           transition: 'all 0.2s ease',
                           flexShrink: 0,
-                          width: 'fit-content',
-                          minWidth: 'fit-content',
+                          width: '100%',
+                          minWidth: 0,
+                          overflow: 'hidden',
                           boxShadow: isPlaceholder
                             ? 'none'
                             : isActive
-                            ? '0 0 15px rgba(0, 255, 255, 0.4), 0 0 30px rgba(0, 255, 255, 0.2)'
+                            ? `0 0 15px ${currentTheme.shadow}, 0 0 30px ${currentTheme.shadowLight}`
                             : 'none',
                           opacity: isPlaceholder ? 0.5 : 1,
+                          outline: 'none', // Remove default browser outline
+                          WebkitTapHighlightColor: 'transparent', // Remove mobile tap highlight
                         }}
                       >
                         {!isPlaceholder && (
@@ -1218,34 +1363,50 @@ const MainView = ({ onClearAll }) => {
                               justifyContent: 'center',
                               cursor: 'pointer',
                               flexShrink: 0,
-                              padding: '2px',
-                          }}
-                        >
-                          <ChevronDown
-                            size={18}
-                            style={{
-                              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                              transition: 'transform 0.2s ease',
-                              pointerEvents: 'none',
-                            }}
-                          />
-                          </div>
-                        )}
-                        <span style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>{providerData.providerName}</span>
-                        {!isPlaceholder && selectedCount > 0 && (
-                          <span
-                            style={{
-                              background: 'rgba(0, 255, 0, 0.2)',
-                              color: '#00FF00',
-                              padding: '3px 8px',
-                              borderRadius: '10px',
-                              fontSize: '0.75rem',
-                              fontWeight: 'bold',
-                              flexShrink: 0,
+                              padding: '4px',
+                              width: '32px',
                             }}
                           >
-                            {selectedCount}
-                          </span>
+                            <ChevronDown
+                              size={24}
+                              style={{
+                                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                transition: 'transform 0.2s ease',
+                                pointerEvents: 'none',
+                              }}
+                            />
+                          </div>
+                        )}
+                        <span 
+                          key={`provider-name-${providerKey}-${theme}`}
+                          style={{ 
+                          textAlign: 'center', 
+                          whiteSpace: 'nowrap', 
+                          fontSize: '1.2rem',
+                          flex: 1,
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          minWidth: 0,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          background: isPlaceholder ? 'none' : currentTheme.accentGradient,
+                          WebkitBackgroundClip: isPlaceholder ? 'unset' : 'text',
+                          WebkitTextFillColor: 'transparent',
+                          color: isPlaceholder ? currentTheme.textMuted : currentTheme.accent
+                        }}>
+                          {providerData.providerName}
+                        </span>
+                        {!isPlaceholder && (
+                          <div style={{ 
+                            flexShrink: 0, 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            width: '32px',
+                          }}>
+                            <ProviderIcon provider={providerKey} />
+                          </div>
                         )}
                       </button>
 
@@ -1283,18 +1444,18 @@ const MainView = ({ onClearAll }) => {
                           left: `${position.left}px`,
                           width: 'max-content',
                           minWidth: `${position.width}px`,
-                            background: 'rgba(0, 0, 0, 0.98)',
-                            border: '1px solid rgba(0, 255, 255, 0.4)',
+                            background: currentTheme.backgroundOverlay,
+                            border: `1px solid ${currentTheme.borderLight}`,
                             borderRadius: '8px',
                             padding: '16px',
                           zIndex: 2000,
-                            boxShadow: '0 4px 20px rgba(0, 255, 255, 0.3)',
+                            boxShadow: `0 4px 20px ${currentTheme.shadow}`,
                           maxHeight: '400px',
                             overflowY: 'auto',
                             overflowX: 'hidden',
                             // Custom scrollbar styling for Firefox
                             scrollbarWidth: 'thin',
-                            scrollbarColor: 'rgba(0, 255, 255, 0.5) rgba(0, 0, 0, 0.1)',
+                            scrollbarColor: `${currentTheme.accent} ${currentTheme.backgroundOverlayLighter}`,
                           }}
                         >
                           {/* Auto Smart Checkbox */}
@@ -1307,10 +1468,10 @@ const MainView = ({ onClearAll }) => {
                               padding: '10px',
                               background: autoSmartProviders[providerKey]
                                 ? 'rgba(0, 255, 0, 0.1)'
-                                : 'rgba(0, 255, 255, 0.05)',
+                                : currentTheme.buttonBackground,
                               border: autoSmartProviders[providerKey]
                                 ? '1px solid rgba(0, 255, 0, 0.5)'
-                                : '1px solid rgba(0, 255, 255, 0.2)',
+                                : `1px solid ${currentTheme.border}`,
                               borderRadius: '6px',
                               cursor: 'pointer',
                               transition: 'all 0.2s ease',
@@ -1319,12 +1480,12 @@ const MainView = ({ onClearAll }) => {
                             onMouseEnter={(e) => {
                               e.currentTarget.style.background = autoSmartProviders[providerKey]
                                 ? 'rgba(0, 255, 0, 0.15)'
-                                : 'rgba(0, 255, 255, 0.1)'
+                                : currentTheme.buttonBackgroundHover
                             }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.background = autoSmartProviders[providerKey]
                                 ? 'rgba(0, 255, 0, 0.1)'
-                                : 'rgba(0, 255, 255, 0.05)'
+                                : currentTheme.buttonBackground
                             }}
                           >
                             <input
@@ -1339,12 +1500,12 @@ const MainView = ({ onClearAll }) => {
                                 accentColor: autoSmartProviders[providerKey] ? '#00FF00' : '#00FFFF',
                               }}
                             />
-                            <Sparkles size={16} color={autoSmartProviders[providerKey] ? '#00FF00' : '#00FFFF'} />
-                            <div style={{ flex: 1, color: '#cccccc', fontSize: '0.9rem', fontWeight: '500' }}>
+                            <Sparkles size={16} color={autoSmartProviders[providerKey] ? currentTheme.accentSecondary : currentTheme.accent} />
+                            <div style={{ flex: 1, color: currentTheme.textSecondary, fontSize: '0.9rem', fontWeight: '500' }}>
                               Auto Smart
                             </div>
                             {autoSmartProviders[providerKey] && (
-                              <Check size={16} color="#00FF00" style={{ flexShrink: 0 }} />
+                              <Check size={16} color={currentTheme.accentSecondary} style={{ flexShrink: 0 }} />
                             )}
                           </label>
                           
@@ -1388,7 +1549,8 @@ const MainView = ({ onClearAll }) => {
                                   }}
                                 >
                                   <input
-                                    type="checkbox"
+                                    type="radio"
+                                    name={`provider-${providerKey}`}
                                     checked={isSelected}
                                     onChange={() => toggleModel(model.id)}
                                     style={{
@@ -1399,13 +1561,13 @@ const MainView = ({ onClearAll }) => {
                                     }}
                                   />
                                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                    <div style={{ color: '#cccccc', fontSize: '0.9rem', fontWeight: '500' }}>
+                                    <div style={{ color: currentTheme.textSecondary, fontSize: '0.9rem', fontWeight: '500' }}>
                                     {model.model}
                                     </div>
                                     {model.type && model.label && (
                                       <>
                                         <span style={{ 
-                                          color: '#00FFFF', 
+                                          color: currentTheme.accent, 
                                           fontSize: '0.75rem',
                                           fontWeight: '500'
                                         }}>
@@ -1421,13 +1583,13 @@ const MainView = ({ onClearAll }) => {
                                           onMouseEnter={(e) => handleTooltipShow(e, model.type)}
                                           onMouseLeave={handleTooltipHide}
                                         >
-                                          <Info size={12} color="#00FFFF" style={{ flexShrink: 0 }} />
+                                          <Info size={12} color={currentTheme.accent} style={{ flexShrink: 0 }} />
                                         </div>
                                       </>
                                     )}
                                   </div>
                                   {isSelected && (
-                                    <Check size={16} color="#00FF00" style={{ flexShrink: 0 }} />
+                                    <Check size={16} color={currentTheme.accentSecondary} style={{ flexShrink: 0 }} />
                                   )}
                                 </label>
                               )
@@ -1473,7 +1635,7 @@ const MainView = ({ onClearAll }) => {
             }}
             onMouseLeave={handleTooltipHide}
           >
-            <div style={{ color: '#ffffff', fontSize: '0.85rem', lineHeight: '1.5' }}>
+            <div style={{ color: currentTheme.text, fontSize: '0.85rem', lineHeight: '1.5' }}>
               {getModelTypeTooltip(tooltipState.type)}
             </div>
           </motion.div>
@@ -1504,17 +1666,106 @@ const MainView = ({ onClearAll }) => {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div style={{ color: '#ffffff', fontSize: '1rem', lineHeight: '1.5' }}>
-            <div style={{ marginBottom: '12px', color: '#00FFFF', fontSize: '1.1rem', fontWeight: '600' }}>
+          <div style={{ color: currentTheme.text, fontSize: '1rem', lineHeight: '1.5' }}>
+            <div style={{ marginBottom: '12px', color: currentTheme.accent, fontSize: '1.1rem', fontWeight: '600' }}>
               Mode Required
             </div>
-            <div style={{ color: '#cccccc' }}>
+            <div style={{ color: currentTheme.textSecondary }}>
               Please select a mode before submitting your prompt.
             </div>
           </div>
         </motion.div>
       )}
     </AnimatePresence>
+
+      {/* No Model Selected Notification */}
+      <AnimatePresence>
+        {showNoModelNotification && (
+          <>
+            {/* Backdrop - click anywhere to dismiss */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowNoModelNotification(false)}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0, 0, 0, 0.3)',
+                zIndex: 10002,
+              }}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.9 }}
+              style={{
+                position: 'fixed',
+                top: '20%',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: currentTheme.backgroundOverlay,
+                border: `2px solid ${currentTheme.borderActive}`,
+                borderRadius: '12px',
+                padding: '24px 32px',
+                zIndex: 10003,
+                boxShadow: `0 8px 32px ${currentTheme.shadow}`,
+                minWidth: '320px',
+                maxWidth: '400px',
+                textAlign: 'center',
+              }}
+              onClick={() => setShowNoModelNotification(false)}
+            >
+            <div style={{ 
+              color: currentTheme.text, 
+              fontSize: '1rem', 
+              lineHeight: '1.6',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '12px',
+            }}>
+              <div style={{ 
+                color: currentTheme.accent, 
+                fontSize: '1.2rem', 
+                fontWeight: '600',
+                marginBottom: '4px',
+              }}>
+                Select a Model First
+              </div>
+              <div style={{ color: currentTheme.textSecondary }}>
+                Please select at least one provider model or enable Auto Smart before submitting your prompt.
+              </div>
+              <button
+                onClick={() => setShowNoModelNotification(false)}
+                style={{
+                  marginTop: '8px',
+                  padding: '8px 20px',
+                  background: currentTheme.buttonBackground,
+                  border: `1px solid ${currentTheme.border}`,
+                  borderRadius: '6px',
+                  color: currentTheme.text,
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = currentTheme.buttonBackgroundHover
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = currentTheme.buttonBackground
+                }}
+              >
+                Got it
+              </button>
+            </div>
+          </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </>
   )
 }

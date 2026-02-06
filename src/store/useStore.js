@@ -159,6 +159,11 @@ export const useStore = create(
       // Research mode: 'independent', 'interpretation', or null (none selected)
       researchMode: null,
       setResearchMode: (mode) => set({ researchMode: mode }),
+
+      // Theme: 'light' or 'dark'
+      theme: 'dark',
+      setTheme: (theme) => set({ theme }),
+      toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
     }),
     {
       name: 'arktek-storage',

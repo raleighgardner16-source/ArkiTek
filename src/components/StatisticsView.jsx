@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, FolderOpen, X, Cpu, Trophy, Bell, Heart } from 'lucide-react'
+import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, FolderOpen, X, Cpu, Trophy, Bell, Heart, ShoppingCart } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import ConfirmationModal from './ConfirmationModal'
+import BuyUsageModal from './BuyUsageModal'
 import { LLM_PROVIDERS } from '../services/llmProviders'
 
 const StatisticsView = () => {
   const currentUser = useStore((state) => state.currentUser)
+  const theme = useStore((state) => state.theme || 'dark')
+  const currentTheme = getTheme(theme)
   const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -22,6 +26,26 @@ const StatisticsView = () => {
   const [hoveredDay, setHoveredDay] = useState(null) // Track which day is being hovered
   const [leaderboardStats, setLeaderboardStats] = useState(null)
   const [loadingLeaderboardStats, setLoadingLeaderboardStats] = useState(false)
+  const [showBuyUsageModal, setShowBuyUsageModal] = useState(false)
+
+  // Handle successful usage purchase
+  const handleUsagePurchaseSuccess = (data) => {
+    // Refresh stats to show new balance
+    fetchStats()
+    // Close modal after a delay to show success state
+    setTimeout(() => {
+      setShowBuyUsageModal(false)
+    }, 2000)
+  }
+
+  // Helper function to handle tab switching and reset expanded states
+  const handleTabChange = (newTab) => {
+    // Reset all expanded states when switching tabs
+    setExpandedProviders({})
+    setExpandedModels({})
+    setExpandedCategories({})
+    setActiveTab(newTab)
+  }
 
   useEffect(() => {
     if (currentUser?.id) {
@@ -204,7 +228,7 @@ const StatisticsView = () => {
           zIndex: 10,
         }}
       >
-        <p style={{ color: '#ffffff', fontSize: '1.2rem' }}>Loading statistics...</p>
+        <p style={{ color: currentTheme.text, fontSize: '1.2rem' }}>Loading statistics...</p>
       </motion.div>
     )
   }
@@ -223,6 +247,8 @@ const StatisticsView = () => {
     monthlyCost: 0,
     remainingFreeAllocation: 5.00,
     freeUsagePercentage: 100,
+    totalAvailableBalance: 5.00,
+    purchasedCredits: { total: 0, remaining: 0, purchaseCount: 0, lastPurchase: null },
     dailyUsage: [],
     providers: {},
     models: {},
@@ -378,7 +404,7 @@ const StatisticsView = () => {
         padding: '40px',
         overflowY: 'auto',
         zIndex: 10,
-        color: '#ffffff',
+        color: currentTheme.text,
       }}
     >
       <div
@@ -391,22 +417,25 @@ const StatisticsView = () => {
         {/* Header */}
         <div style={{ marginBottom: '40px' }}>
           <h1
+            key={`title-${theme}`}
             style={{
               fontSize: '2.5rem',
               marginBottom: '12px',
-              background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+              background: currentTheme.accentGradient,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
+              color: currentTheme.accent,
+              display: 'inline-block',
             }}
           >
-            Your ArkTek Statistics
+            Your ArkiTek Statistics
           </h1>
           {stats?.createdAt && (
-            <p style={{ color: '#aaaaaa', fontSize: '1rem', marginBottom: '8px' }}>
+            <p style={{ color: currentTheme.textSecondary, fontSize: '1rem', marginBottom: '8px' }}>
               Member for: {formatAccountAge(stats.createdAt)}
             </p>
           )}
-          <p style={{ color: '#aaaaaa', fontSize: '1.1rem', marginBottom: '8px' }}>
+          <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem', marginBottom: '8px' }}>
             Track your usage and performance across all providers and models
           </p>
         </div>
@@ -417,17 +446,17 @@ const StatisticsView = () => {
             display: 'flex',
             gap: '16px',
             marginBottom: '32px',
-            borderBottom: '1px solid rgba(0, 255, 255, 0.3)',
+            borderBottom: `1px solid ${currentTheme.borderLight}`,
           }}
         >
           <button
-            onClick={() => setActiveTab('tokens')}
+            onClick={() => handleTabChange('tokens')}
             style={{
               padding: '12px 24px',
-              background: activeTab === 'tokens' ? 'rgba(0, 255, 255, 0.2)' : 'transparent',
+              background: activeTab === 'tokens' ? currentTheme.buttonBackgroundActive : 'transparent',
               border: 'none',
-              borderBottom: activeTab === 'tokens' ? '2px solid #00FFFF' : '2px solid transparent',
-              color: activeTab === 'tokens' ? '#00FFFF' : '#aaaaaa',
+              borderBottom: activeTab === 'tokens' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+              color: activeTab === 'tokens' ? currentTheme.accent : currentTheme.textSecondary,
               fontSize: '1rem',
               fontWeight: activeTab === 'tokens' ? '600' : '400',
               cursor: 'pointer',
@@ -441,13 +470,13 @@ const StatisticsView = () => {
             Token Stats
           </button>
           <button
-            onClick={() => setActiveTab('ratings')}
+            onClick={() => handleTabChange('ratings')}
             style={{
               padding: '12px 24px',
-              background: activeTab === 'ratings' ? 'rgba(0, 255, 255, 0.2)' : 'transparent',
+              background: activeTab === 'ratings' ? currentTheme.buttonBackgroundActive : 'transparent',
               border: 'none',
-              borderBottom: activeTab === 'ratings' ? '2px solid #00FFFF' : '2px solid transparent',
-              color: activeTab === 'ratings' ? '#00FFFF' : '#aaaaaa',
+              borderBottom: activeTab === 'ratings' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+              color: activeTab === 'ratings' ? currentTheme.accent : currentTheme.textSecondary,
               fontSize: '1rem',
               fontWeight: activeTab === 'ratings' ? '600' : '400',
               cursor: 'pointer',
@@ -461,13 +490,13 @@ const StatisticsView = () => {
             Ratings & Models
           </button>
           <button
-            onClick={() => setActiveTab('categories')}
+            onClick={() => handleTabChange('categories')}
             style={{
               padding: '12px 24px',
-              background: activeTab === 'categories' ? 'rgba(0, 255, 255, 0.2)' : 'transparent',
+              background: activeTab === 'categories' ? currentTheme.buttonBackgroundActive : 'transparent',
               border: 'none',
-              borderBottom: activeTab === 'categories' ? '2px solid #00FFFF' : '2px solid transparent',
-              color: activeTab === 'categories' ? '#00FFFF' : '#aaaaaa',
+              borderBottom: activeTab === 'categories' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+              color: activeTab === 'categories' ? currentTheme.accent : currentTheme.textSecondary,
               fontSize: '1rem',
               fontWeight: activeTab === 'categories' ? '600' : '400',
               cursor: 'pointer',
@@ -481,13 +510,13 @@ const StatisticsView = () => {
             Categories
           </button>
           <button
-            onClick={() => setActiveTab('leaderboard')}
+            onClick={() => handleTabChange('leaderboard')}
             style={{
               padding: '12px 24px',
-              background: activeTab === 'leaderboard' ? 'rgba(0, 255, 255, 0.2)' : 'transparent',
+              background: activeTab === 'leaderboard' ? currentTheme.buttonBackgroundActive : 'transparent',
               border: 'none',
-              borderBottom: activeTab === 'leaderboard' ? '2px solid #00FFFF' : '2px solid transparent',
-              color: activeTab === 'leaderboard' ? '#00FFFF' : '#aaaaaa',
+              borderBottom: activeTab === 'leaderboard' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+              color: activeTab === 'leaderboard' ? currentTheme.accent : currentTheme.textSecondary,
               fontSize: '1rem',
               fontWeight: activeTab === 'leaderboard' ? '600' : '400',
               cursor: 'pointer',
@@ -512,7 +541,7 @@ const StatisticsView = () => {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
             >
-              <p style={{ color: '#888888', fontSize: '0.85rem', fontStyle: 'italic', marginBottom: '24px' }}>
+              <p style={{ color: currentTheme.textMuted, fontSize: '0.85rem', fontStyle: 'italic', marginBottom: '24px' }}>
                 A token is a unit of text (roughly 4 characters or 0.75 words) that AI models process. Token counts are displayed with full numbers and commas for readability.
               </p>
 
@@ -520,8 +549,8 @@ const StatisticsView = () => {
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '40px' }}>
           <div
             style={{
-              background: 'rgba(0, 255, 0, 0.1)',
-              border: '1px solid rgba(0, 255, 0, 0.3)',
+              background: currentTheme.backgroundOverlay,
+              border: `1px solid ${currentTheme.borderLight}`,
               borderRadius: '16px',
               padding: '30px',
               display: 'flex',
@@ -533,28 +562,101 @@ const StatisticsView = () => {
             {/* Header with Percentage */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <TrendingUp size={32} color="#00FF00" />
+                <TrendingUp size={32} color={currentTheme.accentSecondary} />
                 <div>
-                  <h2 style={{ fontSize: '1.2rem', color: '#ffffff', margin: '0 0 4px 0' }}>No Additional Charge Usage Remaining</h2>
-                  <p style={{ fontSize: '0.85rem', color: '#aaaaaa', margin: 0, fontStyle: 'italic' }}>
-                    Once usage is up you pay for what you use
+                  <h2 style={{ fontSize: '1.2rem', color: currentTheme.text, margin: '0 0 4px 0' }}>
+                    Available Usage Balance
+                  </h2>
+                  <p style={{ fontSize: '0.85rem', color: currentTheme.textSecondary, margin: 0, fontStyle: 'italic' }}>
+                    ${(userStats.totalAvailableBalance || userStats.remainingFreeAllocation || 5).toFixed(2)} remaining
+                    {(userStats.purchasedCredits?.remaining || 0) > 0 && (
+                      <span style={{ color: currentTheme.accentSecondary }}> (includes ${(userStats.purchasedCredits.remaining).toFixed(2)} purchased)</span>
+                    )}
                   </p>
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
                 <p
+                  key={`usage-percentage-${theme}`}
                   style={{
                     fontSize: '3rem',
                     fontWeight: 'bold',
-                    background: 'linear-gradient(90deg, #00FF00, #00FFFF)',
+                    background: currentTheme.accentGradient,
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                     margin: 0,
                     whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: '8px',
                   }}
                 >
                   {(userStats.freeUsagePercentage || 100).toFixed(1)}%
+                  <span style={{ fontSize: '1.2rem', fontWeight: '500' }}>left</span>
                 </p>
+                
+                {/* Buy More Usage Button */}
+                <button
+                  onClick={() => setShowBuyUsageModal(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 16px',
+                    borderRadius: '8px',
+                    border: `1px solid ${currentTheme.accent}`,
+                    background: currentTheme.buttonBackground,
+                    color: currentTheme.accent,
+                    fontSize: '0.85rem',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = currentTheme.buttonBackgroundHover
+                    e.currentTarget.style.borderColor = currentTheme.accentSecondary
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = currentTheme.buttonBackground
+                    e.currentTarget.style.borderColor = currentTheme.accent
+                  }}
+                >
+                  <ShoppingCart size={16} />
+                  Buy More Usage
+                </button>
+                
+                {/* Purchased Credits Balance */}
+                {(userStats.purchasedCredits?.remaining || 0) > 0 && (
+                  <div
+                    style={{
+                      background: 'rgba(0, 200, 100, 0.15)',
+                      border: '1px solid rgba(0, 200, 100, 0.3)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-end',
+                    }}
+                  >
+                    <p style={{ fontSize: '0.7rem', color: currentTheme.textSecondary, margin: '0 0 2px 0' }}>
+                      Purchased Credits
+                    </p>
+                    <p
+                      key={`purchased-credits-${theme}`}
+                      style={{
+                        fontSize: '1.2rem',
+                        fontWeight: 'bold',
+                        background: 'linear-gradient(90deg, #00cc66, #00aa88)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        margin: 0,
+                      }}
+                    >
+                      ${(userStats.purchasedCredits?.remaining || 0).toFixed(2)}
+                    </p>
+                  </div>
+                )}
+                
                 {(userStats.monthlyCost || 0) > 5.00 && (
                   <div
                     style={{
@@ -567,14 +669,14 @@ const StatisticsView = () => {
                       alignItems: 'flex-end',
                     }}
                   >
-                    <p style={{ fontSize: '0.7rem', color: '#aaaaaa', margin: '0 0 2px 0' }}>
+                    <p style={{ fontSize: '0.7rem', color: currentTheme.textSecondary, margin: '0 0 2px 0' }}>
                       Extra Usage This Month
                     </p>
                     <p
                       style={{
                         fontSize: '1.2rem',
                         fontWeight: 'bold',
-                        color: '#ff6b6b',
+                        color: '#ff6b6b', // Keep red for error/warning
                         margin: 0,
                       }}
                     >
@@ -592,8 +694,8 @@ const StatisticsView = () => {
                 {/* Total Tokens */}
                 <div
                   style={{
-                    background: 'rgba(0, 255, 255, 0.1)',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    background: currentTheme.backgroundOverlay,
+                    border: `1px solid ${currentTheme.borderLight}`,
                     borderRadius: '12px',
                     padding: '20px',
                     display: 'flex',
@@ -602,17 +704,20 @@ const StatisticsView = () => {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <Database size={20} color="#00FFFF" />
-                    <h3 style={{ fontSize: '0.9rem', color: '#aaaaaa', margin: 0 }}>Total Tokens</h3>
+                    <Database size={20} color={currentTheme.accent} />
+                    <h3 style={{ fontSize: '0.9rem', color: currentTheme.textSecondary, margin: 0 }}>Total Tokens</h3>
                   </div>
                   <p
+                    key={`total-tokens-${theme}`}
                     style={{
                       fontSize: '1.5rem',
                       fontWeight: 'bold',
-                      background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                      background: currentTheme.accentGradient,
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
+                      color: currentTheme.accent,
                       margin: 0,
+                      display: 'inline-block',
                     }}
                   >
                     {formatTokens(userStats.totalTokens)}
@@ -622,7 +727,7 @@ const StatisticsView = () => {
                 {/* Tokens This Month */}
                 <div
                   style={{
-                    background: 'rgba(0, 255, 0, 0.1)',
+                    background: currentTheme.backgroundOverlay,
                     border: '1px solid rgba(0, 255, 0, 0.3)',
                     borderRadius: '12px',
                     padding: '20px',
@@ -632,17 +737,20 @@ const StatisticsView = () => {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <Database size={20} color="#00FF00" />
-                    <h3 style={{ fontSize: '0.9rem', color: '#aaaaaa', margin: 0 }}>Tokens This Month</h3>
+                    <Database size={20} color={currentTheme.accentSecondary} />
+                    <h3 style={{ fontSize: '0.9rem', color: currentTheme.textSecondary, margin: 0 }}>Tokens This Month</h3>
                   </div>
                   <p
+                    key={`tokens-this-month-${theme}`}
                     style={{
                       fontSize: '1.5rem',
                       fontWeight: 'bold',
-                      background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                      background: currentTheme.accentGradient,
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
+                      color: currentTheme.accent,
                       margin: 0,
+                      display: 'inline-block',
                     }}
                   >
                     {formatTokens(userStats.monthlyTokens)}
@@ -652,7 +760,7 @@ const StatisticsView = () => {
 
               {/* Center: Daily Usage Bar Graph */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <p style={{ fontSize: '0.9rem', color: '#aaaaaa', marginBottom: '12px', textAlign: 'center' }}>
+                <p style={{ fontSize: '0.9rem', color: currentTheme.textSecondary, marginBottom: '12px', textAlign: 'center' }}>
                   Daily Usage Percentage (This Month)
                 </p>
                 <div style={{ display: 'flex', gap: '8px', height: '220px' }}>
@@ -663,7 +771,7 @@ const StatisticsView = () => {
                         key={value}
                         style={{
                           fontSize: '0.7rem',
-                          color: '#888888',
+                          color: currentTheme.textMuted,
                           textAlign: 'right',
                         }}
                       >
@@ -690,7 +798,7 @@ const StatisticsView = () => {
                         gap: '4px',
                         height: '180px',
                         padding: '12px',
-                        background: 'rgba(0, 0, 0, 0.2)',
+                        background: currentTheme.backgroundSecondary,
                         borderRadius: '8px',
                         position: 'relative',
                       }}
@@ -725,17 +833,17 @@ const StatisticsView = () => {
                                   bottom: `${barHeight + 8}px`,
                                   left: '50%',
                                   transform: 'translateX(-50%)',
-                                  background: 'rgba(0, 0, 0, 0.95)',
-                                  border: '1px solid rgba(0, 255, 255, 0.5)',
+                                  background: currentTheme.backgroundOverlay,
+                                  border: `1px solid ${currentTheme.borderActive}`,
                                   borderRadius: '6px',
                                   padding: '6px 10px',
                                   fontSize: '0.75rem',
-                                  color: '#00FFFF',
+                                  color: currentTheme.accent,
                                   fontWeight: 'bold',
                                   whiteSpace: 'nowrap',
                                   zIndex: 20,
                                   pointerEvents: 'none',
-                                  boxShadow: '0 4px 12px rgba(0, 255, 255, 0.3)',
+                                  boxShadow: `0 4px 12px ${currentTheme.shadow}`,
                                 }}
                               >
                                 {percentage.toFixed(1)}% used
@@ -747,9 +855,11 @@ const StatisticsView = () => {
                               <div
                                 style={{
                                   position: 'absolute',
-                                  top: `${180 - barHeight - 20}px`,
+                                  bottom: `${barHeight + 4}px`,
+                                  left: '50%',
+                                  transform: 'translateX(-50%)',
                                   fontSize: '0.65rem',
-                                  color: isToday ? '#00FF00' : '#00FFFF',
+                                  color: isToday ? currentTheme.accentSecondary : currentTheme.accent,
                                   fontWeight: 'bold',
                                   whiteSpace: 'nowrap',
                                   zIndex: 10,
@@ -766,9 +876,9 @@ const StatisticsView = () => {
                                 height: `${barHeight}px`,
                                 background: percentage > 0
                                   ? isToday
-                                    ? 'linear-gradient(180deg, #00FF00, #00FFFF)'
-                                    : 'linear-gradient(180deg, rgba(0, 255, 0, 0.6), rgba(0, 255, 255, 0.6))'
-                                  : 'rgba(255, 255, 255, 0.1)',
+                                    ? currentTheme.accentGradient
+                                    : currentTheme.accentGradient
+                                  : currentTheme.backgroundOverlayLighter,
                                 borderRadius: '2px 2px 0 0',
                                 transition: 'all 0.3s ease',
                                 cursor: 'pointer',
@@ -808,7 +918,7 @@ const StatisticsView = () => {
                             style={{
                               flex: 1,
                               fontSize: '0.65rem',
-                              color: isToday ? '#00FF00' : '#888888',
+                              color: isToday ? currentTheme.accentSecondary : currentTheme.textMuted,
                               fontWeight: isToday ? 'bold' : 'normal',
                               textAlign: 'center',
                               minWidth: '0',
@@ -828,8 +938,8 @@ const StatisticsView = () => {
                 {/* Total Prompts */}
                 <div
                   style={{
-                    background: 'rgba(0, 255, 255, 0.1)',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    background: currentTheme.backgroundOverlay,
+                    border: `1px solid ${currentTheme.borderLight}`,
                     borderRadius: '12px',
                     padding: '20px',
                     display: 'flex',
@@ -838,17 +948,20 @@ const StatisticsView = () => {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <MessageSquare size={20} color="#00FFFF" />
-                    <h3 style={{ fontSize: '0.9rem', color: '#aaaaaa', margin: 0 }}>Total Prompts</h3>
+                    <MessageSquare size={20} color={currentTheme.accent} />
+                    <h3 style={{ fontSize: '0.9rem', color: currentTheme.textSecondary, margin: 0 }}>Total Prompts</h3>
                   </div>
                   <p
+                    key={`total-prompts-${theme}`}
                     style={{
                       fontSize: '2rem',
                       fontWeight: 'bold',
-                      background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                      background: currentTheme.accentGradient,
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
+                      color: currentTheme.accent,
                       margin: 0,
+                      display: 'inline-block',
                     }}
                   >
                     {formatNumber(userStats.totalPrompts || 0)}
@@ -858,7 +971,7 @@ const StatisticsView = () => {
                 {/* Prompts This Month */}
                 <div
                   style={{
-                    background: 'rgba(0, 255, 0, 0.1)',
+                    background: currentTheme.backgroundOverlay,
                     border: '1px solid rgba(0, 255, 0, 0.3)',
                     borderRadius: '12px',
                     padding: '20px',
@@ -868,17 +981,20 @@ const StatisticsView = () => {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <MessageSquare size={20} color="#00FF00" />
-                    <h3 style={{ fontSize: '0.9rem', color: '#aaaaaa', margin: 0 }}>Prompts This Month</h3>
+                    <MessageSquare size={20} color={currentTheme.accentSecondary} />
+                    <h3 style={{ fontSize: '0.9rem', color: currentTheme.textSecondary, margin: 0 }}>Prompts This Month</h3>
                   </div>
                   <p
+                    key={`prompts-this-month-${theme}`}
                     style={{
                       fontSize: '2rem',
                       fontWeight: 'bold',
-                      background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                      background: currentTheme.accentGradient,
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
+                      color: currentTheme.accent,
                       margin: 0,
+                      display: 'inline-block',
                     }}
                   >
                     {formatNumber(userStats.monthlyPrompts || 0)}
@@ -904,27 +1020,37 @@ const StatisticsView = () => {
               <div style={{ display: 'flex', gap: '20px', flexDirection: 'row', flexWrap: 'nowrap', marginBottom: '40px' }}>
                 {/* Favorite Provider - Separate container */}
                 <div style={{ 
-                  background: 'rgba(0, 255, 255, 0.1)', 
-                  border: '1px solid rgba(0, 255, 255, 0.3)',
+                  background: currentTheme.backgroundOverlay, 
+                  border: `1px solid ${currentTheme.borderLight}`,
                   padding: '28px', 
                   borderRadius: '16px',
                   flex: 1,
-                  minWidth: '400px'
+                  minWidth: '400px',
+                  color: currentTheme.text,
                 }}>
-                  <p style={{ color: '#aaaaaa', fontSize: '1rem', marginBottom: '16px' }}>Your Favorite Provider:</p>
+                  <p style={{ color: currentTheme.accent, fontSize: '1rem', marginBottom: '16px' }}>Your Favorite Provider:</p>
                   {ratingsStats.totalRatings > 0 && ratingsStats.favoriteProvider ? (
                     <>
-                      <p style={{ color: '#00FFFF', fontSize: '2rem', fontWeight: 'bold', margin: '0 0 12px 0' }}>
+                      <p style={{ 
+                        fontSize: '2rem', 
+                        fontWeight: 'bold', 
+                        margin: '0 0 12px 0',
+                        color: currentTheme.accent,
+                      }}>
                         {LLM_PROVIDERS[ratingsStats.favoriteProvider]?.name || ratingsStats.favoriteProvider}
                       </p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <p style={{ color: '#00FF00', fontSize: '1.1rem', margin: 0 }}>
+                        <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <p style={{ 
+                            fontSize: '1.1rem', 
+                            margin: 0,
+                            color: currentTheme.accentSecondary,
+                          }}>
                             {ratingsStats.favoriteProviderAvg.toFixed(2)}
                           </p>
                           <Star size={20} fill="#FFD700" color="#FFD700" />
-                          <p style={{ color: '#aaaaaa', fontSize: '1.1rem', margin: 0 }}>
+                          <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem', margin: 0 }}>
                             / 5
                           </p>
                         </div>
@@ -932,17 +1058,17 @@ const StatisticsView = () => {
                     </>
                   ) : (
                     <>
-                      <p style={{ color: '#888888', fontSize: '1.5rem', margin: '0 0 12px 0' }}>
+                      <p style={{ color: currentTheme.accent, fontSize: '1.5rem', margin: '0 0 12px 0' }}>
                         Rate models first
                       </p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
+                        <p style={{ color: currentTheme.accent, fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <p style={{ color: '#888888', fontSize: '1.1rem', margin: 0 }}>
+                          <p style={{ color: currentTheme.accent, fontSize: '1.1rem', margin: 0 }}>
                             —
                           </p>
                           <Star size={20} fill="#FFD700" color="#FFD700" />
-                          <p style={{ color: '#aaaaaa', fontSize: '1.1rem', margin: 0 }}>
+                          <p style={{ color: currentTheme.accent, fontSize: '1.1rem', margin: 0 }}>
                             / 5
                           </p>
                         </div>
@@ -953,17 +1079,23 @@ const StatisticsView = () => {
                 
                 {/* Favorite Model - Separate container */}
                 <div style={{ 
-                  background: 'rgba(0, 255, 0, 0.1)', 
-                  border: '1px solid rgba(0, 255, 0, 0.3)',
+                  background: currentTheme.backgroundOverlay, 
+                  border: `1px solid ${currentTheme.borderLight}`,
                   padding: '28px', 
                   borderRadius: '16px',
                   flex: 1,
-                  minWidth: '400px'
+                  minWidth: '400px',
+                  color: currentTheme.text,
                 }}>
-                  <p style={{ color: '#aaaaaa', fontSize: '1rem', marginBottom: '16px' }}>Your Favorite Model:</p>
+                  <p style={{ color: currentTheme.accent, fontSize: '1rem', marginBottom: '16px' }}>Your Favorite Model:</p>
                   {ratingsStats.totalRatings > 0 && ratingsStats.favoriteModel ? (
                     <>
-                      <p style={{ color: '#00FF00', fontSize: '2rem', fontWeight: 'bold', margin: '0 0 12px 0' }}>
+                      <p style={{ 
+                        fontSize: '2rem', 
+                        fontWeight: 'bold', 
+                        margin: '0 0 12px 0',
+                        color: currentTheme.accent,
+                      }}>
                         {(() => {
                           const parts = ratingsStats.favoriteModel.split('-')
                           if (parts.length >= 2) {
@@ -975,13 +1107,17 @@ const StatisticsView = () => {
                         })()}
                       </p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
+                        <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <p style={{ color: '#00FFFF', fontSize: '1.1rem', margin: 0 }}>
+                          <p style={{ 
+                            fontSize: '1.1rem', 
+                            margin: 0,
+                            color: currentTheme.accentSecondary,
+                          }}>
                             {ratingsStats.favoriteModelAvg.toFixed(2)}
                           </p>
                           <Star size={20} fill="#FFD700" color="#FFD700" />
-                          <p style={{ color: '#aaaaaa', fontSize: '1.1rem', margin: 0 }}>
+                          <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem', margin: 0 }}>
                             / 5
                           </p>
                         </div>
@@ -989,17 +1125,17 @@ const StatisticsView = () => {
                     </>
                   ) : (
                     <>
-                      <p style={{ color: '#888888', fontSize: '1.5rem', margin: '0 0 12px 0' }}>
+                      <p style={{ color: currentTheme.accent, fontSize: '1.5rem', margin: '0 0 12px 0' }}>
                         Rate models first
                       </p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
+                        <p style={{ color: currentTheme.accent, fontSize: '0.85rem', margin: 0 }}>Average Score:</p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <p style={{ color: '#888888', fontSize: '1.1rem', margin: 0 }}>
+                          <p style={{ color: currentTheme.accent, fontSize: '1.1rem', margin: 0 }}>
                             —
                           </p>
                           <Star size={20} fill="#FFD700" color="#FFD700" />
-                          <p style={{ color: '#aaaaaa', fontSize: '1.1rem', margin: 0 }}>
+                          <p style={{ color: currentTheme.accent, fontSize: '1.1rem', margin: 0 }}>
                             / 5
                           </p>
                         </div>
@@ -1013,17 +1149,17 @@ const StatisticsView = () => {
               {Object.keys(userStats.providers || {}).length > 0 && (
                 <div
                   style={{
-                    background: 'rgba(0, 255, 255, 0.1)',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    background: currentTheme.backgroundOverlay,
+                    border: `1px solid ${currentTheme.borderLight}`,
                     borderRadius: '16px',
                     padding: '30px',
                   }}
                 >
-                  <h2 style={{ color: '#00FFFF', fontSize: '1.5rem', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <h2 key={`model-usage-title-${theme}`} style={{ color: currentTheme.accent, fontSize: '1.5rem', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <Cpu size={24} />
                     Model Usage Statistics
                   </h2>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div key={`providers-list-${theme}`} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {Object.entries(userStats.providers)
                       .sort((a, b) => b[1].totalQueries - a[1].totalQueries)
                       .map(([provider, data]) => {
@@ -1034,16 +1170,17 @@ const StatisticsView = () => {
 
                         return (
                           <div
-                            key={provider}
+                            key={`${provider}-${theme}`}
                             style={{
-                              background: 'rgba(0, 255, 255, 0.05)',
-                              border: '1px solid rgba(0, 255, 255, 0.2)',
+                              background: currentTheme.backgroundSecondary,
+                              border: `1px solid ${currentTheme.borderLight}`,
                               borderRadius: '12px',
                               overflow: 'hidden',
                             }}
                           >
                             {/* Provider Header - Clickable */}
                             <div
+                              key={`provider-header-${provider}-${theme}`}
                               onClick={() => {
                                 setExpandedProviders((prev) => ({
                                   ...prev,
@@ -1059,35 +1196,35 @@ const StatisticsView = () => {
                                 transition: 'background 0.2s',
                               }}
                               onMouseEnter={(e) => {
-                                e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
+                                e.currentTarget.style.background = currentTheme.buttonBackgroundHover
                               }}
                               onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'rgba(0, 255, 255, 0.05)'
+                                e.currentTarget.style.background = currentTheme.backgroundSecondary
                               }}
                             >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                              <div key={`provider-info-${provider}-${theme}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
                                 {isProviderExpanded ? (
-                                  <ChevronDown size={20} color="#00FFFF" />
+                                  <ChevronDown size={20} color={currentTheme.accent} />
                                 ) : (
-                                  <ChevronRight size={20} color="#00FFFF" />
+                                  <ChevronRight size={20} color={currentTheme.accent} />
                                 )}
-                                <h3 style={{ fontSize: '1.1rem', color: '#00FFFF', margin: 0, textTransform: 'capitalize' }}>
+                                <h3 key={`provider-name-${provider}-${theme}`} style={{ fontSize: '1.1rem', color: currentTheme.accent, margin: 0, textTransform: 'capitalize' }}>
                                   {provider}
                                 </h3>
-                                <span style={{ color: '#888888', fontSize: '0.85rem', marginLeft: '8px' }}>
+                                <span key={`provider-models-count-${provider}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.85rem', marginLeft: '8px' }}>
                                   ({providerModels.length} {providerModels.length === 1 ? 'model' : 'models'})
                                 </span>
                               </div>
-                              <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+                              <div key={`provider-stats-${provider}-${theme}`} style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
                                 <div style={{ textAlign: 'right' }}>
-                                  <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: 0 }}>Prompts</p>
-                                  <p style={{ color: '#00FF00', fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
+                                  <p key={`provider-prompts-label-${provider}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: '0.75rem', margin: 0 }}>Prompts</p>
+                                  <p key={`provider-prompts-value-${provider}-${theme}`} style={{ color: currentTheme.accentSecondary, fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
                                     {formatNumber(data.totalPrompts || 0)}
                                   </p>
                                 </div>
                                 <div style={{ textAlign: 'right' }}>
-                                  <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: 0 }}>Tokens</p>
-                                  <p style={{ color: '#00FFFF', fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
+                                  <p key={`provider-tokens-label-${provider}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: '0.75rem', margin: 0 }}>Tokens</p>
+                                  <p key={`provider-tokens-value-${provider}-${theme}`} style={{ color: currentTheme.accent, fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
                                     {formatTokens((data.totalInputTokens || 0) + (data.totalOutputTokens || 0))}
                                   </p>
                                 </div>
@@ -1098,28 +1235,30 @@ const StatisticsView = () => {
                             <AnimatePresence>
                               {isProviderExpanded && providerModels.length > 0 && (
                                 <motion.div
+                                  key={`provider-models-expanded-${provider}-${theme}`}
                                   initial={{ height: 0, opacity: 0 }}
                                   animate={{ height: 'auto', opacity: 1 }}
                                   exit={{ height: 0, opacity: 0 }}
                                   transition={{ duration: 0.2 }}
                                   style={{ overflow: 'hidden' }}
                                 >
-                                  <div style={{ padding: '12px 20px 20px 20px', borderTop: '1px solid rgba(0, 255, 255, 0.2)' }}>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  <div key={`provider-models-content-${provider}-${theme}`} style={{ padding: '12px 20px 20px 20px', borderTop: `1px solid ${currentTheme.borderLight}` }}>
+                                    <div key={`provider-models-list-${provider}-${theme}`} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                       {providerModels.map(([modelKey, modelData]) => {
                                         const isModelExpanded = expandedModels[modelKey]
                                         return (
                                           <div
-                                            key={modelKey}
+                                            key={`${modelKey}-${theme}`}
                                             style={{
-                                              background: 'rgba(0, 255, 255, 0.03)',
-                                              border: '1px solid rgba(0, 255, 255, 0.15)',
+                                              background: currentTheme.buttonBackground,
+                                              border: `1px solid ${currentTheme.borderLight}`,
                                               borderRadius: '8px',
                                               overflow: 'hidden',
                                             }}
                                           >
                                             {/* Model Header - Clickable */}
                                             <div
+                                              key={`model-header-${modelKey}-${theme}`}
                                               onClick={(e) => {
                                                 e.stopPropagation()
                                                 setExpandedModels((prev) => ({
@@ -1136,19 +1275,19 @@ const StatisticsView = () => {
                                                 transition: 'background 0.2s',
                                               }}
                                               onMouseEnter={(e) => {
-                                                e.currentTarget.style.background = 'rgba(0, 255, 255, 0.08)'
+                                                e.currentTarget.style.background = currentTheme.buttonBackgroundHover
                                               }}
                                               onMouseLeave={(e) => {
-                                                e.currentTarget.style.background = 'rgba(0, 255, 255, 0.03)'
+                                                e.currentTarget.style.background = currentTheme.backgroundSecondary
                                               }}
                                             >
-                                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                                              <div key={`model-info-${modelKey}-${theme}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
                                                 {isModelExpanded ? (
-                                                  <ChevronDown size={16} color="#cccccc" />
+                                                  <ChevronDown size={16} color={currentTheme.textSecondary} />
                                                 ) : (
-                                                  <ChevronRight size={16} color="#cccccc" />
+                                                  <ChevronRight size={16} color={currentTheme.textSecondary} />
                                                 )}
-                                                <span style={{ color: '#cccccc', fontSize: '0.9rem', fontWeight: '500' }}>
+                                                <span key={`model-name-${modelKey}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: '0.9rem', fontWeight: '500' }}>
                                                   {modelData.model}
                                                 </span>
                                               </div>
@@ -1158,6 +1297,7 @@ const StatisticsView = () => {
                                             <AnimatePresence>
                                               {isModelExpanded && (
                                                 <motion.div
+                                                  key={`model-stats-expanded-${modelKey}-${theme}`}
                                                   initial={{ height: 0, opacity: 0 }}
                                                   animate={{ height: 'auto', opacity: 1 }}
                                                   exit={{ height: 0, opacity: 0 }}
@@ -1165,30 +1305,32 @@ const StatisticsView = () => {
                                                   style={{ overflow: 'hidden' }}
                                                 >
                                                   <div
+                                                    key={`model-stats-content-${modelKey}-${theme}`}
                                                     style={{
                                                       padding: '12px 16px 16px 40px',
-                                                      background: 'rgba(0, 0, 0, 0.2)',
-                                                      borderTop: '1px solid rgba(0, 255, 255, 0.1)',
+                                                      background: currentTheme.backgroundSecondary,
+                                                      borderTop: `1px solid ${currentTheme.borderLight}`,
                                                     }}
                                                   >
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ color: '#aaaaaa', fontSize: '0.85rem' }}>Total Prompts:</span>
-                                                        <span style={{ color: '#00FF00', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                                                    <div key={`model-stats-list-${modelKey}-${theme}`} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                      <div key={`model-prompts-row-${modelKey}-${theme}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span key={`model-prompts-label-${modelKey}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: '0.85rem' }}>Total Prompts:</span>
+                                                        <span key={`model-prompts-value-${modelKey}-${theme}`} style={{ color: currentTheme.accentSecondary, fontSize: '0.9rem', fontWeight: 'bold' }}>
                                                           {formatNumber(modelData.totalPrompts || 0)}
                                                         </span>
                                                       </div>
-                                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ color: '#aaaaaa', fontSize: '0.85rem' }}>Total Tokens:</span>
-                                                        <span style={{ color: '#00FFFF', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                                                      <div key={`model-tokens-row-${modelKey}-${theme}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span key={`model-tokens-label-${modelKey}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: '0.85rem' }}>Total Tokens:</span>
+                                                        <span key={`model-tokens-value-${modelKey}-${theme}`} style={{ color: currentTheme.accent, fontSize: '0.9rem', fontWeight: 'bold' }}>
                                                           {formatTokens((modelData.totalInputTokens || 0) + (modelData.totalOutputTokens || 0))}
                                                         </span>
                                                       </div>
-                                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ color: '#aaaaaa', fontSize: '0.85rem' }}>Pricing:</span>
+                                                      <div key={`model-pricing-row-${modelKey}-${theme}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span key={`model-pricing-label-${modelKey}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: '0.85rem' }}>Pricing:</span>
                                                         <span
+                                                          key={`model-pricing-value-${modelKey}-${theme}`}
                                                           style={{
-                                                            color: modelData.pricing ? '#FFD700' : '#888888',
+                                                            color: modelData.pricing ? '#FFD700' : currentTheme.textMuted,
                                                             fontSize: '0.9rem',
                                                             fontWeight: modelData.pricing ? 'bold' : 'normal',
                                                           }}
@@ -1221,15 +1363,15 @@ const StatisticsView = () => {
               {Object.keys(userStats.providers || {}).length === 0 && (
                 <div
                   style={{
-                    background: 'rgba(0, 255, 255, 0.1)',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    background: currentTheme.backgroundOverlay,
+                    border: `1px solid ${currentTheme.borderLight}`,
                     borderRadius: '16px',
                     padding: '40px',
                     textAlign: 'center',
                   }}
                 >
-                  <p style={{ color: '#aaaaaa', fontSize: '1.1rem' }}>
-                    No model statistics yet. Start using ArkTek to see your usage data!
+                  <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>
+                    No model statistics yet. Start using ArkiTek to see your usage data!
                   </p>
                 </div>
               )}
@@ -1246,8 +1388,8 @@ const StatisticsView = () => {
             >
           <div
             style={{
-              background: 'rgba(0, 255, 255, 0.1)',
-              border: '1px solid rgba(0, 255, 255, 0.3)',
+              background: currentTheme.backgroundOverlay,
+              border: `1px solid ${currentTheme.borderLight}`,
               borderRadius: '16px',
               padding: '30px',
             }}
@@ -1315,10 +1457,10 @@ const StatisticsView = () => {
 
                   return (
                     <div
-                          key={category}
+                          key={`${category}-${theme}`}
                       style={{
-                            background: count > 0 ? 'rgba(0, 255, 255, 0.05)' : 'rgba(0, 255, 255, 0.02)',
-                        border: '1px solid rgba(0, 255, 255, 0.2)',
+                            background: count > 0 ? currentTheme.backgroundSecondary : currentTheme.backgroundTertiary,
+                        border: `1px solid ${currentTheme.borderLight}`,
                         borderRadius: '12px',
                         overflow: 'hidden',
                             opacity: count > 0 ? 1 : 0.6,
@@ -1326,6 +1468,7 @@ const StatisticsView = () => {
                     >
                           {/* Category Header - Always clickable to show/hide prompts */}
                       <div
+                        key={`category-clickable-${category}-${theme}`}
                         onClick={() => {
                               setExpandedCategories((prev) => ({
                             ...prev,
@@ -1341,33 +1484,43 @@ const StatisticsView = () => {
                           transition: 'background 0.2s',
                         }}
                         onMouseEnter={(e) => {
-                              e.currentTarget.style.background = count > 0 ? 'rgba(0, 255, 255, 0.1)' : 'rgba(0, 255, 255, 0.05)'
+                              e.currentTarget.style.background = count > 0 ? currentTheme.buttonBackgroundHover : currentTheme.backgroundTertiary
                         }}
                         onMouseLeave={(e) => {
-                              e.currentTarget.style.background = count > 0 ? 'rgba(0, 255, 255, 0.05)' : 'rgba(0, 255, 255, 0.02)'
+                              e.currentTarget.style.background = count > 0 ? currentTheme.backgroundSecondary : currentTheme.backgroundTertiary
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                        <div key={`category-header-${category}-${theme}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
                               {isExpanded ? (
-                                <ChevronDown size={20} color={count > 0 ? "#00FFFF" : "#888888"} />
+                                <ChevronDown size={20} color={count > 0 ? currentTheme.accent : currentTheme.textMuted} />
                               ) : (
-                                <ChevronRight size={20} color={count > 0 ? "#00FFFF" : "#888888"} />
+                                <ChevronRight size={20} color={count > 0 ? currentTheme.accent : currentTheme.textMuted} />
                               )}
-                              <span style={{ color: count > 0 ? '#00FFFF' : '#888888', fontSize: '1.1rem', textTransform: 'capitalize', fontWeight: '500' }}>
+                              <span key={`category-title-${category}-${theme}`} style={{ color: count > 0 ? currentTheme.accent : currentTheme.textMuted, fontSize: '1.1rem', textTransform: 'capitalize', fontWeight: '500' }}>
                                 {category}
                               </span>
                               {hasPrompts && (
-                          <span style={{ color: '#888888', fontSize: '0.85rem', marginLeft: '8px' }}>
+                          <span key={`category-prompts-count-${category}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.85rem', marginLeft: '8px' }}>
                                   ({recentPrompts.length} {recentPrompts.length === 1 ? 'prompt' : 'prompts'})
                                 </span>
                               )}
                               {!hasPrompts && count === 0 && (
-                                <span style={{ color: '#666666', fontSize: '0.85rem', marginLeft: '8px', fontStyle: 'italic' }}>
+                                <span key={`category-no-prompts-${category}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.85rem', marginLeft: '8px', fontStyle: 'italic' }}>
                                   (no prompts yet)
                           </span>
                               )}
                         </div>
-                            <span style={{ color: count > 0 ? '#00FF00' : '#666666', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                            <span 
+                              key={`category-count-${category}-${theme}`}
+                              style={{ 
+                              fontSize: '1.2rem', 
+                              fontWeight: 'bold',
+                              background: count > 0 ? currentTheme.accentGradient : 'none',
+                              WebkitBackgroundClip: count > 0 ? 'text' : 'unset',
+                              WebkitTextFillColor: count > 0 ? 'transparent' : 'unset',
+                              color: count > 0 ? currentTheme.accent : currentTheme.textMuted,
+                              display: count > 0 ? 'inline-block' : 'inline',
+                            }}>
                               {formatNumber(count)}
                             </span>
                       </div>
@@ -1376,15 +1529,16 @@ const StatisticsView = () => {
                       <AnimatePresence>
                             {isExpanded && (
                           <motion.div
+                            key={`category-expanded-${category}-${theme}`}
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
                             transition={{ duration: 0.2 }}
                             style={{ overflow: 'hidden' }}
                           >
-                                <div style={{ padding: '12px 20px 20px 40px', borderTop: '1px solid rgba(0, 255, 255, 0.2)' }}>
+                                <div key={`category-content-${category}-${theme}`} style={{ padding: '12px 20px 20px 40px', borderTop: `1px solid ${currentTheme.borderLight}` }}>
                                   {hasPrompts ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <div key={`prompts-list-${category}-${theme}`} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                       {/* Clear button */}
                                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
                                         <button
@@ -1427,18 +1581,18 @@ const StatisticsView = () => {
                                         
                                         return (
                                           <div
-                                            key={index}
+                                            key={`${category}-prompt-${index}-${theme}`}
                                               style={{
-                                              background: 'rgba(0, 255, 255, 0.03)',
-                                              border: '1px solid rgba(0, 255, 255, 0.15)',
+                                              background: currentTheme.backgroundTertiary,
+                                              border: `1px solid ${currentTheme.borderLight}`,
                                               borderRadius: '8px',
                                               padding: '12px 16px',
                                             }}
                                           >
-                                            <p style={{ color: '#cccccc', fontSize: '0.9rem', margin: '0 0 6px 0', lineHeight: '1.4' }}>
+                                            <p key={`${category}-prompt-text-${index}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: '0.9rem', margin: '0 0 6px 0', lineHeight: '1.4' }}>
                                               {prompt.text}
                                             </p>
-                                            <p style={{ color: '#888888', fontSize: '0.75rem', margin: 0 }}>
+                                            <p key={`${category}-prompt-date-${index}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0 }}>
                                               {formattedDate}
                                             </p>
                                                 </div>
@@ -1446,7 +1600,7 @@ const StatisticsView = () => {
                                       })}
                                                 </div>
                                   ) : (
-                                    <p style={{ color: '#888888', fontSize: '0.9rem', textAlign: 'center', padding: '20px', fontStyle: 'italic' }}>
+                                    <p key={`${category}-no-prompts-msg-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.9rem', textAlign: 'center', padding: '20px', fontStyle: 'italic' }}>
                                       No prompts in this category yet.
                                     </p>
                                   )}
@@ -1473,15 +1627,15 @@ const StatisticsView = () => {
             >
               {loadingLeaderboardStats ? (
                 <div style={{ textAlign: 'center', padding: '40px' }}>
-                  <p style={{ color: '#aaaaaa', fontSize: '1.1rem' }}>Loading leaderboard stats...</p>
+                  <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>Loading leaderboard stats...</p>
                 </div>
               ) : currentUser ? (
                 <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
                   {/* Wins Card */}
                   <div
                     style={{
-                      background: 'rgba(255, 215, 0, 0.1)',
-                      border: '1px solid rgba(255, 215, 0, 0.3)',
+                      background: currentTheme.backgroundOverlay,
+                      border: `1px solid ${currentTheme.borderLight}`,
                       borderRadius: '16px',
                       padding: '24px',
                       flex: 1,
@@ -1489,25 +1643,36 @@ const StatisticsView = () => {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                      <Trophy size={24} color="#FFD700" />
-                      <h3 style={{ color: '#FFD700', fontSize: '1.2rem', margin: 0 }}>Your Wins</h3>
+                      <Trophy size={24} color={currentTheme.accent} />
+                      <h3 style={{ color: currentTheme.accent, fontSize: '1.2rem', margin: 0 }}>Your Wins</h3>
                     </div>
-                    <p style={{ color: '#ffffff', fontSize: '2rem', fontWeight: 'bold', margin: '0 0 8px 0' }}>
+                    <p 
+                      key={`your-wins-${theme}`}
+                      style={{ 
+                      fontSize: '2rem', 
+                      fontWeight: 'bold', 
+                      margin: '0 0 8px 0',
+                      background: currentTheme.accentGradient,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      color: currentTheme.accent,
+                      display: 'inline-block',
+                    }}>
                       {leaderboardStats?.winCount || 0}
                     </p>
                     {leaderboardStats?.wins && leaderboardStats.wins.length > 0 ? (
                       <div style={{ marginTop: '12px' }}>
-                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', marginBottom: '8px' }}>Recent Wins:</p>
+                        <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', marginBottom: '8px' }}>Recent Wins:</p>
                         {leaderboardStats.wins.slice(0, 3).map((win, index) => (
-                          <div key={index} style={{ marginBottom: '8px', padding: '8px', background: 'rgba(255, 215, 0, 0.05)', borderRadius: '6px' }}>
-                            <p style={{ color: '#cccccc', fontSize: '0.85rem', margin: '0 0 4px 0' }}>{win.promptText}</p>
-                            <p style={{ color: '#888888', fontSize: '0.75rem', margin: 0 }}>{formatDate(win.date)} • {win.likes} likes</p>
+                          <div key={index} style={{ marginBottom: '8px', padding: '8px', background: currentTheme.backgroundTertiary, borderRadius: '6px' }}>
+                            <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: '0 0 4px 0' }}>{win.promptText}</p>
+                            <p style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0 }}>{formatDate(win.date)} • {win.likes} likes</p>
                           </div>
                         ))}
                       </div>
                     ) : (
                       <div style={{ marginTop: '12px' }}>
-                        <p style={{ color: '#888888', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                        <p style={{ color: currentTheme.textMuted, fontSize: '0.9rem', fontStyle: 'italic' }}>
                           No wins yet. Submit prompts and get likes to win!
                         </p>
                       </div>
@@ -1517,8 +1682,8 @@ const StatisticsView = () => {
                   {/* Notifications Card */}
                   <div
                     style={{
-                      background: 'rgba(0, 255, 255, 0.1)',
-                      border: '1px solid rgba(0, 255, 255, 0.3)',
+                      background: currentTheme.backgroundOverlay,
+                      border: `1px solid ${currentTheme.borderLight}`,
                       borderRadius: '16px',
                       padding: '24px',
                       flex: 1,
@@ -1526,8 +1691,8 @@ const StatisticsView = () => {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                      <Bell size={24} color="#00FFFF" />
-                      <h3 style={{ color: '#00FFFF', fontSize: '1.2rem', margin: 0 }}>Recent Updates</h3>
+                      <Bell size={24} color={currentTheme.accent} />
+                      <h3 style={{ color: currentTheme.accent, fontSize: '1.2rem', margin: 0 }}>Recent Updates</h3>
                     </div>
                     {leaderboardStats?.notifications && leaderboardStats.notifications.length > 0 ? (
                       <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
@@ -1539,8 +1704,8 @@ const StatisticsView = () => {
                                 {notif.count} {notif.count === 1 ? 'person liked' : 'people liked'} your prompt
                               </p>
                             </div>
-                            <p style={{ color: '#cccccc', fontSize: '0.85rem', margin: '0 0 4px 0' }}>{notif.promptText}</p>
-                            <p style={{ color: '#888888', fontSize: '0.75rem', margin: 0 }}>{formatDate(notif.timestamp)}</p>
+                            <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: '0 0 4px 0' }}>{notif.promptText}</p>
+                            <p style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0 }}>{formatDate(notif.timestamp)}</p>
                           </div>
                         ))}
                       </div>
@@ -1554,7 +1719,7 @@ const StatisticsView = () => {
                   {/* Additional Stats Card */}
                   <div
                     style={{
-                      background: 'rgba(0, 255, 0, 0.1)',
+                      background: currentTheme.backgroundOverlay,
                       border: '1px solid rgba(0, 255, 0, 0.3)',
                       borderRadius: '16px',
                       padding: '24px',
@@ -1563,19 +1728,41 @@ const StatisticsView = () => {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                      <Trophy size={24} color="#00FF00" />
-                      <h3 style={{ color: '#00FF00', fontSize: '1.2rem', margin: 0 }}>Your Stats</h3>
+                      <Trophy size={24} color={currentTheme.accentSecondary} />
+                      <h3 style={{ color: currentTheme.accent, fontSize: '1.2rem', margin: 0 }}>Your Stats</h3>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       <div>
-                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: '0 0 4px 0' }}>Total Prompts Submitted</p>
-                        <p style={{ color: '#00FF00', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                        <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: '0 0 4px 0' }}>Total Prompts Submitted</p>
+                        <p 
+                          key={`total-prompts-submitted-${theme}`}
+                          style={{ 
+                          fontSize: '1.5rem', 
+                          fontWeight: 'bold', 
+                          margin: 0,
+                          background: currentTheme.accentGradient,
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent',
+                          color: currentTheme.accent,
+                          display: 'inline-block',
+                        }}>
                           {leaderboardStats?.totalPrompts || 0}
                         </p>
                       </div>
                       <div>
-                        <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: '0 0 4px 0' }}>Total Likes Received</p>
-                        <p style={{ color: '#00FF00', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                        <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: '0 0 4px 0' }}>Total Likes Received</p>
+                        <p 
+                          key={`total-likes-received-${theme}`}
+                          style={{ 
+                          fontSize: '1.5rem', 
+                          fontWeight: 'bold', 
+                          margin: 0,
+                          background: currentTheme.accentGradient,
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent',
+                          color: currentTheme.accent,
+                          display: 'inline-block',
+                        }}>
                           {leaderboardStats?.totalLikes || 0}
                         </p>
                       </div>
@@ -1585,8 +1772,8 @@ const StatisticsView = () => {
               ) : (
                 <div
                   style={{
-                    background: 'rgba(0, 255, 255, 0.1)',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    background: currentTheme.backgroundOverlay,
+                    border: `1px solid ${currentTheme.borderLight}`,
                     borderRadius: '16px',
                     padding: '40px',
                     textAlign: 'center',
@@ -1616,6 +1803,13 @@ const StatisticsView = () => {
           confirmText="Clear Prompts"
           cancelText="Cancel"
           confirmColor="#ff6b6b"
+        />
+        
+        {/* Buy Usage Modal */}
+        <BuyUsageModal
+          isOpen={showBuyUsageModal}
+          onClose={() => setShowBuyUsageModal(false)}
+          onSuccess={handleUsagePurchaseSuccess}
         />
       </div>
     </motion.div>

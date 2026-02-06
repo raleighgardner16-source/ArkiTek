@@ -1,9 +1,12 @@
 import React from 'react'
 import { useStore } from '../store/useStore'
+import { getTheme } from '../utils/theme'
 import SubscriptionManager from './SubscriptionManager'
 
 const SettingsView = () => {
   const currentUser = useStore((state) => state.currentUser)
+  const theme = useStore((state) => state.theme || 'dark')
+  const currentTheme = getTheme(theme)
 
   return (
     <div
@@ -37,38 +40,30 @@ const SettingsView = () => {
         {/* Header */}
         <div style={{ marginBottom: '40px', textAlign: 'center' }}>
           <h1
+            key={`title-${theme}`}
             style={{
-              fontSize: '3rem',
+              fontSize: '2.5rem',
               marginBottom: '12px',
-              background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+              background: currentTheme.accentGradient,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
+              color: currentTheme.accent,
               fontWeight: 'bold',
+              display: 'inline-block',
             }}
           >
-            ArkTek
+            ArkiTek Settings
           </h1>
-          <h2
-            style={{
-              fontSize: '2rem',
-              marginBottom: '12px',
-              background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
-            Settings
-          </h2>
-          <p style={{ color: '#aaaaaa', fontSize: '1.1rem' }}>
-            {currentUser ? `Signed in as ${currentUser.username}` : 'Manage your ArkTek account and settings'}
+          <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>
+            {currentUser ? `Signed in as ${currentUser.username}` : 'Manage your ArkiTek account and settings'}
           </p>
         </div>
 
         {/* Application Summary */}
         <div
           style={{
-            background: 'rgba(0, 255, 255, 0.1)',
-            border: '1px solid rgba(0, 255, 255, 0.3)',
+            background: currentTheme.backgroundOverlay,
+            border: `1px solid ${currentTheme.borderLight}`,
             borderRadius: '16px',
             padding: '30px',
             marginBottom: '40px',
@@ -80,17 +75,17 @@ const SettingsView = () => {
             style={{
               fontSize: '1.5rem',
               marginBottom: '16px',
-              color: '#00FFFF',
+              color: currentTheme.accent,
               textAlign: 'center',
             }}
           >
-            About ArkTek
+            About ArkiTek
           </h3>
-          <p style={{ color: '#cccccc', marginBottom: '12px', lineHeight: '1.6', textAlign: 'left' }}>
-            <strong style={{ color: '#00FF00' }}>Mission & Goal:</strong> ArkTek provides unified access to multiple AI providers through a single platform, simplifying AI development and research. We eliminate the complexity of working with multiple providers while delivering comprehensive analytics, usage tracking, and intelligent response aggregation to help you make better decisions with confidence.
+          <p style={{ color: currentTheme.textSecondary, marginBottom: '12px', lineHeight: '1.6', textAlign: 'left' }}>
+            <strong style={{ color: currentTheme.accentSecondary }}>Mission & Goal:</strong> ArkiTek provides unified access to multiple AI providers through a single platform, simplifying AI development and research. We eliminate the complexity of working with multiple providers while delivering comprehensive analytics, usage tracking, and intelligent response aggregation to help you make better decisions with confidence.
           </p>
-          <p style={{ color: '#cccccc', lineHeight: '1.6', textAlign: 'left' }}>
-            <strong style={{ color: '#00FF00' }}>What We Solve:</strong> No more managing multiple AIs, platforms, and subscriptions. Send your prompt to multiple AI models simultaneously, compare their responses side-by-side, and receive an intelligent summary that combines all responses into one comprehensive answer. This aggregation helps identify commonalities and reduces hallucinations, giving you greater confidence that the information you receive is accurate and reliable.
+          <p style={{ color: currentTheme.textSecondary, lineHeight: '1.6', textAlign: 'left' }}>
+            <strong style={{ color: currentTheme.accentSecondary }}>What We Solve:</strong> No more managing multiple AIs, platforms, and subscriptions. Send your prompt to multiple AI models simultaneously, compare their responses side-by-side, and receive an intelligent summary that combines all responses into one comprehensive answer. This aggregation helps identify commonalities and reduces hallucinations, giving you greater confidence that the information you receive is accurate and reliable.
           </p>
         </div>
 

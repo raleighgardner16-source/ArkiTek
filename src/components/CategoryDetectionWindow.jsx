@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Minimize2, Maximize2, Brain } from 'lucide-react'
 import { useStore } from '../store/useStore'
 
-const CategoryDetectionWindow = ({ isOpen, onClose, detectionData }) => {
+const CategoryDetectionWindow = ({ isOpen, onClose, detectionData, inline = false }) => {
   const [isMinimized, setIsMinimized] = useState(false)
   const activeTab = useStore((state) => state.activeTab)
 
@@ -17,6 +17,62 @@ const CategoryDetectionWindow = ({ isOpen, onClose, detectionData }) => {
   if (!isOpen || !detectionData) return null
 
   const { prompt, response, category, needsSearch, recommendedModelType } = detectionData
+
+  // If inline mode, render without modal overlay
+  if (inline) {
+    return (
+      <div style={{ padding: '16px' }}>
+        <h3 style={{ color: '#00aaff', fontSize: '1.2rem', margin: '0 0 16px 0', fontWeight: 'bold' }}>
+          Category Detection
+        </h3>
+        <div style={{ marginBottom: '12px' }}>
+          <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '8px' }}>
+            <strong style={{ color: '#00aaff' }}>Category:</strong> {category}
+          </div>
+          <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '8px' }}>
+            <strong style={{ color: '#00aaff' }}>Needs Search:</strong> {needsSearch ? 'Yes' : 'No'}
+          </div>
+          {recommendedModelType && (
+            <div style={{ color: '#888', fontSize: '0.9rem', marginBottom: '8px' }}>
+              <strong style={{ color: '#00aaff' }}>Recommended Model Type:</strong> {recommendedModelType}
+            </div>
+          )}
+        </div>
+        <div style={{ marginBottom: '12px' }}>
+          <div style={{ color: '#00aaff', fontSize: '0.9rem', marginBottom: '4px', fontWeight: 'bold' }}>Prompt Sent:</div>
+          <div style={{ 
+            padding: '8px', 
+            backgroundColor: '#0a0a0a', 
+            borderRadius: '6px', 
+            fontSize: '0.85rem', 
+            color: '#ccc',
+            maxHeight: '150px',
+            overflowY: 'auto',
+            fontFamily: 'monospace',
+            whiteSpace: 'pre-wrap'
+          }}>
+            {prompt}
+          </div>
+        </div>
+        <div>
+          <div style={{ color: '#00ff88', fontSize: '0.9rem', marginBottom: '4px', fontWeight: 'bold' }}>Response:</div>
+          <div style={{ 
+            padding: '8px', 
+            backgroundColor: '#0a0a0a', 
+            borderRadius: '6px', 
+            fontSize: '0.85rem', 
+            color: '#ccc',
+            maxHeight: '200px',
+            overflowY: 'auto',
+            fontFamily: 'monospace',
+            whiteSpace: 'pre-wrap'
+          }}>
+            {response}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // Show minimized state
   // Only show on home tab

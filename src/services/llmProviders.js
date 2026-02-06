@@ -3,7 +3,7 @@ import axios from 'axios'
 // LLM Provider configurations
 export const LLM_PROVIDERS = {
   openai: {
-    name: 'OpenAI',
+    name: 'Chatgpt',
     models: [
       { id: 'gpt-5.2', type: 'reasoning', label: 'Reasoning' },
       { id: 'gpt-4.1', type: 'versatile', label: 'Versatile' },
@@ -14,7 +14,7 @@ export const LLM_PROVIDERS = {
     apiKeyUrl: 'https://platform.openai.com/api-keys',
   },
   anthropic: {
-    name: 'Anthropic (Claude)',
+    name: 'Claude',
     models: [
       { id: 'claude-4.5-opus', type: 'reasoning', label: 'Reasoning' },
       { id: 'claude-4.5-sonnet', type: 'versatile', label: 'Versatile' },
@@ -25,7 +25,7 @@ export const LLM_PROVIDERS = {
     apiKeyUrl: 'https://console.anthropic.com/',
   },
   google: {
-    name: 'Google (Gemini)',
+    name: 'Gemini',
     models: [
       { id: 'gemini-3-pro', type: 'reasoning', label: 'Reasoning' },
       { id: 'gemini-3-flash', type: 'versatile', label: 'Versatile' },
@@ -71,7 +71,7 @@ export const LLM_PROVIDERS = {
     apiKeyUrl: 'https://console.mistral.ai/',
   },
   xai: {
-    name: 'xAI (Grok)',
+    name: 'Grok',
     models: [
       { id: 'grok-4-1-fast-reasoning', type: 'reasoning', label: 'Reasoning' },
       { id: 'grok-4-1-fast-non-reasoning', type: 'versatile', label: 'Versatile' },

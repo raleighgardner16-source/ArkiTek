@@ -4,7 +4,7 @@ import { X, Minimize2, Maximize2, DollarSign } from 'lucide-react'
 import axios from 'axios'
 import { useStore } from '../store/useStore'
 
-const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0 }) => {
+const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inline = false }) => {
   const [isMinimized, setIsMinimized] = useState(false)
   const [pricingData, setPricingData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -119,6 +119,54 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0 }) => 
     groupedByProvider[item.provider].totalTokens += item.totalTokens
     groupedByProvider[item.provider].totalCost += item.totalCost
   })
+
+  // If inline mode, render without modal overlay
+  if (inline) {
+    return (
+      <div style={{ padding: '16px' }}>
+        <h3 style={{ color: '#FFD700', fontSize: '1.2rem', margin: '0 0 16px 0', fontWeight: 'bold' }}>
+          Cost Breakdown
+        </h3>
+        {loading ? (
+          <div style={{ color: '#aaaaaa', textAlign: 'center', padding: '20px' }}>Loading pricing data...</div>
+        ) : (
+          <>
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
+                  <strong style={{ color: '#FFD700' }}>Total Cost:</strong> ${totalCost.toFixed(4)}
+                </div>
+                <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
+                  <strong style={{ color: '#00FFFF' }}>Model Cost:</strong> ${totalModelCost.toFixed(4)}
+                </div>
+                {queryCost > 0 && (
+                  <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
+                    <strong style={{ color: '#00FF00' }}>Search Queries ({queryCount}):</strong> ${queryCost.toFixed(4)}
+                  </div>
+                )}
+              </div>
+              {Object.entries(groupedByProvider).map(([provider, data]) => (
+                <div key={provider} style={{ marginBottom: '20px', padding: '12px', background: 'rgba(255, 215, 0, 0.05)', borderRadius: '8px', border: '1px solid rgba(255, 215, 0, 0.2)' }}>
+                  <h4 style={{ color: '#FFD700', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
+                    {provider === 'openai' ? 'Chatgpt' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
+                  </h4>
+                  <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', fontSize: '0.85rem', color: '#aaaaaa' }}>
+                    <div><strong style={{ color: '#FFD700' }}>Total Cost:</strong> ${data.totalCost.toFixed(4)}</div>
+                    <div><strong style={{ color: '#00FFFF' }}>Tokens:</strong> {data.totalTokens.toLocaleString()}</div>
+                  </div>
+                  {data.models.map((item, idx) => (
+                    <div key={idx} style={{ marginLeft: '12px', marginBottom: '8px', fontSize: '0.8rem', color: '#cccccc' }}>
+                      {item.modelName}: ${item.totalCost.toFixed(4)} ({item.totalTokens.toLocaleString()} tokens)
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
 
   // Show minimized state
   // Stacked above Token Usage window (60px offset for button height + gap)
@@ -314,7 +362,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0 }) => 
                         textTransform: 'capitalize',
                       }}
                     >
-                      {provider === 'openai' ? 'ChatGPT' : provider === 'anthropic' ? 'Anthropic (Claude)' : provider === 'google' ? 'Google (Gemini)' : provider === 'xai' ? 'xAI (Grok)' : provider}
+                      {provider === 'openai' ? 'Chatgpt' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
                     </h3>
                     
                     {/* Provider Total */}

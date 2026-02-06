@@ -1,5 +1,5 @@
 """
-Multi-Stage RAG Pipeline for ArkTek
+Multi-Stage RAG Pipeline for ArkiTek
 Reduces costs and increases accuracy through staged processing
 """
 

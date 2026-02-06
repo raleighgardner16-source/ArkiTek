@@ -4,8 +4,8 @@ import { AlertTriangle } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import axios from 'axios'
 
-// Custom ArkTek "A" Icon Component
-const ArkTekAIcon = ({ size = 32, color = '#ffffff', fillColor = null }) => {
+// Custom ArkiTek "A" Icon Component
+const ArkiTekAIcon = ({ size = 32, color = '#ffffff', fillColor = null }) => {
   const iconSize = size
   const fill = fillColor || color
   
@@ -199,7 +199,7 @@ const UsageIndicator = () => {
             {isCritical ? (
               <AlertTriangle size={32} color="rgba(255, 255, 255, 0.3)" style={{ filter: 'drop-shadow(0 0 4px currentColor)' }} />
             ) : (
-              <ArkTekAIcon size={32} color="rgba(255, 255, 255, 0.3)" />
+              <ArkiTekAIcon size={32} color="rgba(255, 255, 255, 0.3)" />
             )}
           </div>
 
@@ -218,7 +218,7 @@ const UsageIndicator = () => {
             {isCritical ? (
               <AlertTriangle size={32} color={fillColor} style={{ filter: `drop-shadow(0 0 8px ${fillColor})` }} />
             ) : (
-              <ArkTekAIcon size={32} color={fillColor} fillColor={fillColor} />
+              <ArkiTekAIcon size={32} color={fillColor} fillColor={fillColor} />
             )}
           </div>
 

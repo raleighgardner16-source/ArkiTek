@@ -11,10 +11,10 @@
     "stripeSubscriptionId": "sub_1Svu175Hkcv0ARFvJnhQuKeb",
     "subscriptionStatus": "active",
     "subscriptionEndDate": "2026-03-01T06:20:17.000Z",
-    "lastActiveDate": "2026-02-03T04:31:23.721Z",
+    "lastActiveDate": "2026-02-05T05:15:53.527Z",
     "status": "active",
     "monthlyUsageCost": {
-      "2026-02": 0.0859299
+      "2026-02": 0.37867145
     },
     "monthlyOverageBilled": {}
   }

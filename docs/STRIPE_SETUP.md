@@ -18,8 +18,8 @@ This guide will help you set up Stripe to accept $25/month subscription payments
 
 1. In Stripe Dashboard, go to **Products** → **Add product**
 2. Fill in the product details:
-   - **Name**: ArkTek Monthly Subscription
-   - **Description**: Monthly subscription to ArkTek AI platform
+   - **Name**: ArkiTek Monthly Subscription
+   - **Description**: Monthly subscription to ArkiTek AI platform
    - **Pricing model**: Standard pricing
    - **Price**: $25.00 USD
    - **Billing period**: Monthly

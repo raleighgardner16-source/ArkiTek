@@ -1,11 +1,14 @@
 import React, { useRef, useEffect } from 'react'
 import { useStore } from '../store/useStore'
+import { getTheme } from '../utils/theme'
 
 const BackgroundScene = () => {
   const canvasRef = useRef(null)
   const vrMode = useStore((state) => state.vrMode)
   const setCameraPosition = useStore((state) => state.setCameraPosition)
   const cameraPosition = useStore((state) => state.cameraPosition)
+  const theme = useStore((state) => state.theme || 'dark')
+  const currentTheme = getTheme(theme)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -19,6 +22,7 @@ const BackgroundScene = () => {
     const particles = []
     const particleCount = 50
 
+    const particleColor = theme === 'dark' ? '#FFFFFF' : '#000000'
     for (let i = 0; i < particleCount; i++) {
       particles.push({
         x: Math.random() * canvas.width,
@@ -26,7 +30,7 @@ const BackgroundScene = () => {
         radius: Math.random() * 2 + 1,
         speedX: (Math.random() - 0.5) * 0.5,
         speedY: (Math.random() - 0.5) * 0.5,
-        color: '#FFFFFF',
+        color: particleColor,
         opacity: Math.random() * 0.5 + 0.3,
       })
     }
@@ -34,7 +38,7 @@ const BackgroundScene = () => {
     let animationFrameId
 
     const animate = () => {
-      ctx.fillStyle = '#000000'
+      ctx.fillStyle = currentTheme.background
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
       // Update and draw particles
@@ -109,7 +113,7 @@ const BackgroundScene = () => {
       canvas.removeEventListener('mouseup', handleMouseUp)
       window.removeEventListener('resize', handleResize)
     }
-  }, [vrMode, cameraPosition, setCameraPosition])
+  }, [vrMode, cameraPosition, setCameraPosition, theme, currentTheme])
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}>

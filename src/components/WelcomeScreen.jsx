@@ -99,7 +99,7 @@ const WelcomeScreen = () => {
       {/* Logo */}
       <motion.img
         src={logoImage}
-        alt="ArkTek Logo"
+        alt="ArkiTek Logo"
         style={{
           width: '300px',
           height: 'auto',
@@ -153,7 +153,7 @@ const WelcomeScreen = () => {
             marginBottom: '20px',
           }}
         >
-          ArkTek is the ultimate multi-LLM comparison platform. Experience
+          ArkiTek is the ultimate multi-LLM comparison platform. Experience
           responses from the world's leading AI models side-by-side, rate their
           performance, and discover which model excels at different tasks.
         </p>

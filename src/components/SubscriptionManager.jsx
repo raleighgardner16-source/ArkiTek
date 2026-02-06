@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import axios from 'axios'
 import { useStore } from '../store/useStore'
+import { getTheme } from '../utils/theme'
 import { CreditCard, CheckCircle, XCircle, AlertCircle, Loader, Pause, Trash2, X } from 'lucide-react'
 
 const SubscriptionManager = () => {
   const currentUser = useStore((state) => state.currentUser)
+  const theme = useStore((state) => state.theme || 'dark')
+  const currentTheme = getTheme(theme)
   const [subscriptionStatus, setSubscriptionStatus] = useState(null)
   const [subscriptionEndDate, setSubscriptionEndDate] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -287,7 +290,7 @@ const SubscriptionManager = () => {
   const getStatusIcon = () => {
     switch (subscriptionStatus) {
       case 'active':
-        return <CheckCircle size={24} color="#00FF00" />
+        return <CheckCircle size={24} color={theme === 'dark' ? '#00cc88' : '#008855'} />
       case 'canceled':
       case 'inactive':
         return <XCircle size={24} color="#ff6b6b" />
@@ -320,7 +323,7 @@ const SubscriptionManager = () => {
   const getStatusColor = () => {
     switch (subscriptionStatus) {
       case 'active':
-        return '#00FF00'
+        return theme === 'dark' ? '#00cc88' : '#008855'
       case 'canceled':
       case 'inactive':
         return '#ff6b6b'
@@ -349,8 +352,8 @@ const SubscriptionManager = () => {
     return (
       <div
         style={{
-          background: 'rgba(0, 255, 255, 0.1)',
-          border: '1px solid rgba(0, 255, 255, 0.3)',
+          background: currentTheme.backgroundOverlay,
+          border: `1px solid ${currentTheme.borderLight}`,
           borderRadius: '16px',
           padding: '30px',
           marginBottom: '40px',
@@ -362,8 +365,8 @@ const SubscriptionManager = () => {
           gap: '12px',
         }}
       >
-        <Loader size={24} className="spin" />
-        <span style={{ color: '#cccccc' }}>Loading subscription status...</span>
+        <Loader size={24} className="spin" color={currentTheme.accent} />
+        <span style={{ color: currentTheme.textSecondary }}>Loading subscription status...</span>
       </div>
     )
   }
@@ -371,8 +374,8 @@ const SubscriptionManager = () => {
   return (
     <div
       style={{
-        background: 'rgba(0, 255, 255, 0.1)',
-        border: '1px solid rgba(0, 255, 255, 0.3)',
+        background: currentTheme.backgroundOverlay,
+        border: `1px solid ${currentTheme.borderLight}`,
         borderRadius: '16px',
         padding: '30px',
         marginBottom: '40px',
@@ -384,7 +387,7 @@ const SubscriptionManager = () => {
         style={{
           fontSize: '1.5rem',
           marginBottom: '20px',
-          color: '#00FFFF',
+          color: currentTheme.accent,
           textAlign: 'center',
           display: 'flex',
           alignItems: 'center',
@@ -420,7 +423,7 @@ const SubscriptionManager = () => {
             border: '1px solid rgba(0, 255, 0, 0.5)',
             borderRadius: '8px',
             marginBottom: '16px',
-            color: '#00FF00',
+            color: theme === 'dark' ? '#00cc88' : '#008855',
             textAlign: 'center',
           }}
         >
@@ -431,8 +434,8 @@ const SubscriptionManager = () => {
       {/* Subscription Status */}
       <div
         style={{
-          background: 'rgba(0, 0, 0, 0.3)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
+          background: currentTheme.backgroundSecondary,
+          border: `1px solid ${currentTheme.borderLight}`,
           borderRadius: '12px',
           padding: '20px',
           marginBottom: '20px',
@@ -448,16 +451,16 @@ const SubscriptionManager = () => {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {getStatusIcon()}
-            <span style={{ color: '#ffffff', fontSize: '1.1rem', fontWeight: 'bold' }}>
+            <span style={{ color: currentTheme.text, fontSize: '1.1rem', fontWeight: 'bold' }}>
               Status: <span style={{ color: getStatusColor() }}>{getStatusText()}</span>
             </span>
           </div>
         </div>
 
         {subscriptionEndDate && (
-          <div style={{ color: '#cccccc', fontSize: '0.9rem', marginTop: '8px' }}>
+          <div style={{ color: currentTheme.textSecondary, fontSize: '0.9rem', marginTop: '8px' }}>
             {subscriptionStatus === 'active' ? 'Renews on' : 'Expires on'}:{' '}
-            <span style={{ color: '#00FFFF' }}>{formatDate(subscriptionEndDate)}</span>
+            <span style={{ color: currentTheme.accent }}>{formatDate(subscriptionEndDate)}</span>
           </div>
         )}
 
@@ -465,15 +468,16 @@ const SubscriptionManager = () => {
           style={{
             marginTop: '16px',
             padding: '12px',
-            background: 'rgba(0, 255, 255, 0.1)',
+            background: currentTheme.backgroundTertiary,
+            border: `1px solid ${currentTheme.borderLight}`,
             borderRadius: '8px',
             textAlign: 'center',
           }}
         >
-          <div style={{ color: '#00FFFF', fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '4px' }}>
+          <div style={{ color: currentTheme.accent, fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '4px' }}>
             $25/month
           </div>
-          <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>Full access to all features</div>
+          <div style={{ color: currentTheme.textSecondary, fontSize: '0.9rem' }}>Full access to all features</div>
         </div>
       </div>
 
@@ -488,11 +492,11 @@ const SubscriptionManager = () => {
               style={{
                 padding: '14px 24px',
                 background: processing
-                  ? 'rgba(128, 128, 128, 0.3)'
-                  : 'rgba(255, 170, 0, 0.2)',
-                border: '1px solid rgba(255, 170, 0, 0.5)',
+                  ? currentTheme.buttonBackground
+                  : currentTheme.buttonBackgroundHover,
+                border: `1px solid ${currentTheme.borderActive}`,
                 borderRadius: '8px',
-                color: processing ? '#666666' : '#ffaa00',
+                color: processing ? currentTheme.textMuted : currentTheme.accent,
                 fontSize: '1rem',
                 fontWeight: 'bold',
                 cursor: processing ? 'not-allowed' : 'pointer',
@@ -523,11 +527,11 @@ const SubscriptionManager = () => {
               style={{
                 padding: '14px 24px',
                 background: processing
-                  ? 'rgba(128, 128, 128, 0.3)'
-                  : 'rgba(255, 107, 107, 0.2)',
-                border: '1px solid rgba(255, 107, 107, 0.5)',
+                  ? currentTheme.buttonBackground
+                  : 'rgba(255, 107, 107, 0.2)', // Keep red for danger action
+                border: '1px solid rgba(255, 107, 107, 0.5)', // Keep red for danger action
                 borderRadius: '8px',
-                color: processing ? '#666666' : '#ff6b6b',
+                color: processing ? currentTheme.textMuted : '#ff6b6b', // Keep red for danger action
                 fontSize: '1rem',
                 fontWeight: 'bold',
                 cursor: processing ? 'not-allowed' : 'pointer',
@@ -581,11 +585,11 @@ const SubscriptionManager = () => {
               style={{
                 padding: '14px 24px',
                 background: processing
-                  ? 'rgba(128, 128, 128, 0.3)'
-                  : 'linear-gradient(135deg, #00FFFF, #00FF00)',
+                  ? currentTheme.buttonBackground
+                  : currentTheme.accentGradient,
                 border: 'none',
                 borderRadius: '8px',
-                color: processing ? '#666666' : '#000000',
+                color: processing ? currentTheme.textMuted : (theme === 'dark' ? '#000000' : '#ffffff'),
                 fontSize: '1rem',
                 fontWeight: 'bold',
                 cursor: processing ? 'not-allowed' : 'pointer',
@@ -613,17 +617,17 @@ const SubscriptionManager = () => {
         
         {/* Sync Status Button - Show when status is inactive but user might have subscribed */}
         {subscriptionStatus === 'inactive' && (
-          <button
+            <button
             onClick={() => fetchSubscriptionStatus(true)}
             disabled={loading || processing}
             style={{
               padding: '10px 20px',
               background: loading || processing
-                ? 'rgba(128, 128, 128, 0.3)'
-                : 'rgba(0, 255, 255, 0.2)',
-              border: '1px solid rgba(0, 255, 255, 0.5)',
+                ? currentTheme.buttonBackground
+                : currentTheme.buttonBackgroundActive,
+              border: `1px solid ${currentTheme.borderActive}`,
               borderRadius: '8px',
-              color: loading || processing ? '#666666' : '#00FFFF',
+              color: loading || processing ? currentTheme.textMuted : currentTheme.accent,
               fontSize: '0.9rem',
               fontWeight: 'normal',
               cursor: loading || processing ? 'not-allowed' : 'pointer',
@@ -658,7 +662,7 @@ const SubscriptionManager = () => {
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'rgba(0, 0, 0, 0.8)',
+            background: currentTheme.backgroundOverlayLight,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -668,14 +672,14 @@ const SubscriptionManager = () => {
         >
           <div
             style={{
-              background: 'rgba(0, 0, 0, 0.95)',
-              border: '2px solid rgba(255, 170, 0, 0.5)',
+              background: currentTheme.backgroundOverlay,
+              border: `2px solid ${currentTheme.borderActive}`,
               borderRadius: '16px',
               padding: '30px',
               maxWidth: '500px',
               width: '90%',
               position: 'relative',
-              boxShadow: '0 0 30px rgba(255, 170, 0, 0.3)',
+              boxShadow: `0 0 30px ${currentTheme.shadow}`,
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -687,7 +691,7 @@ const SubscriptionManager = () => {
                 right: '15px',
                 background: 'transparent',
                 border: 'none',
-                color: '#ffffff',
+                color: currentTheme.text,
                 cursor: 'pointer',
                 padding: '5px',
                 display: 'flex',
@@ -699,14 +703,14 @@ const SubscriptionManager = () => {
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', justifyContent: 'center' }}>
               <Pause size={24} color="#ffaa00" />
-              <h4 style={{ color: '#ffffff', margin: 0, fontSize: '1.3rem' }}>
+              <h4 style={{ color: currentTheme.text, margin: 0, fontSize: '1.3rem' }}>
                 Pause Subscription
               </h4>
             </div>
-            <p style={{ color: '#cccccc', marginBottom: '12px', lineHeight: '1.6', textAlign: 'center' }}>
+            <p style={{ color: currentTheme.textSecondary, marginBottom: '12px', lineHeight: '1.6', textAlign: 'center' }}>
               Pausing your subscription will stop all recurring payments and prevent you from using the app.
             </p>
-            <p style={{ color: '#cccccc', marginBottom: '12px', lineHeight: '1.6', textAlign: 'center' }}>
+            <p style={{ color: currentTheme.textSecondary, marginBottom: '12px', lineHeight: '1.6', textAlign: 'center' }}>
               Your account will be kept in our database. If you decide to come back, you can reactivate your subscription from the signup page without creating a new account.
             </p>
             <p style={{ color: '#ffaa00', marginBottom: '20px', lineHeight: '1.6', textAlign: 'center', fontWeight: 'bold' }}>
@@ -720,7 +724,7 @@ const SubscriptionManager = () => {
                   background: 'rgba(128, 128, 128, 0.3)',
                   border: '1px solid rgba(128, 128, 128, 0.5)',
                   borderRadius: '8px',
-                  color: '#ffffff',
+                  color: currentTheme.text,
                   cursor: 'pointer',
                   fontSize: '0.9rem',
                 }}
@@ -757,7 +761,7 @@ const SubscriptionManager = () => {
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'rgba(0, 0, 0, 0.8)',
+            background: currentTheme.backgroundOverlayLight,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -767,14 +771,14 @@ const SubscriptionManager = () => {
         >
           <div
             style={{
-              background: 'rgba(0, 0, 0, 0.95)',
-              border: '2px solid rgba(255, 107, 107, 0.5)',
+              background: currentTheme.backgroundOverlay,
+              border: `2px solid ${currentTheme.borderActive}`,
               borderRadius: '16px',
               padding: '30px',
               maxWidth: '500px',
               width: '90%',
               position: 'relative',
-              boxShadow: '0 0 30px rgba(255, 107, 107, 0.3)',
+              boxShadow: `0 0 30px ${currentTheme.shadow}`,
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -786,7 +790,7 @@ const SubscriptionManager = () => {
                 right: '15px',
                 background: 'transparent',
                 border: 'none',
-                color: '#ffffff',
+                color: currentTheme.text,
                 cursor: 'pointer',
                 padding: '5px',
                 display: 'flex',
@@ -798,14 +802,14 @@ const SubscriptionManager = () => {
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', justifyContent: 'center' }}>
               <Trash2 size={24} color="#ff6b6b" />
-              <h4 style={{ color: '#ffffff', margin: 0, fontSize: '1.3rem' }}>
+              <h4 style={{ color: currentTheme.text, margin: 0, fontSize: '1.3rem' }}>
                 Cancel Subscription / Delete Account
               </h4>
             </div>
-            <p style={{ color: '#cccccc', marginBottom: '12px', lineHeight: '1.6', textAlign: 'center' }}>
+            <p style={{ color: currentTheme.textSecondary, marginBottom: '12px', lineHeight: '1.6', textAlign: 'center' }}>
               This action will permanently delete your account and cancel your subscription. All your data will be removed from our database.
             </p>
-            <p style={{ color: '#cccccc', marginBottom: '12px', lineHeight: '1.6', textAlign: 'center' }}>
+            <p style={{ color: currentTheme.textSecondary, marginBottom: '12px', lineHeight: '1.6', textAlign: 'center' }}>
               If you want to use the app again in the future, you will need to sign up as a new user.
             </p>
             <p style={{ color: '#ff6b6b', marginBottom: '20px', lineHeight: '1.6', textAlign: 'center', fontWeight: 'bold' }}>
@@ -819,7 +823,7 @@ const SubscriptionManager = () => {
                   background: 'rgba(128, 128, 128, 0.3)',
                   border: '1px solid rgba(128, 128, 128, 0.5)',
                   borderRadius: '8px',
-                  color: '#ffffff',
+                  color: currentTheme.text,
                   cursor: 'pointer',
                   fontSize: '0.9rem',
                 }}

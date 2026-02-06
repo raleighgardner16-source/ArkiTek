@@ -1,4 +1,4 @@
-# ArkTek - Multi-LLM Comparison Platform
+# ArkiTek - Multi-LLM Comparison Platform
 
 A professional, immersive platform for comparing responses from multiple Large Language Models (LLMs) side-by-side. Experience VR-like navigation, customizable backgrounds, and intelligent UI adaptation based on your queries.
 
@@ -15,7 +15,7 @@ A professional, immersive platform for comparing responses from multiple Large L
 - **VR-like Navigation**: Press 'V' to enter VR mode and navigate with mouse drag
 - **Customizable Backgrounds**: Choose from pre-built themes (galaxy, jungle, etc.) or let the AI generate one
 - **Auto-Adaptive UI**: Background changes based on prompt category (e.g., philosophical questions trigger philosophical themes)
-- **Professional Design**: Modern UI with cyan-blue to lime-green gradient matching the ArkTek logo
+- **Professional Design**: Modern UI with cyan-blue to lime-green gradient matching the ArkiTek logo
 
 ### 🔧 Technical Features
 - **API Key Management**: Store your own API keys per provider to avoid additional charges
@@ -64,13 +64,13 @@ npm run dev
 ## Pricing
 
 - **Base Subscription**: $20/month
-- **Token Usage**: Additional charges apply based on token usage when using ArkTek's API keys
+- **Token Usage**: Additional charges apply based on token usage when using ArkiTek's API keys
 - **Own API Keys**: Use your own API keys to avoid additional charges beyond the base subscription
 
 ## Project Structure
 
 ```
-ArkTek/
+ArkiTek/
 ├── src/
 │   ├── components/
 │   │   ├── WelcomeScreen.jsx      # Opening screen with description

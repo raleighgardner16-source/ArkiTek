@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import { getTheme } from '../utils/theme'
 import axios from 'axios'
 
 const ResponseComparison = () => {
@@ -12,7 +13,10 @@ const ResponseComparison = () => {
   const clearResponses = useStore((state) => state.clearResponses)
   const setShowFactsWindow = useStore((state) => state.setShowFactsWindow)
   const setSummaryMinimized = useStore((state) => state.setSummaryMinimized)
+  const setSummary = useStore((state) => state.setSummary)
   const currentUser = useStore((state) => state.currentUser)
+  const theme = useStore((state) => state.theme || 'dark')
+  const currentTheme = getTheme(theme)
   const [expandedCards, setExpandedCards] = useState({})
   const [maximizedCard, setMaximizedCard] = useState(null)
   const [isMinimized, setIsMinimized] = useState(true) // Start minimized by default
@@ -22,6 +26,11 @@ const ResponseComparison = () => {
   const [borderHovered, setBorderHovered] = useState(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 }) // Store mouse offset from card origin
   const hasAutoMinimized = React.useRef(false) // Track if we've already auto-minimized
+  const [singleResponseMinimized, setSingleResponseMinimized] = useState(false) // Track if single response popup is minimized
+  const [singleResponseMaximized, setSingleResponseMaximized] = useState(true) // Start maximized by default
+  const [singleResponsePosition, setSingleResponsePosition] = useState({ x: 0, y: 0 })
+  const [isDraggingSingleResponse, setIsDraggingSingleResponse] = useState(false)
+  const [singleResponseDragOffset, setSingleResponseDragOffset] = useState({ x: 0, y: 0 })
 
   // Calculate width based on available space (15px padding from nav bar and prompt window)
   // Nav bar is 60px, prompt window starts at 260px (paddingLeft: '260px')
@@ -149,7 +158,7 @@ const ResponseComparison = () => {
     }
   }
 
-  // Format model name for display (e.g., "openai-gpt-5.2" -> "OpenAI ChatGPT 5.2")
+  // Format model name for display (e.g., "openai-gpt-5.2" -> "Chatgpt 5.2")
   const formatModelName = (modelName) => {
     if (!modelName) return modelName
     
@@ -164,7 +173,7 @@ const ResponseComparison = () => {
     let formattedProvider = ''
     switch (provider) {
       case 'openai':
-        formattedProvider = 'OpenAI ChatGPT'
+        formattedProvider = 'Chatgpt'
         // Skip "gpt" and show version (e.g., "5.2")
         const versionParts = modelParts.slice(1) // Skip "gpt"
         return `${formattedProvider} ${versionParts.join(' ')}`.trim()
@@ -229,13 +238,23 @@ const ResponseComparison = () => {
     }
   }, [responses.length])
 
-  // Auto-minimize all individual cards when they first appear
+  // Auto-minimize individual cards when they first appear (except when there's only one response)
   useEffect(() => {
     if (responses.length > 0) {
       const newMinimizedCards = {}
+      const isSingleResponse = responses.length === 1
+      
+      // Reset single response state when new responses come in
+      if (isSingleResponse) {
+        setSingleResponseMinimized(false) // Show popup by default for single response
+        setSingleResponseMaximized(true) // Start in maximized view by default
+      }
+      
       responses.forEach(response => {
         if (minimizedCards[response.id] === undefined) {
-          newMinimizedCards[response.id] = true // Start minimized
+          // If only one response, we'll show it as a popup, so mark it minimized in the cards list
+          // If multiple responses, start minimized
+          newMinimizedCards[response.id] = true
         } else {
           newMinimizedCards[response.id] = minimizedCards[response.id]
         }
@@ -246,9 +265,485 @@ const ResponseComparison = () => {
     }
   }, [responses.length, minimizedCards])
 
+  // Initialize single response popup position
+  useEffect(() => {
+    if (responses.length === 1 && !singleResponseMinimized) {
+      // Center the popup on screen
+      const windowWidth = window.innerWidth
+      const windowHeight = window.innerHeight
+      const popupWidth = 500
+      const popupHeight = 400
+      setSingleResponsePosition({
+        x: Math.max(280, (windowWidth - popupWidth) / 2),
+        y: Math.max(100, (windowHeight - popupHeight) / 3)
+      })
+    }
+  }, [responses.length, singleResponseMinimized])
+
+  // Handle dragging for single response popup
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (isDraggingSingleResponse) {
+        setSingleResponsePosition({
+          x: e.clientX - singleResponseDragOffset.x,
+          y: e.clientY - singleResponseDragOffset.y
+        })
+      }
+    }
+
+    const handleMouseUp = () => {
+      setIsDraggingSingleResponse(false)
+    }
+
+    if (isDraggingSingleResponse) {
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDraggingSingleResponse, singleResponseDragOffset])
+
+
   // Early return check - must be after all hooks
   if (responses.length === 0) {
     return null
+  }
+
+  // Handle single response as a popup (like Summary window)
+  if (responses.length === 1) {
+    const response = responses[0]
+    let responseText = ''
+    if (typeof response.text === 'string') {
+      responseText = response.text
+    } else if (Array.isArray(response.text)) {
+      responseText = response.text.map(item => {
+        if (typeof item === 'string') return item
+        if (item && typeof item === 'object' && item.text) return item.text
+        return JSON.stringify(item)
+      }).join(' ')
+    } else if (response.text && typeof response.text === 'object') {
+      responseText = response.text.text || response.text.content || response.text.message || JSON.stringify(response.text)
+    } else {
+      responseText = String(response.text || '')
+    }
+
+    const handleSingleResponseDragStart = (e) => {
+      const rect = e.currentTarget.getBoundingClientRect()
+      setSingleResponseDragOffset({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      })
+      setIsDraggingSingleResponse(true)
+    }
+
+    // Show minimized card if minimized
+    if (singleResponseMinimized) {
+      return (
+        <div
+          style={{
+            position: 'fixed',
+            top: 'calc(50% - 44px)', // Position after Summary spot
+            left: '75px',
+            zIndex: 200,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '15px',
+            pointerEvents: 'none',
+          }}
+        >
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            style={{
+              width: cardWidth,
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+            }}
+            onClick={() => {
+              setSingleResponseMinimized(false)
+              setSingleResponseMaximized(true) // Re-open in maximized view
+            }}
+          >
+            <div
+              style={{
+                background: currentTheme.backgroundOverlayLight,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '12px',
+                boxShadow: `0 4px 12px ${currentTheme.shadowLight}`,
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <h3
+                key={`single-response-title-${theme}`}
+                style={{
+                  fontSize: '0.9rem',
+                  background: currentTheme.accentGradient,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  color: currentTheme.accent,
+                  margin: 0,
+                  fontWeight: '500',
+                }}
+              >
+                {formatModelName(response.modelName)}
+              </h3>
+              <ChevronRight size={16} color={currentTheme.accent} style={{ marginRight: '20px' }} />
+            </div>
+          </motion.div>
+
+          {/* Clear All Button for single response */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{
+              width: cardWidth,
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+            }}
+            onClick={() => {
+              clearResponses()
+              // Clear judge conversation context
+              if (currentUser?.id) {
+                axios.post('http://localhost:3001/api/judge/clear-context', {
+                  userId: currentUser.id
+                }).catch(err => console.error('[Clear Context] Error:', err))
+              }
+            }}
+          >
+            <div
+              style={{
+                background: currentTheme.backgroundOverlayLight,
+                border: `1px solid rgba(255, 0, 0, 0.3)`,
+                borderRadius: '12px',
+                boxShadow: `0 4px 12px ${currentTheme.shadowLight}`,
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: '0.9rem',
+                  color: '#FF0000',
+                  margin: 0,
+                  fontWeight: '500',
+                }}
+              >
+                Clear All (1)
+              </h3>
+              <ChevronRight size={16} color="#FF0000" />
+            </div>
+          </motion.div>
+        </div>
+      )
+    }
+
+    // Show MAXIMIZED view (full-screen overlay) by default
+    if (singleResponseMaximized) {
+      return (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.8)',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '40px',
+          }}
+          onClick={() => {
+            setSingleResponseMaximized(false)
+            setSingleResponseMinimized(true)
+          }}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: currentTheme.backgroundOverlay,
+              border: `1px solid ${currentTheme.border}`,
+              borderRadius: '16px',
+              padding: '30px',
+              maxWidth: '900px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflowY: 'auto',
+              position: 'relative',
+              boxShadow: `0 0 40px ${currentTheme.shadow}`,
+            }}
+          >
+            {/* Minimize button */}
+            <button
+              onClick={() => {
+                setSingleResponseMaximized(false)
+                setSingleResponseMinimized(true)
+              }}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: currentTheme.buttonBackground,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '8px',
+                padding: '8px',
+                color: currentTheme.accent,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10,
+              }}
+              title="Minimize"
+            >
+              <Minimize2 size={20} />
+            </button>
+
+            <div style={{ marginBottom: '24px', paddingRight: '40px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <h2
+                  key={`single-response-maximized-title-${theme}`}
+                  style={{
+                    fontSize: '1.8rem',
+                    margin: 0,
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  }}
+                >
+                  {formatModelName(response.modelName)}
+                </h2>
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '20px',
+                background: currentTheme.buttonBackground,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '12px',
+              }}
+            >
+              <p
+                key={`single-response-maximized-text-${theme}`}
+                style={{
+                  color: currentTheme.textSecondary,
+                  lineHeight: '1.8',
+                  fontSize: '1rem',
+                  whiteSpace: 'pre-wrap',
+                  margin: 0,
+                }}
+              >
+                {responseText}
+              </p>
+            </div>
+
+            {/* Rating */}
+            <div
+              style={{
+                marginTop: '24px',
+                paddingTop: '24px',
+                borderTop: `1px solid ${currentTheme.borderLight}`,
+                display: 'flex',
+                gap: '8px',
+                alignItems: 'center',
+              }}
+            >
+              <span style={{ fontSize: '0.9rem', color: currentTheme.textSecondary }}>Rate:</span>
+              {[1, 2, 3, 4, 5].map((rating) => (
+                <button
+                  key={rating}
+                  onClick={() => handleRating(response.id, rating)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                  }}
+                >
+                  <Star
+                    size={24}
+                    fill={ratings[response.id] >= rating ? currentTheme.accentSecondary : 'transparent'}
+                    color={ratings[response.id] >= rating ? currentTheme.accentSecondary : currentTheme.textMuted}
+                  />
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      )
+    }
+
+    // Show regular popup (non-maximized, non-minimized) - this shouldn't normally be reached
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        style={{
+          position: 'fixed',
+          left: `${singleResponsePosition.x}px`,
+          top: `${singleResponsePosition.y}px`,
+          width: '90%',
+          maxWidth: '500px',
+          maxHeight: '400px',
+          background: currentTheme.backgroundOverlay,
+          border: `1px solid ${currentTheme.border}`,
+          borderRadius: '16px',
+          padding: '24px',
+          zIndex: 300,
+          boxShadow: `0 0 40px ${currentTheme.shadow}`,
+          overflowY: 'auto',
+          cursor: isDraggingSingleResponse ? 'grabbing' : 'default',
+        }}
+      >
+        {/* Header - Draggable Area */}
+        <div
+          onMouseDown={handleSingleResponseDragStart}
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '16px',
+            paddingBottom: '12px',
+            borderBottom: `1px solid ${currentTheme.borderLight}`,
+            cursor: isDraggingSingleResponse ? 'grabbing' : 'grab',
+            userSelect: 'none',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Move size={20} color={currentTheme.accent} style={{ opacity: 0.6 }} />
+            <h2
+              key={`single-response-popup-title-${theme}`}
+              style={{
+                fontSize: '1.4rem',
+                margin: 0,
+                background: currentTheme.accentGradient,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              {formatModelName(response.modelName)}
+            </h2>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setSingleResponseMinimized(true)
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{
+                background: currentTheme.buttonBackground,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '8px',
+                padding: '8px',
+                color: currentTheme.accent,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Minimize"
+            >
+              <Minimize2 size={18} />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                clearResponses()
+                // Clear judge conversation context
+                if (currentUser?.id) {
+                  axios.post('http://localhost:3001/api/judge/clear-context', {
+                    userId: currentUser.id
+                  }).catch(err => console.error('[Clear Context] Error:', err))
+                }
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{
+                background: 'rgba(255, 0, 0, 0.1)',
+                border: '1px solid rgba(255, 0, 0, 0.3)',
+                borderRadius: '8px',
+                padding: '8px',
+                color: '#FF0000',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Response Content */}
+        <div
+          style={{
+            padding: '16px',
+            background: currentTheme.buttonBackground,
+            border: `1px solid ${currentTheme.borderLight}`,
+            borderRadius: '12px',
+          }}
+        >
+          <p
+            key={`single-response-text-${theme}`}
+            style={{
+              color: currentTheme.textSecondary,
+              lineHeight: '1.8',
+              fontSize: '1rem',
+              whiteSpace: 'pre-wrap',
+              margin: 0,
+            }}
+          >
+            {responseText}
+          </p>
+        </div>
+
+        {/* Rating */}
+        <div
+          style={{
+            marginTop: '16px',
+            paddingTop: '16px',
+            borderTop: `1px solid ${currentTheme.borderLight}`,
+            display: 'flex',
+            gap: '8px',
+            alignItems: 'center',
+          }}
+        >
+          <span style={{ fontSize: '0.9rem', color: currentTheme.textSecondary }}>Rate:</span>
+          {[1, 2, 3, 4, 5].map((rating) => (
+            <button
+              key={rating}
+              onClick={() => handleRating(response.id, rating)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px',
+              }}
+            >
+              <Star
+                size={24}
+                fill={ratings[response.id] >= rating ? currentTheme.accentSecondary : 'transparent'}
+                color={ratings[response.id] >= rating ? currentTheme.accentSecondary : currentTheme.textMuted}
+              />
+            </button>
+          ))}
+        </div>
+      </motion.div>
+    )
   }
 
   // Always show individual cards (no "Council Responses" button)
@@ -284,7 +779,7 @@ const ResponseComparison = () => {
           left: 0,
           width: '100vw',
           height: '100vh',
-          background: 'rgba(0, 0, 0, 0.95)',
+          background: theme === 'light' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(0, 0, 0, 0.95)',
           zIndex: 300,
           display: 'flex',
           alignItems: 'center',
@@ -305,8 +800,8 @@ const ResponseComparison = () => {
           animate={{ scale: 1, opacity: 1 }}
           onClick={(e) => e.stopPropagation()}
           style={{
-            background: 'rgba(0, 0, 0, 0.95)',
-            border: '1px solid rgba(0, 255, 255, 0.3)',
+            background: theme === 'light' ? '#ffffff' : 'rgba(0, 0, 0, 0.95)',
+            border: `1px solid ${currentTheme.borderLight}`,
             borderRadius: '16px',
             padding: '30px',
             maxWidth: '900px',
@@ -329,11 +824,11 @@ const ResponseComparison = () => {
               position: 'absolute',
               top: '20px',
               right: '20px',
-              background: 'rgba(0, 255, 255, 0.1)',
-              border: '1px solid rgba(0, 255, 255, 0.3)',
+              background: currentTheme.buttonBackground,
+              border: `1px solid ${currentTheme.borderLight}`,
               borderRadius: '8px',
               padding: '8px',
-              color: '#ffffff',
+              color: currentTheme.accent,
               cursor: 'pointer',
             }}
           >
@@ -342,10 +837,11 @@ const ResponseComparison = () => {
 
           <div style={{ marginBottom: '20px' }}>
             <h3
+              key={`maximized-model-name-${response.id}-${theme}`}
               style={{
                 fontSize: '1.5rem',
                 marginBottom: '8px',
-                background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                background: currentTheme.accentGradient,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
               }}
@@ -356,7 +852,7 @@ const ResponseComparison = () => {
 
           <p
             style={{
-              color: '#cccccc',
+              color: currentTheme.textSecondary,
               lineHeight: '1.8',
               fontSize: '1.1rem',
               whiteSpace: 'pre-wrap',
@@ -369,13 +865,13 @@ const ResponseComparison = () => {
             style={{
               marginTop: '24px',
               paddingTop: '24px',
-              borderTop: '1px solid rgba(0, 255, 255, 0.2)',
+              borderTop: `1px solid ${currentTheme.borderLight}`,
               display: 'flex',
               gap: '8px',
               alignItems: 'center',
             }}
           >
-            <span style={{ fontSize: '0.9rem', color: '#aaaaaa' }}>Rate:</span>
+            <span style={{ fontSize: '0.9rem', color: currentTheme.textSecondary }}>Rate:</span>
             {[1, 2, 3, 4, 5].map((rating) => (
               <button
                 key={rating}
@@ -389,8 +885,8 @@ const ResponseComparison = () => {
               >
                 <Star
                   size={24}
-                  fill={ratings[response.id] >= rating ? '#00FF00' : 'transparent'}
-                  color={ratings[response.id] >= rating ? '#00FF00' : '#666'}
+                  fill={ratings[response.id] >= rating ? currentTheme.accentSecondary : 'transparent'}
+                  color={ratings[response.id] >= rating ? currentTheme.accentSecondary : currentTheme.textMuted}
                 />
               </button>
             ))}
@@ -489,7 +985,7 @@ const ResponseComparison = () => {
                     height: '24px',
                     borderRadius: '50%',
                     border: 'none', // No border
-                    background: 'rgba(0, 0, 0, 0.9)',
+                    background: theme === 'light' ? '#ffffff' : 'rgba(0, 0, 0, 0.9)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -497,19 +993,19 @@ const ResponseComparison = () => {
                     padding: 0,
                     zIndex: 1001, // Above the container
                     pointerEvents: 'auto',
-                    boxShadow: '0 0 10px rgba(255, 255, 255, 0.4)',
+                    boxShadow: theme === 'light' ? '0 0 10px rgba(0, 0, 0, 0.2)' : '0 0 10px rgba(255, 255, 255, 0.4)',
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = 'rgba(255, 0, 0, 0.3)'
-                    e.currentTarget.style.boxShadow = '0 0 15px rgba(255, 255, 255, 0.5)'
+                    e.currentTarget.style.boxShadow = theme === 'light' ? '0 0 15px rgba(0, 0, 0, 0.3)' : '0 0 15px rgba(255, 255, 255, 0.5)'
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(0, 0, 0, 0.9)'
-                    e.currentTarget.style.boxShadow = '0 0 10px rgba(255, 255, 255, 0.4)'
+                    e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(0, 0, 0, 0.9)'
+                    e.currentTarget.style.boxShadow = theme === 'light' ? '0 0 10px rgba(0, 0, 0, 0.2)' : '0 0 10px rgba(255, 255, 255, 0.4)'
                   }}
                   title="Remove response"
                 >
-                  <X size={16} color="#ffffff" />
+                  <X size={16} color={currentTheme.text} />
                 </button>
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -519,15 +1015,16 @@ const ResponseComparison = () => {
                     width: '100%',
                     minWidth: cardWidth,
                     maxWidth: cardWidth,
-                    background: 'rgba(0, 0, 0, 0.9)',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
-                    borderRadius: '12px',
+                    background: theme === 'light' ? '#ffffff' : 'rgba(0, 255, 255, 0.05)',
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '8px',
                     padding: '0',
-                    boxShadow: '0 0 20px rgba(0, 255, 255, 0.2)',
+                    boxShadow: 'none',
                     cursor: 'pointer',
                     pointerEvents: 'auto',
                     position: 'relative',
                     zIndex: 1000,
+                    transition: 'all 0.2s ease',
                   }}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -539,12 +1036,14 @@ const ResponseComparison = () => {
                     toggleMaximize(response.id, e) // Directly maximize instead of just expanding
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(0, 255, 255, 0.5)'
-                    e.currentTarget.style.boxShadow = '0 0 30px rgba(0, 255, 255, 0.3)'
+                    e.currentTarget.style.borderColor = currentTheme.borderActive
+                    e.currentTarget.style.background = theme === 'light' ? currentTheme.buttonBackgroundHover : 'rgba(0, 255, 255, 0.3)'
+                    e.currentTarget.style.boxShadow = `0 0 15px ${currentTheme.shadow}, 0 0 30px ${currentTheme.shadowLight}`
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(0, 255, 255, 0.3)'
-                    e.currentTarget.style.boxShadow = '0 0 20px rgba(0, 255, 255, 0.2)'
+                    e.currentTarget.style.borderColor = currentTheme.borderLight
+                    e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(0, 255, 255, 0.05)'
+                    e.currentTarget.style.boxShadow = 'none'
                   }}
                 >
                   <div
@@ -556,18 +1055,20 @@ const ResponseComparison = () => {
                     }}
                   >
                     <h3
+                      key={`model-name-${response.id}-${theme}`}
                       style={{
                         fontSize: '0.9rem',
-                        background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                        background: currentTheme.accentGradient,
                         WebkitBackgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
+                        color: currentTheme.accent,
                         margin: 0,
                         fontWeight: '500',
                       }}
                     >
                       {formatModelName(response.modelName)}
                     </h3>
-                    <ChevronRight size={16} color="#00FFFF" style={{ marginRight: '20px' }} />
+                    <ChevronRight size={16} color={currentTheme.accent} style={{ marginRight: '20px' }} />
                   </div>
                 </motion.div>
               </div>
@@ -606,11 +1107,11 @@ const ResponseComparison = () => {
                   width: '100%',
                   minWidth: cardWidth,
                   maxWidth: cardWidth, // Fixed width to match Facts and Sources
-                  background: 'rgba(0, 0, 0, 0.9)',
-                  border: '1px solid rgba(0, 255, 255, 0.3)',
+                  background: theme === 'light' ? '#ffffff' : 'rgba(0, 0, 0, 0.9)',
+                  border: `1px solid ${currentTheme.borderLight}`,
                   borderRadius: '12px',
                   padding: '0',
-                  boxShadow: '0 0 20px rgba(0, 255, 255, 0.2)',
+                  boxShadow: `0 0 20px ${currentTheme.shadowLight}`,
                   transition: isBeingDragged ? 'none' : (hasCustomPosition ? 'none' : 'all 0.2s ease'),
                   position: hasCustomPosition ? 'fixed' : 'relative', // Fixed if dragged, relative if in container
                   left: hasCustomPosition && position ? `${position.x}px` : undefined,
@@ -625,14 +1126,14 @@ const ResponseComparison = () => {
                 }}
               onMouseEnter={(e) => {
                 if (draggedCard !== response.id) {
-                  e.currentTarget.style.borderColor = 'rgba(0, 255, 255, 0.5)'
-                  e.currentTarget.style.boxShadow = '0 0 30px rgba(0, 255, 255, 0.3)'
+                  e.currentTarget.style.borderColor = currentTheme.borderActive
+                  e.currentTarget.style.boxShadow = `0 0 30px ${currentTheme.shadow}`
                 }
               }}
               onMouseLeave={(e) => {
                 if (draggedCard !== response.id) {
-                  e.currentTarget.style.borderColor = 'rgba(0, 255, 255, 0.3)'
-                  e.currentTarget.style.boxShadow = '0 0 20px rgba(0, 255, 255, 0.2)'
+                  e.currentTarget.style.borderColor = currentTheme.borderLight
+                  e.currentTarget.style.boxShadow = `0 0 20px ${currentTheme.shadowLight}`
                   setBorderHovered(null)
                 }
               }}
@@ -874,16 +1375,17 @@ const ResponseComparison = () => {
                   <Move 
                     size={14} 
                     style={{ 
-                      color: '#00FFFF', 
+                      color: currentTheme.accent, 
                       opacity: 0.6,
                       cursor: 'grab'
                     }} 
                     title="Drag to move"
                   />
                   <h3
+                    key={`expanded-model-name-${response.id}-${theme}`}
                     style={{
                       fontSize: '1rem',
-                      background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                      background: currentTheme.accentGradient,
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
                       margin: 0,
@@ -905,8 +1407,8 @@ const ResponseComparison = () => {
                         <Star
                           key={i}
                           size={12}
-                          fill={i < ratings[response.id] ? '#00FF00' : 'transparent'}
-                          color={i < ratings[response.id] ? '#00FF00' : '#666'}
+                          fill={i < ratings[response.id] ? currentTheme.accentSecondary : 'transparent'}
+                          color={i < ratings[response.id] ? currentTheme.accentSecondary : currentTheme.textMuted}
                         />
                       ))}
                     </div>
@@ -921,7 +1423,7 @@ const ResponseComparison = () => {
                       border: '1px solid rgba(255, 0, 0, 0.3)',
                       borderRadius: '4px',
                       padding: '4px',
-                      color: '#FF0000',
+                      color: '#FF0000', // Keep red for delete
                       cursor: 'pointer',
                     }}
                     title="Delete response"
@@ -931,11 +1433,11 @@ const ResponseComparison = () => {
                   <button
                     onClick={(e) => toggleMinimizeCard(response.id, e)}
                     style={{
-                      background: 'rgba(0, 255, 255, 0.1)',
-                      border: '1px solid rgba(0, 255, 255, 0.3)',
+                      background: currentTheme.buttonBackground,
+                      border: `1px solid ${currentTheme.borderLight}`,
                       borderRadius: '4px',
                       padding: '4px',
-                      color: '#ffffff',
+                      color: currentTheme.text,
                       cursor: 'pointer',
                     }}
                     title="Minimize"
@@ -945,11 +1447,11 @@ const ResponseComparison = () => {
                   <button
                     onClick={(e) => toggleMaximize(response.id, e)}
                     style={{
-                      background: 'rgba(0, 255, 255, 0.1)',
-                      border: '1px solid rgba(0, 255, 255, 0.3)',
+                      background: currentTheme.buttonBackground,
+                      border: `1px solid ${currentTheme.borderLight}`,
                       borderRadius: '4px',
                       padding: '4px',
-                      color: '#ffffff',
+                      color: currentTheme.text,
                       cursor: 'pointer',
                     }}
                     title="Maximize"
@@ -961,7 +1463,7 @@ const ResponseComparison = () => {
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: '#00FFFF',
+                        color: currentTheme.accent,
                         cursor: 'pointer',
                         padding: '4px',
                       }}
@@ -985,7 +1487,7 @@ const ResponseComparison = () => {
               >
                 <p
                   style={{
-                    color: '#cccccc',
+                    color: currentTheme.textSecondary,
                     lineHeight: '1.5',
                     fontSize: '0.9rem',
                     whiteSpace: 'pre-wrap',
@@ -1008,7 +1510,7 @@ const ResponseComparison = () => {
                   flexWrap: 'wrap',
                 }}
               >
-                <span style={{ fontSize: '0.75rem', color: '#aaaaaa' }}>Rate:</span>
+                <span style={{ fontSize: '0.75rem', color: currentTheme.textSecondary }}>Rate:</span>
                 {[1, 2, 3, 4, 5].map((rating) => (
                   <button
                     key={rating}
@@ -1025,8 +1527,8 @@ const ResponseComparison = () => {
                   >
                     <Star
                       size={16}
-                      fill={ratings[response.id] >= rating ? '#00FF00' : 'transparent'}
-                      color={ratings[response.id] >= rating ? '#00FF00' : '#666'}
+                      fill={ratings[response.id] >= rating ? currentTheme.accentSecondary : 'transparent'}
+                      color={ratings[response.id] >= rating ? currentTheme.accentSecondary : currentTheme.textMuted}
                     />
                   </button>
                 ))}
@@ -1046,7 +1548,7 @@ const ResponseComparison = () => {
               width: '100%',
               minWidth: cardWidth,
               maxWidth: cardWidth,
-              background: 'rgba(0, 0, 0, 0.9)',
+              background: theme === 'light' ? '#ffffff' : currentTheme.backgroundOverlayLight,
               border: '1px solid rgba(255, 0, 0, 0.3)',
               borderRadius: '12px',
               padding: '0',
@@ -1065,6 +1567,12 @@ const ResponseComparison = () => {
                 setShowFactsWindow(false)
                 // Minimize summary window
                 setSummaryMinimized(true)
+                // Clear judge conversation context
+                if (currentUser?.id) {
+                  axios.post('http://localhost:3001/api/judge/clear-context', {
+                    userId: currentUser.id
+                  }).catch(err => console.error('[Clear Context] Error:', err))
+                }
               } catch (error) {
                 console.error('[ResponseComparison] Error clearing responses:', error)
                 // Don't let errors crash the page
@@ -1088,7 +1596,7 @@ const ResponseComparison = () => {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Trash2 size={16} color="#FF0000" />
+                <Trash2 size={16} color="#FF0000" /> {/* Keep red for delete */}
                 <h3
                   style={{
                     fontSize: '0.9rem',
@@ -1100,7 +1608,7 @@ const ResponseComparison = () => {
                   Clear All ({responses.length})
                 </h3>
               </div>
-              <ChevronRight size={16} color="#FF0000" />
+              <ChevronRight size={16} color="#FF0000" /> {/* Keep red for delete */}
             </div>
           </motion.div>
         )}

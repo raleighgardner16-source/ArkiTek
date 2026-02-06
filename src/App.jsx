@@ -16,15 +16,18 @@ import FactsAndSourcesWindow from './components/FactsAndSourcesWindow'
 import TokenUsageWindow from './components/TokenUsageWindow'
 import CostBreakdownWindow from './components/CostBreakdownWindow'
 import CategoryDetectionWindow from './components/CategoryDetectionWindow'
-import UsageIndicator from './components/UsageIndicator'
+import PipelineDebugWindow from './components/PipelineDebugWindow'
 import { callLLM, getAllModels, searchWithSerper } from './services/llmProviders'
 import { detectCategory } from './utils/categoryDetector'
+import { getTheme } from './utils/theme'
 import axios from 'axios'
 
 function App() {
   const showWelcome = useStore((state) => state.showWelcome)
   const currentUser = useStore((state) => state.currentUser)
   const setGpt4oMiniResponse = useStore((state) => state.setGpt4oMiniResponse)
+  const theme = useStore((state) => state.theme || 'dark')
+  const currentTheme = getTheme(theme)
   // Check pathname synchronously on initialization
   const [isAdminRoute, setIsAdminRoute] = useState(() => {
     const path = window.location.pathname
@@ -83,6 +86,12 @@ function App() {
       if (setSummaryMinimized) {
         setSummaryMinimized(true)
       }
+      // Clear judge conversation context
+      if (currentUser?.id) {
+        axios.post('http://localhost:3001/api/judge/clear-context', {
+          userId: currentUser.id
+        }).catch(err => console.error('[Clear Context] Error:', err))
+      }
     } catch (error) {
       console.error('[clearAllWindows] Error clearing windows:', error)
       // Don't let errors crash the page
@@ -102,6 +111,8 @@ function App() {
   const clearRAGDebugData = useStore((state) => state.clearRAGDebugData)
   const gpt4oMiniResponse = useStore((state) => state.gpt4oMiniResponse)
   const setIsSearchingWeb = useStore((state) => state.setIsSearchingWeb)
+  const showPipelineDebugWindow = useStore((state) => state.showPipelineDebugWindow)
+  const setShowPipelineDebugWindow = useStore((state) => state.setShowPipelineDebugWindow)
 
   const [isLoading, setIsLoading] = useState(false)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
@@ -160,6 +171,13 @@ function App() {
     setIsLoading(true)
     clearResponses()
     clearRAGDebugData() // Clear previous debug data
+    
+    // Clear judge conversation context when starting a new prompt from main page
+    if (currentUser?.id) {
+      axios.post('http://localhost:3001/api/judge/clear-context', {
+        userId: currentUser.id
+      }).catch(err => console.error('[Clear Context] Error:', err))
+    }
 
     try {
 
@@ -185,7 +203,6 @@ function App() {
           needsSearch: detectionResult.needsSearch !== undefined ? detectionResult.needsSearch : needsSearch,
           recommendedModelType: detectionResult.recommendedModelType || 'versatile'
         })
-        setShowCategoryDetectionWindow(true)
       }
       
       // Store raw response for display in the temporary window (backward compatibility)
@@ -246,6 +263,20 @@ function App() {
           console.warn('[RAG Pipeline] WARNING: No search results returned from Serper!')
         }
 
+        // Fetch conversation context for debug data
+        let conversationContext = []
+        if (currentUser?.id) {
+          try {
+            // Use query parameter to handle special characters (colons, etc.) better
+            const contextResponse = await axios.get('http://localhost:3001/api/judge/context', {
+              params: { userId: currentUser.id }
+            })
+            conversationContext = contextResponse.data.context || []
+          } catch (error) {
+            console.error('[RAG Pipeline] Error fetching conversation context:', error)
+          }
+        }
+
         // Store comprehensive debug data for display
         const debugDataToStore = {
           categoryDetection: detectionResult ? {
@@ -259,6 +290,7 @@ function App() {
             category: category,
             needsSearch: needsSearch
           },
+          conversationContext: conversationContext, // Add conversation context summaries
           ...ragData.debug_data
         }
         
@@ -275,10 +307,21 @@ function App() {
         console.log('[RAG Pipeline] Full debug data structure:', JSON.stringify(debugDataToStore, null, 2).substring(0, 1000))
         
         setRAGDebugData(debugDataToStore)
+        setShowPipelineDebugWindow(true) // Ensure debug window is visible
         console.log('[RAG Pipeline] Debug data stored in state')
 
         // Add council responses
-        ragData.council_responses.forEach((councilResponse) => {
+        console.log(`[RAG Pipeline] Processing ${ragData.council_responses?.length || 0} council responses`)
+        ragData.council_responses.forEach((councilResponse, index) => {
+          console.log(`[RAG Pipeline] Council response ${index + 1}:`, {
+            model_name: councilResponse.model_name,
+            hasError: !!councilResponse.error,
+            error: councilResponse.error,
+            hasResponse: !!councilResponse.response,
+            responseType: typeof councilResponse.response,
+            responseLength: councilResponse.response?.length || 0
+          })
+          
           if (!councilResponse.error && councilResponse.response) {
             const actualModel = councilResponse.actual_model_name || councilResponse.model_name
             const originalModel = councilResponse.original_model_name || councilResponse.model_name
@@ -314,8 +357,16 @@ function App() {
               error: false,
               tokens: councilResponse.tokens || null, // Token information from RAG pipeline
             })
+            console.log(`[RAG Pipeline] Added response for ${councilResponse.model_name}, total responses: ${responses.length}`)
+          } else {
+            console.warn(`[RAG Pipeline] Skipping response for ${councilResponse.model_name}:`, {
+              hasError: !!councilResponse.error,
+              error: councilResponse.error,
+              hasResponse: !!councilResponse.response
+            })
           }
         })
+        console.log(`[RAG Pipeline] Total responses after processing: ${responses.length}`)
 
         // Set judge analysis as summary (format as text for SummaryWindow)
         // Only set summary if judge_analysis exists AND we have 2+ models
@@ -347,22 +398,20 @@ function App() {
             summaryText += `DISAGREEMENTS:\nNone identified.`
           }
           
-          summary = {
-            text: summaryText || judge.summary || 'No summary available',
-            summary: judge.summary,
-            consensus: judge.consensus,
-            agreements: judge.agreements || [],
-            disagreements: judge.disagreements || []
-          }
+        summary = {
+          text: summaryText || judge.summary || 'No summary available',
+          summary: judge.summary,
+          consensus: judge.consensus,
+          agreements: judge.agreements || [],
+          disagreements: judge.disagreements || [],
+          prompt: judge.prompt || null // Include the prompt sent to Grok
+        }
+        
+        // Note: The backend RAG pipeline automatically stores the initial summary
+        // by summarizing the raw judge response with Gemini and storing it
         } else if (modelsToUse.length === 1) {
-          // Explicitly set no summary message when only 1 model is used
-          summary = {
-            text: 'No summary since there is only one model response.',
-            summary: null,
-            agreements: [],
-            disagreements: [],
-            singleModel: true
-          }
+          // Don't create a summary when only 1 model is used - no summary window needed
+          summary = null
         }
 
         console.log(`[RAG Pipeline] Received ${responses.length} council responses`)
@@ -560,23 +609,20 @@ function App() {
     // Collect initial token data (before summary generation)
     let tokenData = collectTokenData()
     
-    // Show token usage window with initial data
+    // Store token usage data (now used in PipelineDebugWindow)
     if (tokenData.length > 0) {
       setTokenUsageData(tokenData)
-      setShowTokenUsageWindow(true)
-      setShowCostBreakdownWindow(true)
     }
     
     // Set summary if available (from RAG pipeline)
     // When summary appears, ensure it's visible (not minimized) so user sees it first
-    if (summary) {
+    // Skip setting summary for single model responses - they'll be shown in ResponseComparison instead
+    if (summary && !summary.singleModel) {
       setSummary(summary)
-      // If summary is from multiple models, make sure it's visible
-      if (!summary.singleModel) {
-        const setSummaryMinimized = useStore.getState().setSummaryMinimized
-        if (setSummaryMinimized) {
-          setSummaryMinimized(false) // Show summary window
-        }
+      // Make sure summary window is visible
+      const setSummaryMinimized = useStore.getState().setSummaryMinimized
+      if (setSummaryMinimized) {
+        setSummaryMinimized(false) // Show summary window
       }
     }
 
@@ -587,10 +633,38 @@ function App() {
     if (currentUser?.id) {
       try {
         console.log('[Prompt Tracking] Tracking prompt for user:', currentUser.id)
+        
+        // Prepare facts and sources from RAG data
+        let facts = null
+        let sources = null
+        
+        if (ragData) {
+          // Extract facts with citations from refined data
+          if (ragData.refined_data?.facts_with_citations) {
+            facts = ragData.refined_data.facts_with_citations.map(f => ({
+              fact: f.fact,
+              source_quote: f.source_quote || null,
+            }))
+          }
+          
+          // Extract search results (sources)
+          if (ragData.search_results && Array.isArray(ragData.search_results)) {
+            sources = ragData.search_results.map(s => ({
+              title: s.title,
+              link: s.link,
+              snippet: s.snippet,
+            }))
+          }
+        }
+        
         const response = await axios.post('http://localhost:3001/api/stats/prompt', {
           userId: currentUser.id,
           promptText: currentPrompt,
           category: category,
+          responses: responses.length > 0 ? responses : null,
+          summary: summary || null,
+          facts: facts,
+          sources: sources,
         })
         console.log('[Prompt Tracking] Prompt tracked successfully:', response.data)
         // Trigger stats refresh after tracking prompt
@@ -619,16 +693,9 @@ function App() {
     const validResponses = responses.filter((r) => !r.error && r.text)
     console.log('[Summary] Valid responses:', validResponses.length)
     
-    // If only 1 model was used and no summary was set, set the no summary message
-    if (validResponses.length === 1 && !summary) {
-      summary = {
-        text: 'No summary since there is only one model response.',
-        summary: null,
-        agreements: [],
-        disagreements: [],
-        singleModel: true
-      }
-    } else if (validResponses.length >= 2 && !summary) {
+    // If only 1 model was used, don't create a summary - just show the response in ResponseComparison
+    // Skip summary creation for single model responses
+    if (validResponses.length >= 2 && !summary) {
       console.log('[Summary] Starting Grok summarization (2+ models detected)...')
       setIsGeneratingSummary(true)
       try {
@@ -649,13 +716,17 @@ function App() {
         Council Model Responses:
         ${responsesText}
         
-        Please analyze these responses and provide ONLY these four sections in this exact format:
-        - **Consensus of Agreement**: [A single number from 0-100 representing the percentage of agreement between all models]
-        - **SUMMARY**: A concise summary of what the council models collectively determined
-        - **AGREEMENTS**: List specific points where models agree (bullet points, one per line starting with - or •)
-        - **DISAGREEMENTS**: List specific points where models disagree or contradict (bullet points, one per line starting with - or •). If there are no disagreements, write "None identified."
+        Please analyze these responses and provide ONLY these four sections in this exact format (do NOT include section headers in the content itself):
         
-        Format your response clearly with these four sections only.`
+        Consensus: [A single number from 0-100 representing the percentage of agreement between all models]
+        
+        Summary: [A concise summary of what the council models collectively determined]
+        
+        Agreements: [List specific points where models agree, one per line, each starting with a dash or bullet]
+        
+        Disagreements: [List specific points where models disagree or contradict, one per line, each starting with a dash or bullet. If there are no disagreements, write "None identified."]
+        
+        Important: Only include the section label followed by a colon, then the content. Do NOT repeat section headers within the content. Do NOT use markdown formatting like ** for section headers.`
 
               // Use Grok's best summarizing model (grok-4-1-fast-reasoning for reasoning/summarization)
               const grokModel = 'grok-4-1-fast-reasoning' // Best for summarization and reasoning tasks
@@ -670,9 +741,17 @@ function App() {
         // Parse the response to extract sections (Consensus, Summary, Agreements, Disagreements)
         // More flexible consensus matching - handles various formats like "Consensus: 85", "**Consensus**: 85%", "[85]", etc.
         const consensusMatch = rawSummaryText.match(/(?:Consensus|consensus)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
-        const summaryMatch = rawSummaryText.match(/(?:Summary)[:\-]?\s*(.+?)(?=\n\n|\n(?:Agreements|Disagreements|Consensus)|$)/is)
-        const agreementsMatch = rawSummaryText.match(/(?:Agreements)[:\-]?\s*(.+?)(?=\n\n|\n(?:Disagreements|Summary|Consensus)|$)/is)
-        const disagreementsMatch = rawSummaryText.match(/(?:Disagreements)[:\-]?\s*(.+?)(?=\n\n|\n(?:Summary|Agreements|Consensus)|$)/is)
+        
+        // Split the text by section headers to get clean boundaries
+        // First, normalize the text to handle markdown formatting
+        const normalizedText = rawSummaryText
+          .replace(/\*\*(SUMMARY|Summary|AGREEMENTS|Agreements|DISAGREEMENTS|Disagreements|CONSENSUS|Consensus)\*\*[:\-]?/gi, '\n$1:')
+          .replace(/\*(SUMMARY|Summary|AGREEMENTS|Agreements|DISAGREEMENTS|Disagreements|CONSENSUS|Consensus)\*[:\-]?/gi, '\n$1:')
+        
+        // Extract sections using more precise patterns that stop at the next section
+        const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\-]?\s*(.+?)(?=\n\s*(?:AGREEMENTS|Agreements|DISAGREEMENTS|Disagreements|SUMMARY|Summary|CONSENSUS|Consensus)[:\-]|$)/is)
+        const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*(.+?)(?=\n\s*(?:DISAGREEMENTS|Disagreements|SUMMARY|Summary|CONSENSUS|Consensus|AGREEMENTS|Agreements)[:\-]|$)/is)
+        const disagreementsMatch = normalizedText.match(/(?:DISAGREEMENTS|Disagreements)[:\-]?\s*(.+?)(?=\n\s*(?:SUMMARY|Summary|CONSENSUS|Consensus|AGREEMENTS|Agreements|DISAGREEMENTS|Disagreements)[:\-]|$)/is)
         
         // Extract consensus score (0-100)
         let consensus = null
@@ -705,16 +784,66 @@ function App() {
           }
         }
         
-        // Extract summary
+        // Extract summary - clean up any markdown formatting or section headers that might be included
         let parsedSummary = summaryMatch ? summaryMatch[1].trim() : rawSummaryText.split(/\n\n/)[0].trim()
+        // Remove any section headers, markdown, or leading colons that might have been captured
+        parsedSummary = parsedSummary
+          .replace(/^(?:\*\*)?(?:Summary|SUMMARY)[:\-]?\s*\*?\*?\s*/i, '')
+          .replace(/^:\s*/, '') // Remove leading colon
+          .trim()
         
         // Extract agreements and disagreements as arrays
-        const agreements = agreementsMatch 
-          ? agreementsMatch[1].split('\n').filter(l => l.trim() && !l.match(/^[-•*]\s*$/)).map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(l => l && !l.toLowerCase().includes('none identified'))
+        // Clean up the extracted text to remove any section headers, markdown, or nested bullets
+        let agreementsText = agreementsMatch ? agreementsMatch[1].trim() : ''
+        // Remove section headers if they were captured
+        agreementsText = agreementsText
+          .replace(/^(?:\*\*)?(?:AGREEMENTS|Agreements)[:\-]?\s*\*?\*?\s*/i, '')
+          .trim()
+        // Remove any duplicate section markers that might appear in the content
+        agreementsText = agreementsText.replace(/\n\s*(?:\*\*)?(?:AGREEMENTS|Agreements)[:\-]?\s*\*?\*?\s*/gi, '\n')
+        
+        const agreements = agreementsText
+          ? agreementsText.split('\n').filter(l => {
+              const trimmed = l.trim()
+              // Filter out empty lines, section headers, standalone bullets, and "none identified"
+              return trimmed && 
+                     !trimmed.match(/^[-•*•]\s*$/) && 
+                     !trimmed.match(/^(?:\*\*)?(?:AGREEMENTS|Agreements)[:\-]?\s*\*?\*?$/i) &&
+                     !trimmed.match(/^:\s*$/) && // Filter out lines that are just ":"
+                     !trimmed.toLowerCase().includes('none identified')
+            }).map(l => {
+              // Clean up nested bullets (e.g., "• - • text" becomes "text")
+              let cleaned = l.replace(/^[-•*•]\s*[-•*•]\s*/, '').replace(/^[-•*•]\s*/, '').trim()
+              // Remove any remaining markdown formatting
+              cleaned = cleaned.replace(/\*\*/g, '').replace(/\*/g, '')
+              return cleaned
+            }).filter(l => l) // Remove any empty strings after cleaning
           : []
         
-        const disagreements = disagreementsMatch 
-          ? disagreementsMatch[1].split('\n').filter(l => l.trim() && !l.match(/^[-•*]\s*$/)).map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(l => l && !l.toLowerCase().includes('none identified'))
+        let disagreementsText = disagreementsMatch ? disagreementsMatch[1].trim() : ''
+        // Remove section headers if they were captured
+        disagreementsText = disagreementsText
+          .replace(/^(?:\*\*)?(?:DISAGREEMENTS|Disagreements)[:\-]?\s*\*?\*?\s*/i, '')
+          .trim()
+        // Remove any duplicate section markers that might appear in the content
+        disagreementsText = disagreementsText.replace(/\n\s*(?:\*\*)?(?:DISAGREEMENTS|Disagreements)[:\-]?\s*\*?\*?\s*/gi, '\n')
+        
+        const disagreements = disagreementsText
+          ? disagreementsText.split('\n').filter(l => {
+              const trimmed = l.trim()
+              // Filter out empty lines, section headers, standalone bullets, and "none identified"
+              return trimmed && 
+                     !trimmed.match(/^[-•*•]\s*$/) && 
+                     !trimmed.match(/^(?:\*\*)?(?:DISAGREEMENTS|Disagreements)[:\-]?\s*\*?\*?$/i) &&
+                     !trimmed.match(/^:\s*$/) && // Filter out lines that are just ":"
+                     !trimmed.toLowerCase().includes('none identified')
+            }).map(l => {
+              // Clean up nested bullets (e.g., "• - • text" becomes "text")
+              let cleaned = l.replace(/^[-•*•]\s*[-•*•]\s*/, '').replace(/^[-•*•]\s*/, '').trim()
+              // Remove any remaining markdown formatting
+              cleaned = cleaned.replace(/\*\*/g, '').replace(/\*/g, '')
+              return cleaned
+            }).filter(l => l) // Remove any empty strings after cleaning
           : []
         
         // Format the summary text
@@ -755,7 +884,6 @@ function App() {
           // Update token usage window with new data
           if (tokenData.length > 0) {
             setTokenUsageData(tokenData)
-            setShowTokenUsageWindow(true)
           }
         }
         
@@ -766,7 +894,23 @@ function App() {
           agreements: agreements,
           disagreements: disagreements,
           timestamp: Date.now(),
+          singleModel: false,
+          prompt: summaryPrompt, // Include the prompt sent to Grok
+          originalPrompt: currentPrompt, // The user's original question
         })
+        
+        // Store initial summary in conversation context
+        // The backend will automatically summarize the raw Grok response and store it
+        if (currentUser?.id && rawSummaryText) {
+          axios.post('http://localhost:3001/api/judge/store-initial-summary', {
+            userId: currentUser.id,
+            summaryText: rawSummaryText, // Raw Grok response (not formatted)
+            originalPrompt: summaryPrompt
+          }).catch(err => {
+            console.error('[Summary] Error storing initial summary:', err)
+          })
+        }
+        
         // Ensure summary window is visible when it first appears
         const setSummaryMinimized = useStore.getState().setSummaryMinimized
         if (setSummaryMinimized) {
@@ -781,21 +925,20 @@ function App() {
           text: `Error generating summary: ${error.message}. Please check your Grok API key and try again.`,
           timestamp: Date.now(),
           error: true,
+          originalPrompt: currentPrompt, // The user's original question
         })
       } finally {
         setIsGeneratingSummary(false)
       }
     } else if (validResponses.length === 1) {
-      // Only 1 model - ensure no summary message is set
+      // Only 1 model - don't create a summary window
       setIsGeneratingSummary(false)
-      if (!summary) {
-        setSummary({
-          text: 'No summary since there is only one model response.',
-          summary: null,
-          agreements: [],
-          disagreements: [],
-          singleModel: true
-        })
+      // Clear any existing summary for single model
+      if (summary?.singleModel) {
+        const clearSummary = useStore.getState().clearSummary
+        if (clearSummary) {
+          clearSummary()
+        }
       }
     } else {
       setIsGeneratingSummary(false)
@@ -879,8 +1022,14 @@ function App() {
     return <AuthView />
   }
 
+  // Update body background and text color based on theme
+  useEffect(() => {
+    document.body.style.background = currentTheme.background
+    document.body.style.color = currentTheme.text
+  }, [theme, currentTheme])
+
   return (
-    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: currentTheme.background }}>
       <AnimatePresence>
         {showWelcome && <WelcomeScreen key="welcome" />}
       </AnimatePresence>
@@ -888,8 +1037,6 @@ function App() {
       {!showWelcome && (
         <>
           <NavigationBar />
-          {/* Usage Indicator - Shows on all pages */}
-          {!isAdminRoute && <UsageIndicator />}
           <BackgroundScene />
 
           {/* Loading Indicator */}
@@ -906,8 +1053,8 @@ function App() {
             >
               <div
                 style={{
-                  background: 'rgba(0, 0, 0, 0.9)',
-                  border: '1px solid rgba(0, 255, 255, 0.3)',
+                  background: currentTheme.backgroundOverlay,
+                  border: `1px solid ${currentTheme.borderLight}`,
                   borderRadius: '12px',
                   padding: '30px 50px',
                 }}
@@ -916,8 +1063,8 @@ function App() {
                   style={{
                     width: '50px',
                     height: '50px',
-                    border: '3px solid rgba(0, 255, 255, 0.3)',
-                    borderTop: '3px solid #00FFFF',
+                    border: `3px solid ${currentTheme.borderLight}`,
+                    borderTop: `3px solid ${currentTheme.accent}`,
                     borderRadius: '50%',
                     animation: 'spin 1s linear infinite',
                     margin: '0 auto 20px',
@@ -925,9 +1072,9 @@ function App() {
                 />
                 <p
                   style={{
-                    color: '#ffffff',
+                    color: currentTheme.text,
                     fontSize: '1.1rem',
-                    background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                    background: currentTheme.accentGradient,
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                   }}
@@ -960,26 +1107,18 @@ function App() {
                       onClose={() => setShowFactsWindow(false)}
                     />
                   )}
+                  {showPipelineDebugWindow && (
+                    <PipelineDebugWindow
+                      debugData={ragDebugData}
+                      onClose={() => setShowPipelineDebugWindow(false)}
+                      gpt4oMiniResponse={gpt4oMiniResponse}
+                      tokenData={tokenUsageData}
+                      queryCount={queryCount}
+                      categoryDetectionData={ragDebugData.categoryDetection}
+                    />
+                  )}
                 </>
               )}
-              {/* Token Usage Window */}
-              <TokenUsageWindow
-                isOpen={showTokenUsageWindow}
-                onClose={() => setShowTokenUsageWindow(false)}
-                tokenData={tokenUsageData}
-              />
-              <CostBreakdownWindow
-                isOpen={showCostBreakdownWindow}
-                onClose={() => setShowCostBreakdownWindow(false)}
-                tokenData={tokenUsageData}
-                queryCount={queryCount}
-              />
-              {/* Category Detection Window */}
-              <CategoryDetectionWindow
-                isOpen={showCategoryDetectionWindow}
-                onClose={() => setShowCategoryDetectionWindow(false)}
-                detectionData={categoryDetectionData}
-              />
         </>
       )}
 
