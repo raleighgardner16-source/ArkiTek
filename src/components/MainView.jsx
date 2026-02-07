@@ -13,6 +13,8 @@ const MainView = ({ onClearAll }) => {
   const setSelectedModels = useStore((state) => state.setSelectedModels)
   const currentPrompt = useStore((state) => state.currentPrompt)
   const setCurrentPrompt = useStore((state) => state.setCurrentPrompt)
+  const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
+  const lastSubmittedCategory = useStore((state) => state.lastSubmittedCategory || '')
   const triggerSubmit = useStore((state) => state.triggerSubmit)
   const responses = useStore((state) => state.responses || [])
   const clearResponses = useStore((state) => state.clearResponses)
@@ -28,6 +30,8 @@ const MainView = ({ onClearAll }) => {
   const clearGpt4oMiniResponse = useStore((state) => state.clearGpt4oMiniResponse)
   const isSearchingWeb = useStore((state) => state.isSearchingWeb)
   const [showNoModelNotification, setShowNoModelNotification] = useState(false)
+  const [showVotingConfirm, setShowVotingConfirm] = useState(false)
+  const [isSubmittingToVote, setIsSubmittingToVote] = useState(false)
   // Mode selection removed - always use Independent Research Mode
 
   // Fetch streak data
@@ -345,6 +349,46 @@ const MainView = ({ onClearAll }) => {
     }
   }, [availableModels, selectedModels, setSelectedModels])
 
+  // Global Enter key listener - allows submitting prompt even when input isn't focused
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      // Only trigger on Enter key (not Shift+Enter)
+      if (e.key !== 'Enter' || e.shiftKey) return
+      
+      // Don't trigger if user is focused on ANY input/textarea
+      // The element's own onKeyDown handler will take care of submission
+      const activeElement = document.activeElement
+      const tagName = activeElement?.tagName?.toLowerCase()
+      
+      if (tagName === 'input' || tagName === 'textarea') {
+        // Let the focused element's own handler deal with it
+        return
+      }
+      
+      // Check if there's a prompt to send
+      if (!currentPrompt.trim()) return
+      
+      // Check if any models are selected or Auto Smart is enabled
+      const hasAutoSmart = Object.values(autoSmartProviders).some(v => v)
+      if (selectedModels.length === 0 && !hasAutoSmart) {
+        // Show notification
+        setShowNoModelNotification(true)
+        setTimeout(() => setShowNoModelNotification(false), 4000)
+        return
+      }
+      
+      // Prevent default Enter behavior and submit
+      e.preventDefault()
+      handleSubmitRef.current()
+    }
+    
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [currentPrompt, selectedModels, autoSmartProviders])
+  
+  // Ref to always have the latest handleSubmit function
+  const handleSubmitRef = useRef(null)
+
   const toggleModel = (modelId) => {
     // Find which provider this model belongs to
     const model = availableModels.find(m => m.id === modelId)
@@ -606,6 +650,9 @@ const MainView = ({ onClearAll }) => {
       }
     }
   }
+  
+  // Keep ref updated with latest handleSubmit
+  handleSubmitRef.current = handleSubmit
 
   return (
     <>
@@ -867,6 +914,7 @@ const MainView = ({ onClearAll }) => {
             </label>
           </div>
           <textarea
+            className="main-prompt-input"
             value={currentPrompt}
             onChange={(e) => setCurrentPrompt(e.target.value)}
             placeholder="Type your prompt here... (Enter to submit, Shift+Enter for new line)"
@@ -957,7 +1005,7 @@ const MainView = ({ onClearAll }) => {
           })()}
           
           {/* Submit to Leaderboard Button - Only show after prompt has been submitted (responses exist) */}
-          {responses.length > 0 && currentPrompt.trim() && (
+          {responses.length > 0 && lastSubmittedPrompt && (
             <div
               style={{
                 position: 'absolute',
@@ -970,71 +1018,19 @@ const MainView = ({ onClearAll }) => {
               }}
             >
               <motion.button
-                onClick={async () => {
+                onClick={() => {
                   if (!currentUser?.id) {
                     alert('Please sign in to submit prompts to the leaderboard')
                     return
                   }
-                  
-                  try {
-                    // Prepare facts and sources from RAG debug data
-                    let facts = null
-                    let sources = null
-                    
-                    if (ragDebugData) {
-                      // Extract facts with citations from refined data
-                      if (ragDebugData.refiner?.primary?.facts_with_citations) {
-                        facts = ragDebugData.refiner.primary.facts_with_citations.map(f => ({
-                          fact: f.fact,
-                          source_quote: f.source_quote || null,
-                        }))
-                      } else if (ragDebugData.refiner?.backup?.facts_with_citations) {
-                        facts = ragDebugData.refiner.backup.facts_with_citations.map(f => ({
-                          fact: f.fact,
-                          source_quote: f.source_quote || null,
-                        }))
-                      }
-                      
-                      // Extract search results (sources)
-                      if (ragDebugData.search?.results && Array.isArray(ragDebugData.search.results)) {
-                        sources = ragDebugData.search.results.map(s => ({
-                          title: s.title,
-                          link: s.link,
-                          snippet: s.snippet,
-                        }))
-                      }
-                    }
-                    
-                    const response = await axios.post('http://localhost:3001/api/leaderboard/submit', {
-                      userId: currentUser.id,
-                      promptText: currentPrompt.trim(),
-                      responses: responses.length > 0 ? responses.map(r => ({
-                        modelName: r.modelName,
-                        actualModelName: r.actualModelName,
-                        originalModelName: r.originalModelName,
-                        text: r.text,
-                        error: r.error || false,
-                        tokens: r.tokens || null,
-                      })) : null,
-                      summary: summary || null,
-                      facts: facts,
-                      sources: sources,
-                    })
-                    
-                    if (response.data.success) {
-                      alert('Prompt submitted to leaderboard!')
-                    }
-                  } catch (error) {
-                    console.error('Error submitting to leaderboard:', error)
-                    alert(error.response?.data?.error || 'Failed to submit prompt to leaderboard')
-                  }
+                  setShowVotingConfirm(true)
                 }}
                 style={{
                   padding: '8px 16px',
-                  background: 'rgba(255, 170, 0, 0.2)',
-                  border: '1px solid rgba(255, 170, 0, 0.5)',
+                  background: theme === 'light' ? 'rgba(255, 140, 0, 0.85)' : 'rgba(255, 170, 0, 0.2)',
+                  border: theme === 'light' ? '1px solid rgba(200, 100, 0, 0.8)' : '1px solid rgba(255, 170, 0, 0.5)',
                   borderRadius: '8px',
-                  color: '#ffaa00', // Keep orange for tooltip
+                  color: theme === 'light' ? '#fff' : '#ffaa00',
                   fontSize: '0.85rem',
                   fontWeight: '500',
                   cursor: 'pointer',
@@ -1044,14 +1040,144 @@ const MainView = ({ onClearAll }) => {
                   transition: 'all 0.2s ease',
                 }}
                 whileHover={{ 
-                  background: 'rgba(255, 170, 0, 0.3)',
-                  borderColor: 'rgba(255, 170, 0, 0.7)',
+                  background: theme === 'light' ? 'rgba(255, 120, 0, 0.95)' : 'rgba(255, 170, 0, 0.3)',
+                  borderColor: theme === 'light' ? 'rgba(180, 80, 0, 0.9)' : 'rgba(255, 170, 0, 0.7)',
                 }}
                 whileTap={{ scale: 0.95 }}
               >
                 <Trophy size={16} />
                 Submit for Voting
               </motion.button>
+              
+              {/* Voting Confirmation Popup */}
+              <AnimatePresence>
+                {showVotingConfirm && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                    transition={{ duration: 0.15 }}
+                    style={{
+                      position: 'absolute',
+                      bottom: '50px',
+                      left: '0',
+                      background: currentTheme.backgroundOverlay,
+                      border: `1px solid rgba(255, 170, 0, 0.5)`,
+                      borderRadius: '12px',
+                      padding: '16px 20px',
+                      boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+                      zIndex: 100,
+                      minWidth: '280px',
+                    }}
+                  >
+                    <p style={{ 
+                      color: currentTheme.text, 
+                      margin: '0 0 12px 0', 
+                      fontSize: '0.9rem',
+                      lineHeight: '1.4'
+                    }}>
+                      Submit this prompt and responses to the leaderboard for voting?
+                    </p>
+                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                      <motion.button
+                        onClick={() => setShowVotingConfirm(false)}
+                        style={{
+                          padding: '8px 16px',
+                          background: 'transparent',
+                          border: `1px solid ${currentTheme.borderLight}`,
+                          borderRadius: '6px',
+                          color: currentTheme.textSecondary,
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                        }}
+                        whileHover={{ background: currentTheme.buttonBackgroundHover }}
+                      >
+                        Cancel
+                      </motion.button>
+                      <motion.button
+                        onClick={async () => {
+                          setIsSubmittingToVote(true)
+                          try {
+                            // Prepare facts and sources from RAG debug data
+                            let facts = null
+                            let sources = null
+                            
+                            if (ragDebugData) {
+                              // Extract facts with citations from refined data
+                              if (ragDebugData.refiner?.primary?.facts_with_citations) {
+                                facts = ragDebugData.refiner.primary.facts_with_citations.map(f => ({
+                                  fact: f.fact,
+                                  source_quote: f.source_quote || null,
+                                }))
+                              } else if (ragDebugData.refiner?.backup?.facts_with_citations) {
+                                facts = ragDebugData.refiner.backup.facts_with_citations.map(f => ({
+                                  fact: f.fact,
+                                  source_quote: f.source_quote || null,
+                                }))
+                              }
+                              
+                              // Extract search results (sources)
+                              if (ragDebugData.search?.results && Array.isArray(ragDebugData.search.results)) {
+                                sources = ragDebugData.search.results.map(s => ({
+                                  title: s.title,
+                                  link: s.link,
+                                  snippet: s.snippet,
+                                }))
+                              }
+                            }
+                            
+                            const response = await axios.post('http://localhost:3001/api/leaderboard/submit', {
+                              userId: currentUser.id,
+                              promptText: lastSubmittedPrompt.trim(),
+                              category: lastSubmittedCategory || 'General Knowledge/Other',
+                              responses: responses.length > 0 ? responses.map(r => ({
+                                modelName: r.modelName,
+                                actualModelName: r.actualModelName,
+                                originalModelName: r.originalModelName,
+                                text: r.text,
+                                error: r.error || false,
+                                tokens: r.tokens || null,
+                              })) : null,
+                              summary: summary || null,
+                              facts: facts,
+                              sources: sources,
+                            })
+                            
+                            if (response.data.success) {
+                              setShowVotingConfirm(false)
+                              // Successfully submitted - no alert needed
+                            }
+                          } catch (error) {
+                            console.error('Error submitting to leaderboard:', error)
+                            // Only show alert on error so user knows something went wrong
+                            alert(error.response?.data?.error || 'Failed to submit prompt to leaderboard')
+                          } finally {
+                            setIsSubmittingToVote(false)
+                          }
+                        }}
+                        disabled={isSubmittingToVote}
+                        style={{
+                          padding: '8px 16px',
+                          background: 'rgba(255, 170, 0, 0.3)',
+                          border: '1px solid rgba(255, 170, 0, 0.6)',
+                          borderRadius: '6px',
+                          color: '#ffaa00',
+                          fontSize: '0.85rem',
+                          fontWeight: '500',
+                          cursor: isSubmittingToVote ? 'wait' : 'pointer',
+                          opacity: isSubmittingToVote ? 0.7 : 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                        whileHover={!isSubmittingToVote ? { background: 'rgba(255, 170, 0, 0.4)' } : {}}
+                      >
+                        {isSubmittingToVote ? 'Submitting...' : 'Confirm Submit'}
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               
               {/* Info Icon with Tooltip */}
               <div
@@ -1071,7 +1197,7 @@ const MainView = ({ onClearAll }) => {
               >
                 <Info 
                   size={18} 
-                  color="#ffaa00" 
+                  color={theme === 'light' ? '#c06000' : '#ffaa00'}
                   style={{ cursor: 'help' }}
                 />
                 <div
@@ -1084,16 +1210,16 @@ const MainView = ({ onClearAll }) => {
                     transform: 'translateX(-50%)',
                     marginBottom: '8px',
                     padding: '14px 18px',
-                    background: 'rgba(0, 0, 0, 0.95)',
-                    border: '1px solid rgba(255, 170, 0, 0.5)',
+                    background: theme === 'light' ? 'rgba(255, 255, 255, 0.98)' : 'rgba(0, 0, 0, 0.95)',
+                    border: theme === 'light' ? '1px solid rgba(200, 100, 0, 0.4)' : '1px solid rgba(255, 170, 0, 0.5)',
                     borderRadius: '10px',
-                    color: currentTheme.text,
+                    color: theme === 'light' ? '#1a1a1a' : currentTheme.text,
                     fontSize: '0.9rem',
                     lineHeight: '1.6',
                     width: '320px',
                     textAlign: 'left',
                     zIndex: 1000,
-                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+                    boxShadow: theme === 'light' ? '0 4px 16px rgba(0, 0, 0, 0.15)' : '0 4px 12px rgba(0, 0, 0, 0.5)',
                   }}
                 >
                   Submit your prompt/model responses to the leaderboard for other users to vote on. The top 5 most liked prompts each day at 12 AM receive $10 of token usage credit!

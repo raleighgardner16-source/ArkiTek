@@ -27,22 +27,6 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
     return null
   }
 
-  // Get the facts from the selected refiner (or primary if no judge selection)
-  const getFactsWithCitations = () => {
-    if (!debugData.refiner) return null
-    
-    const { primary, backup, judgeSelection } = debugData.refiner
-    
-    // If judge selected a refiner, use that one; otherwise use primary
-    let selectedRefiner = primary
-    if (judgeSelection && judgeSelection.selected === 'backup' && backup) {
-      selectedRefiner = backup
-    }
-    
-    return selectedRefiner?.facts_with_citations || null
-  }
-
-  const factsWithCitations = getFactsWithCitations()
   const cardWidth = '270px' // Wider width with 15px left padding, 15px from prompt window
 
   // If maximized, show full-screen overlay
@@ -113,7 +97,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <FileText size={28} color={currentTheme.accent} />
               <h2
-                key={`facts-title-maximized-${theme}`}
+                key={`sources-title-maximized-${theme}`}
                 style={{
                   fontSize: '1.8rem',
                   margin: 0,
@@ -122,16 +106,16 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                   WebkitTextFillColor: 'transparent',
                 }}
               >
-                Facts & Sources
+                Sources
               </h2>
             </div>
           </div>
 
-          {/* Serper Search Results Section */}
-          {debugData.search && debugData.search.results && debugData.search.results.length > 0 && (
-            <div style={{ marginBottom: '24px' }}>
+          {/* Search Results Section */}
+          {debugData.search && debugData.search.results && debugData.search.results.length > 0 ? (
+            <div>
               <div style={{ color: currentTheme.accentSecondary, fontSize: '16px', fontWeight: 'bold', marginBottom: '16px' }}>
-                Serper Search Results ({debugData.search.results.length})
+                Search Results ({debugData.search.results.length})
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {debugData.search.results.map((result, index) => (
@@ -173,71 +157,6 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                 ))}
               </div>
             </div>
-          )}
-          
-          {factsWithCitations && factsWithCitations.length > 0 ? (
-            <div>
-              <div style={{ color: currentTheme.accent, fontSize: '16px', fontWeight: 'bold', marginBottom: '20px' }}>
-                Extracted Facts & Sources ({factsWithCitations.length})
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                {factsWithCitations.map((factObj, index) => {
-                  const fact = factObj.fact || factObj
-                  const sourceQuote = factObj.source_quote || ''
-                  const sourceUrl = factObj.source_url || ''
-                  
-                  return (
-                    <div
-                      key={index}
-                      style={{
-                        padding: '20px',
-                        backgroundColor: theme === 'light' ? currentTheme.backgroundSecondary : '#0a0a0a',
-                        borderRadius: '8px',
-                        border: `1px solid ${currentTheme.border}`,
-                      }}
-                    >
-                      <div style={{ color: currentTheme.text, marginBottom: '16px', fontWeight: '500', fontSize: '16px', lineHeight: '1.6' }}>
-                        {fact}
-                      </div>
-                      {sourceQuote && (
-                        <div
-                          style={{
-                            color: currentTheme.accent,
-                            fontSize: '14px',
-                            fontStyle: 'italic',
-                            paddingLeft: '20px',
-                            borderLeft: `3px solid ${currentTheme.accent}`,
-                            lineHeight: '1.8',
-                            marginBottom: '12px',
-                          }}
-                        >
-                          Source: "{sourceQuote}"
-                        </div>
-                      )}
-                      {sourceUrl && (
-                        <div style={{ marginTop: '12px', paddingLeft: '20px' }}>
-                          <a
-                            href={sourceUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              color: currentTheme.accent,
-                              fontSize: '14px',
-                              textDecoration: 'underline',
-                              wordBreak: 'break-all',
-                            }}
-                            onMouseEnter={(e) => e.target.style.color = currentTheme.accentSecondary}
-                            onMouseLeave={(e) => e.target.style.color = currentTheme.accent}
-                          >
-                            🔗 View Source: {sourceUrl}
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
           ) : (
             <div style={{ 
               padding: '32px', 
@@ -247,7 +166,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
               textAlign: 'center'
             }}>
               <div style={{ color: '#ff4444', fontSize: '16px', fontWeight: 'bold' }}>
-                ⚠️ No facts found - Refiner returned NOT_FOUND or no relevant data
+                ⚠️ No sources found
               </div>
             </div>
           )}
@@ -372,7 +291,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <FileText size={16} color={currentTheme.accent} />
             <h3
-              key={`facts-title-${theme}`}
+              key={`sources-title-${theme}`}
               style={{
                 fontSize: '0.9rem',
                 background: currentTheme.accentGradient,
@@ -382,7 +301,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                 fontWeight: '500',
               }}
             >
-              Facts & Sources
+              Sources
             </h3>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -460,11 +379,11 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
               maxHeight: 'calc(85vh - 60px)',
             }}
           >
-            {/* Serper Search Results Section */}
-            {debugData.search && debugData.search.results && debugData.search.results.length > 0 && (
-              <div style={{ marginBottom: '24px' }}>
+            {/* Search Results Section */}
+            {debugData.search && debugData.search.results && debugData.search.results.length > 0 ? (
+              <div>
                 <div style={{ color: currentTheme.accentSecondary, fontSize: '14px', fontWeight: 'bold', marginBottom: '12px' }}>
-                  Serper Search Results ({debugData.search.results.length})
+                  Search Results ({debugData.search.results.length})
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {debugData.search.results.map((result, index) => (
@@ -506,71 +425,6 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                   ))}
                 </div>
               </div>
-            )}
-            
-            {factsWithCitations && factsWithCitations.length > 0 ? (
-              <div>
-                <div style={{ color: currentTheme.accent, fontSize: '14px', fontWeight: 'bold', marginBottom: '16px' }}>
-                  Extracted Facts & Sources ({factsWithCitations.length})
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {factsWithCitations.map((factObj, index) => {
-                    const fact = factObj.fact || factObj
-                    const sourceQuote = factObj.source_quote || ''
-                    const sourceUrl = factObj.source_url || ''
-                    
-                    return (
-                      <div
-                        key={index}
-                        style={{
-                          padding: '16px',
-                          backgroundColor: theme === 'light' ? currentTheme.backgroundSecondary : '#0a0a0a',
-                          borderRadius: '8px',
-                          border: `1px solid ${currentTheme.border}`,
-                        }}
-                      >
-                        <div style={{ color: currentTheme.text, marginBottom: '12px', fontWeight: '500', fontSize: '14px', lineHeight: '1.5' }}>
-                          {fact}
-                        </div>
-                        {sourceQuote && (
-                          <div
-                            style={{
-                              color: currentTheme.accent,
-                              fontSize: '12px',
-                              fontStyle: 'italic',
-                              paddingLeft: '16px',
-                              borderLeft: `3px solid ${currentTheme.accent}`,
-                              lineHeight: '1.6',
-                              marginBottom: '8px',
-                            }}
-                          >
-                            Source: "{sourceQuote}"
-                          </div>
-                        )}
-                        {sourceUrl && (
-                          <div style={{ marginTop: '8px', paddingLeft: '16px' }}>
-                            <a
-                              href={sourceUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                color: currentTheme.accent,
-                                fontSize: '12px',
-                                textDecoration: 'underline',
-                                wordBreak: 'break-all',
-                              }}
-                              onMouseEnter={(e) => e.target.style.color = currentTheme.accentSecondary}
-                              onMouseLeave={(e) => e.target.style.color = currentTheme.accent}
-                            >
-                              🔗 View Source: {sourceUrl}
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
             ) : (
               <div style={{ 
                 padding: '24px', 
@@ -580,7 +434,7 @@ const FactsAndSourcesWindow = ({ debugData, onClose }) => {
                 textAlign: 'center'
               }}>
                 <div style={{ color: '#ff4444', fontSize: '14px', fontWeight: 'bold' }}>
-                  ⚠️ No facts found - Refiner returned NOT_FOUND or no relevant data
+                  ⚠️ No sources found
                 </div>
               </div>
             )}

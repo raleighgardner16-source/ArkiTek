@@ -22,7 +22,7 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
   const [processingStep, setProcessingStep] = useState('')
 
   const presetAmounts = [5, 10, 15, 20, 25, 50, 100]
-  const TRANSACTION_FEE_PERCENT = 5
+  const TRANSACTION_FEE_PERCENT = 3.5
 
   // Calculate fee and total
   const getAmount = () => {

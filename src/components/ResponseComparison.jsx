@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move } from 'lucide-react'
+import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -11,6 +11,7 @@ const ResponseComparison = () => {
   const setRating = useStore((state) => state.setRating)
   const removeResponse = useStore((state) => state.removeResponse)
   const clearResponses = useStore((state) => state.clearResponses)
+  const clearLastSubmittedPrompt = useStore((state) => state.clearLastSubmittedPrompt)
   const setShowFactsWindow = useStore((state) => state.setShowFactsWindow)
   const setSummaryMinimized = useStore((state) => state.setSummaryMinimized)
   const setSummary = useStore((state) => state.setSummary)
@@ -31,6 +32,11 @@ const ResponseComparison = () => {
   const [singleResponsePosition, setSingleResponsePosition] = useState({ x: 0, y: 0 })
   const [isDraggingSingleResponse, setIsDraggingSingleResponse] = useState(false)
   const [singleResponseDragOffset, setSingleResponseDragOffset] = useState({ x: 0, y: 0 })
+  
+  // Conversation state for each response window
+  const [conversationInputs, setConversationInputs] = useState({}) // { responseId: 'input text' }
+  const [conversationHistories, setConversationHistories] = useState({}) // { responseId: [{ user, assistant, timestamp }] }
+  const [sendingMessages, setSendingMessages] = useState({}) // { responseId: true/false }
 
   // Calculate width based on available space (15px padding from nav bar and prompt window)
   // Nav bar is 60px, prompt window starts at 260px (paddingLeft: '260px')
@@ -226,6 +232,73 @@ const ResponseComparison = () => {
     return `${formattedProvider} ${modelVersion}`.trim()
   }
 
+  // Handle sending a conversation message to a specific model
+  const handleSendConversationMessage = async (responseId, modelName, originalResponse) => {
+    const input = conversationInputs[responseId]?.trim()
+    if (!input || !currentUser?.id || sendingMessages[responseId]) return
+    
+    setSendingMessages(prev => ({ ...prev, [responseId]: true }))
+    
+    try {
+      // Get conversation history for context (last 5)
+      const history = conversationHistories[responseId] || []
+      const contextHistory = history.slice(-5)
+      
+      // Build context string from history
+      const contextString = contextHistory.length > 0
+        ? contextHistory.map((h, idx) => 
+            `Exchange ${idx + 1}:\nUser: ${h.user}\nAssistant: ${h.assistant}`
+          ).join('\n\n')
+        : ''
+      
+      const response = await axios.post('http://localhost:3001/api/model/conversation', {
+        userId: currentUser.id,
+        modelName: modelName,
+        userMessage: input,
+        originalResponse: originalResponse,
+        conversationContext: contextString,
+        responseId: responseId
+      })
+      
+      if (response.data.response) {
+        // Add to conversation history
+        setConversationHistories(prev => ({
+          ...prev,
+          [responseId]: [
+            ...(prev[responseId] || []),
+            {
+              user: input,
+              assistant: response.data.response,
+              timestamp: Date.now()
+            }
+          ]
+        }))
+        
+        // Clear input
+        setConversationInputs(prev => ({ ...prev, [responseId]: '' }))
+      }
+    } catch (error) {
+      console.error('[ResponseComparison] Error sending conversation message:', error)
+      alert('Failed to send message. Please try again.')
+    } finally {
+      setSendingMessages(prev => ({ ...prev, [responseId]: false }))
+    }
+  }
+  
+  // Clear conversation history for a response when it's removed
+  const clearConversationForResponse = (responseId) => {
+    setConversationHistories(prev => {
+      const newHistories = { ...prev }
+      delete newHistories[responseId]
+      return newHistories
+    })
+    setConversationInputs(prev => {
+      const newInputs = { ...prev }
+      delete newInputs[responseId]
+      return newInputs
+    })
+  }
+
   // Auto-minimize only once when responses first appear (so summary is seen first)
   useEffect(() => {
     if (responses.length > 0 && !hasAutoMinimized.current) {
@@ -238,16 +311,25 @@ const ResponseComparison = () => {
     }
   }, [responses.length])
 
+  // Track last response IDs to detect truly new responses
+  const lastResponseIdsRef = React.useRef([])
+
   // Auto-minimize individual cards when they first appear (except when there's only one response)
   useEffect(() => {
     if (responses.length > 0) {
       const newMinimizedCards = {}
       const isSingleResponse = responses.length === 1
+      const currentResponseIds = responses.map(r => r.id).sort().join(',')
+      const previousResponseIds = lastResponseIdsRef.current.join(',')
+      const isNewResponseSet = currentResponseIds !== previousResponseIds
+      
+      // Update tracked response IDs
+      lastResponseIdsRef.current = responses.map(r => r.id).sort()
       
       // Reset single response state when new responses come in
-      if (isSingleResponse) {
+      if (isSingleResponse && isNewResponseSet) {
         setSingleResponseMinimized(false) // Show popup by default for single response
-        setSingleResponseMaximized(true) // Start in maximized view by default
+        setSingleResponseMaximized(true) // Start in maximized view by default (centered)
       }
       
       responses.forEach(response => {
@@ -262,8 +344,11 @@ const ResponseComparison = () => {
       if (Object.keys(newMinimizedCards).length > 0 && Object.keys(newMinimizedCards).some(id => minimizedCards[id] === undefined)) {
         setMinimizedCards(prev => ({ ...prev, ...newMinimizedCards }))
       }
+    } else {
+      // Clear tracked IDs when responses are cleared
+      lastResponseIdsRef.current = []
     }
-  }, [responses.length, minimizedCards])
+  }, [responses, minimizedCards])
 
   // Initialize single response popup position
   useEffect(() => {
@@ -279,6 +364,14 @@ const ResponseComparison = () => {
       })
     }
   }, [responses.length, singleResponseMinimized])
+
+  // Clear all conversation histories when responses are cleared
+  useEffect(() => {
+    if (responses.length === 0) {
+      setConversationHistories({})
+      setConversationInputs({})
+    }
+  }, [responses.length])
 
   // Handle dragging for single response popup
   useEffect(() => {
@@ -408,6 +501,7 @@ const ResponseComparison = () => {
             }}
             onClick={() => {
               clearResponses()
+              clearLastSubmittedPrompt()
               // Clear judge conversation context
               if (currentUser?.id) {
                 axios.post('http://localhost:3001/api/judge/clear-context', {
@@ -580,6 +674,133 @@ const ResponseComparison = () => {
                 </button>
               ))}
             </div>
+
+            {/* Conversation History */}
+            {conversationHistories[response.id]?.length > 0 && (
+              <div
+                style={{
+                  marginTop: '24px',
+                  paddingTop: '24px',
+                  borderTop: `1px solid ${currentTheme.borderLight}`,
+                }}
+              >
+                <h3 style={{ 
+                  color: currentTheme.text, 
+                  fontSize: '1rem', 
+                  marginBottom: '16px',
+                  fontWeight: '500'
+                }}>
+                  Conversation
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '300px', overflowY: 'auto' }}>
+                  {conversationHistories[response.id].map((exchange, idx) => (
+                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {/* User message */}
+                      <div style={{ 
+                        alignSelf: 'flex-end',
+                        maxWidth: '80%',
+                        padding: '10px 14px',
+                        background: '#000000',
+                        border: '1px solid #ffffff',
+                        borderRadius: '12px 12px 4px 12px',
+                        color: '#ffffff',
+                        fontSize: '0.9rem',
+                        lineHeight: '1.5',
+                      }}>
+                        {exchange.user}
+                      </div>
+                      {/* Assistant response */}
+                      <div style={{
+                        alignSelf: 'flex-start',
+                        maxWidth: '80%',
+                        padding: '10px 14px',
+                        background: currentTheme.buttonBackground,
+                        border: `1px solid ${currentTheme.borderLight}`,
+                        borderRadius: '12px 12px 12px 4px',
+                        color: currentTheme.textSecondary,
+                        fontSize: '0.9rem',
+                        lineHeight: '1.5',
+                        whiteSpace: 'pre-wrap',
+                      }}>
+                        {exchange.assistant}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Conversation Input */}
+            <div
+              style={{
+                marginTop: '24px',
+                paddingTop: '24px',
+                borderTop: `1px solid ${currentTheme.borderLight}`,
+              }}
+            >
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+                <textarea
+                  value={conversationInputs[response.id] || ''}
+                  onChange={(e) => setConversationInputs(prev => ({ 
+                    ...prev, 
+                    [response.id]: e.target.value 
+                  }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSendConversationMessage(response.id, response.modelName, responseText)
+                    }
+                  }}
+                  placeholder={`Continue conversation with ${formatModelName(response.modelName)}...`}
+                  style={{
+                    flex: 1,
+                    minHeight: '60px',
+                    maxHeight: '120px',
+                    padding: '12px 16px',
+                    background: currentTheme.buttonBackground,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '12px',
+                    color: currentTheme.text,
+                    fontSize: '0.95rem',
+                    resize: 'none',
+                    outline: 'none',
+                    fontFamily: 'inherit',
+                  }}
+                />
+                <motion.button
+                  onClick={() => handleSendConversationMessage(response.id, response.modelName, responseText)}
+                  disabled={!conversationInputs[response.id]?.trim() || sendingMessages[response.id]}
+                  style={{
+                    padding: '14px',
+                    background: conversationInputs[response.id]?.trim() 
+                      ? currentTheme.accentGradient 
+                      : currentTheme.buttonBackground,
+                    border: `1px solid ${conversationInputs[response.id]?.trim() ? 'transparent' : currentTheme.borderLight}`,
+                    borderRadius: '12px',
+                    cursor: conversationInputs[response.id]?.trim() && !sendingMessages[response.id] ? 'pointer' : 'not-allowed',
+                    opacity: sendingMessages[response.id] ? 0.6 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  whileHover={conversationInputs[response.id]?.trim() && !sendingMessages[response.id] ? { scale: 1.05 } : {}}
+                  whileTap={conversationInputs[response.id]?.trim() && !sendingMessages[response.id] ? { scale: 0.95 } : {}}
+                >
+                  <Send 
+                    size={20} 
+                    color={conversationInputs[response.id]?.trim() ? '#fff' : currentTheme.textMuted} 
+                  />
+                </motion.button>
+              </div>
+              <p style={{ 
+                fontSize: '0.75rem', 
+                color: currentTheme.textMuted, 
+                marginTop: '8px',
+                fontStyle: 'italic'
+              }}>
+                Press Enter to send, Shift+Enter for new line. Context: last 5 exchanges.
+              </p>
+            </div>
           </motion.div>
         </div>
       )
@@ -662,6 +883,7 @@ const ResponseComparison = () => {
               onClick={(e) => {
                 e.stopPropagation()
                 clearResponses()
+                clearLastSubmittedPrompt()
                 // Clear judge conversation context
                 if (currentUser?.id) {
                   axios.post('http://localhost:3001/api/judge/clear-context', {
@@ -891,6 +1113,133 @@ const ResponseComparison = () => {
               </button>
             ))}
           </div>
+
+          {/* Conversation History */}
+          {conversationHistories[response.id]?.length > 0 && (
+            <div
+              style={{
+                marginTop: '24px',
+                paddingTop: '24px',
+                borderTop: `1px solid ${currentTheme.borderLight}`,
+              }}
+            >
+              <h3 style={{ 
+                color: currentTheme.text, 
+                fontSize: '1rem', 
+                marginBottom: '16px',
+                fontWeight: '500'
+              }}>
+                Conversation
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '300px', overflowY: 'auto' }}>
+                {conversationHistories[response.id].map((exchange, idx) => (
+                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {/* User message */}
+                    <div style={{ 
+                      alignSelf: 'flex-end',
+                      maxWidth: '80%',
+                      padding: '10px 14px',
+                      background: '#000000',
+                      border: '1px solid #ffffff',
+                      borderRadius: '12px 12px 4px 12px',
+                      color: '#ffffff',
+                      fontSize: '0.9rem',
+                      lineHeight: '1.5',
+                    }}>
+                      {exchange.user}
+                    </div>
+                    {/* Assistant response */}
+                    <div style={{
+                      alignSelf: 'flex-start',
+                      maxWidth: '80%',
+                      padding: '10px 14px',
+                      background: currentTheme.buttonBackground,
+                      border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '12px 12px 12px 4px',
+                      color: currentTheme.textSecondary,
+                      fontSize: '0.9rem',
+                      lineHeight: '1.5',
+                      whiteSpace: 'pre-wrap',
+                    }}>
+                      {exchange.assistant}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Conversation Input */}
+          <div
+            style={{
+              marginTop: '24px',
+              paddingTop: '24px',
+              borderTop: `1px solid ${currentTheme.borderLight}`,
+            }}
+          >
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+              <textarea
+                value={conversationInputs[response.id] || ''}
+                onChange={(e) => setConversationInputs(prev => ({ 
+                  ...prev, 
+                  [response.id]: e.target.value 
+                }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSendConversationMessage(response.id, response.modelName, responseText)
+                  }
+                }}
+                placeholder={`Continue conversation with ${formatModelName(response.modelName)}...`}
+                style={{
+                  flex: 1,
+                  minHeight: '60px',
+                  maxHeight: '120px',
+                  padding: '12px 16px',
+                  background: currentTheme.buttonBackground,
+                  border: `1px solid ${currentTheme.borderLight}`,
+                  borderRadius: '12px',
+                  color: currentTheme.text,
+                  fontSize: '0.95rem',
+                  resize: 'none',
+                  outline: 'none',
+                  fontFamily: 'inherit',
+                }}
+              />
+              <motion.button
+                onClick={() => handleSendConversationMessage(response.id, response.modelName, responseText)}
+                disabled={!conversationInputs[response.id]?.trim() || sendingMessages[response.id]}
+                style={{
+                  padding: '14px',
+                  background: conversationInputs[response.id]?.trim() 
+                    ? currentTheme.accentGradient 
+                    : currentTheme.buttonBackground,
+                  border: `1px solid ${conversationInputs[response.id]?.trim() ? 'transparent' : currentTheme.borderLight}`,
+                  borderRadius: '12px',
+                  cursor: conversationInputs[response.id]?.trim() && !sendingMessages[response.id] ? 'pointer' : 'not-allowed',
+                  opacity: sendingMessages[response.id] ? 0.6 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                whileHover={conversationInputs[response.id]?.trim() && !sendingMessages[response.id] ? { scale: 1.05 } : {}}
+                whileTap={conversationInputs[response.id]?.trim() && !sendingMessages[response.id] ? { scale: 0.95 } : {}}
+              >
+                <Send 
+                  size={20} 
+                  color={conversationInputs[response.id]?.trim() ? '#fff' : currentTheme.textMuted} 
+                />
+              </motion.button>
+            </div>
+            <p style={{ 
+              fontSize: '0.75rem', 
+              color: currentTheme.textMuted, 
+              marginTop: '8px',
+              fontStyle: 'italic'
+            }}>
+              Press Enter to send, Shift+Enter for new line. Context: last 5 exchanges.
+            </p>
+          </div>
         </motion.div>
       </div>
     )
@@ -975,6 +1324,7 @@ const ResponseComparison = () => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
+                    clearConversationForResponse(response.id)
                     removeResponse(response.id)
                   }}
                   style={{
@@ -1416,6 +1766,7 @@ const ResponseComparison = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
+                      clearConversationForResponse(response.id)
                       removeResponse(response.id)
                     }}
                     style={{
@@ -1563,6 +1914,7 @@ const ResponseComparison = () => {
                 e.stopPropagation()
                 // Clear all responses and related data (summary, debug data, etc.)
                 clearResponses()
+                clearLastSubmittedPrompt()
                 // Close facts/sources window
                 setShowFactsWindow(false)
                 // Minimize summary window

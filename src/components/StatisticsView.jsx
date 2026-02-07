@@ -94,10 +94,8 @@ const StatisticsView = () => {
       console.error('Error fetching stats:', error)
       setStats({
         totalTokens: 0,
-        totalQueries: 0,
         totalPrompts: 0,
         monthlyTokens: 0,
-        monthlyQueries: 0,
         monthlyPrompts: 0,
         monthlyCost: 0,
         remainingFreeAllocation: 5.00,
@@ -237,12 +235,10 @@ const StatisticsView = () => {
     totalTokens: 0,
     totalInputTokens: 0,
     totalOutputTokens: 0,
-    totalQueries: 0,
     totalPrompts: 0,
     monthlyTokens: 0,
     monthlyInputTokens: 0,
     monthlyOutputTokens: 0,
-    monthlyQueries: 0,
     monthlyPrompts: 0,
     monthlyCost: 0,
     remainingFreeAllocation: 5.00,
@@ -568,16 +564,16 @@ const StatisticsView = () => {
                     Available Usage Balance
                   </h2>
                   <p style={{ fontSize: '0.85rem', color: currentTheme.textSecondary, margin: 0, fontStyle: 'italic' }}>
-                    ${(userStats.totalAvailableBalance || userStats.remainingFreeAllocation || 5).toFixed(2)} remaining
+                    ${(userStats.remainingFreeAllocation || 5).toFixed(2)} free
                     {(userStats.purchasedCredits?.remaining || 0) > 0 && (
-                      <span style={{ color: currentTheme.accentSecondary }}> (includes ${(userStats.purchasedCredits.remaining).toFixed(2)} purchased)</span>
+                      <span style={{ color: currentTheme.accentSecondary }}> + ${(userStats.purchasedCredits.remaining).toFixed(2)} purchased</span>
                     )}
                   </p>
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
                 <p
-                  key={`usage-percentage-${theme}`}
+                  key={`usage-balance-${theme}`}
                   style={{
                     fontSize: '3rem',
                     fontWeight: 'bold',
@@ -591,8 +587,8 @@ const StatisticsView = () => {
                     gap: '8px',
                   }}
                 >
-                  {(userStats.freeUsagePercentage || 100).toFixed(1)}%
-                  <span style={{ fontSize: '1.2rem', fontWeight: '500' }}>left</span>
+                  ${(userStats.totalAvailableBalance || userStats.remainingFreeAllocation || 5).toFixed(2)}
+                  <span style={{ fontSize: '1.2rem', fontWeight: '500' }}>credit left</span>
                 </p>
                 
                 {/* Buy More Usage Button */}
@@ -1161,12 +1157,12 @@ const StatisticsView = () => {
                   </h2>
                   <div key={`providers-list-${theme}`} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {Object.entries(userStats.providers)
-                      .sort((a, b) => b[1].totalQueries - a[1].totalQueries)
+                      .sort((a, b) => b[1].totalTokens - a[1].totalTokens)
                       .map(([provider, data]) => {
                         const isProviderExpanded = expandedProviders[provider]
                         const providerModels = Object.entries(userStats.models || {})
                           .filter(([modelKey]) => modelKey.startsWith(`${provider}-`))
-                          .sort((a, b) => b[1].totalQueries - a[1].totalQueries)
+                          .sort((a, b) => b[1].totalTokens - a[1].totalTokens)
 
                         return (
                           <div

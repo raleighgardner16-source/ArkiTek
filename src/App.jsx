@@ -69,6 +69,8 @@ function App() {
   const selectedModels = useStore((state) => state.selectedModels)
   const currentPrompt = useStore((state) => state.currentPrompt)
   const setCurrentPrompt = useStore((state) => state.setCurrentPrompt)
+  const setLastSubmittedPrompt = useStore((state) => state.setLastSubmittedPrompt)
+  const setLastSubmittedCategory = useStore((state) => state.setLastSubmittedCategory)
   const addResponse = useStore((state) => state.addResponse)
   const clearResponses = useStore((state) => state.clearResponses)
   
@@ -156,6 +158,10 @@ function App() {
       return
     }
     
+    // Save the prompt BEFORE clearing responses (for voting button)
+    const savedPrompt = currentPrompt.trim()
+    setLastSubmittedPrompt(savedPrompt)
+    
     // Deduplicate selectedModels to prevent duplicate responses
     const uniqueModels = [...new Set(selectedModels)]
     if (uniqueModels.length !== selectedModels.length) {
@@ -220,6 +226,7 @@ function App() {
     }
     setCurrentCategory(category)
     setCategory(Date.now().toString(), category)
+    setLastSubmittedCategory(category) // Save category for voting button
 
     let responses = []
     let summary = null
@@ -748,10 +755,17 @@ function App() {
           .replace(/\*\*(SUMMARY|Summary|AGREEMENTS|Agreements|DISAGREEMENTS|Disagreements|CONSENSUS|Consensus)\*\*[:\-]?/gi, '\n$1:')
           .replace(/\*(SUMMARY|Summary|AGREEMENTS|Agreements|DISAGREEMENTS|Disagreements|CONSENSUS|Consensus)\*[:\-]?/gi, '\n$1:')
         
-        // Extract sections using more precise patterns that stop at the next section
-        const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\-]?\s*(.+?)(?=\n\s*(?:AGREEMENTS|Agreements|DISAGREEMENTS|Disagreements|SUMMARY|Summary|CONSENSUS|Consensus)[:\-]|$)/is)
-        const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*(.+?)(?=\n\s*(?:DISAGREEMENTS|Disagreements|SUMMARY|Summary|CONSENSUS|Consensus|AGREEMENTS|Agreements)[:\-]|$)/is)
-        const disagreementsMatch = normalizedText.match(/(?:DISAGREEMENTS|Disagreements)[:\-]?\s*(.+?)(?=\n\s*(?:SUMMARY|Summary|CONSENSUS|Consensus|AGREEMENTS|Agreements|DISAGREEMENTS|Disagreements)[:\-]|$)/is)
+        // Extract sections using more robust patterns with greedy capture up to next section
+        // Use [\s\S] instead of . to match across newlines
+        const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:AGREEMENTS|Agreements)[:\-]|\n\s*(?:DISAGREEMENTS|Disagreements)[:\-]|$)/i)
+        const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:DISAGREEMENTS|Disagreements)[:\-]|$)/i)
+        const disagreementsMatch = normalizedText.match(/(?:DISAGREEMENTS|Disagreements)[:\-]?\s*([\s\S]+?)$/i)
+        
+        // Debug logging
+        console.log('[Summary] Parsing sections:')
+        console.log('[Summary] - Summary match found:', !!summaryMatch)
+        console.log('[Summary] - Agreements match found:', !!agreementsMatch, agreementsMatch ? `(${agreementsMatch[1].substring(0, 100)}...)` : '')
+        console.log('[Summary] - Disagreements match found:', !!disagreementsMatch)
         
         // Extract consensus score (0-100)
         let consensus = null
@@ -944,6 +958,7 @@ function App() {
       setIsGeneratingSummary(false)
     }
 
+    // Clear the prompt input (lastSubmittedPrompt was already saved at the beginning)
     setCurrentPrompt('')
     } catch (error) {
       // Catch any unhandled errors to prevent the page from going black
@@ -996,6 +1011,13 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldSubmit]) // Only depend on shouldSubmit to prevent double-firing when selectedModels changes
 
+  // Update body background and text color based on theme
+  // MUST be before any conditional returns to follow Rules of Hooks
+  useEffect(() => {
+    document.body.style.background = currentTheme.background
+    document.body.style.color = currentTheme.text
+  }, [theme, currentTheme])
+
   // Handle admin route separately - must be checked before other renders
   // This early return prevents the normal app from rendering
   // AdminView will handle login if user is not logged in
@@ -1021,12 +1043,6 @@ function App() {
   if (!currentUser) {
     return <AuthView />
   }
-
-  // Update body background and text color based on theme
-  useEffect(() => {
-    document.body.style.background = currentTheme.background
-    document.body.style.color = currentTheme.text
-  }, [theme, currentTheme])
 
   return (
     <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: currentTheme.background }}>

@@ -132,16 +132,23 @@ const AdminView = () => {
   const fetchAdminData = async () => {
     try {
       setLoading(true)
+      // Include requestingUserId for admin authentication
+      const adminParams = { requestingUserId: currentUser?.id }
       const [usersResponse, pricingResponse, costsResponse] = await Promise.all([
-        axios.get('http://localhost:3001/api/admin/users'),
-        axios.get('http://localhost:3001/api/admin/pricing'),
-        axios.get('http://localhost:3001/api/admin/costs'),
+        axios.get('http://localhost:3001/api/admin/users', { params: adminParams }),
+        axios.get('http://localhost:3001/api/admin/pricing', { params: adminParams }),
+        axios.get('http://localhost:3001/api/admin/costs', { params: adminParams }),
       ])
       setUsersData(usersResponse.data)
       setPricingData(pricingResponse.data)
       setCostsData(costsResponse.data)
     } catch (error) {
       console.error('Error fetching admin data:', error)
+      // If access denied, show appropriate message
+      if (error.response?.status === 403 || error.response?.status === 401) {
+        setIsAdmin(false)
+        setLoginError('Admin access required. Please log in with an admin account.')
+      }
     } finally {
       setLoading(false)
     }

@@ -1,15 +1,31 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, User, Calendar, Star } from 'lucide-react'
+import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, User, Calendar, Star, Trash2, Layers } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
+
+// All available categories for filtering
+const CATEGORIES = [
+  'All',
+  'Science',
+  'Tech',
+  'Business',
+  'Health',
+  'Politics/Law',
+  'History/Geography',
+  'Philosophy/Religion',
+  'Arts/Culture',
+  'Lifestyle/Self-Improvement',
+  'General Knowledge/Other',
+]
 
 const LeaderboardView = () => {
   const currentUser = useStore((state) => state.currentUser)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const [activeSection, setActiveSection] = useState('today') // 'today', 'alltime', 'profile'
+  const [selectedCategory, setSelectedCategory] = useState('All') // Category filter
   const [leaderboardPrompts, setLeaderboardPrompts] = useState([])
   const [loading, setLoading] = useState(true)
   const [expandedComments, setExpandedComments] = useState({})
@@ -19,6 +35,13 @@ const LeaderboardView = () => {
   const [expandedResponses, setExpandedResponses] = useState({})
   const [expandedSummary, setExpandedSummary] = useState({})
   const [expandedFacts, setExpandedFacts] = useState({})
+  const [showResponseSection, setShowResponseSection] = useState({}) // Track which prompts have responses visible
+  const [hoveredOwnLike, setHoveredOwnLike] = useState(null) // Track which own-prompt like button is hovered
+  const [deleteConfirm, setDeleteConfirm] = useState(null) // Track which prompt is being confirmed for deletion
+  const [deleting, setDeleting] = useState(false)
+  const [showReplyInput, setShowReplyInput] = useState({}) // Track which comments have reply input visible
+  const [deleteCommentConfirm, setDeleteCommentConfirm] = useState(null) // Track which comment is being confirmed for deletion
+  const [deleteReplyConfirm, setDeleteReplyConfirm] = useState(null) // Track which reply is being confirmed for deletion
 
   useEffect(() => {
     if (currentUser?.id || activeSection !== 'profile') {
@@ -69,6 +92,29 @@ const LeaderboardView = () => {
     }
   }
 
+  const handleDeletePrompt = async (promptId) => {
+    if (!currentUser?.id) return
+    
+    setDeleting(true)
+    try {
+      const response = await axios.delete(`http://localhost:3001/api/leaderboard/delete/${promptId}`, {
+        data: { userId: currentUser.id }
+      })
+      
+      if (response.data.success) {
+        setDeleteConfirm(null)
+        await fetchLeaderboard()
+      }
+    } catch (error) {
+      console.error('Error deleting prompt:', error)
+      if (error.response?.data?.error) {
+        alert(error.response.data.error)
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const handleAddComment = async (promptId) => {
     if (!currentUser?.id || !commentTexts[promptId]?.trim()) return
     
@@ -114,6 +160,67 @@ const LeaderboardView = () => {
     }
   }
 
+  const handleLikeComment = async (promptId, commentId) => {
+    if (!currentUser?.id) return
+    
+    try {
+      const response = await axios.post('http://localhost:3001/api/leaderboard/comment/like', {
+        userId: currentUser.id,
+        promptId: promptId,
+        commentId: commentId,
+      })
+      
+      if (response.data.success) {
+        await fetchLeaderboard()
+      }
+    } catch (error) {
+      console.error('Error liking comment:', error)
+      if (error.response?.data?.error) {
+        alert(error.response.data.error)
+      }
+    }
+  }
+
+  const handleDeleteComment = async (promptId, commentId) => {
+    if (!currentUser?.id) return
+    
+    try {
+      const response = await axios.delete(`http://localhost:3001/api/leaderboard/comment/delete/${commentId}`, {
+        data: { userId: currentUser.id, promptId: promptId }
+      })
+      
+      if (response.data.success) {
+        setDeleteCommentConfirm(null)
+        await fetchLeaderboard()
+      }
+    } catch (error) {
+      console.error('Error deleting comment:', error)
+      if (error.response?.data?.error) {
+        alert(error.response.data.error)
+      }
+    }
+  }
+
+  const handleDeleteReply = async (promptId, commentId, replyId) => {
+    if (!currentUser?.id) return
+    
+    try {
+      const response = await axios.delete(`http://localhost:3001/api/leaderboard/comment/reply/delete/${replyId}`, {
+        data: { userId: currentUser.id, promptId: promptId, commentId: commentId }
+      })
+      
+      if (response.data.success) {
+        setDeleteReplyConfirm(null)
+        await fetchLeaderboard()
+      }
+    } catch (error) {
+      console.error('Error deleting reply:', error)
+      if (error.response?.data?.error) {
+        alert(error.response.data.error)
+      }
+    }
+  }
+
   const formatDate = (dateString) => {
     const date = new Date(dateString)
     return date.toLocaleDateString('en-US', {
@@ -141,21 +248,31 @@ const LeaderboardView = () => {
           padding: '24px',
         }}
       >
-        {/* Username and Like Count */}
+        {/* Username, Category, and Date */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <p style={{ color: currentTheme.accent, fontSize: '1rem', fontWeight: '600', margin: 0 }}>
-            {prompt.username}
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Heart 
-              size={20} 
-              fill={isLiked ? '#ff6b6b' : 'transparent'} 
-              color={isLiked ? '#ff6b6b' : currentTheme.textSecondary} 
-            />
-            <span style={{ color: currentTheme.textSecondary, fontSize: '1rem', fontWeight: '600' }}>
-              {prompt.likeCount || 0}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <p style={{ color: currentTheme.accent, fontSize: '1rem', fontWeight: '600', margin: 0 }}>
+              {prompt.username}
+            </p>
+            {prompt.category && (
+              <span
+                style={{
+                  padding: '4px 10px',
+                  background: theme === 'light' ? 'rgba(0, 150, 150, 0.1)' : 'rgba(0, 255, 255, 0.1)',
+                  border: `1px solid ${theme === 'light' ? 'rgba(0, 150, 150, 0.3)' : 'rgba(0, 255, 255, 0.3)'}`,
+                  borderRadius: '12px',
+                  color: currentTheme.accent,
+                  fontSize: '0.75rem',
+                  fontWeight: '500',
+                }}
+              >
+                {prompt.category}
+              </span>
+            )}
           </div>
+          <span style={{ color: currentTheme.textMuted, fontSize: '0.85rem' }}>
+            {formatDate(prompt.createdAt)}
+          </span>
         </div>
         
         {/* Prompt Text */}
@@ -163,68 +280,109 @@ const LeaderboardView = () => {
           {prompt.promptText}
         </p>
         
-        {/* Responses, Summary, and Facts/Sources - Minimized Format */}
-        {(prompt.responses || prompt.summary || prompt.facts || prompt.sources) && (
-          <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {/* Council Responses */}
-            {prompt.responses && prompt.responses.length > 0 && (
-              <div
-                style={{
-                  background: currentTheme.backgroundSecondary,
-                  border: `1px solid ${currentTheme.borderLight}`,
-                  borderRadius: '8px',
-                  overflow: 'hidden',
-                }}
-              >
-                <button
-                  onClick={() => setExpandedResponses({ ...expandedResponses, [prompt.id]: !expandedResponses[prompt.id] })}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    background: 'transparent',
-                    border: 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    color: currentTheme.text,
-                  }}
-                >
-                  <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>
-                    Council Responses ({prompt.responses.length})
-                  </span>
-                  {expandedResponses[prompt.id] ? (
-                    <ChevronUp size={16} color={currentTheme.accent} />
-                  ) : (
-                    <ChevronDown size={16} color={currentTheme.accent} />
-                  )}
-                </button>
-                {expandedResponses[prompt.id] && (
-                  <div style={{ padding: '12px', borderTop: `1px solid ${currentTheme.borderLight}` }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {prompt.responses.map((response, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            background: currentTheme.backgroundTertiary,
-                            border: `1px solid ${currentTheme.borderLight}`,
-                            borderRadius: '6px',
-                            padding: '12px',
-                          }}
-                        >
-                          <div style={{ color: currentTheme.accent, fontSize: '0.85rem', fontWeight: '600', marginBottom: '6px' }}>
-                            {response.modelName}
-                          </div>
-                          <div style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
-                            {response.text}
-                          </div>
+        {/* See Responses Button and Content */}
+        {(prompt.responses || prompt.summary || prompt.sources) && (
+          <div style={{ marginBottom: '16px' }}>
+            {/* See Responses Toggle Button */}
+            <button
+              onClick={() => setShowResponseSection({ ...showResponseSection, [prompt.id]: !showResponseSection[prompt.id] })}
+              style={{
+                padding: '10px 20px',
+                background: showResponseSection[prompt.id] ? currentTheme.buttonBackgroundHover : currentTheme.buttonBackground,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '8px',
+                color: currentTheme.accent,
+                fontSize: '0.95rem',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: showResponseSection[prompt.id] ? '12px' : '0',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = currentTheme.buttonBackgroundHover
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = showResponseSection[prompt.id] ? currentTheme.buttonBackgroundHover : currentTheme.buttonBackground
+              }}
+            >
+              {showResponseSection[prompt.id] ? (
+                <>
+                  <ChevronUp size={18} />
+                  Hide Responses
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={18} />
+                  See Responses ({prompt.responses?.length || 0})
+                </>
+              )}
+            </button>
+            
+            {/* Responses, Summary, and Facts/Sources - Only shown when expanded */}
+            {showResponseSection[prompt.id] && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {/* Council Responses */}
+                {prompt.responses && prompt.responses.length > 0 && (
+                  <div
+                    style={{
+                      background: currentTheme.backgroundSecondary,
+                      border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <button
+                      onClick={() => setExpandedResponses({ ...expandedResponses, [prompt.id]: !expandedResponses[prompt.id] })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: 'transparent',
+                        border: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                        color: currentTheme.text,
+                      }}
+                    >
+                      <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>
+                        Council Responses ({prompt.responses.length})
+                      </span>
+                      {expandedResponses[prompt.id] ? (
+                        <ChevronUp size={16} color={currentTheme.accent} />
+                      ) : (
+                        <ChevronDown size={16} color={currentTheme.accent} />
+                      )}
+                    </button>
+                    {expandedResponses[prompt.id] && (
+                      <div style={{ padding: '12px', borderTop: `1px solid ${currentTheme.borderLight}` }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {prompt.responses.map((response, idx) => (
+                            <div
+                              key={idx}
+                              style={{
+                                background: currentTheme.backgroundTertiary,
+                                border: `1px solid ${currentTheme.borderLight}`,
+                                borderRadius: '6px',
+                                padding: '12px',
+                              }}
+                            >
+                              <div style={{ color: currentTheme.accent, fontSize: '0.85rem', fontWeight: '600', marginBottom: '6px' }}>
+                                {response.modelName}
+                              </div>
+                              <div style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                                {response.text}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
             
             {/* Summary */}
             {prompt.summary && (
@@ -267,8 +425,8 @@ const LeaderboardView = () => {
               </div>
             )}
             
-            {/* Facts and Sources */}
-            {(prompt.facts || prompt.sources) && (
+            {/* Sources */}
+            {prompt.sources && prompt.sources.length > 0 && (
               <div
                 style={{
                   background: currentTheme.backgroundSecondary,
@@ -292,7 +450,7 @@ const LeaderboardView = () => {
                   }}
                 >
                   <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>
-                    Facts & Sources {prompt.facts ? `(${prompt.facts.length})` : ''} {prompt.sources ? `(${prompt.sources.length} sources)` : ''}
+                    Sources ({prompt.sources.length})
                   </span>
                   {expandedFacts[prompt.id] ? (
                     <ChevronUp size={16} color={currentTheme.accent} />
@@ -302,67 +460,37 @@ const LeaderboardView = () => {
                 </button>
                 {expandedFacts[prompt.id] && (
                   <div style={{ padding: '12px', borderTop: `1px solid ${currentTheme.borderLight}` }}>
-                    {prompt.facts && prompt.facts.length > 0 && (
-                      <div style={{ marginBottom: '12px' }}>
-                        <div style={{ color: currentTheme.accent, fontSize: '0.85rem', fontWeight: '600', marginBottom: '8px' }}>Facts:</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {prompt.facts.map((fact, idx) => (
-                            <div
-                              key={idx}
-                              style={{
-                                background: currentTheme.backgroundTertiary,
-                                border: `1px solid ${currentTheme.borderLight}`,
-                                borderRadius: '6px',
-                                padding: '10px',
-                              }}
-                            >
-                              <div style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', lineHeight: '1.4' }}>
-                                {fact.fact || fact}
-                              </div>
-                              {fact.source_quote && (
-                                <div style={{ color: currentTheme.textMuted, fontSize: '0.75rem', marginTop: '4px', fontStyle: 'italic' }}>
-                                  Source: {fact.source_quote}
-                                </div>
-                              )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {prompt.sources.map((source, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            background: currentTheme.backgroundTertiary,
+                            border: `1px solid ${currentTheme.borderLight}`,
+                            borderRadius: '6px',
+                            padding: '10px',
+                          }}
+                        >
+                          <a
+                            href={source.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: currentTheme.accent, fontSize: '0.85rem', fontWeight: '600', textDecoration: 'none' }}
+                          >
+                            {source.title}
+                          </a>
+                          {source.snippet && (
+                            <div style={{ color: currentTheme.textSecondary, fontSize: '0.75rem', marginTop: '4px' }}>
+                              {source.snippet}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      </div>
-                    )}
-                    {prompt.sources && prompt.sources.length > 0 && (
-                      <div>
-                        <div style={{ color: currentTheme.accent, fontSize: '0.85rem', fontWeight: '600', marginBottom: '8px' }}>Sources:</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {prompt.sources.map((source, idx) => (
-                            <div
-                              key={idx}
-                              style={{
-                                background: currentTheme.backgroundTertiary,
-                                border: `1px solid ${currentTheme.borderLight}`,
-                                borderRadius: '6px',
-                                padding: '10px',
-                              }}
-                            >
-                              <a
-                                href={source.link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ color: currentTheme.accent, fontSize: '0.85rem', fontWeight: '600', textDecoration: 'none' }}
-                              >
-                                {source.title}
-                              </a>
-                              {source.snippet && (
-                                <div style={{ color: currentTheme.textSecondary, fontSize: '0.75rem', marginTop: '4px' }}>
-                                  {source.snippet}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                      ))}
+                    </div>
                   </div>
                 )}
+              </div>
+            )}
               </div>
             )}
           </div>
@@ -370,7 +498,74 @@ const LeaderboardView = () => {
         
         {/* Action Buttons */}
         <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-          {!isOwnPrompt && (
+          {isOwnPrompt ? (
+            <div 
+              style={{ position: 'relative' }}
+              onMouseEnter={() => setHoveredOwnLike(`button-${prompt.id}`)}
+              onMouseLeave={() => setHoveredOwnLike(null)}
+            >
+              <button
+                disabled
+                style={{
+                  padding: '10px 20px',
+                  background: 'rgba(128, 128, 128, 0.1)',
+                  border: `1px solid rgba(128, 128, 128, 0.3)`,
+                  borderRadius: '8px',
+                  color: currentTheme.textMuted,
+                  fontSize: '0.95rem',
+                  fontWeight: '500',
+                  cursor: 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  opacity: 0.6,
+                  pointerEvents: 'none',
+                }}
+              >
+                <Heart 
+                  size={18} 
+                  fill="transparent" 
+                  color={currentTheme.textMuted} 
+                />
+                Like
+              </button>
+              {hoveredOwnLike === `button-${prompt.id}` && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '100%',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    marginBottom: '8px',
+                    padding: '8px 12px',
+                    background: 'rgba(0, 0, 0, 0.9)',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    fontSize: '0.85rem',
+                    whiteSpace: 'nowrap',
+                    zIndex: 100,
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                  }}
+                >
+                  You can't like your own prompt
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: 0,
+                      height: 0,
+                      borderLeft: '6px solid transparent',
+                      borderRight: '6px solid transparent',
+                      borderTop: '6px solid rgba(0, 0, 0, 0.9)',
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
             <button
               onClick={() => handleLikePrompt(prompt.id)}
               style={{
@@ -432,27 +627,111 @@ const LeaderboardView = () => {
               {isCommentsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
           )}
+          
+          {/* Delete Button - Only for own prompts */}
+          {isOwnPrompt && (
+            <button
+              onClick={() => setDeleteConfirm(prompt.id)}
+              style={{
+                padding: '10px 20px',
+                background: 'rgba(255, 80, 80, 0.1)',
+                border: '1px solid rgba(255, 80, 80, 0.3)',
+                borderRadius: '8px',
+                color: '#ff5050',
+                fontSize: '0.95rem',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 80, 80, 0.2)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 80, 80, 0.1)'
+              }}
+            >
+              <Trash2 size={18} />
+              Delete Post
+            </button>
+          )}
         </div>
-
-        {isOwnPrompt && (
-          <p style={{ color: currentTheme.textMuted, fontSize: '0.9rem', fontStyle: 'italic', marginBottom: '16px' }}>
-            Your prompt
-          </p>
+        
+        {/* Delete Confirmation Modal */}
+        {deleteConfirm === prompt.id && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            style={{
+              marginBottom: '16px',
+              padding: '16px',
+              background: 'rgba(255, 80, 80, 0.1)',
+              border: '1px solid rgba(255, 80, 80, 0.3)',
+              borderRadius: '12px',
+            }}
+          >
+            <p style={{ color: currentTheme.text, marginBottom: '12px', fontSize: '0.95rem' }}>
+              Are you sure you want to delete this post? This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={() => handleDeletePrompt(prompt.id)}
+                disabled={deleting}
+                style={{
+                  padding: '8px 16px',
+                  background: deleting ? 'rgba(255, 80, 80, 0.3)' : 'rgba(255, 80, 80, 0.2)',
+                  border: '1px solid rgba(255, 80, 80, 0.5)',
+                  borderRadius: '8px',
+                  color: '#ff5050',
+                  fontSize: '0.9rem',
+                  fontWeight: '500',
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {deleting ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+                style={{
+                  padding: '8px 16px',
+                  background: currentTheme.buttonBackground,
+                  border: `1px solid ${currentTheme.borderLight}`,
+                  borderRadius: '8px',
+                  color: currentTheme.text,
+                  fontSize: '0.9rem',
+                  fontWeight: '500',
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
         )}
 
         {/* Comments Section */}
         {isCommentsExpanded && currentUser && (
           <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(0, 255, 255, 0.2)' }}>
             {/* Add Comment */}
-            <div style={{ marginBottom: '20px' }}>
+            <div style={{ marginBottom: '20px', position: 'relative' }}>
               <textarea
                 value={commentTexts[prompt.id] || ''}
                 onChange={(e) => setCommentTexts({ ...commentTexts, [prompt.id]: e.target.value })}
                 placeholder="Add a comment..."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && commentTexts[prompt.id]?.trim()) {
+                    e.preventDefault()
+                    handleAddComment(prompt.id)
+                  }
+                }}
                 style={{
                   width: '100%',
-                  minHeight: '80px',
-                  padding: '12px',
+                  minHeight: '60px',
+                  padding: '12px 45px 12px 12px',
                   background: currentTheme.backgroundSecondary,
                   border: `1px solid ${currentTheme.borderLight}`,
                   borderRadius: '8px',
@@ -466,21 +745,23 @@ const LeaderboardView = () => {
                 onClick={() => handleAddComment(prompt.id)}
                 disabled={!commentTexts[prompt.id]?.trim()}
                 style={{
-                  marginTop: '8px',
-                  padding: '8px 16px',
-                  background: commentTexts[prompt.id]?.trim() ? currentTheme.buttonBackgroundHover : currentTheme.buttonBackground,
-                  border: `1px solid ${currentTheme.borderLight}`,
-                  borderRadius: '6px',
+                  position: 'absolute',
+                  right: '10px',
+                  bottom: '10px',
+                  padding: '6px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '50%',
                   color: commentTexts[prompt.id]?.trim() ? currentTheme.accent : currentTheme.textMuted,
-                  fontSize: '0.85rem',
                   cursor: commentTexts[prompt.id]?.trim() ? 'pointer' : 'not-allowed',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s ease',
                 }}
+                title="Send (Enter)"
               >
-                <Send size={14} />
-                Post Comment
+                <Send size={18} />
               </button>
             </div>
 
@@ -489,6 +770,9 @@ const LeaderboardView = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {comments.map((comment) => {
                   const isRepliesExpanded = expandedReplies[comment.id]
+                  const isCommentLiked = currentUser?.id && comment.likes?.includes(currentUser.id)
+                  const isOwnComment = currentUser?.id === comment.userId
+                  const commentLikeCount = comment.likes?.length || 0
                   
                   return (
                     <div
@@ -501,7 +785,7 @@ const LeaderboardView = () => {
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                        <div>
+                        <div style={{ flex: 1 }}>
                           <p style={{ color: currentTheme.accent, fontSize: '0.9rem', fontWeight: '600', margin: '0 0 4px 0' }}>
                             {comment.username}
                           </p>
@@ -509,96 +793,273 @@ const LeaderboardView = () => {
                             {comment.text}
                           </p>
                         </div>
-                        <p style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0 }}>
+                        <p style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0, whiteSpace: 'nowrap', marginLeft: '12px' }}>
                           {formatDate(comment.createdAt)}
                         </p>
                       </div>
 
-                      {/* Replies */}
-                      {comment.replies && comment.replies.length > 0 && (
+                      {/* Comment Actions - Like, Reply, Delete */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
+                        {/* Like */}
                         <button
-                          onClick={() => setExpandedReplies({ ...expandedReplies, [comment.id]: !isRepliesExpanded })}
+                          onClick={() => !isOwnComment && handleLikeComment(prompt.id, comment.id)}
+                          disabled={isOwnComment}
                           style={{
-                            marginTop: '8px',
-                            padding: '4px 8px',
+                            padding: '0',
                             background: 'transparent',
                             border: 'none',
-                            color: currentTheme.accent,
-                            fontSize: '0.75rem',
+                            color: isCommentLiked ? '#ff6b6b' : isOwnComment ? currentTheme.textMuted : currentTheme.textSecondary,
+                            fontSize: '0.8rem',
+                            cursor: isOwnComment ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            opacity: isOwnComment ? 0.5 : 1,
+                            transition: 'all 0.2s ease',
+                          }}
+                          title={isOwnComment ? "You can't like your own comment" : (isCommentLiked ? 'Unlike' : 'Like')}
+                        >
+                          <Heart 
+                            size={14} 
+                            fill={isCommentLiked ? '#ff6b6b' : 'transparent'} 
+                            color={isCommentLiked ? '#ff6b6b' : currentTheme.textSecondary} 
+                          />
+                          {commentLikeCount > 0 ? commentLikeCount : 'Like'}
+                        </button>
+
+                        {/* Reply Toggle */}
+                        <button
+                          onClick={() => setShowReplyInput({ ...showReplyInput, [comment.id]: !showReplyInput[comment.id] })}
+                          style={{
+                            padding: '0',
+                            background: 'transparent',
+                            border: 'none',
+                            color: currentTheme.textSecondary,
+                            fontSize: '0.8rem',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
                           }}
                         >
-                          {isRepliesExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                          {comment.replies.length} {comment.replies.length === 1 ? 'reply' : 'replies'}
+                          Reply
                         </button>
-                      )}
 
-                      {isRepliesExpanded && comment.replies && (
-                        <div style={{ marginTop: '12px', paddingLeft: '16px', borderLeft: '2px solid rgba(0, 255, 255, 0.3)' }}>
-                          {comment.replies.map((reply) => (
-                            <div key={reply.id} style={{ marginBottom: '12px', padding: '12px', background: currentTheme.backgroundSecondary, borderRadius: '6px' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
-                                <p style={{ color: currentTheme.accentSecondary, fontSize: '0.85rem', fontWeight: '600', margin: 0 }}>
-                                  {reply.username}
-                                </p>
-                                <p style={{ color: currentTheme.textMuted, fontSize: '0.7rem', margin: 0 }}>
-                                  {formatDate(reply.createdAt)}
-                                </p>
-                              </div>
-                              <p style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', margin: 0, lineHeight: '1.4' }}>
-                                {reply.text}
-                              </p>
-                            </div>
-                          ))}
+                        {/* View Replies */}
+                        {comment.replies && comment.replies.length > 0 && (
+                          <button
+                            onClick={() => setExpandedReplies({ ...expandedReplies, [comment.id]: !isRepliesExpanded })}
+                            style={{
+                              padding: '0',
+                              background: 'transparent',
+                              border: 'none',
+                              color: currentTheme.accent,
+                              fontSize: '0.8rem',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            {isRepliesExpanded ? 'Hide' : 'View'} {comment.replies.length} {comment.replies.length === 1 ? 'reply' : 'replies'}
+                          </button>
+                        )}
+
+                        {/* Delete (only for own comments) */}
+                        {isOwnComment && (
+                          <button
+                            onClick={() => setDeleteCommentConfirm(comment.id)}
+                            style={{
+                              padding: '0',
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#ff5050',
+                              fontSize: '0.8rem',
+                              cursor: 'pointer',
+                              marginLeft: 'auto',
+                            }}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Delete Confirmation */}
+                      {deleteCommentConfirm === comment.id && (
+                        <div style={{ 
+                          marginTop: '10px', 
+                          padding: '10px', 
+                          background: 'rgba(255, 80, 80, 0.1)', 
+                          borderRadius: '6px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                        }}>
+                          <span style={{ color: currentTheme.text, fontSize: '0.8rem' }}>Delete this comment?</span>
+                          <button
+                            onClick={() => handleDeleteComment(prompt.id, comment.id)}
+                            style={{
+                              padding: '4px 10px',
+                              background: 'rgba(255, 80, 80, 0.2)',
+                              border: 'none',
+                              borderRadius: '4px',
+                              color: '#ff5050',
+                              fontSize: '0.75rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Yes
+                          </button>
+                          <button
+                            onClick={() => setDeleteCommentConfirm(null)}
+                            style={{
+                              padding: '4px 10px',
+                              background: currentTheme.buttonBackground,
+                              border: 'none',
+                              borderRadius: '4px',
+                              color: currentTheme.text,
+                              fontSize: '0.75rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            No
+                          </button>
                         </div>
                       )}
 
-                      {/* Reply Input - Anyone can reply */}
-                      {currentUser && (
-                        <div style={{ marginTop: '12px' }}>
+                      {/* Replies Display */}
+                      {isRepliesExpanded && comment.replies && (
+                        <div style={{ marginTop: '12px', paddingLeft: '16px', borderLeft: '2px solid rgba(0, 255, 255, 0.3)' }}>
+                          {comment.replies.map((reply) => {
+                            const isOwnReply = currentUser?.id === reply.userId
+                            
+                            return (
+                              <div key={reply.id} style={{ marginBottom: '12px', padding: '12px', background: currentTheme.backgroundTertiary, borderRadius: '6px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                                  <p style={{ color: currentTheme.accentSecondary, fontSize: '0.85rem', fontWeight: '600', margin: 0 }}>
+                                    {reply.username}
+                                  </p>
+                                  <p style={{ color: currentTheme.textMuted, fontSize: '0.7rem', margin: 0 }}>
+                                    {formatDate(reply.createdAt)}
+                                  </p>
+                                </div>
+                                <p style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', margin: 0, lineHeight: '1.4' }}>
+                                  {reply.text}
+                                </p>
+                                
+                                {/* Reply Actions */}
+                                {isOwnReply && (
+                                  <div style={{ marginTop: '8px' }}>
+                                    {deleteReplyConfirm === reply.id ? (
+                                      <div style={{ 
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                      }}>
+                                        <span style={{ color: currentTheme.textMuted, fontSize: '0.75rem' }}>Delete?</span>
+                                        <button
+                                          onClick={() => handleDeleteReply(prompt.id, comment.id, reply.id)}
+                                          style={{
+                                            padding: '2px 8px',
+                                            background: 'rgba(255, 80, 80, 0.2)',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            color: '#ff5050',
+                                            fontSize: '0.7rem',
+                                            cursor: 'pointer',
+                                          }}
+                                        >
+                                          Yes
+                                        </button>
+                                        <button
+                                          onClick={() => setDeleteReplyConfirm(null)}
+                                          style={{
+                                            padding: '2px 8px',
+                                            background: currentTheme.buttonBackground,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            color: currentTheme.text,
+                                            fontSize: '0.7rem',
+                                            cursor: 'pointer',
+                                          }}
+                                        >
+                                          No
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={() => setDeleteReplyConfirm(reply.id)}
+                                        style={{
+                                          padding: '0',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          color: '#ff5050',
+                                          fontSize: '0.75rem',
+                                          cursor: 'pointer',
+                                        }}
+                                      >
+                                        Delete
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Reply Input - Only shown when Reply is clicked */}
+                      {currentUser && showReplyInput[comment.id] && (
+                        <div style={{ marginTop: '12px', position: 'relative' }}>
                           <input
                             type="text"
                             value={replyTexts[comment.id] || ''}
                             onChange={(e) => setReplyTexts({ ...replyTexts, [comment.id]: e.target.value })}
-                            placeholder="Reply to this comment..."
-                            onKeyPress={(e) => {
+                            placeholder="Write a reply..."
+                            onKeyDown={(e) => {
                               if (e.key === 'Enter' && replyTexts[comment.id]?.trim()) {
                                 handleReplyToComment(prompt.id, comment.id)
+                                setShowReplyInput({ ...showReplyInput, [comment.id]: false })
                               }
                             }}
+                            autoFocus
                             style={{
                               width: '100%',
-                              padding: '8px 12px',
-                              background: currentTheme.backgroundSecondary,
+                              padding: '10px 40px 10px 12px',
+                              background: currentTheme.backgroundTertiary,
                               border: `1px solid ${currentTheme.borderLight}`,
-                              borderRadius: '6px',
+                              borderRadius: '20px',
                               color: currentTheme.text,
                               fontSize: '0.85rem',
                               fontFamily: 'inherit',
                             }}
                           />
                           <button
-                            onClick={() => handleReplyToComment(prompt.id, comment.id)}
+                            onClick={() => {
+                              if (replyTexts[comment.id]?.trim()) {
+                                handleReplyToComment(prompt.id, comment.id)
+                                setShowReplyInput({ ...showReplyInput, [comment.id]: false })
+                              }
+                            }}
                             disabled={!replyTexts[comment.id]?.trim()}
                             style={{
-                              marginTop: '6px',
-                              padding: '6px 12px',
-                              background: replyTexts[comment.id]?.trim() ? currentTheme.buttonBackgroundHover : currentTheme.buttonBackground,
-                              border: '1px solid rgba(0, 255, 0, 0.3)',
-                              borderRadius: '6px',
-                              color: replyTexts[comment.id]?.trim() ? currentTheme.accentSecondary : currentTheme.textMuted,
-                              fontSize: '0.8rem',
+                              position: 'absolute',
+                              right: '8px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              padding: '4px',
+                              background: 'transparent',
+                              border: 'none',
+                              color: replyTexts[comment.id]?.trim() ? currentTheme.accent : currentTheme.textMuted,
                               cursor: replyTexts[comment.id]?.trim() ? 'pointer' : 'not-allowed',
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '4px',
+                              justifyContent: 'center',
                             }}
+                            title="Send reply (Enter)"
                           >
-                            <Send size={12} />
-                            Reply
+                            <Send size={16} />
                           </button>
                         </div>
                       )}
@@ -765,6 +1226,68 @@ const LeaderboardView = () => {
             )}
           </div>
           
+          {/* Category Filter Tabs */}
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '8px',
+              marginBottom: '24px',
+              padding: '16px',
+              background: theme === 'light' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.2)',
+              borderRadius: '12px',
+              border: `1px solid ${currentTheme.borderLight}`,
+            }}
+          >
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px', 
+              marginRight: '8px',
+              paddingRight: '16px',
+              borderRight: `1px solid ${currentTheme.borderLight}`,
+            }}>
+              <Layers size={18} color={currentTheme.accent} />
+              <span style={{ color: currentTheme.textSecondary, fontSize: '0.9rem', fontWeight: '500' }}>
+                Filter by Category:
+              </span>
+            </div>
+            {CATEGORIES.map((category) => (
+              <button
+                key={category}
+                onClick={() => setSelectedCategory(category)}
+                style={{
+                  padding: '6px 14px',
+                  background: selectedCategory === category 
+                    ? (theme === 'light' ? 'rgba(0, 180, 180, 0.2)' : 'rgba(0, 255, 255, 0.15)')
+                    : 'transparent',
+                  border: `1px solid ${selectedCategory === category ? currentTheme.accent : currentTheme.borderLight}`,
+                  borderRadius: '20px',
+                  color: selectedCategory === category ? currentTheme.accent : currentTheme.textSecondary,
+                  fontSize: '0.85rem',
+                  fontWeight: selectedCategory === category ? '600' : '400',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={(e) => {
+                  if (selectedCategory !== category) {
+                    e.currentTarget.style.borderColor = currentTheme.accent
+                    e.currentTarget.style.color = currentTheme.accent
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (selectedCategory !== category) {
+                    e.currentTarget.style.borderColor = currentTheme.borderLight
+                    e.currentTarget.style.color = currentTheme.textSecondary
+                  }
+                }}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+          
           {/* Daily Reward Notice - Only show on Today's Favorites */}
           {activeSection === 'today' && (
             <div
@@ -791,27 +1314,46 @@ const LeaderboardView = () => {
           <div style={{ textAlign: 'center', padding: '40px' }}>
             <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>Loading leaderboard...</p>
           </div>
-        ) : leaderboardPrompts.length === 0 ? (
-          <div
-            style={{
-              background: currentTheme.buttonBackground,
-              border: `1px solid ${currentTheme.borderLight}`,
-              borderRadius: '16px',
-              padding: '40px',
-              textAlign: 'center',
-            }}
-          >
-            <p style={{ color: currentTheme.textMuted, fontSize: '1.1rem' }}>
-              {activeSection === 'today' && "No prompts submitted today yet. Be the first!"}
-              {activeSection === 'alltime' && "No prompts on the leaderboard yet. Be the first to submit one!"}
-              {activeSection === 'profile' && "You haven't submitted any prompts yet. Submit your first prompt from the home tab!"}
-            </p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {leaderboardPrompts.map((prompt) => renderPromptCard(prompt))}
-          </div>
-        )}
+        ) : (() => {
+          // Filter prompts by selected category
+          const filteredPrompts = selectedCategory === 'All' 
+            ? leaderboardPrompts 
+            : leaderboardPrompts.filter(prompt => prompt.category === selectedCategory)
+          
+          return filteredPrompts.length === 0 ? (
+            <div
+              style={{
+                background: currentTheme.buttonBackground,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '16px',
+                padding: '40px',
+                textAlign: 'center',
+              }}
+            >
+              <p style={{ color: currentTheme.textMuted, fontSize: '1.1rem' }}>
+                {selectedCategory !== 'All' ? (
+                  `No prompts found in the "${selectedCategory}" category${activeSection === 'today' ? ' today' : activeSection === 'profile' ? ' in your profile' : ''}.`
+                ) : (
+                  <>
+                    {activeSection === 'today' && "No prompts submitted today yet. Be the first!"}
+                    {activeSection === 'alltime' && "No prompts on the leaderboard yet. Be the first to submit one!"}
+                    {activeSection === 'profile' && "You haven't submitted any prompts yet. Submit your first prompt from the home tab!"}
+                  </>
+                )}
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Show count of filtered results */}
+              {selectedCategory !== 'All' && (
+                <p style={{ color: currentTheme.textSecondary, fontSize: '0.9rem', margin: '0 0 8px 0' }}>
+                  Showing {filteredPrompts.length} prompt{filteredPrompts.length !== 1 ? 's' : ''} in "{selectedCategory}"
+                </p>
+              )}
+              {filteredPrompts.map((prompt) => renderPromptCard(prompt))}
+            </div>
+          )
+        })()}
       </div>
     </motion.div>
   )

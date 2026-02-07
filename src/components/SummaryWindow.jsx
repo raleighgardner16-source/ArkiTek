@@ -45,12 +45,14 @@ const SummaryWindow = () => {
   }, [activeTab, summary, setSummaryMinimized])
 
   // When summary first appears (new summary), show it in maximized view
+  // This applies to BOTH regular summaries AND single model responses
   useEffect(() => {
-    if (summary && !summary.singleModel && activeTab === 'home') {
+    if (summary && activeTab === 'home') {
       // Check if this is a new summary (different from previous)
       if (prevSummaryRef.current !== summary.text) {
-        setIsMaximized(true) // Show in maximized view by default
+        setIsMaximized(true) // Show in maximized view by default (centered)
         setSummaryMinimized(false) // Make sure it's not minimized
+        setIsInitialized(false) // Reset initialization so position recalculates for non-maximized view
         prevSummaryRef.current = summary.text
       }
     }
@@ -433,7 +435,7 @@ const SummaryWindow = () => {
           left: 0,
           width: '100vw',
           height: '100vh',
-          background: 'rgba(0, 0, 0, 0.95)',
+          background: theme === 'light' ? 'rgba(255, 255, 255, 0.98)' : 'rgba(0, 0, 0, 0.95)',
           zIndex: 300,
           display: 'flex',
           alignItems: 'center',

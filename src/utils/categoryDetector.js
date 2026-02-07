@@ -24,11 +24,11 @@ export const detectCategory = async (prompt, selectedProviders = []) => {
     modelsList += '\n'
   }
 
-  // Build the JSON structure string
+  // Build the JSON structure string - IMPORTANT: Show false as the default!
   let jsonStructure = `{
   "category": "CategoryName",
-  "needsSearch": true,
-  "recommendedModelType": "reasoning"`
+  "needsSearch": false,
+  "recommendedModelType": "versatile"`
   
   if (selectedProviders.length > 0) {
     jsonStructure += `,
@@ -39,10 +39,20 @@ export const detectCategory = async (prompt, selectedProviders = []) => {
 }`
 
   const categoryPrompt = `Classify the user prompt into EXACTLY ONE category from the list below.
-Also decide if a web search is needed (ONLY if information after 2023 is required). 
-Recommend a SINGLE model type that will be used for ALL providers.
+Determine if a web search would genuinely help answer the query. Recommend a SINGLE model type for ALL providers.
 
-CRITICAL: The recommendedModelType you choose will be applied to EVERY provider. Choose ONE type and stick to it.
+needsSearch = true when:
+- The query asks about current events, recent news, or real-time information
+- The query needs factual verification (specific facts, statistics, dates)
+- The query asks about specific people, companies, or events that may have recent updates
+
+needsSearch = false when:
+- The query is about general concepts, explanations, or "how does X work"
+- The query asks for opinions, advice, or creative content
+- The query is about well-established knowledge (science fundamentals, history, etc.)
+- The query can be answered from general knowledge without specific sources
+
+CRITICAL: The recommendedModelType you choose will be applied to EVERY provider. Choose ONE type.
 
 Output ONLY this JSON:
 ${jsonStructure}

@@ -9,11 +9,40 @@ import { fileURLToPath } from 'url'
 import * as cheerio from 'cheerio'
 import { countTokens, extractTokensFromResponse, estimateTokensFallback } from './utils/tokenCounters.js'
 import Stripe from 'stripe'
+import db from './database/db.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 dotenv.config()
+
+// ============================================================================
+// DATABASE CONNECTION (MongoDB Only - No JSON Files)
+// ============================================================================
+const initDatabase = async () => {
+  try {
+    await db.connect()
+    console.log('[Server] ✅ MongoDB connected successfully')
+    console.log('[Server] 🗄️  Using MongoDB as primary data store')
+  } catch (error) {
+    console.error('[Server] ❌ MongoDB connection failed:', error.message)
+    console.error('[Server] Cannot start without database connection')
+    process.exit(1) // Exit if MongoDB fails - no fallback
+  }
+}
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\n[Server] Shutting down gracefully...')
+  await db.close()
+  process.exit(0)
+})
+
+process.on('SIGTERM', async () => {
+  console.log('\n[Server] Received SIGTERM, shutting down...')
+  await db.close()
+  process.exit(0)
+})
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -24,48 +53,25 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 })
 
 // Stripe configuration
-const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || '' // You'll need to create a $25/month price in Stripe Dashboard
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '' // For webhook signature verification
+const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || ''
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || ''
 
-// User data storage file
-const USERS_FILE = path.join(__dirname, 'ADMIN', 'users.json')
-const USAGE_FILE = path.join(__dirname, 'ADMIN', 'usage.json')
+// ============================================================================
+// ADMIN LIST (kept in simple JSON file since it rarely changes)
+// ============================================================================
 const ADMINS_FILE = path.join(__dirname, 'ADMIN', 'admins.json')
-const DELETED_USERS_FILE = path.join(__dirname, 'ADMIN', 'deleted_users.json')
-const LEADERBOARD_FILE = path.join(__dirname, 'ADMIN', 'leaderboard.json')
 
-// Helper functions for user storage
-const readUsers = () => {
-  try {
-    if (fs.existsSync(USERS_FILE)) {
-      const data = fs.readFileSync(USERS_FILE, 'utf8')
-      if (data.trim() === '') {
-        return {}
-      }
-      return JSON.parse(data)
-    }
-  } catch (error) {
-    console.error('Error reading users file:', error)
-  }
-  return {}
-}
-
-const writeUsers = (users) => {
-  try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2))
-  } catch (error) {
-    console.error('Error writing users file:', error)
-  }
-}
-
-// Helper functions for admin storage
 const readAdmins = () => {
+  // First try to use MongoDB cache (populated on server startup)
+  if (cacheLoaded && adminsCache.admins.length > 0) {
+    return { admins: adminsCache.admins }
+  }
+  
+  // Fall back to JSON file during startup or if cache is empty
   try {
     if (fs.existsSync(ADMINS_FILE)) {
       const data = fs.readFileSync(ADMINS_FILE, 'utf8')
-      if (data.trim() === '') {
-        return { admins: [] }
-      }
+      if (data.trim() === '') return { admins: [] }
       return JSON.parse(data)
     }
   } catch (error) {
@@ -76,101 +82,277 @@ const readAdmins = () => {
 
 const isAdmin = (userId) => {
   const admins = readAdmins()
-  console.log(`[Admin Check] Checking if ${userId} is admin. Admins list:`, admins.admins)
-  const result = admins.admins.includes(userId)
-  console.log(`[Admin Check] Result for ${userId}:`, result)
-  return result
+  return admins.admins.includes(userId)
 }
 
-// Helper functions for deleted users tracking
-const readDeletedUsers = () => {
+// Admin authentication middleware - requires admin privileges
+const requireAdmin = (req, res, next) => {
+  // Get userId from query params (GET) or body (POST/PUT/DELETE)
+  const userId = req.query.requestingUserId || req.body.requestingUserId
+  
+  if (!userId) {
+    console.log('[Admin] ❌ Access denied - no requestingUserId provided')
+    return res.status(401).json({ 
+      error: 'Authentication required',
+      message: 'You must be logged in to access this resource'
+    })
+  }
+  
+  if (!isAdmin(userId)) {
+    console.log(`[Admin] ❌ Access denied - user ${userId} is not an admin`)
+    return res.status(403).json({ 
+      error: 'Admin access required',
+      message: 'You do not have permission to access this resource'
+    })
+  }
+  
+  console.log(`[Admin] ✅ Access granted for admin: ${userId}`)
+  next()
+}
+
+// ============================================================================
+// MONGODB-BACKED DATA LAYER (Replaces JSON File Operations)
+// ============================================================================
+// These functions maintain backwards compatibility with existing code
+// while storing all data in MongoDB instead of JSON files
+
+// In-memory cache for usage data (synced with MongoDB)
+let usageCache = {}
+let usersCache = {}
+let leaderboardCache = { prompts: [] }
+let adminsCache = { admins: [] }
+let cacheLoaded = false
+
+// Load cache from MongoDB on startup
+const loadCacheFromMongoDB = async () => {
   try {
-    if (fs.existsSync(DELETED_USERS_FILE)) {
-      const data = fs.readFileSync(DELETED_USERS_FILE, 'utf8')
-      if (data.trim() === '') {
-        return { count: 0 }
+    // Load all users
+    const allUsers = await db.users.getAll()
+    for (const user of allUsers) {
+      usersCache[user._id] = {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username,
+        email: user.email,
+        password: user.password,
+        createdAt: user.createdAt?.toISOString?.() || user.createdAt,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+        subscriptionStatus: user.subscriptionStatus,
+        subscriptionEndDate: user.subscriptionEndDate,
+        monthlyUsageCost: user.monthlyUsageCost || {},
+        lastLoginDate: user.lastLoginDate?.toISOString?.() || user.lastLoginDate,
       }
-      return JSON.parse(data)
-    }
-  } catch (error) {
-    console.error('Error reading deleted users file:', error)
-  }
-  return { count: 0 }
-}
-
-const writeDeletedUsers = (data) => {
-  try {
-    fs.writeFileSync(DELETED_USERS_FILE, JSON.stringify(data, null, 2))
-  } catch (error) {
-    console.error('Error writing deleted users file:', error)
-  }
-}
-
-const incrementDeletedUsers = () => {
-  const deletedUsers = readDeletedUsers()
-  deletedUsers.count = (deletedUsers.count || 0) + 1
-  writeDeletedUsers(deletedUsers)
-  return deletedUsers.count
-}
-
-// Helper functions for usage tracking
-const readUsage = () => {
-  try {
-    if (fs.existsSync(USAGE_FILE)) {
-      const data = fs.readFileSync(USAGE_FILE, 'utf8')
-      return JSON.parse(data)
-    }
-  } catch (error) {
-    console.error('Error reading usage file:', error)
-  }
-  return {}
-}
-
-const writeUsage = (usage) => {
-  try {
-    fs.writeFileSync(USAGE_FILE, JSON.stringify(usage, null, 2))
-  } catch (error) {
-    console.error('Error writing usage file:', error)
-  }
-}
-
-// Helper functions for leaderboard storage
-const readLeaderboard = () => {
-  try {
-    // Ensure ADMIN directory exists
-    const adminDir = path.dirname(LEADERBOARD_FILE)
-    if (!fs.existsSync(adminDir)) {
-      fs.mkdirSync(adminDir, { recursive: true })
+      
+      // Build usage data from user stats
+      usageCache[user._id] = {
+        totalTokens: user.stats?.totalTokens || 0,
+        totalInputTokens: user.stats?.totalInputTokens || 0,
+        totalOutputTokens: user.stats?.totalOutputTokens || 0,
+        totalQueries: user.stats?.totalQueries || 0,
+        totalPrompts: user.stats?.totalPrompts || 0,
+        monthlyUsage: {},
+        dailyUsage: {},
+        providers: user.stats?.providers || {},
+        models: user.stats?.models || {},
+        promptHistory: [],
+        categories: {},
+        categoryPrompts: {},
+        ratings: {},
+        lastActiveDate: user.lastActiveAt?.toISOString?.()?.split('T')[0] || null,
+        lastLoginDate: user.lastLoginDate?.toISOString?.() || null,
+        streakDays: 0,
+        judgeConversationContext: [],
+        purchasedCredits: user.purchasedCredits || { total: 0, remaining: 0 },
+      }
     }
     
-    if (fs.existsSync(LEADERBOARD_FILE)) {
-      const data = fs.readFileSync(LEADERBOARD_FILE, 'utf8')
-      if (data.trim() === '') {
-        return { prompts: [] }
-      }
-      return JSON.parse(data)
+    // Load leaderboard posts
+    const dbInstance = await db.getDb()
+    const posts = await dbInstance.collection('leaderboard_posts').find({}).toArray()
+    leaderboardCache.prompts = posts.map(p => ({
+      id: p._id,
+      userId: p.userId,
+      username: p.username,
+      promptText: p.promptText,
+      category: p.category,
+      likes: p.likes || [],
+      likeCount: p.likeCount || 0,
+      createdAt: p.createdAt?.toISOString?.() || p.createdAt,
+      responses: p.responses || [],
+      summary: p.summary,
+      sources: p.sources || [],
+      comments: p.comments || [],
+    }))
+    
+    // Load admins list
+    const adminsDoc = await dbInstance.collection('admins').findOne({ _id: 'admin_list' })
+    if (adminsDoc && adminsDoc.admins) {
+      adminsCache.admins = adminsDoc.admins
     }
-    // File doesn't exist, create it with empty structure
-    const emptyLeaderboard = { prompts: [] }
-    writeLeaderboard(emptyLeaderboard)
-    return emptyLeaderboard
+    
+    cacheLoaded = true
+    console.log(`[Cache] Loaded ${Object.keys(usersCache).length} users, ${leaderboardCache.prompts.length} leaderboard posts, ${adminsCache.admins.length} admins`)
   } catch (error) {
-    console.error('Error reading leaderboard file:', error)
-    return { prompts: [] }
+    console.error('[Cache] Failed to load from MongoDB:', error.message)
   }
 }
 
-const writeLeaderboard = (leaderboard) => {
+// Sync cache to MongoDB (debounced)
+let syncTimeout = null
+const syncToMongoDB = async (collection, id, data) => {
   try {
-    // Ensure ADMIN directory exists
-    const adminDir = path.dirname(LEADERBOARD_FILE)
-    if (!fs.existsSync(adminDir)) {
-      fs.mkdirSync(adminDir, { recursive: true })
+    const dbInstance = await db.getDb()
+    if (collection === 'users') {
+      await dbInstance.collection('users').updateOne(
+        { _id: id },
+        { $set: data },
+        { upsert: true }
+      )
+    } else if (collection === 'usage') {
+      // Usage data is embedded in user document
+      await dbInstance.collection('users').updateOne(
+        { _id: id },
+        { 
+          $set: {
+            'stats.totalTokens': data.totalTokens || 0,
+            'stats.totalInputTokens': data.totalInputTokens || 0,
+            'stats.totalOutputTokens': data.totalOutputTokens || 0,
+            'stats.totalQueries': data.totalQueries || 0,
+            'stats.totalPrompts': data.totalPrompts || 0,
+            'stats.providers': data.providers || {},
+            'stats.models': data.models || {},
+            lastActiveAt: new Date(),
+          }
+        },
+        { upsert: true }
+      )
+    } else if (collection === 'leaderboard') {
+      // Handled separately
     }
-    fs.writeFileSync(LEADERBOARD_FILE, JSON.stringify(leaderboard, null, 2))
   } catch (error) {
-    console.error('Error writing leaderboard file:', error)
-    throw error // Re-throw so calling code can handle it
+    console.error(`[Sync] Failed to sync ${collection}/${id}:`, error.message)
+  }
+}
+
+// MongoDB-backed readUsers (uses cache)
+const readUsers = () => {
+  return usersCache
+}
+
+// MongoDB-backed writeUsers (updates cache + syncs to MongoDB)
+const writeUsers = (users) => {
+  usersCache = users
+  // Sync each user to MongoDB
+  for (const [userId, userData] of Object.entries(users)) {
+    syncToMongoDB('users', userId, {
+      _id: userId,
+      firstName: userData.firstName,
+      lastName: userData.lastName,
+      username: userData.username,
+      email: userData.email,
+      password: userData.password,
+      createdAt: userData.createdAt ? new Date(userData.createdAt) : new Date(),
+      stripeCustomerId: userData.stripeCustomerId,
+      stripeSubscriptionId: userData.stripeSubscriptionId,
+      subscriptionStatus: userData.subscriptionStatus,
+      subscriptionEndDate: userData.subscriptionEndDate,
+      monthlyUsageCost: userData.monthlyUsageCost || {},
+      lastLoginDate: userData.lastLoginDate ? new Date(userData.lastLoginDate) : null,
+    })
+  }
+}
+
+// MongoDB-backed readUsage (uses cache)
+const readUsage = () => {
+  return usageCache
+}
+
+// MongoDB-backed writeUsage (updates cache + syncs to MongoDB)
+const writeUsage = (usage) => {
+  usageCache = usage
+  // Sync each user's usage to MongoDB
+  for (const [userId, userData] of Object.entries(usage)) {
+    syncToMongoDB('usage', userId, userData)
+  }
+}
+
+// MongoDB-backed readLeaderboard
+const readLeaderboard = () => {
+  return leaderboardCache
+}
+
+// MongoDB-backed writeLeaderboard
+const writeLeaderboard = async (leaderboard) => {
+  leaderboardCache = leaderboard
+  
+  try {
+    const dbInstance = await db.getDb()
+    
+    // Sync each post
+    for (const post of leaderboard.prompts) {
+      await dbInstance.collection('leaderboard_posts').updateOne(
+        { _id: post.id },
+        { 
+          $set: {
+            userId: post.userId,
+            username: post.username,
+            promptText: post.promptText,
+            category: post.category,
+            likes: post.likes || [],
+            likeCount: post.likeCount || 0,
+            createdAt: post.createdAt ? new Date(post.createdAt) : new Date(),
+            responses: post.responses || [],
+            summary: post.summary,
+            sources: post.sources || [],
+            comments: post.comments || [],
+          }
+        },
+        { upsert: true }
+      )
+    }
+  } catch (error) {
+    console.error('[Leaderboard Sync] Failed:', error.message)
+  }
+}
+
+// Track deleted users count in MongoDB
+const incrementDeletedUsers = async () => {
+  try {
+    const dbInstance = await db.getDb()
+    const result = await dbInstance.collection('metadata').findOneAndUpdate(
+      { _id: 'admin_stats' },
+      { $inc: { deletedUsersCount: 1 } },
+      { upsert: true, returnDocument: 'after' }
+    )
+    return result.deletedUsersCount || 1
+  } catch (error) {
+    console.error('[DeletedUsers] Failed to increment:', error.message)
+    return 0
+  }
+}
+
+// Read deleted users count from MongoDB
+const readDeletedUsers = async () => {
+  try {
+    const dbInstance = await db.getDb()
+    const stats = await dbInstance.collection('metadata').findOne({ _id: 'admin_stats' })
+    return { count: stats?.deletedUsersCount || 0 }
+  } catch (error) {
+    console.error('[DeletedUsers] Failed to read:', error.message)
+    return { count: 0 }
+  }
+}
+
+// Read admin stats from MongoDB
+const getAdminStats = async () => {
+  try {
+    const dbInstance = await db.getDb()
+    return await dbInstance.collection('metadata').findOne({ _id: 'admin_stats' })
+  } catch (error) {
+    console.error('[AdminStats] Failed to read:', error.message)
+    return null
   }
 }
 
@@ -444,8 +626,21 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
   }
 }
 
+// Refiner models - these are internal pipeline models whose tokens should NOT be shown to users
+// but their COST should still be tracked and billed
+const REFINER_MODELS = [
+  'gemini-2.5-flash-lite',
+  'gemini-1.5-flash-lite', 
+  'gpt-4o-mini'
+]
+
+// Check if a model is a refiner model (internal pipeline model)
+const isRefinerModel = (model) => {
+  return REFINER_MODELS.some(refiner => model.includes(refiner))
+}
+
 // Track usage for a user
-const trackUsage = (userId, provider, model, inputTokens, outputTokens) => {
+const trackUsage = async (userId, provider, model, inputTokens, outputTokens) => {
   const usage = readUsage()
   if (!usage[userId]) {
     usage[userId] = {
@@ -465,23 +660,36 @@ const trackUsage = (userId, provider, model, inputTokens, outputTokens) => {
   const currentMonth = getCurrentMonth()
   const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
   const tokensUsed = inputTokens + outputTokens
+  const modelKey = `${provider}-${model}`
+  
+  // Check if this is a refiner model (internal pipeline model)
+  // Refiner models: their cost is tracked but tokens are NOT shown to users
+  const isRefiner = isRefinerModel(model)
+  
+  if (isRefiner) {
+    console.log(`[Usage] Tracking refiner model ${modelKey}: ${tokensUsed} tokens (hidden from user count, included in cost)`)
+  }
 
-  // Update totals
-  userUsage.totalTokens += tokensUsed
-  userUsage.totalInputTokens = (userUsage.totalInputTokens || 0) + inputTokens
-  userUsage.totalOutputTokens = (userUsage.totalOutputTokens || 0) + outputTokens
+  // Update totals - ONLY for non-refiner models (user-visible token counts)
+  if (!isRefiner) {
+    userUsage.totalTokens += tokensUsed
+    userUsage.totalInputTokens = (userUsage.totalInputTokens || 0) + inputTokens
+    userUsage.totalOutputTokens = (userUsage.totalOutputTokens || 0) + outputTokens
+  }
   // Note: totalQueries is now only incremented when Serper queries are made, not for LLM calls
 
-  // Update monthly usage
+  // Update monthly usage - ONLY for non-refiner models (user-visible token counts)
   if (!userUsage.monthlyUsage[currentMonth]) {
     userUsage.monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
   }
-  userUsage.monthlyUsage[currentMonth].tokens += tokensUsed
-  userUsage.monthlyUsage[currentMonth].inputTokens = (userUsage.monthlyUsage[currentMonth].inputTokens || 0) + inputTokens
-  userUsage.monthlyUsage[currentMonth].outputTokens = (userUsage.monthlyUsage[currentMonth].outputTokens || 0) + outputTokens
+  if (!isRefiner) {
+    userUsage.monthlyUsage[currentMonth].tokens += tokensUsed
+    userUsage.monthlyUsage[currentMonth].inputTokens = (userUsage.monthlyUsage[currentMonth].inputTokens || 0) + inputTokens
+    userUsage.monthlyUsage[currentMonth].outputTokens = (userUsage.monthlyUsage[currentMonth].outputTokens || 0) + outputTokens
+  }
   // Note: queries are now only incremented when Serper queries are made, not for LLM calls
 
-  // Update provider stats
+  // Update provider stats - ONLY for non-refiner models (user-visible token counts)
   if (!userUsage.providers[provider]) {
     userUsage.providers[provider] = {
       totalTokens: 0,
@@ -494,9 +702,11 @@ const trackUsage = (userId, provider, model, inputTokens, outputTokens) => {
       monthlyQueries: {},
     }
   }
-  userUsage.providers[provider].totalTokens += tokensUsed
-  userUsage.providers[provider].totalInputTokens = (userUsage.providers[provider].totalInputTokens || 0) + inputTokens
-  userUsage.providers[provider].totalOutputTokens = (userUsage.providers[provider].totalOutputTokens || 0) + outputTokens
+  if (!isRefiner) {
+    userUsage.providers[provider].totalTokens += tokensUsed
+    userUsage.providers[provider].totalInputTokens = (userUsage.providers[provider].totalInputTokens || 0) + inputTokens
+    userUsage.providers[provider].totalOutputTokens = (userUsage.providers[provider].totalOutputTokens || 0) + outputTokens
+  }
   // Note: provider queries are now only incremented when Serper queries are made, not for LLM calls
   if (!userUsage.providers[provider].monthlyTokens[currentMonth]) {
     userUsage.providers[provider].monthlyTokens[currentMonth] = 0
@@ -506,33 +716,37 @@ const trackUsage = (userId, provider, model, inputTokens, outputTokens) => {
     userUsage.providers[provider].monthlyOutputTokens[currentMonth] = 0
     userUsage.providers[provider].monthlyQueries[currentMonth] = 0
   }
-  userUsage.providers[provider].monthlyTokens[currentMonth] += tokensUsed
-  userUsage.providers[provider].monthlyInputTokens[currentMonth] = (userUsage.providers[provider].monthlyInputTokens[currentMonth] || 0) + inputTokens
-  userUsage.providers[provider].monthlyOutputTokens[currentMonth] = (userUsage.providers[provider].monthlyOutputTokens[currentMonth] || 0) + outputTokens
+  if (!isRefiner) {
+    userUsage.providers[provider].monthlyTokens[currentMonth] += tokensUsed
+    userUsage.providers[provider].monthlyInputTokens[currentMonth] = (userUsage.providers[provider].monthlyInputTokens[currentMonth] || 0) + inputTokens
+    userUsage.providers[provider].monthlyOutputTokens[currentMonth] = (userUsage.providers[provider].monthlyOutputTokens[currentMonth] || 0) + outputTokens
+  }
   // Note: provider monthly queries are now only incremented when Serper queries are made, not for LLM calls
 
-  // Update model stats (within provider)
-  const modelKey = `${provider}-${model}`
-  if (!userUsage.models[modelKey]) {
-    userUsage.models[modelKey] = {
-      totalTokens: 0,
-      totalInputTokens: 0,
-      totalOutputTokens: 0,
-      totalQueries: 0,
-      totalPrompts: 0, // Track how many times this model was used
-      provider: provider,
-      model: model,
-      pricing: null, // Will be set later
+  // Update model stats (within provider) - ONLY for non-refiner models
+  if (!isRefiner) {
+    if (!userUsage.models[modelKey]) {
+      userUsage.models[modelKey] = {
+        totalTokens: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalQueries: 0,
+        totalPrompts: 0, // Track how many times this model was used
+        provider: provider,
+        model: model,
+        pricing: null, // Will be set later
+      }
     }
+    userUsage.models[modelKey].totalTokens += tokensUsed
+    userUsage.models[modelKey].totalInputTokens = (userUsage.models[modelKey].totalInputTokens || 0) + inputTokens
+    userUsage.models[modelKey].totalOutputTokens = (userUsage.models[modelKey].totalOutputTokens || 0) + outputTokens
+    // Increment prompt count for this model (each time trackUsage is called, it's one prompt/usage)
+    userUsage.models[modelKey].totalPrompts = (userUsage.models[modelKey].totalPrompts || 0) + 1
   }
-  userUsage.models[modelKey].totalTokens += tokensUsed
-  userUsage.models[modelKey].totalInputTokens = (userUsage.models[modelKey].totalInputTokens || 0) + inputTokens
-  userUsage.models[modelKey].totalOutputTokens = (userUsage.models[modelKey].totalOutputTokens || 0) + outputTokens
-  // Increment prompt count for this model (each time trackUsage is called, it's one prompt/usage)
-  userUsage.models[modelKey].totalPrompts = (userUsage.models[modelKey].totalPrompts || 0) + 1
   // Note: model queries are now only incremented when Serper queries are made, not for LLM calls
 
-  // Update daily usage (after modelKey is defined)
+  // Update daily usage (for COST calculation - includes ALL models including refiners)
+  // This is used by the cost calculation function to determine billing
   if (!userUsage.dailyUsage) {
     userUsage.dailyUsage = {}
   }
@@ -542,10 +756,13 @@ const trackUsage = (userId, provider, model, inputTokens, outputTokens) => {
   if (!userUsage.dailyUsage[currentMonth][today]) {
     userUsage.dailyUsage[currentMonth][today] = { inputTokens: 0, outputTokens: 0, queries: 0, models: {} }
   }
-  userUsage.dailyUsage[currentMonth][today].inputTokens = (userUsage.dailyUsage[currentMonth][today].inputTokens || 0) + inputTokens
-  userUsage.dailyUsage[currentMonth][today].outputTokens = (userUsage.dailyUsage[currentMonth][today].outputTokens || 0) + outputTokens
+  // Only add to aggregate daily totals for non-refiner models (user-visible)
+  if (!isRefiner) {
+    userUsage.dailyUsage[currentMonth][today].inputTokens = (userUsage.dailyUsage[currentMonth][today].inputTokens || 0) + inputTokens
+    userUsage.dailyUsage[currentMonth][today].outputTokens = (userUsage.dailyUsage[currentMonth][today].outputTokens || 0) + outputTokens
+  }
   
-  // Track which models were used on this day
+  // Track which models were used on this day - ALL models including refiners (for cost calculation)
   if (!userUsage.dailyUsage[currentMonth][today].models[modelKey]) {
     userUsage.dailyUsage[currentMonth][today].models[modelKey] = { inputTokens: 0, outputTokens: 0 }
   }
@@ -553,6 +770,38 @@ const trackUsage = (userId, provider, model, inputTokens, outputTokens) => {
   userUsage.dailyUsage[currentMonth][today].models[modelKey].outputTokens = (userUsage.dailyUsage[currentMonth][today].models[modelKey].outputTokens || 0) + outputTokens
 
   writeUsage(usage)
+  
+  // ALSO update the monthlyUsageCost in users.json immediately
+  // This ensures costs are tracked incrementally and won't be lost if dailyUsage is reset
+  try {
+    const users = readUsers()
+    const user = users[userId]
+    if (user) {
+      // Calculate the cost of THIS specific usage
+      const pricing = getPricingData()
+      const thisCost = calculateModelCost(modelKey, inputTokens, outputTokens, pricing)
+      
+      if (thisCost > 0) {
+        if (!user.monthlyUsageCost) {
+          user.monthlyUsageCost = {}
+        }
+        const existingCost = user.monthlyUsageCost[currentMonth] || 0
+        user.monthlyUsageCost[currentMonth] = existingCost + thisCost
+        writeUsers(users)
+        console.log(`[Usage] Added $${thisCost.toFixed(6)} to monthlyUsageCost. New total: $${user.monthlyUsageCost[currentMonth].toFixed(4)}`)
+      }
+    }
+  } catch (costErr) {
+    console.error('[Usage] Error updating monthlyUsageCost:', costErr)
+  }
+  
+  // Also track in MongoDB (non-blocking, for gradual migration)
+  // Only track non-refiner models in user-visible stats
+  if (!isRefiner) {
+    db.trackUsage(userId, provider, model, inputTokens, outputTokens).catch(err => 
+      console.warn('[Usage] MongoDB tracking failed (non-critical):', err.message)
+    )
+  }
 }
 
 // API Keys from environment variables (stored securely in .env file)
@@ -578,7 +827,7 @@ app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }))
 app.use(express.json())
 
 // Authentication endpoints
-app.post('/api/auth/signup', (req, res) => {
+app.post('/api/auth/signup', async (req, res) => {
   try {
     const { firstName, lastName, username, email, password } = req.body
 
@@ -590,23 +839,34 @@ app.post('/api/auth/signup', (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 8 characters' })
     }
 
-    const users = readUsers()
     console.log('[Auth] Signup attempt for username:', username)
 
-    // Check if username or email already exists
-    if (users[username]) {
+    // Check if username or email already exists in MongoDB
+    const existingUser = await db.users.get(username)
+    if (existingUser) {
       return res.status(400).json({ error: 'Username already exists' })
     }
-
-    // Check if email already exists
-    const existingUser = Object.values(users).find((u) => u.email === email)
-    if (existingUser) {
+    
+    const existingEmail = await db.users.getByEmail(email)
+    if (existingEmail) {
       return res.status(400).json({ error: 'Email already registered' })
     }
 
-    // Create new user
+    // Create new user in MongoDB
     const hashedPassword = hashPassword(password)
     const userId = username
+    
+    await db.users.create(userId, {
+      email,
+      password: hashedPassword,
+      firstName,
+      lastName,
+      username
+    })
+    console.log('[Auth] User created in MongoDB:', userId)
+
+    // Update cache
+    const users = readUsers()
     users[userId] = {
       id: userId,
       firstName,
@@ -615,34 +875,37 @@ app.post('/api/auth/signup', (req, res) => {
       email,
       password: hashedPassword,
       createdAt: new Date().toISOString(),
-      // Stripe subscription fields
       stripeCustomerId: null,
       stripeSubscriptionId: null,
-      subscriptionStatus: 'inactive', // 'active', 'inactive', 'canceled', 'past_due'
+      subscriptionStatus: 'inactive',
       subscriptionEndDate: null,
-      // Usage billing fields
-      monthlyUsageCost: {}, // Track monthly costs: { "2025-01": 3.50, "2025-02": 7.25 }
-      monthlyOverageBilled: {}, // Track what's been billed: { "2025-01": 0.00, "2025-02": 2.25 }
+      monthlyUsageCost: {},
     }
+    usersCache = users
 
-    const writeResult = writeUsers(users)
-    console.log('[Auth] User created successfully:', username)
-    console.log('[Auth] Users file written:', USERS_FILE)
-
-  // Initialize usage tracking
-  const usage = readUsage()
-  if (!usage[userId]) {
+    // Initialize usage tracking in cache
+    const usage = readUsage()
     usage[userId] = {
       totalTokens: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
       totalQueries: 0,
       totalPrompts: 0,
       monthlyUsage: {},
+      dailyUsage: {},
       providers: {},
       models: {},
+      promptHistory: [],
+      categories: {},
+      categoryPrompts: {},
+      ratings: {},
+      lastActiveDate: null,
+      lastLoginDate: null,
+      streakDays: 0,
+      judgeConversationContext: [],
+      purchasedCredits: { total: 0, remaining: 0 },
     }
-    writeUsage(usage)
-    console.log('[Auth] Usage tracking initialized for:', userId)
-  }
+    usageCache = usage
 
     res.json({
       success: true,
@@ -662,7 +925,7 @@ app.post('/api/auth/signup', (req, res) => {
   }
 })
 
-app.post('/api/auth/signin', (req, res) => {
+app.post('/api/auth/signin', async (req, res) => {
   try {
     const { username, password } = req.body
 
@@ -670,86 +933,49 @@ app.post('/api/auth/signin', (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' })
     }
 
-    const users = readUsers()
+    // Get user from MongoDB
+    const dbUser = await db.users.get(username)
     
-    if (!users || Object.keys(users).length === 0) {
-      console.log('[Auth] No users found in database')
-      return res.status(401).json({ error: 'No account found. Please sign up first.' })
-    }
-
-    const user = users[username]
-
-    if (!user) {
-      console.log('[Auth] User not found:', username)
-      console.log('[Auth] Available users:', Object.keys(users))
+    if (!dbUser) {
+      console.log('[Auth] User not found in MongoDB:', username)
       return res.status(401).json({ error: 'Username not found. Please check your username or sign up.' })
     }
 
     const hashedPassword = hashPassword(password)
-    console.log('[Auth] Comparing passwords - stored hash:', user.password?.substring(0, 20) + '...', 'input hash:', hashedPassword?.substring(0, 20) + '...')
     
-    if (user.password !== hashedPassword) {
+    if (dbUser.password !== hashedPassword) {
       console.log('[Auth] Password mismatch for user:', username)
       return res.status(401).json({ error: 'Invalid password. Please check your password and try again.' })
     }
 
-    // Track login activity
-    const usage = readUsage()
-    if (!usage[username]) {
-      usage[username] = {
-        totalTokens: 0,
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        totalQueries: 0,
-        totalPrompts: 0,
-        monthlyUsage: {},
-        providers: {},
-        models: {},
-        promptHistory: [],
-        categories: {},
-        ratings: {},
-        lastActiveDate: null,
-        lastLoginDate: null,
-        streakDays: 0,
-      }
-    }
-    const loginDate = new Date().toISOString()
-    usage[username].lastLoginDate = loginDate
-    writeUsage(usage)
+    // Update last login in MongoDB
+    const loginDate = new Date()
+    await db.users.update(username, { lastLoginDate: loginDate, lastActiveAt: loginDate })
     
-    // Also update users.json with last login date and status
-    // Note: 'users' was already declared above, so we reuse it
+    // Update cache
+    const users = readUsers()
     if (users[username]) {
-      users[username].lastLoginDate = loginDate
-      // Update status based on login within last month
-      const now = new Date()
-      const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-      const lastLogin = new Date(loginDate)
-      
-      // Only update status if user is not canceled
-      if (users[username].status !== 'canceled' && users[username].canceled !== true) {
-        if (lastLogin >= oneMonthAgo) {
-          users[username].status = 'active'
-        } else {
-          users[username].status = 'inactive'
-        }
-      }
-      
-      // Always write users.json when updating lastLoginDate
-      writeUsers(users)
+      users[username].lastLoginDate = loginDate.toISOString()
+      usersCache = users
+    }
+    
+    const usage = readUsage()
+    if (usage[username]) {
+      usage[username].lastLoginDate = loginDate.toISOString()
+      usageCache = usage
     }
     
     console.log('[Auth] Successful sign in for user:', username)
     res.json({
       success: true,
       user: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        username: user.username,
-        email: user.email,
-        subscriptionStatus: user.subscriptionStatus || 'inactive',
-        subscriptionEndDate: user.subscriptionEndDate || null,
+        id: dbUser._id,
+        firstName: dbUser.firstName,
+        lastName: dbUser.lastName,
+        username: dbUser.username,
+        email: dbUser.email,
+        subscriptionStatus: dbUser.subscriptionStatus || 'inactive',
+        subscriptionEndDate: dbUser.subscriptionEndDate || null,
       },
     })
   } catch (error) {
@@ -820,7 +1046,7 @@ app.post('/api/stats/pricing', (req, res) => {
 })
 
 // Delete user account
-app.delete('/api/auth/account', (req, res) => {
+app.delete('/api/auth/account', async (req, res) => {
   try {
     const { userId } = req.body
 
@@ -830,68 +1056,29 @@ app.delete('/api/auth/account', (req, res) => {
 
     console.log('[Account Deletion] Received delete request for user:', userId)
 
-    // Read users and usage
-    const users = readUsers()
-    const usage = readUsage()
-
-    // Check if user exists
-    if (!users[userId]) {
-      console.log('[Account Deletion] User not found in users.json:', userId)
+    // Check if user exists in MongoDB
+    const dbUser = await db.users.get(userId)
+    if (!dbUser) {
+      console.log('[Account Deletion] User not found in MongoDB:', userId)
       return res.status(404).json({ error: 'User not found' })
     }
 
     // Store user info for logging before deletion
-    const userInfo = { username: users[userId].username, email: users[userId].email }
+    const userInfo = { username: dbUser.username, email: dbUser.email }
 
-    // Delete user from users.json
-    delete users[userId]
-    writeUsers(users)
-    
-    // Verify deletion from users.json
-    const verifyUsers = readUsers()
-    if (verifyUsers[userId]) {
-      console.error('[Account Deletion] ERROR: User still exists in users.json after deletion!')
-      return res.status(500).json({ error: 'Failed to delete user account' })
-    }
-    console.log('[Account Deletion] User successfully deleted from users.json:', userId, userInfo)
+    // Delete user and all associated data from MongoDB
+    await db.users.delete(userId)
+    console.log('[Account Deletion] User and all data deleted from MongoDB:', userId, userInfo)
 
-    // Delete user's usage data from ADMIN/usage.json
-    if (usage[userId]) {
-      delete usage[userId]
-      writeUsage(usage)
-      
-      // Verify deletion from ADMIN/usage.json
-      const verifyUsage = readUsage()
-      if (verifyUsage[userId]) {
-        console.error('[Account Deletion] ERROR: Usage data still exists in ADMIN/usage.json after deletion!')
-        return res.status(500).json({ error: 'Failed to delete usage data' })
-      }
-      console.log('[Account Deletion] Usage data successfully deleted from ADMIN/usage.json for user:', userId)
-    } else {
-      console.log('[Account Deletion] No usage data found in ADMIN/usage.json for user:', userId)
-    }
-
-    // Also check and clean up root-level usage.json if it exists (legacy file)
-    const ROOT_USAGE_FILE = path.join(__dirname, 'usage.json')
-    if (fs.existsSync(ROOT_USAGE_FILE)) {
-      try {
-        const rootUsage = JSON.parse(fs.readFileSync(ROOT_USAGE_FILE, 'utf8'))
-        if (rootUsage[userId]) {
-          delete rootUsage[userId]
-          fs.writeFileSync(ROOT_USAGE_FILE, JSON.stringify(rootUsage, null, 2))
-          console.log('[Account Deletion] Usage data successfully deleted from root usage.json for user:', userId)
-        }
-      } catch (error) {
-        console.error('[Account Deletion] Error cleaning up root usage.json:', error)
-        // Don't fail the deletion if root file cleanup fails - it's just a legacy file
-      }
-    }
+    // Clear from cache
+    delete usersCache[userId]
+    delete usageCache[userId]
 
     // Increment deleted users count
-    incrementDeletedUsers()
+    await incrementDeletedUsers()
     console.log('[Account Deletion] Deleted users count incremented')
     
-    console.log('[Account Deletion] Account completely removed - user no longer exists in system')
+    console.log('[Account Deletion] Account completely removed from MongoDB')
     res.json({ success: true, message: 'Account deleted successfully' })
   } catch (error) {
     console.error('[Account Deletion] Error deleting account:', error)
@@ -944,15 +1131,13 @@ app.get('/api/stats/:userId', (req, res) => {
     })
     
     providerStats[provider] = {
-      totalTokens: (providerData.totalInputTokens || 0) + (providerData.totalOutputTokens || 0), // Recalculate to ensure accuracy (input + output only)
+      totalTokens: (providerData.totalInputTokens || 0) + (providerData.totalOutputTokens || 0),
       totalInputTokens: providerData.totalInputTokens || 0,
       totalOutputTokens: providerData.totalOutputTokens || 0,
-      totalQueries: providerData.totalQueries || 0, // Serper queries only
-      totalPrompts: totalPrompts, // Sum of all model prompts for this provider
-      monthlyTokens: (providerData.monthlyInputTokens?.[currentMonth] || 0) + (providerData.monthlyOutputTokens?.[currentMonth] || 0), // Recalculate
+      totalPrompts: totalPrompts,
+      monthlyTokens: (providerData.monthlyInputTokens?.[currentMonth] || 0) + (providerData.monthlyOutputTokens?.[currentMonth] || 0),
       monthlyInputTokens: providerData.monthlyInputTokens?.[currentMonth] || 0,
       monthlyOutputTokens: providerData.monthlyOutputTokens?.[currentMonth] || 0,
-      monthlyQueries: providerData.monthlyQueries?.[currentMonth] || 0,
     }
   })
 
@@ -974,38 +1159,19 @@ app.get('/api/stats/:userId', (req, res) => {
 
   // Calculate monthly cost and remaining free allocation
   const FREE_MONTHLY_ALLOCATION = 5.00 // $5 per month included in subscription
-  let monthlyCost = 0
-  let remainingFreeAllocation = FREE_MONTHLY_ALLOCATION
   
-  // Calculate monthly cost based on actual daily usage data for current month
+  // Get the tracked monthly cost directly from users.json
+  // This is accumulated incrementally by trackUsage() when usage occurs
+  let monthlyCost = user?.monthlyUsageCost?.[currentMonth] || 0
+  
+  // Log the tracked cost for debugging
+  console.log(`[Stats] Monthly cost for ${userId} in ${currentMonth}: $${monthlyCost.toFixed(4)}`)
+  
+  let remainingFreeAllocation = Math.max(0, FREE_MONTHLY_ALLOCATION - monthlyCost)
+  
+  // Get pricing data and daily usage for the daily breakdown chart
   const pricing = getPricingData()
   const dailyData = userUsage.dailyUsage?.[currentMonth] || {}
-  
-  // Sum up costs from all days in the current month
-  Object.keys(dailyData).forEach((dateStr) => {
-    const dayData = dailyData[dateStr]
-    if (dayData) {
-      // Calculate cost for each model used on this day
-      if (dayData.models) {
-        Object.keys(dayData.models).forEach((modelKey) => {
-          const modelDayData = dayData.models[modelKey]
-          const dayInputTokens = modelDayData.inputTokens || 0
-          const dayOutputTokens = modelDayData.outputTokens || 0
-          const dayCost = calculateModelCost(modelKey, dayInputTokens, dayOutputTokens, pricing)
-          monthlyCost += dayCost
-        })
-      }
-      
-      // Calculate cost for Serper queries on this day
-      const dayQueries = dayData.queries || 0
-      if (dayQueries > 0) {
-        const queryCost = calculateSerperQueryCost(dayQueries, pricing)
-        monthlyCost += queryCost
-      }
-    }
-  })
-  
-  remainingFreeAllocation = Math.max(0, FREE_MONTHLY_ALLOCATION - monthlyCost)
   
   // Get purchased credits
   let purchasedCredits = userUsage.purchasedCredits || { total: 0, remaining: 0, purchases: [] }
@@ -1037,17 +1203,8 @@ app.get('/api/stats/:userId', (req, res) => {
   const usedAmount = monthlyCost
   const freeUsagePercentage = totalAllocation > 0 ? (totalAvailableBalance / (FREE_MONTHLY_ALLOCATION + purchasedCreditsRemaining)) * 100 : 0
   
-  // Update user's monthly usage cost tracking
-  if (user) {
-    if (!user.monthlyUsageCost) {
-      user.monthlyUsageCost = {}
-    }
-    if (!user.monthlyOverageBilled) {
-      user.monthlyOverageBilled = {}
-    }
-    user.monthlyUsageCost[currentMonth] = monthlyCost
-    writeUsers(users)
-  }
+  // Note: monthlyUsageCost is now tracked incrementally by trackUsage() function
+  // No need to update it here - it's already accumulated as usage happens
 
   // Calculate daily usage with costs and percentages
   const dailyUsage = []
@@ -1074,7 +1231,7 @@ app.get('/api/stats/:userId', (req, res) => {
       // Add Serper query costs for this day
       const dayQueries = dayData.queries || 0
       if (dayQueries > 0) {
-        const queryCost = calculateSerperQueryCost(dayQueries, pricing)
+        const queryCost = calculateSerperQueryCost(dayQueries)
         dayCost += queryCost
       }
       
@@ -1102,16 +1259,15 @@ app.get('/api/stats/:userId', (req, res) => {
     }
   }
 
+  // Note: Query costs ($0.001/query) are included in monthlyCost but not exposed to users
   res.json({
     totalTokens: userUsage.totalTokens || 0,
     totalInputTokens: userUsage.totalInputTokens || 0,
     totalOutputTokens: userUsage.totalOutputTokens || 0,
-    totalQueries: userUsage.totalQueries || 0,
     totalPrompts: userUsage.totalPrompts || 0,
     monthlyTokens: monthlyStats.tokens || 0,
     monthlyInputTokens: monthlyStats.inputTokens || 0,
     monthlyOutputTokens: monthlyStats.outputTokens || 0,
-    monthlyQueries: monthlyStats.queries || 0,
     monthlyPrompts: monthlyStats.prompts || 0,
     monthlyCost: monthlyCost,
     remainingFreeAllocation: remainingFreeAllocation,
@@ -1189,7 +1345,7 @@ app.get('/api/judge/context/:userId', (req, res) => {
 })
 
 // Also support query-only endpoint for better compatibility
-app.get('/api/judge/context', (req, res) => {
+app.get('/api/judge/context', async (req, res) => {
   try {
     const userId = req.query.userId
     
@@ -1201,9 +1357,18 @@ app.get('/api/judge/context', (req, res) => {
     const decodedUserId = decodeURIComponent(userId)
     console.log('[Judge Context] Fetching context for userId (query):', decodedUserId)
     
-    const usage = readUsage()
-    const userUsage = usage[decodedUserId] || {}
-    const context = (userUsage.judgeConversationContext || []).slice(0, 5)
+    // Try MongoDB first, fallback to JSON
+    let context = []
+    try {
+      context = await db.judgeContext.get(decodedUserId)
+      console.log('[Judge Context] Got context from MongoDB:', context.length, 'entries')
+    } catch (dbErr) {
+      // Fallback to JSON file
+      console.warn('[Judge Context] MongoDB failed, using JSON fallback:', dbErr.message)
+      const usage = readUsage()
+      const userUsage = usage[decodedUserId] || {}
+      context = (userUsage.judgeConversationContext || []).slice(0, 5)
+    }
     
     console.log('[Judge Context] Found context entries:', context.length)
     res.json({ context })
@@ -1214,7 +1379,7 @@ app.get('/api/judge/context', (req, res) => {
 })
 
 // Clear judge conversation context (called when user starts new prompt or clears)
-app.post('/api/judge/clear-context', (req, res) => {
+app.post('/api/judge/clear-context', async (req, res) => {
   try {
     const { userId } = req.body
     
@@ -1222,11 +1387,20 @@ app.post('/api/judge/clear-context', (req, res) => {
       return res.status(400).json({ error: 'userId is required' })
     }
     
+    // Clear in JSON (backward compatibility)
     const usage = readUsage()
     if (usage[userId]) {
       usage[userId].judgeConversationContext = []
       writeUsage(usage)
-      console.log(`[Judge Context] Cleared context for user ${userId}`)
+      console.log(`[Judge Context] Cleared context in JSON for user ${userId}`)
+    }
+    
+    // Also clear in MongoDB
+    try {
+      await db.judgeContext.clear(userId)
+      console.log(`[Judge Context] Cleared context in MongoDB for user ${userId}`)
+    } catch (dbErr) {
+      console.warn('[Judge Context] MongoDB clear failed (non-critical):', dbErr.message)
     }
     
     res.json({ success: true, message: 'Context cleared' })
@@ -1239,12 +1413,23 @@ app.post('/api/judge/clear-context', (req, res) => {
 // Helper function to detect category and determine if search is needed
 const detectCategoryForJudge = async (prompt, userId = null) => {
   const categoryPrompt = `Classify the user prompt into EXACTLY ONE category from the list below.
-Also decide if a web search is needed (ONLY if information after 2023 is required).
+Determine if a web search would genuinely help answer the query.
+
+needsSearch = true when:
+- The query asks about current events, recent news, or real-time information
+- The query needs factual verification (specific facts, statistics, dates)
+- The query asks about specific people, companies, or events that may have recent updates
+
+needsSearch = false when:
+- The query is about general concepts, explanations, or "how does X work"
+- The query asks for opinions, advice, or creative content
+- The query is about well-established knowledge (science fundamentals, history, etc.)
+- The query can be answered from general knowledge without specific sources
 
 Output ONLY this JSON:
 {
   "category": "CategoryName",
-  "needsSearch": true
+  "needsSearch": false
 }
 
 Categories:
@@ -1531,6 +1716,159 @@ app.post('/api/judge/conversation', async (req, res) => {
   } catch (error) {
     console.error('[Judge Conversation] Error:', error)
     res.status(500).json({ error: 'Failed to get judge response: ' + error.message })
+  }
+})
+
+// Continue conversation with a specific model (for individual response windows)
+app.post('/api/model/conversation', async (req, res) => {
+  try {
+    const { userId, modelName, userMessage, originalResponse, conversationContext, responseId } = req.body
+    
+    if (!userId || !modelName || !userMessage) {
+      return res.status(400).json({ error: 'userId, modelName, and userMessage are required' })
+    }
+    
+    // Check subscription status
+    const subscriptionCheck = checkSubscriptionStatus(userId)
+    if (!subscriptionCheck.hasAccess) {
+      return res.status(403).json({ 
+        error: 'Active subscription required. Please subscribe to use this service.',
+        subscriptionRequired: true,
+        reason: subscriptionCheck.reason
+      })
+    }
+    
+    console.log(`[Model Conversation] Processing message for model: ${modelName}`)
+    
+    // Extract provider and model from modelName (e.g., "openai-gpt-5.2" -> provider: "openai", model: "gpt-5.2")
+    const parts = modelName.split('-')
+    const provider = parts[0]
+    const model = parts.slice(1).join('-')
+    
+    // Build prompt with context
+    let prompt = ''
+    if (conversationContext && conversationContext.trim()) {
+      prompt = `Previous conversation context:\n${conversationContext}\n\n`
+    }
+    if (originalResponse && originalResponse.trim()) {
+      prompt += `Your previous response that the user wants to continue discussing:\n${originalResponse.substring(0, 2000)}${originalResponse.length > 2000 ? '...' : ''}\n\n`
+    }
+    prompt += `User: ${userMessage}`
+    
+    let responseText = ''
+    let inputTokens = 0
+    let outputTokens = 0
+    
+    // Call the appropriate API based on provider
+    if (provider === 'openai') {
+      const apiKey = API_KEYS.openai
+      if (!apiKey) {
+        return res.status(400).json({ error: 'OpenAI API key not configured' })
+      }
+      
+      const actualModel = model.includes('gpt-5') ? 'gpt-5.2' : (model.includes('gpt-4') ? 'gpt-4o' : model)
+      const response = await axios.post(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          model: actualModel,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 2048,
+        },
+        { headers: { 'Authorization': `Bearer ${apiKey}` } }
+      )
+      
+      responseText = response.data.choices[0].message.content
+      inputTokens = response.data.usage?.prompt_tokens || 0
+      outputTokens = response.data.usage?.completion_tokens || 0
+      
+    } else if (provider === 'anthropic') {
+      const apiKey = API_KEYS.anthropic
+      if (!apiKey) {
+        return res.status(400).json({ error: 'Anthropic API key not configured' })
+      }
+      
+      const actualModel = model.includes('claude-4') ? 'claude-4.5-opus' : model
+      const response = await axios.post(
+        'https://api.anthropic.com/v1/messages',
+        {
+          model: actualModel,
+          max_tokens: 2048,
+          messages: [{ role: 'user', content: prompt }],
+        },
+        { 
+          headers: { 
+            'x-api-key': apiKey,
+            'anthropic-version': '2024-01-01',
+            'Content-Type': 'application/json'
+          } 
+        }
+      )
+      
+      responseText = response.data.content[0].text
+      inputTokens = response.data.usage?.input_tokens || 0
+      outputTokens = response.data.usage?.output_tokens || 0
+      
+    } else if (provider === 'google') {
+      const apiKey = API_KEYS.google
+      if (!apiKey) {
+        return res.status(400).json({ error: 'Google API key not configured' })
+      }
+      
+      const actualModel = model.includes('gemini-3') ? `${model}-preview` : model
+      const response = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/${actualModel}:generateContent?key=${apiKey}`,
+        {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 2048 }
+        }
+      )
+      
+      responseText = response.data.candidates[0].content.parts[0].text
+      const usageMetadata = response.data.usageMetadata || {}
+      inputTokens = usageMetadata.promptTokenCount || 0
+      outputTokens = usageMetadata.candidatesTokenCount || 0
+      
+    } else if (provider === 'xai') {
+      const apiKey = API_KEYS.xai
+      if (!apiKey) {
+        return res.status(400).json({ error: 'xAI API key not configured' })
+      }
+      
+      const response = await axios.post(
+        'https://api.x.ai/v1/chat/completions',
+        {
+          model: model,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 2048,
+        },
+        { headers: { 'Authorization': `Bearer ${apiKey}` } }
+      )
+      
+      responseText = response.data.choices[0].message.content
+      inputTokens = response.data.usage?.prompt_tokens || 0
+      outputTokens = response.data.usage?.completion_tokens || 0
+      
+    } else {
+      return res.status(400).json({ error: `Unsupported provider: ${provider}` })
+    }
+    
+    // Track usage
+    trackUsage(userId, provider, model, inputTokens, outputTokens)
+    
+    console.log(`[Model Conversation] Response generated for ${modelName}, tokens: ${inputTokens}/${outputTokens}`)
+    
+    res.json({
+      response: responseText,
+      tokens: {
+        input: inputTokens,
+        output: outputTokens,
+        total: inputTokens + outputTokens
+      }
+    })
+    
+  } catch (error) {
+    console.error('[Model Conversation] Error:', error)
+    res.status(500).json({ error: 'Failed to get model response: ' + error.message })
   }
 })
 
@@ -2436,6 +2774,24 @@ app.post('/api/search', async (req, res) => {
       
       writeUsage(usage)
       console.log(`[Query Tracking] User ${userId}: Total queries ${userUsage.totalQueries}, Monthly queries ${userUsage.monthlyUsage[currentMonth].queries}`)
+      
+      // Also add query cost to monthlyUsageCost in users.json
+      try {
+        const users = readUsers()
+        const user = users[userId]
+        if (user) {
+          const queryCost = calculateSerperQueryCost(1)
+          if (!user.monthlyUsageCost) {
+            user.monthlyUsageCost = {}
+          }
+          const existingCost = user.monthlyUsageCost[currentMonth] || 0
+          user.monthlyUsageCost[currentMonth] = existingCost + queryCost
+          writeUsers(users)
+          console.log(`[Query Tracking] Added $${queryCost.toFixed(6)} query cost. New total: $${user.monthlyUsageCost[currentMonth].toFixed(4)}`)
+        }
+      } catch (costErr) {
+        console.error('[Query Tracking] Error updating monthlyUsageCost:', costErr)
+      }
     }
 
     // Format the response to include organic results
@@ -3226,6 +3582,58 @@ If both summaries have similar citation quality, prefer the one with more citati
   }
 }
 
+// Helper function to get friendly model names for the judge
+const getFriendlyModelName = (apiModelName) => {
+  // Map API model names to friendly display names
+  const nameMap = {
+    // OpenAI
+    'openai-gpt-5.2': 'ChatGPT',
+    'openai-gpt-5-mini': 'ChatGPT',
+    'openai-gpt-4.1': 'ChatGPT',
+    'openai-gpt-4o-mini': 'ChatGPT',
+    'openai-o3-mini': 'ChatGPT',
+    'openai-o4-mini': 'ChatGPT',
+    // Anthropic
+    'anthropic-claude-4.5-opus': 'Claude',
+    'anthropic-claude-4.5-sonnet': 'Claude',
+    'anthropic-claude-4-sonnet': 'Claude',
+    // Google
+    'google-gemini-3-pro': 'Gemini',
+    'google-gemini-3-flash': 'Gemini',
+    'google-gemini-2.5-flash-lite': 'Gemini',
+    // xAI
+    'xai-grok-4-1-fast-reasoning': 'Grok',
+    'xai-grok-4-1-fast-non-reasoning': 'Grok',
+    // Meta
+    'meta-llama-4-maverick': 'Llama',
+    'meta-llama-4-scout': 'Llama',
+    // Mistral
+    'mistral-medium-3': 'Mistral',
+    'mistral-small-3.2': 'Mistral',
+    // DeepSeek
+    'deepseek-r2': 'DeepSeek',
+    'deepseek-v4': 'DeepSeek',
+  }
+  
+  // Try exact match first
+  if (nameMap[apiModelName]) {
+    return nameMap[apiModelName]
+  }
+  
+  // Try to extract provider and return a friendly name
+  const lowerName = apiModelName.toLowerCase()
+  if (lowerName.includes('openai') || lowerName.includes('gpt') || lowerName.includes('o3') || lowerName.includes('o4')) return 'ChatGPT'
+  if (lowerName.includes('claude') || lowerName.includes('anthropic')) return 'Claude'
+  if (lowerName.includes('gemini') || lowerName.includes('google')) return 'Gemini'
+  if (lowerName.includes('grok') || lowerName.includes('xai')) return 'Grok'
+  if (lowerName.includes('llama') || lowerName.includes('meta')) return 'Llama'
+  if (lowerName.includes('mistral')) return 'Mistral'
+  if (lowerName.includes('deepseek')) return 'DeepSeek'
+  
+  // Fallback: return the original name
+  return apiModelName
+}
+
 // Judge: Final analysis of council responses
 const judgeFinalization = async (query, councilResponses, userId = null) => {
   console.log(`[Judge] Analyzing ${councilResponses.length} council responses`)
@@ -3240,11 +3648,11 @@ const judgeFinalization = async (query, councilResponses, userId = null) => {
     }
   }
   
-  // Build model list for clarity
-  const modelNames = validResponses.map(r => r.model_name).join(', ')
+  // Build model list for clarity with friendly names
+  const modelNames = validResponses.map(r => getFriendlyModelName(r.model_name)).join(', ')
   
   const responsesText = validResponses
-    .map((r, idx) => `\n--- Response ${idx + 1}: ${r.model_name} ---\n${r.response}\n`)
+    .map((r, idx) => `\n--- Response ${idx + 1}: ${getFriendlyModelName(r.model_name)} ---\n${r.response}\n`)
     .join('')
   
   const judgePrompt = `You are a judge analyzing responses from multiple AI models.
@@ -3254,22 +3662,22 @@ Original User Query: "${query}"
 Council Model Responses:
 ${responsesText}
 
-CRITICAL INSTRUCTIONS READ CAREFULLY & ONLY respond with EXACTLY these 4 sections below
+RESPOND WITH EXACTLY THESE 4 SECTIONS IN THIS EXACT FORMAT:
 
-1. **CONCENSUS: Calculate a CONSENSUS score [0-100]% based on how much the models agree. Example: CONSENSUS: 48%
+CONSENSUS: [number]%
 
 SUMMARY:
-[Write a comprehensive summary of what the council collectively determined. Attribute statements to specific models like 
-"Gemini states...", "GPT and Claude agree that...". 
-Include source citations from the models like [source 2] if they cited sources.]
+[Write a comprehensive summary of what the council collectively determined. Use the model names exactly as shown above (ChatGPT, Claude, Gemini, Grok, etc.) when attributing statements like "Gemini states...", "ChatGPT and Claude agree that...". Include source citations from the models like [source 2] if they cited sources.]
 
-3. LIST AGREEMENTS - This is MANDATORY! Even if consensus is 100%, you MUST list the specific points the models agree on. 
-NEVER write "None identified" unless the models literally disagree on everything. 
-Example: [First specific point all/most models agree on - name which models], [Second point they agree on - name which models], etc.
+AGREEMENTS:
+- [First specific point all/most models agree on - name which models]
+- [Second point they agree on - name which models]
+- [Third point of agreement - name which models]
+(THIS SECTION IS MANDATORY! List at least 3-5 specific agreement points. NEVER write "None identified" unless models literally contradict each other on everything.)
 
 DISAGREEMENTS:
 - [Any points where models disagree - explain the difference]
-[If no disagreements exist, write "None identified."]`
+(If no disagreements exist, write "None identified.")`
 
 
 
@@ -3333,10 +3741,10 @@ DISAGREEMENTS:
     const consensusMatch = content.match(/(?:Consensus|consensus)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
     
     // More robust section extraction - look for section headers with various formats
-    // Handles: "SUMMARY:", "**SUMMARY**:", "Summary:", etc.
-    const summaryMatch = content.match(/(?:^|\n)\s*(?:\*\*)?SUMMARY(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\*\*)?AGREEMENTS(?:\*\*)?[:\-]|$)/im)
-    const agreementsMatch = content.match(/(?:^|\n)\s*(?:\*\*)?AGREEMENTS(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\*\*)?DISAGREEMENTS(?:\*\*)?[:\-]|$)/im)
-    const disagreementsMatch = content.match(/(?:^|\n)\s*(?:\*\*)?DISAGREEMENTS(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)$/im)
+    // Handles: "SUMMARY:", "**SUMMARY**:", "Summary:", "2. SUMMARY:", "LIST AGREEMENTS", "AGREEMENTS:", etc.
+    const summaryMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?SUMMARY(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\d+\.\s*)?(?:LIST\s+)?(?:\*\*)?AGREEMENTS|$)/im)
+    const agreementsMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:LIST\s+)?(?:\*\*)?AGREEMENTS(?:\*\*)?[:\-]?(?:\s*-[^\n]*)?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?DISAGREEMENTS|$)/im)
+    const disagreementsMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?DISAGREEMENTS(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)$/im)
     
     // Extract consensus score (0-100)
     let consensus = null
@@ -3383,7 +3791,7 @@ DISAGREEMENTS:
       summary = summaryMatch[1].trim()
     } else {
       // Fallback: try to get content between CONSENSUS line and AGREEMENTS
-      const fallbackMatch = content.match(/CONSENSUS[:\-]?\s*\d+%?\s*\n+([\s\S]+?)(?=\n\s*(?:\*\*)?AGREEMENTS|$)/im)
+      const fallbackMatch = content.match(/CONSENSUS[:\-]?\s*\d+%?\s*\n+([\s\S]+?)(?=\n\s*(?:\d+\.\s*)?(?:LIST\s+)?(?:\*\*)?AGREEMENTS|$)/im)
       if (fallbackMatch) {
         summary = fallbackMatch[1].trim()
         console.log('[Judge] Using fallback summary extraction')
@@ -3402,11 +3810,12 @@ DISAGREEMENTS:
       .replace(/\*?\*?CONSENSUS\s+of\s+Agreement\*?\*?[:\-]?\s*\d+%?/gi, '')
       // Remove embedded SUMMARY headers
       .replace(/[-•*]\s*\*?\*?SUMMARY\*?\*?[:\-]?\s*/gi, '')
-      // Remove embedded AGREEMENTS sections
-      .replace(/[-•]\s*\*\*AGREEMENTS\*\*[:\-]?\s*[\s\S]*?(?=[-•]\s*\*\*DISAGREEMENTS\*\*|$)/gi, '')
-      .replace(/[-•]\s*\*\*DISAGREEMENTS\*\*[:\-]?\s*[\s\S]*/gi, '')
-      .replace(/\*\*AGREEMENTS\*\*[:\-]?\s*[\s\S]*?(?=\*\*DISAGREEMENTS\*\*|$)/gi, '')
-      .replace(/\*\*DISAGREEMENTS\*\*[:\-]?\s*[\s\S]*/gi, '')
+      // Remove embedded AGREEMENTS sections (various formats)
+      .replace(/[-•]\s*(?:\d+\.\s*)?(?:LIST\s+)?\*?\*?AGREEMENTS\*?\*?[:\-]?\s*[\s\S]*?(?=[-•]\s*(?:\d+\.\s*)?\*?\*?DISAGREEMENTS|$)/gi, '')
+      .replace(/(?:\d+\.\s*)?(?:LIST\s+)?\*?\*?AGREEMENTS\*?\*?[:\-]?\s*[\s\S]*?(?=(?:\d+\.\s*)?\*?\*?DISAGREEMENTS|$)/gi, '')
+      // Remove embedded DISAGREEMENTS sections
+      .replace(/[-•]\s*(?:\d+\.\s*)?\*?\*?DISAGREEMENTS\*?\*?[:\-]?\s*[\s\S]*/gi, '')
+      .replace(/(?:\d+\.\s*)?\*?\*?DISAGREEMENTS\*?\*?[:\-]?\s*[\s\S]*/gi, '')
       // Clean up any remaining artifacts
       .replace(/^[-•*]\s*/, '') // Remove leading bullets
       .replace(/\n\s*\n\s*\n/g, '\n\n') // Collapse multiple newlines
@@ -3415,22 +3824,47 @@ DISAGREEMENTS:
     // Extract agreements and disagreements as arrays
     let agreements = []
     if (agreementsMatch) {
-      agreements = agreementsMatch[1]
+      const rawAgreements = agreementsMatch[1]
+      console.log('[Judge] Raw agreements section:', rawAgreements.substring(0, 500))
+      agreements = rawAgreements
         .split('\n')
         .filter(l => l.trim() && !l.match(/^[-•*]\s*$/))
-        .map(l => l.replace(/^[-•*]\s*/, '').trim())
-        .filter(l => l && !l.toLowerCase().includes('none identified') && !l.match(/^\*+:?$/) && l.length > 5)
-      console.log('[Judge] Extracted agreements:', agreements.length)
+        .map(l => l.replace(/^[-•*\[\]]\s*/, '').replace(/^\d+\.\s*/, '').trim()) // Also remove [, ], and numbered lists
+        .filter(l => {
+          // Skip instruction-like text and empty/garbage entries
+          const isInstructionText = l.toLowerCase().includes('this section is mandatory') || 
+                                    l.toLowerCase().includes('list at least') ||
+                                    l.toLowerCase().includes('never write')
+          const isEmpty = !l || l.length < 5
+          const isNone = l.toLowerCase().includes('none identified')
+          const isGarbage = l.match(/^\*+:?$/)
+          return !isInstructionText && !isEmpty && !isNone && !isGarbage
+        })
+      console.log('[Judge] Extracted agreements:', agreements.length, agreements)
+    } else {
+      console.log('[Judge] No agreements section matched!')
     }
     
     let disagreements = []
     if (disagreementsMatch) {
-      disagreements = disagreementsMatch[1]
+      const rawDisagreements = disagreementsMatch[1]
+      console.log('[Judge] Raw disagreements section:', rawDisagreements.substring(0, 300))
+      disagreements = rawDisagreements
         .split('\n')
         .filter(l => l.trim() && !l.match(/^[-•*]\s*$/))
-        .map(l => l.replace(/^[-•*]\s*/, '').trim())
-        .filter(l => l && !l.toLowerCase().includes('none identified') && !l.match(/^\*+:?$/) && l.length > 5)
-      console.log('[Judge] Extracted disagreements:', disagreements.length)
+        .map(l => l.replace(/^[-•*\[\]]\s*/, '').replace(/^\d+\.\s*/, '').trim())
+        .filter(l => {
+          // Skip instruction-like text and empty/garbage entries
+          const isInstructionText = l.toLowerCase().includes('if no disagreements') || 
+                                    l.toLowerCase().includes('write "none')
+          const isEmpty = !l || l.length < 5
+          const isNone = l.toLowerCase().includes('none identified')
+          const isGarbage = l.match(/^\*+:?$/)
+          return !isInstructionText && !isEmpty && !isNone && !isGarbage
+        })
+      console.log('[Judge] Extracted disagreements:', disagreements.length, disagreements)
+    } else {
+      console.log('[Judge] No disagreements section matched!')
     }
     
     return {
@@ -3747,6 +4181,24 @@ app.post('/api/rag', async (req, res) => {
       
       writeUsage(usage)
       console.log(`[Query Tracking] User ${userId}: Total queries ${userUsage.totalQueries}, Monthly queries ${userUsage.monthlyUsage[currentMonth].queries}`)
+      
+      // Also add query cost to monthlyUsageCost in users.json
+      try {
+        const users = readUsers()
+        const user = users[userId]
+        if (user) {
+          const queryCost = calculateSerperQueryCost(1)
+          if (!user.monthlyUsageCost) {
+            user.monthlyUsageCost = {}
+          }
+          const existingCost = user.monthlyUsageCost[currentMonth] || 0
+          user.monthlyUsageCost[currentMonth] = existingCost + queryCost
+          writeUsers(users)
+          console.log(`[Query Tracking] Added $${queryCost.toFixed(6)} query cost. New total: $${user.monthlyUsageCost[currentMonth].toFixed(4)}`)
+        }
+      } catch (costErr) {
+        console.error('[Query Tracking] Error updating monthlyUsageCost:', costErr)
+      }
     }
     
     console.log(`[RAG Pipeline] Search completed, found ${searchResults.length} results`)
@@ -4318,13 +4770,13 @@ ${factsWithSourcesText}`
 })
 
 // Admin endpoints
-// Get total users count and user list
-app.get('/api/admin/users', (req, res) => {
+// Get total users count and user list (PROTECTED - requires admin)
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try {
     const users = readUsers()
     const admins = readAdmins()
     const usage = readUsage()
-    const deletedUsers = readDeletedUsers()
+    const deletedUsers = await readDeletedUsers()
     
     const userList = Object.values(users).map(user => {
       const userUsage = usage[user.id]
@@ -4443,23 +4895,19 @@ const calculateModelCost = (modelKey, inputTokens, outputTokens, pricing) => {
   return inputCost + outputCost
 }
 
-// Calculate cost for Serper queries based on pricing tiers
-const calculateSerperQueryCost = (numQueries, pricing) => {
-  if (!pricing.serper || !pricing.serper.queryTiers || numQueries === 0) {
+// Calculate cost for Serper search queries
+// Fixed rate: $0.001 per query (hidden from users, just factored into usage)
+const SERPER_COST_PER_QUERY = 0.001
+
+const calculateSerperQueryCost = (numQueries) => {
+  if (!numQueries || numQueries === 0) {
     return 0
   }
-  
-  // Use the first tier pricing (assuming we're using the 50k credits tier)
-  // In a real scenario, you'd determine which tier based on total monthly queries
-  const tier = pricing.serper.queryTiers[0] // Using first tier (50k credits, $1.00 per 1k)
-  const pricePer1k = tier.pricePer1k || 1.00
-  const cost = (numQueries / 1000) * pricePer1k
-  
-  return cost
+  return numQueries * SERPER_COST_PER_QUERY
 }
 
-// Get cost analysis for all users
-app.get('/api/admin/costs', (req, res) => {
+// Get cost analysis for all users (PROTECTED - requires admin)
+app.get('/api/admin/costs', requireAdmin, (req, res) => {
   try {
     const usage = readUsage()
     const pricing = getPricingData()
@@ -4497,7 +4945,7 @@ app.get('/api/admin/costs', (req, res) => {
       // Add Serper query costs
       const totalQueries = userUsage.totalQueries || 0
       if (totalQueries > 0) {
-        const queryCost = calculateSerperQueryCost(totalQueries, pricing)
+        const queryCost = calculateSerperQueryCost(totalQueries)
         userTotalCost += queryCost
       }
       
@@ -4601,8 +5049,8 @@ const getPricingData = () => {
   }
 }
 
-// Get model pricing information
-app.get('/api/admin/pricing', (req, res) => {
+// Get model pricing information (PROTECTED - requires admin)
+app.get('/api/admin/pricing', requireAdmin, (req, res) => {
   try {
     const pricing = getPricingData()
     res.json(pricing)
@@ -4636,8 +5084,8 @@ app.get('/api/admin/check', (req, res) => {
   }
 })
 
-// Add/Remove admin endpoints
-app.post('/api/admin/add', (req, res) => {
+// Add/Remove admin endpoints (PROTECTED - requires admin)
+app.post('/api/admin/add', requireAdmin, async (req, res) => {
   try {
     const { userId } = req.body
     if (!userId) {
@@ -4650,13 +5098,15 @@ app.post('/api/admin/add', (req, res) => {
       return res.status(404).json({ error: 'User not found' })
     }
     
-    const admins = readAdmins()
-    if (!admins.admins.includes(userId)) {
-      admins.admins.push(userId)
-      fs.writeFileSync(ADMINS_FILE, JSON.stringify(admins, null, 2))
-      console.log(`[Admin] Added admin: ${userId}`)
+    // Add to MongoDB admins collection
+    await db.admins.add(userId)
+    
+    // Update local cache
+    if (!adminsCache.admins.includes(userId)) {
+      adminsCache.admins.push(userId)
     }
     
+    console.log(`[Admin] Added admin: ${userId}`)
     res.json({ success: true, message: 'Admin added successfully' })
   } catch (error) {
     console.error('[Admin] Error adding admin:', error)
@@ -4664,18 +5114,20 @@ app.post('/api/admin/add', (req, res) => {
   }
 })
 
-app.post('/api/admin/remove', (req, res) => {
+app.post('/api/admin/remove', requireAdmin, async (req, res) => {
   try {
     const { userId } = req.body
     if (!userId) {
       return res.status(400).json({ error: 'userId is required' })
     }
     
-    const admins = readAdmins()
-    admins.admins = admins.admins.filter(id => id !== userId)
-    fs.writeFileSync(ADMINS_FILE, JSON.stringify(admins, null, 2))
-    console.log(`[Admin] Removed admin: ${userId}`)
+    // Remove from MongoDB admins collection
+    await db.admins.remove(userId)
     
+    // Update local cache
+    adminsCache.admins = adminsCache.admins.filter(id => id !== userId)
+    
+    console.log(`[Admin] Removed admin: ${userId}`)
     res.json({ success: true, message: 'Admin removed successfully' })
   } catch (error) {
     console.error('[Admin] Error removing admin:', error)
@@ -4686,10 +5138,10 @@ app.post('/api/admin/remove', (req, res) => {
 // ==================== LEADERBOARD ENDPOINTS ====================
 
 // Submit a prompt to the leaderboard
-app.post('/api/leaderboard/submit', (req, res) => {
+app.post('/api/leaderboard/submit', async (req, res) => {
   console.log('[Leaderboard] Submit endpoint hit:', { userId: req.body?.userId, hasPromptText: !!req.body?.promptText })
   try {
-    const { userId, promptText, responses, summary, facts, sources } = req.body
+    const { userId, promptText, category, responses, summary, facts, sources } = req.body
     
     if (!userId || !promptText || !promptText.trim()) {
       console.log('[Leaderboard] Missing required fields:', { userId: !!userId, promptText: !!promptText })
@@ -4703,6 +5155,7 @@ app.post('/api/leaderboard/submit', (req, res) => {
       return res.status(404).json({ error: 'User not found' })
     }
     
+    // Save to JSON (backward compatibility)
     const leaderboard = readLeaderboard()
     const promptId = `prompt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     
@@ -4711,6 +5164,7 @@ app.post('/api/leaderboard/submit', (req, res) => {
       userId: userId,
       username: user.username || user.email || 'Anonymous',
       promptText: promptText.trim(),
+      category: category || 'General Knowledge/Other',
       likes: [],
       likeCount: 0,
       createdAt: new Date().toISOString(),
@@ -4735,6 +5189,22 @@ app.post('/api/leaderboard/submit', (req, res) => {
     
     leaderboard.prompts.push(promptEntry)
     writeLeaderboard(leaderboard)
+    
+    // Also save to MongoDB
+    try {
+      await db.leaderboardPosts.submit({
+        userId,
+        username: user.username || user.email || 'Anonymous',
+        promptText: promptText.trim(),
+        category: category || 'General Knowledge/Other',
+        responses: responses || [],
+        summary: summary || null,
+        sources: sources || []
+      })
+      console.log(`[Leaderboard] Prompt also saved to MongoDB: ${promptId}`)
+    } catch (dbErr) {
+      console.warn('[Leaderboard] MongoDB save failed (non-critical):', dbErr.message)
+    }
     
     console.log(`[Leaderboard] Prompt submitted by user ${userId}: ${promptId}`)
     res.json({ success: true, promptId })
@@ -4870,6 +5340,46 @@ app.post('/api/leaderboard/like', (req, res) => {
   } catch (error) {
     console.error('[Leaderboard] Error liking prompt:', error)
     res.status(500).json({ error: 'Failed to like/unlike prompt' })
+  }
+})
+
+// Delete a prompt (only by owner)
+app.delete('/api/leaderboard/delete/:promptId', (req, res) => {
+  try {
+    const { promptId } = req.params
+    const { userId } = req.body
+    
+    if (!userId || !promptId) {
+      return res.status(400).json({ error: 'userId and promptId are required' })
+    }
+    
+    const leaderboard = readLeaderboard()
+    const promptIndex = leaderboard.prompts.findIndex(p => p.id === promptId)
+    
+    if (promptIndex === -1) {
+      return res.status(404).json({ error: 'Prompt not found' })
+    }
+    
+    const prompt = leaderboard.prompts[promptIndex]
+    
+    // Only the owner can delete their prompt
+    if (prompt.userId !== userId) {
+      return res.status(403).json({ error: 'You can only delete your own prompts' })
+    }
+    
+    // Remove the prompt from the leaderboard
+    leaderboard.prompts.splice(promptIndex, 1)
+    writeLeaderboard(leaderboard)
+    
+    console.log(`[Leaderboard] User ${userId} deleted prompt ${promptId}`)
+    
+    res.json({ 
+      success: true, 
+      message: 'Prompt deleted successfully' 
+    })
+  } catch (error) {
+    console.error('[Leaderboard] Error deleting prompt:', error)
+    res.status(500).json({ error: 'Failed to delete prompt' })
   }
 })
 
@@ -5040,6 +5550,157 @@ app.post('/api/leaderboard/comment/reply', (req, res) => {
   } catch (error) {
     console.error('[Leaderboard] Error adding reply:', error)
     res.status(500).json({ error: 'Failed to add reply' })
+  }
+})
+
+// Delete a reply (only by owner)
+app.delete('/api/leaderboard/comment/reply/delete/:replyId', (req, res) => {
+  try {
+    const { replyId } = req.params
+    const { userId, promptId, commentId } = req.body
+    
+    if (!userId || !promptId || !commentId || !replyId) {
+      return res.status(400).json({ error: 'userId, promptId, commentId, and replyId are required' })
+    }
+    
+    const leaderboard = readLeaderboard()
+    const prompt = leaderboard.prompts.find(p => p.id === promptId)
+    
+    if (!prompt || !prompt.comments) {
+      return res.status(404).json({ error: 'Prompt not found' })
+    }
+    
+    const comment = prompt.comments.find(c => c.id === commentId)
+    if (!comment || !comment.replies) {
+      return res.status(404).json({ error: 'Comment not found' })
+    }
+    
+    const replyIndex = comment.replies.findIndex(r => r.id === replyId)
+    if (replyIndex === -1) {
+      return res.status(404).json({ error: 'Reply not found' })
+    }
+    
+    const reply = comment.replies[replyIndex]
+    
+    // Only the owner can delete their reply
+    if (reply.userId !== userId) {
+      return res.status(403).json({ error: 'You can only delete your own replies' })
+    }
+    
+    // Remove the reply
+    comment.replies.splice(replyIndex, 1)
+    writeLeaderboard(leaderboard)
+    
+    console.log(`[Leaderboard] User ${userId} deleted reply ${replyId}`)
+    
+    res.json({ 
+      success: true, 
+      message: 'Reply deleted successfully' 
+    })
+  } catch (error) {
+    console.error('[Leaderboard] Error deleting reply:', error)
+    res.status(500).json({ error: 'Failed to delete reply' })
+  }
+})
+
+// Delete a comment (only by owner)
+app.delete('/api/leaderboard/comment/delete/:commentId', (req, res) => {
+  try {
+    const { commentId } = req.params
+    const { userId, promptId } = req.body
+    
+    if (!userId || !promptId || !commentId) {
+      return res.status(400).json({ error: 'userId, promptId, and commentId are required' })
+    }
+    
+    const leaderboard = readLeaderboard()
+    const prompt = leaderboard.prompts.find(p => p.id === promptId)
+    
+    if (!prompt || !prompt.comments) {
+      return res.status(404).json({ error: 'Prompt not found' })
+    }
+    
+    const commentIndex = prompt.comments.findIndex(c => c.id === commentId)
+    if (commentIndex === -1) {
+      return res.status(404).json({ error: 'Comment not found' })
+    }
+    
+    const comment = prompt.comments[commentIndex]
+    
+    // Only the owner can delete their comment
+    if (comment.userId !== userId) {
+      return res.status(403).json({ error: 'You can only delete your own comments' })
+    }
+    
+    // Remove the comment
+    prompt.comments.splice(commentIndex, 1)
+    writeLeaderboard(leaderboard)
+    
+    console.log(`[Leaderboard] User ${userId} deleted comment ${commentId}`)
+    
+    res.json({ 
+      success: true, 
+      message: 'Comment deleted successfully' 
+    })
+  } catch (error) {
+    console.error('[Leaderboard] Error deleting comment:', error)
+    res.status(500).json({ error: 'Failed to delete comment' })
+  }
+})
+
+// Like/unlike a comment
+app.post('/api/leaderboard/comment/like', (req, res) => {
+  try {
+    const { userId, promptId, commentId } = req.body
+    
+    if (!userId || !promptId || !commentId) {
+      return res.status(400).json({ error: 'userId, promptId, and commentId are required' })
+    }
+    
+    const leaderboard = readLeaderboard()
+    const prompt = leaderboard.prompts.find(p => p.id === promptId)
+    
+    if (!prompt || !prompt.comments) {
+      return res.status(404).json({ error: 'Prompt not found' })
+    }
+    
+    const comment = prompt.comments.find(c => c.id === commentId)
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' })
+    }
+    
+    // Users can't like their own comments
+    if (comment.userId === userId) {
+      return res.status(400).json({ error: 'You cannot like your own comment' })
+    }
+    
+    // Initialize likes array if it doesn't exist
+    if (!comment.likes) {
+      comment.likes = []
+    }
+    
+    const likeIndex = comment.likes.indexOf(userId)
+    
+    if (likeIndex !== -1) {
+      // Unlike: remove the like
+      comment.likes.splice(likeIndex, 1)
+      console.log(`[Leaderboard] User ${userId} unliked comment ${commentId}`)
+    } else {
+      // Like: add the like
+      comment.likes.push(userId)
+      console.log(`[Leaderboard] User ${userId} liked comment ${commentId}`)
+    }
+    
+    writeLeaderboard(leaderboard)
+    
+    res.json({ 
+      success: true, 
+      liked: likeIndex === -1,
+      likeCount: comment.likes.length 
+    })
+  } catch (error) {
+    console.error('[Leaderboard] Error liking comment:', error)
+    res.status(500).json({ error: 'Failed to like/unlike comment' })
   }
 })
 
@@ -5608,7 +6269,7 @@ const calculateAndRecordOverage = async (userId, month) => {
         // Calculate cost for Serper queries on this day
         const dayQueries = dayData.queries || 0
         if (dayQueries > 0) {
-          const queryCost = calculateSerperQueryCost(dayQueries, pricing)
+          const queryCost = calculateSerperQueryCost(dayQueries)
           monthlyCost += queryCost
         }
       }
@@ -5625,6 +6286,12 @@ const calculateAndRecordOverage = async (userId, month) => {
       user.monthlyOverageBilled = {}
     }
     
+    // Preserve higher existing monthlyUsageCost if it exists (in case usage data was reset)
+    const existingCost = user.monthlyUsageCost[month] || 0
+    if (existingCost > monthlyCost) {
+      console.log(`[Billing] Preserving higher existing monthly cost: $${existingCost.toFixed(4)} > calculated: $${monthlyCost.toFixed(4)}`)
+      monthlyCost = existingCost
+    }
     user.monthlyUsageCost[month] = monthlyCost
     const alreadyBilled = user.monthlyOverageBilled[month] || 0
     
@@ -5878,12 +6545,36 @@ app.post('/api/stripe/webhook', async (req, res) => {
 
 // ==================== END STRIPE ENDPOINTS ====================
 
-app.listen(PORT, () => {
-  console.log(`🚀 Backend server running on http://localhost:${PORT}`)
-  console.log(`📡 Ready to proxy LLM API calls`)
-  console.log(`🔍 Serper search API ready`)
-  console.log(`👑 Admin endpoints ready`)
-  console.log(`🏆 Leaderboard endpoints ready`)
+// ============================================================================
+// SERVER STARTUP
+// ============================================================================
+const startServer = async () => {
+  // Initialize database connection
+  await initDatabase()
+  
+  // Load cache from MongoDB
+  console.log('[Server] Loading data from MongoDB...')
+  await loadCacheFromMongoDB()
+  
+  // Start HTTP server
+  app.listen(PORT, () => {
+    console.log('')
+    console.log('═══════════════════════════════════════════════════')
+    console.log(`🚀 ARKTEK Backend Server - http://localhost:${PORT}`)
+    console.log('═══════════════════════════════════════════════════')
+    console.log(`📡 LLM API Proxy:     Ready`)
+    console.log(`🔍 Serper Search:     Ready`)
+    console.log(`🗄️  MongoDB:          Connected (Primary Store)`)
+    console.log(`👑 Admin Endpoints:   Ready`)
+    console.log(`🏆 Leaderboard:       Ready`)
+    console.log('═══════════════════════════════════════════════════')
+    console.log('')
+  })
+}
+
+startServer().catch(error => {
+  console.error('[Server] Failed to start:', error)
+  process.exit(1)
 })
 
 

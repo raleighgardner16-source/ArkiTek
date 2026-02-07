@@ -23,6 +23,14 @@ export const useStore = create(
       // Current prompt
       currentPrompt: '',
       setCurrentPrompt: (prompt) => set({ currentPrompt: prompt }),
+      
+      // Last submitted prompt and category (for voting button - persists until new prompt is sent)
+      lastSubmittedPrompt: '',
+      lastSubmittedCategory: '',
+      setLastSubmittedPrompt: (prompt) => set({ lastSubmittedPrompt: prompt }),
+      setLastSubmittedCategory: (category) => set({ lastSubmittedCategory: category }),
+      // Clear both together - only called when truly needed (e.g., user explicitly clears all)
+      clearLastSubmittedPrompt: () => set({ lastSubmittedPrompt: '', lastSubmittedCategory: '' }),
 
       // Responses
       responses: [],
@@ -42,6 +50,8 @@ export const useStore = create(
         set({ ragDebugData: null })
         set({ showFactsWindow: true }) // Reset to default state
         set({ showPipelineDebugWindow: true }) // Reset to default state
+        // Note: lastSubmittedPrompt is NOT cleared here - it's managed by handlePromptSubmit
+        // It will be set before clearResponses is called, so it persists for the voting button
       },
 
       // Ratings
