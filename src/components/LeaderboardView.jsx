@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, User, Calendar, Star, Trash2, Layers } from 'lucide-react'
+import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, Calendar, Star, Trash2, Layers, Lock } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
+import { API_URL } from '../utils/config'
 
 // All available categories for filtering
 const CATEGORIES = [
@@ -20,11 +21,11 @@ const CATEGORIES = [
   'General Knowledge/Other',
 ]
 
-const LeaderboardView = () => {
+const LeaderboardView = ({ subscriptionRestricted = false }) => {
   const currentUser = useStore((state) => state.currentUser)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
-  const [activeSection, setActiveSection] = useState('today') // 'today', 'alltime', 'profile'
+  const [activeSection, setActiveSection] = useState('today') // 'today', 'alltime', 'fyp'
   const [selectedCategory, setSelectedCategory] = useState('All') // Category filter
   const [leaderboardPrompts, setLeaderboardPrompts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -43,23 +44,32 @@ const LeaderboardView = () => {
   const [deleteCommentConfirm, setDeleteCommentConfirm] = useState(null) // Track which comment is being confirmed for deletion
   const [deleteReplyConfirm, setDeleteReplyConfirm] = useState(null) // Track which reply is being confirmed for deletion
 
+  // Force to today section when subscription is restricted (profile moved to Statistics)
   useEffect(() => {
-    if (currentUser?.id || activeSection !== 'profile') {
-      fetchLeaderboard()
+    if (subscriptionRestricted && activeSection !== 'today') {
+      setActiveSection('today')
     }
+  }, [subscriptionRestricted, activeSection])
+
+  useEffect(() => {
+    fetchLeaderboard()
   }, [currentUser, activeSection])
 
   const fetchLeaderboard = async () => {
     try {
       setLoading(true)
-      let url = 'http://localhost:3001/api/leaderboard'
+      let url = `${API_URL}/api/leaderboard`
       
       if (activeSection === 'today') {
         url += '?filter=today'
       } else if (activeSection === 'alltime') {
         url += '?filter=alltime'
-      } else if (activeSection === 'profile' && currentUser?.id) {
-        url += `?filter=profile&userId=${currentUser.id}`
+      } else if (activeSection === 'fyp') {
+        const params = new URLSearchParams({ filter: 'fyp' })
+        if (currentUser?.id) {
+          params.set('userId', currentUser.id)
+        }
+        url += `?${params.toString()}`
       }
       
       const response = await axios.get(url)
@@ -76,7 +86,7 @@ const LeaderboardView = () => {
     if (!currentUser?.id) return
     
     try {
-      const response = await axios.post('http://localhost:3001/api/leaderboard/like', {
+      const response = await axios.post(`${API_URL}/api/leaderboard/like`, {
         userId: currentUser.id,
         promptId: promptId,
       })
@@ -97,7 +107,7 @@ const LeaderboardView = () => {
     
     setDeleting(true)
     try {
-      const response = await axios.delete(`http://localhost:3001/api/leaderboard/delete/${promptId}`, {
+      const response = await axios.delete(`${API_URL}/api/leaderboard/delete/${promptId}`, {
         data: { userId: currentUser.id }
       })
       
@@ -119,7 +129,7 @@ const LeaderboardView = () => {
     if (!currentUser?.id || !commentTexts[promptId]?.trim()) return
     
     try {
-      const response = await axios.post('http://localhost:3001/api/leaderboard/comment', {
+      const response = await axios.post(`${API_URL}/api/leaderboard/comment`, {
         userId: currentUser.id,
         promptId: promptId,
         commentText: commentTexts[promptId],
@@ -141,7 +151,7 @@ const LeaderboardView = () => {
     if (!currentUser?.id || !replyTexts[`${commentId}`]?.trim()) return
     
     try {
-      const response = await axios.post('http://localhost:3001/api/leaderboard/comment/reply', {
+      const response = await axios.post(`${API_URL}/api/leaderboard/comment/reply`, {
         userId: currentUser.id,
         promptId: promptId,
         commentId: commentId,
@@ -164,7 +174,7 @@ const LeaderboardView = () => {
     if (!currentUser?.id) return
     
     try {
-      const response = await axios.post('http://localhost:3001/api/leaderboard/comment/like', {
+      const response = await axios.post(`${API_URL}/api/leaderboard/comment/like`, {
         userId: currentUser.id,
         promptId: promptId,
         commentId: commentId,
@@ -185,7 +195,7 @@ const LeaderboardView = () => {
     if (!currentUser?.id) return
     
     try {
-      const response = await axios.delete(`http://localhost:3001/api/leaderboard/comment/delete/${commentId}`, {
+      const response = await axios.delete(`${API_URL}/api/leaderboard/comment/delete/${commentId}`, {
         data: { userId: currentUser.id, promptId: promptId }
       })
       
@@ -205,7 +215,7 @@ const LeaderboardView = () => {
     if (!currentUser?.id) return
     
     try {
-      const response = await axios.delete(`http://localhost:3001/api/leaderboard/comment/reply/delete/${replyId}`, {
+      const response = await axios.delete(`${API_URL}/api/leaderboard/comment/reply/delete/${replyId}`, {
         data: { userId: currentUser.id, promptId: promptId, commentId: commentId }
       })
       
@@ -258,8 +268,8 @@ const LeaderboardView = () => {
               <span
                 style={{
                   padding: '4px 10px',
-                  background: theme === 'light' ? 'rgba(0, 150, 150, 0.1)' : 'rgba(0, 255, 255, 0.1)',
-                  border: `1px solid ${theme === 'light' ? 'rgba(0, 150, 150, 0.3)' : 'rgba(0, 255, 255, 0.3)'}`,
+                  background: theme === 'light' ? 'rgba(0, 150, 150, 0.1)' : 'rgba(93, 173, 226, 0.1)',
+                  border: `1px solid ${theme === 'light' ? 'rgba(0, 150, 150, 0.3)' : 'rgba(93, 173, 226, 0.3)'}`,
                   borderRadius: '12px',
                   color: currentTheme.accent,
                   fontSize: '0.75rem',
@@ -528,6 +538,15 @@ const LeaderboardView = () => {
                   color={currentTheme.textMuted} 
                 />
                 Like
+                {(prompt.likes?.length || 0) > 0 && (
+                  <span style={{ 
+                    marginLeft: '2px',
+                    fontSize: '0.85rem',
+                    color: currentTheme.textMuted,
+                  }}>
+                    ({prompt.likes.length})
+                  </span>
+                )}
               </button>
               {hoveredOwnLike === `button-${prompt.id}` && (
                 <div
@@ -595,6 +614,15 @@ const LeaderboardView = () => {
                 color={isLiked ? '#ff6b6b' : currentTheme.accent} 
               />
               {isLiked ? 'Liked' : 'Like'}
+              {(prompt.likes?.length || 0) > 0 && (
+                <span style={{ 
+                  marginLeft: '2px',
+                  fontSize: '0.85rem',
+                  color: isLiked ? '#ff6b6b' : currentTheme.accent,
+                }}>
+                  ({prompt.likes.length})
+                </span>
+              )}
             </button>
           )}
           
@@ -715,7 +743,7 @@ const LeaderboardView = () => {
 
         {/* Comments Section */}
         {isCommentsExpanded && currentUser && (
-          <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(0, 255, 255, 0.2)' }}>
+          <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(93, 173, 226, 0.2)' }}>
             {/* Add Comment */}
             <div style={{ marginBottom: '20px', position: 'relative' }}>
               <textarea
@@ -779,7 +807,7 @@ const LeaderboardView = () => {
                       key={comment.id}
                       style={{
                         background: currentTheme.backgroundSecondary,
-                        border: '1px solid rgba(0, 255, 255, 0.2)',
+                        border: '1px solid rgba(93, 173, 226, 0.2)',
                         borderRadius: '8px',
                         padding: '16px',
                       }}
@@ -929,7 +957,7 @@ const LeaderboardView = () => {
 
                       {/* Replies Display */}
                       {isRepliesExpanded && comment.replies && (
-                        <div style={{ marginTop: '12px', paddingLeft: '16px', borderLeft: '2px solid rgba(0, 255, 255, 0.3)' }}>
+                        <div style={{ marginTop: '12px', paddingLeft: '16px', borderLeft: '2px solid rgba(93, 173, 226, 0.3)' }}>
                           {comment.replies.map((reply) => {
                             const isOwnReply = currentUser?.id === reply.userId
                             
@@ -1084,8 +1112,6 @@ const LeaderboardView = () => {
         return "Today's Favorites"
       case 'alltime':
         return 'All Time Favorites'
-      case 'profile':
-        return 'My Profile'
       default:
         return 'Community Leaderboard'
     }
@@ -1097,8 +1123,6 @@ const LeaderboardView = () => {
         return "All prompts submitted today. Vote on your favorites!"
       case 'alltime':
         return 'The top 15 most liked prompts of all time.'
-      case 'profile':
-        return 'All prompts you have submitted to the leaderboard.'
       default:
         return 'Vote on prompts submitted by the community.'
     }
@@ -1149,6 +1173,27 @@ const LeaderboardView = () => {
           <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem', marginBottom: '16px' }}>
             {getSectionDescription()}
           </p>
+
+          {/* Restricted mode notice */}
+          {subscriptionRestricted && (
+            <div
+              style={{
+                padding: '12px 18px',
+                borderRadius: '10px',
+                background: 'rgba(255, 59, 48, 0.1)',
+                border: '1px solid rgba(255, 59, 48, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                marginBottom: '16px',
+              }}
+            >
+              <Lock size={16} color="#ff6b6b" />
+              <span style={{ color: '#ff6b6b', fontSize: '0.85rem' }}>
+                Your subscription has expired. The leaderboard is limited. Resubscribe to view the full leaderboard.
+              </span>
+            </div>
+          )}
           
           {/* Section Tabs */}
           <div
@@ -1160,6 +1205,9 @@ const LeaderboardView = () => {
               borderBottom: `1px solid ${currentTheme.borderLight}`,
             }}
           >
+            {/* Today and All Time tabs are hidden when subscription is restricted */}
+            {!subscriptionRestricted && (
+              <>
             <button
               onClick={() => setActiveSection('today')}
               style={{
@@ -1201,29 +1249,10 @@ const LeaderboardView = () => {
               <Star size={20} />
               All Time Favorites
             </button>
-            
-            {currentUser && (
-              <button
-                onClick={() => setActiveSection('profile')}
-                style={{
-                  padding: '12px 24px',
-                  background: activeSection === 'profile' ? currentTheme.buttonBackgroundActive : 'transparent',
-                  border: 'none',
-                  borderBottom: activeSection === 'profile' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
-                  color: activeSection === 'profile' ? currentTheme.accent : currentTheme.textSecondary,
-                  fontSize: '1rem',
-                  fontWeight: activeSection === 'profile' ? '600' : '400',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
-              >
-                <User size={20} />
-                My Profile
-              </button>
+              </>
             )}
+            
+            
           </div>
           
           {/* Category Filter Tabs */}
@@ -1259,7 +1288,7 @@ const LeaderboardView = () => {
                 style={{
                   padding: '6px 14px',
                   background: selectedCategory === category 
-                    ? (theme === 'light' ? 'rgba(0, 180, 180, 0.2)' : 'rgba(0, 255, 255, 0.15)')
+                    ? (theme === 'light' ? 'rgba(0, 180, 180, 0.2)' : 'rgba(93, 173, 226, 0.15)')
                     : 'transparent',
                   border: `1px solid ${selectedCategory === category ? currentTheme.accent : currentTheme.borderLight}`,
                   borderRadius: '20px',
@@ -1332,12 +1361,12 @@ const LeaderboardView = () => {
             >
               <p style={{ color: currentTheme.textMuted, fontSize: '1.1rem' }}>
                 {selectedCategory !== 'All' ? (
-                  `No prompts found in the "${selectedCategory}" category${activeSection === 'today' ? ' today' : activeSection === 'profile' ? ' in your profile' : ''}.`
+                  `No prompts found in the "${selectedCategory}" category${activeSection === 'today' ? ' today' : ''}.`
                 ) : (
                   <>
                     {activeSection === 'today' && "No prompts submitted today yet. Be the first!"}
                     {activeSection === 'alltime' && "No prompts on the leaderboard yet. Be the first to submit one!"}
-                    {activeSection === 'profile' && "You haven't submitted any prompts yet. Submit your first prompt from the home tab!"}
+                    {activeSection === 'fyp' && "No prompts to show yet. Check back soon!"}
                   </>
                 )}
               </p>

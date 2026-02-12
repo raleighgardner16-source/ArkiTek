@@ -1,11 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { X, FileText, Move, Minimize2, Maximize2, ChevronRight, Send, Search } from 'lucide-react'
+import { X, FileText, Move, Minimize2, Maximize2, ChevronRight, Send, Search, Save, Info } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
+import { API_URL } from '../utils/config'
 
 const SummaryWindow = () => {
+  const getProviderName = (modelName) => {
+    const name = (modelName || '').toLowerCase()
+    if (name.includes('gpt')) return 'Chatgpt'
+    if (name.includes('claude')) return 'Claude'
+    if (name.includes('gemini')) return 'Gemini'
+    if (name.includes('grok')) return 'Grok'
+    if (name.includes('llama')) return 'Meta'
+    if (name.includes('deepseek')) return 'DeepSeek'
+    if (name.includes('mistral')) return 'Mistral'
+    return 'Model'
+  }
   const summary = useStore((state) => state.summary)
   const clearSummary = useStore((state) => state.clearSummary)
   const isSummaryMinimized = useStore((state) => state.isSummaryMinimized)
@@ -24,6 +36,10 @@ const SummaryWindow = () => {
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const [conversationContext, setConversationContext] = useState([])
   const [isSearchingInConvo, setIsSearchingInConvo] = useState(false)
+  const [savingState, setSavingState] = useState('idle') // 'idle'|'saving'|'saved'
+  const [showSaveTooltip, setShowSaveTooltip] = useState(false)
+  const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
+  const lastSubmittedCategory = useStore((state) => state.lastSubmittedCategory || '')
   const prevSummaryRef = React.useRef(null)
   
   // Helper function to clear summary and also clear judge context
@@ -31,9 +47,40 @@ const SummaryWindow = () => {
     clearSummary()
     // Clear judge conversation context when closing summary window
     if (currentUser?.id) {
-      axios.post('http://localhost:3001/api/judge/clear-context', {
+      axios.post(`${API_URL}/api/judge/clear-context`, {
         userId: currentUser.id
       }).catch(err => console.error('[Clear Context] Error:', err))
+    }
+  }
+  
+  // Save this summary/judge response + conversation individually
+  const handleSaveSummary = async () => {
+    if (!currentUser?.id || !summary) return
+    setSavingState('saving')
+    try {
+      const conversation = conversationContext.map(ctx => ([
+        { role: 'user', text: ctx.user, timestamp: ctx.timestamp },
+        { role: 'assistant', text: ctx.judge || ctx.assistant, timestamp: ctx.timestamp },
+      ])).flat()
+
+      await axios.post(`${API_URL}/api/conversations/save`, {
+        userId: currentUser.id,
+        type: 'individual',
+        originalPrompt: summary.originalPrompt || lastSubmittedPrompt || '',
+        category: lastSubmittedCategory || 'General',
+        modelName: summary.singleModel ? (summary.modelName || 'Single Model') : 'Judge Summary',
+        modelResponse: summary.text || '',
+        conversation,
+      })
+      setSavingState('saved')
+    } catch (error) {
+      console.error('[Save] Error saving summary:', error)
+      if (error.response?.data?.alreadySaved) {
+        setSavingState('saved')
+      } else {
+        alert('Failed to save. Please try again.')
+        setSavingState('idle')
+      }
     }
   }
   
@@ -44,14 +91,19 @@ const SummaryWindow = () => {
     }
   }, [activeTab, summary, setSummaryMinimized])
 
-  // When summary first appears (new summary), show it in maximized view
+  // When summary first appears (new summary or page refresh), show it in maximized view
   // This applies to BOTH regular summaries AND single model responses
   useEffect(() => {
     if (summary && activeTab === 'home') {
       // Check if this is a new summary (different from previous)
       if (prevSummaryRef.current !== summary.text) {
+        setSummaryMinimized(false) // Un-minimize first (store update)
+        // Use a microtask to ensure isSummaryMinimized updates before setting isMaximized
+        // This avoids the race condition where the "reset maximized when minimized" effect
+        // sees stale isSummaryMinimized=true and clears isMaximized
+        setTimeout(() => {
         setIsMaximized(true) // Show in maximized view by default (centered)
-        setSummaryMinimized(false) // Make sure it's not minimized
+        }, 0)
         setIsInitialized(false) // Reset initialization so position recalculates for non-maximized view
         prevSummaryRef.current = summary.text
       }
@@ -69,7 +121,7 @@ const SummaryWindow = () => {
     if (!currentUser?.id) return
     try {
       // Use query parameter to handle special characters (colons, etc.) better
-      const response = await axios.get('http://localhost:3001/api/judge/context', {
+      const response = await axios.get(`${API_URL}/api/judge/context`, {
         params: { userId: currentUser.id }
       })
       setConversationContext(response.data.context || [])
@@ -87,18 +139,17 @@ const SummaryWindow = () => {
     
     try {
       // First, check if this query needs web search
-      const detectResponse = await axios.post('http://localhost:3001/api/detect-search-needed', {
+      const detectResponse = await axios.post(`${API_URL}/api/detect-search-needed`, {
         query: conversationInput.trim(),
         userId: currentUser.id
       })
       
       // If search is needed, show the indicator
       if (detectResponse.data.needsSearch) {
-        console.log('[SummaryWindow] Search needed for conversation query')
         setIsSearchingInConvo(true)
       }
       
-      const response = await axios.post('http://localhost:3001/api/judge/conversation', {
+      const response = await axios.post(`${API_URL}/api/judge/conversation`, {
         userId: currentUser.id,
         userMessage: conversationInput.trim(),
         conversationContext: conversationContext
@@ -126,9 +177,6 @@ const SummaryWindow = () => {
       // If the conversation used search, update the RAG debug data and show Facts window
       const store = useStore.getState()
       if (response.data.debugData && response.data.usedSearch) {
-        console.log('[SummaryWindow] Conversation used search, updating debug data')
-        console.log('[SummaryWindow] Search results:', response.data.searchResults?.length || 0)
-        console.log('[SummaryWindow] Refined facts:', response.data.refinedData?.facts_with_citations?.length || 0)
         
         // Update RAG debug data with new search results and refined data
         const existingDebugData = store.ragDebugData || {}
@@ -158,7 +206,7 @@ const SummaryWindow = () => {
         if (ragDebugData && currentUser?.id) {
           try {
             // Use query parameter to handle special characters (colons, etc.) better
-            const contextResponse = await axios.get('http://localhost:3001/api/judge/context', {
+            const contextResponse = await axios.get(`${API_URL}/api/judge/context`, {
               params: { userId: currentUser.id }
             })
             const updatedContext = contextResponse.data.context || []
@@ -187,24 +235,19 @@ const SummaryWindow = () => {
     }
   }, [isSummaryMinimized, isMaximized])
 
-  // Initialize position to bottom-right of screen on first render
+  // Initialize position to center of screen on first render / page refresh
   useEffect(() => {
     if (summary && !isInitialized) {
       const windowWidth = window.innerWidth
       const windowHeight = window.innerHeight
-      const windowMaxWidth = Math.min(500, windowWidth * 0.4) // Smaller width for bottom-right
-      const windowMaxHeight = Math.min(400, windowHeight * 0.5) // Smaller height
-      const margin = 20
+      const popupWidth = Math.min(550, windowWidth * 0.9) // Match maxWidth of the rendered window
+      const popupHeight = Math.min(500, windowHeight * 0.7)
       
-      // Position in bottom-right corner
-      let rightX = windowWidth - windowMaxWidth - margin
-      let bottomY = windowHeight - windowMaxHeight - margin - 80 // Leave space for minimized buttons
+      // Center the window on screen (same as when it first appears after a prompt)
+      const centerX = Math.max(80, (windowWidth - popupWidth) / 2)
+      const centerY = Math.max(80, (windowHeight - popupHeight) / 3)
       
-      // Clamp to ensure window stays within viewport
-      rightX = Math.max(margin, Math.min(rightX, windowWidth - windowMaxWidth - margin))
-      bottomY = Math.max(margin, Math.min(bottomY, windowHeight - windowMaxHeight - margin))
-      
-      setPosition({ x: rightX, y: bottomY })
+      setPosition({ x: centerX, y: centerY })
       setIsInitialized(true)
     }
   }, [summary, isInitialized])
@@ -253,15 +296,14 @@ const SummaryWindow = () => {
 
   // Debug log
   useEffect(() => {
-    console.log('[SummaryWindow] Summary state:', summary)
-    if (summary) {
-      console.log('[SummaryWindow] Summary text length:', summary.text?.length)
-      console.log('[SummaryWindow] Summary text preview:', summary.text?.substring(0, 200))
-    }
   }, [summary])
 
   if (!summary) {
-    console.log('[SummaryWindow] No summary, returning null')
+    return null
+  }
+
+  // When on home tab, MainView handles inline display - don't show popup
+  if (activeTab === 'home') {
     return null
   }
 
@@ -402,7 +444,6 @@ const SummaryWindow = () => {
   }
 
   if (!summary.text || summary.text.trim() === '') {
-    console.log('[SummaryWindow] Summary text is empty')
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
@@ -681,6 +722,41 @@ const SummaryWindow = () => {
               </div>
             )}
             
+            {/* Fetching Response Indicator */}
+            {isSendingMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '12px 16px',
+                  marginTop: '16px',
+                }}
+              >
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                  style={{
+                    width: '16px',
+                    height: '16px',
+                    border: `2px solid ${currentTheme.borderLight}`,
+                    borderTop: `2px solid ${currentTheme.accent}`,
+                    borderRadius: '50%',
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{
+                  fontSize: '0.85rem',
+                  color: currentTheme.textMuted,
+                  fontStyle: 'italic',
+                }}>
+                  Fetching response...
+                </span>
+              </motion.div>
+            )}
+
             {/* Conversation Input */}
             {!summary.singleModel && (
               <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px solid ${currentTheme.borderLight}` }}>
@@ -957,7 +1033,7 @@ const SummaryWindow = () => {
         
         {/* Initial Summary/Response */}
         <div style={{
-          background: theme === 'light' ? 'rgba(0, 150, 200, 0.05)' : 'rgba(0, 255, 255, 0.05)',
+          background: theme === 'light' ? 'rgba(0, 150, 200, 0.05)' : 'rgba(93, 173, 226, 0.05)',
           borderRadius: '10px 10px 10px 4px',
           padding: '14px',
           marginBottom: '14px',
@@ -1038,7 +1114,7 @@ const SummaryWindow = () => {
                   justifyContent: 'flex-start',
                 }}>
                   <div style={{
-                    background: theme === 'light' ? 'rgba(0, 150, 200, 0.05)' : 'rgba(0, 255, 255, 0.05)',
+                    background: theme === 'light' ? 'rgba(0, 150, 200, 0.05)' : 'rgba(93, 173, 226, 0.05)',
                     borderRadius: '10px 10px 10px 4px',
                     padding: '10px 14px',
                     maxWidth: '90%',
@@ -1070,6 +1146,41 @@ const SummaryWindow = () => {
           </div>
         )}
         
+        {/* Fetching Response Indicator */}
+        {isSendingMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '12px 16px',
+              marginTop: '12px',
+            }}
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+              style={{
+                width: '16px',
+                height: '16px',
+                border: `2px solid ${currentTheme.borderLight}`,
+                borderTop: `2px solid ${currentTheme.accent}`,
+                borderRadius: '50%',
+                flexShrink: 0,
+              }}
+            />
+            <span style={{
+              fontSize: '0.85rem',
+              color: currentTheme.textMuted,
+              fontStyle: 'italic',
+            }}>
+              Fetching response...
+            </span>
+          </motion.div>
+        )}
+
         {/* Conversation Input */}
         {!summary.singleModel && (
           <div style={{ paddingTop: '14px', borderTop: `1px solid ${currentTheme.borderLight}` }}>
@@ -1164,6 +1275,123 @@ const SummaryWindow = () => {
                 <Send size={18} />
                 {isSendingMessage ? 'Sending...' : 'Send'}
               </button>
+              {/* Save Summary/Judge Response Button */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={handleSaveSummary}
+                  disabled={savingState === 'saving' || savingState === 'saved'}
+                  style={{
+                    padding: '12px 16px',
+                    background: savingState === 'saved' ? 'rgba(0, 200, 100, 0.2)' : currentTheme.buttonBackground,
+                    border: `1px solid ${savingState === 'saved' ? 'rgba(0, 200, 100, 0.5)' : currentTheme.borderLight}`,
+                    borderRadius: '8px',
+                    color: savingState === 'saved' ? '#00c864' : currentTheme.accent,
+                    fontSize: '0.9rem',
+                    fontWeight: '500',
+                    cursor: (savingState === 'saving' || savingState === 'saved') ? 'not-allowed' : 'pointer',
+                    opacity: savingState === 'saving' ? 0.6 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={savingState === 'saved' ? 'Already saved' : undefined}
+                >
+                  <Save size={18} />
+                  {savingState === 'saving'
+                    ? 'Saving...'
+                    : savingState === 'saved'
+                    ? 'Saved!'
+                    : summary?.singleModel
+                    ? `Save ${getProviderName(summary?.modelName)} Convo`
+                    : 'Save Summary Convo'}
+                </button>
+                <div
+                  style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help' }}
+                  onMouseEnter={() => setShowSaveTooltip(true)}
+                  onMouseLeave={() => setShowSaveTooltip(false)}
+                >
+                  <Info size={14} color={currentTheme.textMuted} />
+                  {showSaveTooltip && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '20px',
+                      right: 0,
+                      background: currentTheme.backgroundOverlay,
+                      border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '0.75rem',
+                      color: currentTheme.textSecondary,
+                      width: '200px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                      zIndex: 100,
+                    }}>
+                      Save this {summary?.singleModel ? "model's response" : 'judge summary'} and conversation history.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Save button for single-model responses (no conversation input area) */}
+        {summary?.singleModel && (
+          <div style={{ paddingTop: '14px', borderTop: `1px solid ${currentTheme.borderLight}`, display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={handleSaveSummary}
+                disabled={savingState === 'saving' || savingState === 'saved'}
+                style={{
+                  padding: '10px 16px',
+                  background: savingState === 'saved' ? 'rgba(0, 200, 100, 0.2)' : currentTheme.buttonBackground,
+                  border: `1px solid ${savingState === 'saved' ? 'rgba(0, 200, 100, 0.5)' : currentTheme.borderLight}`,
+                  borderRadius: '8px',
+                  color: savingState === 'saved' ? '#00c864' : currentTheme.accent,
+                  fontSize: '0.85rem',
+                  fontWeight: '500',
+                  cursor: (savingState === 'saving' || savingState === 'saved') ? 'not-allowed' : 'pointer',
+                  opacity: savingState === 'saving' ? 0.6 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+                title={savingState === 'saved' ? 'Already saved' : undefined}
+              >
+                <Save size={16} />
+                {savingState === 'saving'
+                  ? 'Saving...'
+                  : savingState === 'saved'
+                  ? 'Saved!'
+                  : summary?.singleModel
+                  ? `Save ${getProviderName(summary?.modelName)} Convo`
+                  : 'Save Summary Convo'}
+              </button>
+              <div
+                style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help' }}
+                onMouseEnter={() => setShowSaveTooltip(true)}
+                onMouseLeave={() => setShowSaveTooltip(false)}
+              >
+                <Info size={14} color={currentTheme.textMuted} />
+                {showSaveTooltip && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '20px',
+                    right: 0,
+                    background: currentTheme.backgroundOverlay,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    fontSize: '0.75rem',
+                    color: currentTheme.textSecondary,
+                    width: '200px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    zIndex: 100,
+                  }}>
+                    Save this model's response to your saved conversations.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

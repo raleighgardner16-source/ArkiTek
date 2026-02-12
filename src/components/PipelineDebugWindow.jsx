@@ -5,21 +5,11 @@ import TokenUsageWindow from './TokenUsageWindow'
 import CostBreakdownWindow from './CostBreakdownWindow'
 import CategoryDetectionWindow from './CategoryDetectionWindow'
 
-const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse, tokenData, queryCount, categoryDetectionData }) => {
+const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, tokenData, queryCount, categoryDetectionData }) => {
   const [isMinimized, setIsMinimized] = useState(false) // Start expanded by default
   const [expandedSection, setExpandedSection] = useState('refiner') // Start with refiner expanded
 
-  console.log('[PipelineDebugWindow] Received debug data:', {
-    hasData: !!debugData,
-    hasSearch: !!debugData?.search,
-    hasRefiner: !!debugData?.refiner,
-    hasCouncil: !!debugData?.council,
-    searchResultsCount: debugData?.search?.results?.length || 0,
-    refinerFactsCount: debugData?.refiner?.primary?.facts_with_citations?.length || 0
-  })
-
   if (!debugData) {
-    console.log('[PipelineDebugWindow] No debug data, returning null')
     return null
   }
 
@@ -29,7 +19,7 @@ const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse, tokenData,
     { key: 'refiner', label: 'Refiner Models', icon: FileText, color: '#ffaa00' },
     { key: 'council', label: 'Council Models', icon: Users, color: '#aa00ff' },
     { key: 'judgeFinalization', label: 'Judge Finalization', icon: Gavel, color: '#ff0088' },
-    { key: 'conversationContext', label: 'Conversation Context (5 Summaries)', icon: Brain, color: '#00ffff' }
+    { key: 'conversationContext', label: 'Conversation Context (5 Summaries)', icon: Brain, color: '#5dade2' }
   ]
 
   const renderCategoryDetection = () => {
@@ -377,7 +367,7 @@ const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse, tokenData,
     
     return (
       <div style={{ marginBottom: '16px' }}>
-        <div style={{ color: '#00ffff', fontWeight: 'bold', marginBottom: '8px' }}>
+        <div style={{ color: '#5dade2', fontWeight: 'bold', marginBottom: '8px' }}>
           Last {context.length} Summary{context.length !== 1 ? 'ies' : ''} (Max 5):
         </div>
         {context.map((ctx, index) => (
@@ -386,7 +376,7 @@ const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse, tokenData,
             padding: '12px', 
             backgroundColor: '#0a0a0a', 
             borderRadius: '6px',
-            border: '1px solid rgba(0, 255, 255, 0.2)'
+            border: '1px solid rgba(93, 173, 226, 0.2)'
           }}>
             <div style={{ 
               display: 'flex', 
@@ -394,7 +384,7 @@ const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse, tokenData,
               alignItems: 'center',
               marginBottom: '6px'
             }}>
-              <div style={{ color: '#00ffff', fontSize: '11px', fontWeight: 'bold' }}>
+              <div style={{ color: '#5dade2', fontSize: '11px', fontWeight: 'bold' }}>
                 Summary #{index + 1} ({ctx.tokens || 'N/A'} tokens)
               </div>
               {ctx.timestamp && (
@@ -520,7 +510,7 @@ const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse, tokenData,
             <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {tokenData && tokenData.length > 0 && (
                 <div style={{ 
-                  border: '1px solid rgba(0, 255, 255, 0.3)', 
+                  border: '1px solid rgba(93, 173, 226, 0.3)', 
                   borderRadius: '8px', 
                   overflow: 'hidden',
                   backgroundColor: '#0a0a0a',
@@ -559,7 +549,7 @@ const PipelineDebugWindow = ({ debugData, onClose, gpt4oMiniResponse, tokenData,
               )}
               {categoryDetectionData && (
                 <div style={{ 
-                  border: '1px solid rgba(0, 170, 255, 0.3)', 
+                  border: '1px solid rgba(93, 173, 226, 0.3)', 
                   borderRadius: '8px', 
                   overflow: 'hidden',
                   backgroundColor: '#0a0a0a',

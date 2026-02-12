@@ -1,3 +1,5 @@
+import { API_URL } from './config'
+
 // Detect category, determine if web search is needed, and recommend model types using Gemini 2.5 Flash Lite
 // selectedProviders: Array of { providerKey, providerName, models: [{ id, model, type, label }] }
 export const detectCategory = async (prompt, selectedProviders = []) => {
@@ -80,7 +82,7 @@ User prompt:
 ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You MUST use the SAME model type (reasoning, versatile, or fast) for ALL providers - no exceptions! Return the model IDs (e.g., "openai-gpt-5.2", "google-gemini-3-pro") in recommendedModels.' : ''}`
 
   try {
-    const response = await fetch('http://localhost:3001/api/llm', {
+    const response = await fetch(`${API_URL}/api/llm`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -112,8 +114,6 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
     const rawResponse = categoryResponse // Store raw response for display
     const tokens = data.tokens || null // Extract tokens from API response
     
-    console.log('[Category Detection] Raw response from Gemini 2.5 Flash Lite:', categoryResponse)
-    console.log('[Category Detection] Tokens from API:', tokens)
 
     // Try to parse JSON response
     try {
@@ -133,7 +133,6 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
         const recommendedModelType = parsed.recommendedModelType || 'versatile'
         const recommendedModels = parsed.recommendedModels || {}
 
-        console.log('[Category Detection] Parsed JSON:', { category, needsSearch, recommendedModelType, recommendedModels })
 
         // Validate category
         const validCategories = [
@@ -154,12 +153,6 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
         )
 
         if (matchedCategory) {
-          console.log('[Category Detection] Successfully parsed:', { 
-            category: matchedCategory, 
-            needsSearch: Boolean(needsSearch),
-            recommendedModelType,
-            recommendedModels
-          })
           return { 
             category: matchedCategory, 
             needsSearch: Boolean(needsSearch),

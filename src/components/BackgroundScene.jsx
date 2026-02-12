@@ -4,9 +4,6 @@ import { getTheme } from '../utils/theme'
 
 const BackgroundScene = () => {
   const canvasRef = useRef(null)
-  const vrMode = useStore((state) => state.vrMode)
-  const setCameraPosition = useStore((state) => state.setCameraPosition)
-  const cameraPosition = useStore((state) => state.cameraPosition)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
 
@@ -60,45 +57,6 @@ const BackgroundScene = () => {
 
     animate()
 
-    // Handle VR navigation
-    let isDragging = false
-    let lastMouseX = 0
-    let lastMouseY = 0
-
-    const handleMouseDown = (e) => {
-      if (vrMode) {
-        isDragging = true
-        lastMouseX = e.clientX
-        lastMouseY = e.clientY
-      }
-    }
-
-    const handleMouseMove = (e) => {
-      if (vrMode && isDragging) {
-        const deltaX = (e.clientX - lastMouseX) * 0.01
-        const deltaY = (e.clientY - lastMouseY) * 0.01
-
-        setCameraPosition({
-          x: cameraPosition.x + deltaX,
-          y: cameraPosition.y + deltaY,
-          z: cameraPosition.z,
-        })
-
-        lastMouseX = e.clientX
-        lastMouseY = e.clientY
-      }
-    }
-
-    const handleMouseUp = () => {
-      isDragging = false
-    }
-
-    if (vrMode) {
-      canvas.addEventListener('mousedown', handleMouseDown)
-      canvas.addEventListener('mousemove', handleMouseMove)
-      canvas.addEventListener('mouseup', handleMouseUp)
-    }
-
     const handleResize = () => {
       canvas.width = window.innerWidth
       canvas.height = window.innerHeight
@@ -108,12 +66,9 @@ const BackgroundScene = () => {
 
     return () => {
       cancelAnimationFrame(animationFrameId)
-      canvas.removeEventListener('mousedown', handleMouseDown)
-      canvas.removeEventListener('mousemove', handleMouseMove)
-      canvas.removeEventListener('mouseup', handleMouseUp)
       window.removeEventListener('resize', handleResize)
     }
-  }, [vrMode, cameraPosition, setCameraPosition, theme, currentTheme])
+  }, [theme, currentTheme])
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}>
@@ -122,7 +77,6 @@ const BackgroundScene = () => {
         style={{
           width: '100%',
           height: '100%',
-          cursor: vrMode ? 'grab' : 'default',
         }}
       />
     </div>
@@ -130,4 +84,3 @@ const BackgroundScene = () => {
 }
 
 export default BackgroundScene
-

@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
-import { LogIn, UserPlus, Mail, Lock, User } from 'lucide-react'
+import { LogIn, UserPlus, Mail, Lock, User, CreditCard } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
+import { API_URL } from '../utils/config'
 
 const AuthView = () => {
   const [isSignUp, setIsSignUp] = useState(false)
@@ -16,8 +17,8 @@ const AuthView = () => {
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const theme = useStore((state) => state.theme || 'dark')
-  const currentTheme = getTheme(theme)
+  // Always use dark theme for the auth page
+  const currentTheme = getTheme('dark')
   const setCurrentUser = useStore((state) => state.setCurrentUser)
   const setShowWelcome = useStore((state) => state.setShowWelcome)
   const clearSelectedModels = useStore((state) => state.clearSelectedModels)
@@ -44,14 +45,16 @@ const AuthView = () => {
       }
 
       const endpoint = isSignUp ? '/api/auth/signup' : '/api/auth/signin'
-      const response = await axios.post(`http://localhost:3001${endpoint}`, formData)
+      const response = await axios.post(`${API_URL}${endpoint}`, formData)
 
       if (response.data.success) {
+        const user = response.data.user
+
         // Clear selected models when user signs in/up
         clearSelectedModels()
         // Store user data in the store
-        setCurrentUser(response.data.user)
-        // Hide welcome screen and show main app
+        setCurrentUser(user)
+        // App.jsx subscription gate will handle showing the payment form for new users
         setShowWelcome(false)
       }
     } catch (err) {
@@ -118,6 +121,14 @@ const AuthView = () => {
             background: ${currentTheme.buttonBackgroundActive} !important;
             color: ${currentTheme.text} !important;
           }
+          input[name="firstName"]::placeholder,
+          input[name="lastName"]::placeholder,
+          input[name="username"]::placeholder,
+          input[name="email"]::placeholder,
+          input[name="password"]::placeholder {
+            color: rgba(255, 255, 255, 0.35) !important;
+            -webkit-text-fill-color: rgba(255, 255, 255, 0.35) !important;
+          }
         `}
       </style>
       <div
@@ -130,7 +141,7 @@ const AuthView = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: theme === 'dark' ? 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)' : 'linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%)',
+          background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)',
           zIndex: 1000,
         }}
       >
@@ -150,7 +161,7 @@ const AuthView = () => {
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
           <h1
-            key={`title-${theme}`}
+            key="title-dark"
             style={{
               fontSize: '2.5rem',
               marginBottom: '10px',
@@ -212,27 +223,28 @@ const AuthView = () => {
                   onChange={handleChange}
                   required
                   autoComplete="given-name"
+                  placeholder="Enter your first name"
                   style={{
                     width: '100%',
                     padding: '12px',
-                    background: 'rgba(0, 255, 255, 0.05) !important',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    background: 'rgba(93, 173, 226, 0.05) !important',
+                    border: '1px solid rgba(93, 173, 226, 0.3)',
                     borderRadius: '8px',
                     color: '#ffffff !important',
                     fontSize: '1rem',
                     outline: 'none',
                     WebkitTextFillColor: '#ffffff',
-                    WebkitBoxShadow: '0 0 0 1000px rgba(0, 255, 255, 0.05) inset',
+                    WebkitBoxShadow: '0 0 0 1000px rgba(93, 173, 226, 0.05) inset',
                   }}
                   onFocus={(e) => {
-                    e.target.style.background = 'rgba(0, 255, 255, 0.05) !important'
-                    e.target.style.borderColor = 'rgba(0, 255, 255, 0.5)'
-                    e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(0, 255, 255, 0.05) inset'
+                    e.target.style.background = 'rgba(93, 173, 226, 0.05) !important'
+                    e.target.style.borderColor = 'rgba(93, 173, 226, 0.5)'
+                    e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(93, 173, 226, 0.05) inset'
                   }}
                   onBlur={(e) => {
-                    e.target.style.background = 'rgba(0, 255, 255, 0.05) !important'
-                    e.target.style.borderColor = 'rgba(0, 255, 255, 0.3)'
-                    e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(0, 255, 255, 0.05) inset'
+                    e.target.style.background = 'rgba(93, 173, 226, 0.05) !important'
+                    e.target.style.borderColor = 'rgba(93, 173, 226, 0.3)'
+                    e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(93, 173, 226, 0.05) inset'
                   }}
                 />
               </div>
@@ -258,27 +270,28 @@ const AuthView = () => {
                   onChange={handleChange}
                   required
                   autoComplete="family-name"
+                  placeholder="Enter your last name"
                   style={{
                     width: '100%',
                     padding: '12px',
-                    background: 'rgba(0, 255, 255, 0.05) !important',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    background: 'rgba(93, 173, 226, 0.05) !important',
+                    border: '1px solid rgba(93, 173, 226, 0.3)',
                     borderRadius: '8px',
                     color: '#ffffff !important',
                     fontSize: '1rem',
                     outline: 'none',
                     WebkitTextFillColor: '#ffffff',
-                    WebkitBoxShadow: '0 0 0 1000px rgba(0, 255, 255, 0.05) inset',
+                    WebkitBoxShadow: '0 0 0 1000px rgba(93, 173, 226, 0.05) inset',
                   }}
                   onFocus={(e) => {
-                    e.target.style.background = 'rgba(0, 255, 255, 0.05) !important'
-                    e.target.style.borderColor = 'rgba(0, 255, 255, 0.5)'
-                    e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(0, 255, 255, 0.05) inset'
+                    e.target.style.background = 'rgba(93, 173, 226, 0.05) !important'
+                    e.target.style.borderColor = 'rgba(93, 173, 226, 0.5)'
+                    e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(93, 173, 226, 0.05) inset'
                   }}
                   onBlur={(e) => {
-                    e.target.style.background = 'rgba(0, 255, 255, 0.05) !important'
-                    e.target.style.borderColor = 'rgba(0, 255, 255, 0.3)'
-                    e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(0, 255, 255, 0.05) inset'
+                    e.target.style.background = 'rgba(93, 173, 226, 0.05) !important'
+                    e.target.style.borderColor = 'rgba(93, 173, 226, 0.3)'
+                    e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(93, 173, 226, 0.05) inset'
                   }}
                 />
               </div>
@@ -306,27 +319,28 @@ const AuthView = () => {
               onChange={handleChange}
               required
               autoComplete="username"
+              placeholder={isSignUp ? "Choose a username" : "Enter your username"}
               style={{
                 width: '100%',
                 padding: '12px',
-                background: 'rgba(0, 255, 255, 0.05) !important',
-                border: '1px solid rgba(0, 255, 255, 0.3)',
+                background: 'rgba(93, 173, 226, 0.05) !important',
+                border: '1px solid rgba(93, 173, 226, 0.3)',
                 borderRadius: '8px',
                 color: '#ffffff !important',
                 fontSize: '1rem',
                 outline: 'none',
                 WebkitTextFillColor: '#ffffff',
-                WebkitBoxShadow: '0 0 0 1000px rgba(0, 255, 255, 0.05) inset',
+                WebkitBoxShadow: '0 0 0 1000px rgba(93, 173, 226, 0.05) inset',
               }}
               onFocus={(e) => {
-                e.target.style.background = 'rgba(0, 255, 255, 0.05) !important'
-                e.target.style.borderColor = 'rgba(0, 255, 255, 0.5)'
-                e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(0, 255, 255, 0.05) inset'
+                e.target.style.background = 'rgba(93, 173, 226, 0.05) !important'
+                e.target.style.borderColor = 'rgba(93, 173, 226, 0.5)'
+                e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(93, 173, 226, 0.05) inset'
               }}
               onBlur={(e) => {
-                e.target.style.background = 'rgba(0, 255, 255, 0.05) !important'
-                e.target.style.borderColor = 'rgba(0, 255, 255, 0.3)'
-                e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(0, 255, 255, 0.05) inset'
+                e.target.style.background = 'rgba(93, 173, 226, 0.05) !important'
+                e.target.style.borderColor = 'rgba(93, 173, 226, 0.3)'
+                e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(93, 173, 226, 0.05) inset'
               }}
             />
           </div>
@@ -353,27 +367,28 @@ const AuthView = () => {
                 onChange={handleChange}
                 required
                 autoComplete="email"
+                placeholder="Enter your email address"
                 style={{
                   width: '100%',
                   padding: '12px',
-                  background: 'rgba(0, 255, 255, 0.05) !important',
-                  border: '1px solid rgba(0, 255, 255, 0.3)',
+                  background: 'rgba(93, 173, 226, 0.05) !important',
+                  border: '1px solid rgba(93, 173, 226, 0.3)',
                   borderRadius: '8px',
                   color: '#ffffff !important',
                   fontSize: '1rem',
                   outline: 'none',
                   WebkitTextFillColor: '#ffffff',
-                  WebkitBoxShadow: '0 0 0 1000px rgba(0, 255, 255, 0.05) inset',
+                  WebkitBoxShadow: '0 0 0 1000px rgba(93, 173, 226, 0.05) inset',
                 }}
                 onFocus={(e) => {
-                  e.target.style.background = 'rgba(0, 255, 255, 0.1) !important'
-                  e.target.style.borderColor = 'rgba(0, 255, 255, 0.5)'
-                  e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(0, 255, 255, 0.1) inset'
+                  e.target.style.background = 'rgba(93, 173, 226, 0.1) !important'
+                  e.target.style.borderColor = 'rgba(93, 173, 226, 0.5)'
+                  e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(93, 173, 226, 0.1) inset'
                 }}
                 onBlur={(e) => {
-                  e.target.style.background = 'rgba(0, 255, 255, 0.05) !important'
-                  e.target.style.borderColor = 'rgba(0, 255, 255, 0.3)'
-                  e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(0, 255, 255, 0.05) inset'
+                  e.target.style.background = 'rgba(93, 173, 226, 0.05) !important'
+                  e.target.style.borderColor = 'rgba(93, 173, 226, 0.3)'
+                  e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(93, 173, 226, 0.05) inset'
                 }}
               />
             </div>
@@ -401,27 +416,28 @@ const AuthView = () => {
               required
               minLength={8}
               autoComplete={isSignUp ? "new-password" : "current-password"}
+              placeholder={isSignUp ? "Create a password (min. 8 characters)" : "Enter your password"}
               style={{
                 width: '100%',
                 padding: '12px',
-                background: 'rgba(0, 255, 255, 0.05) !important',
-                border: '1px solid rgba(0, 255, 255, 0.3)',
+                background: 'rgba(93, 173, 226, 0.05) !important',
+                border: '1px solid rgba(93, 173, 226, 0.3)',
                 borderRadius: '8px',
                 color: '#ffffff !important',
                 fontSize: '1rem',
                 outline: 'none',
                 WebkitTextFillColor: '#ffffff',
-                WebkitBoxShadow: '0 0 0 1000px rgba(0, 255, 255, 0.05) inset',
+                WebkitBoxShadow: '0 0 0 1000px rgba(93, 173, 226, 0.05) inset',
               }}
               onFocus={(e) => {
-                e.target.style.background = 'rgba(0, 255, 255, 0.05) !important'
-                e.target.style.borderColor = 'rgba(0, 255, 255, 0.5)'
-                e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(0, 255, 255, 0.05) inset'
+                e.target.style.background = 'rgba(93, 173, 226, 0.05) !important'
+                e.target.style.borderColor = 'rgba(93, 173, 226, 0.5)'
+                e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(93, 173, 226, 0.05) inset'
               }}
               onBlur={(e) => {
-                e.target.style.background = 'rgba(0, 255, 255, 0.05) !important'
-                e.target.style.borderColor = 'rgba(0, 255, 255, 0.3)'
-                e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(0, 255, 255, 0.05) inset'
+                e.target.style.background = 'rgba(93, 173, 226, 0.05) !important'
+                e.target.style.borderColor = 'rgba(93, 173, 226, 0.3)'
+                e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(93, 173, 226, 0.05) inset'
               }}
             />
           </div>
@@ -436,7 +452,7 @@ const AuthView = () => {
               padding: '14px',
               background: loading
                 ? 'rgba(128, 128, 128, 0.3)'
-                : 'linear-gradient(135deg, #00FFFF, #00FF00)',
+                : 'linear-gradient(135deg, #5dade2, #48c9b0)',
               border: 'none',
               borderRadius: '8px',
               color: loading ? '#666666' : '#000000',
@@ -464,6 +480,27 @@ const AuthView = () => {
               </>
             )}
           </motion.button>
+
+          {isSignUp && (
+            <div style={{
+              textAlign: 'center',
+              marginBottom: '16px',
+              padding: '12px',
+              background: 'rgba(93, 173, 226, 0.05)',
+              border: '1px solid rgba(93, 173, 226, 0.15)',
+              borderRadius: '8px',
+            }}>
+              <p style={{
+                color: 'rgba(255, 255, 255, 0.6)',
+                fontSize: '0.8rem',
+                margin: 0,
+                lineHeight: 1.5,
+              }}>
+                <CreditCard size={14} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
+                A subscription ($15/mo) is required to use ArkiTek. You'll enter your payment info after creating your account. Includes $5/mo in usage credits.
+              </p>
+            </div>
+          )}
         </form>
 
         {/* Toggle Sign In/Sign Up */}
@@ -483,7 +520,7 @@ const AuthView = () => {
             style={{
               background: 'none',
               border: 'none',
-              color: '#00FFFF',
+              color: '#5dade2',
               cursor: 'pointer',
               fontSize: '0.9rem',
               textDecoration: 'underline',

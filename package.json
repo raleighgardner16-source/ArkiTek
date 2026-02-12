@@ -14,6 +14,8 @@
     "db:verify": "node database/migrate.js --verify"
   },
   "dependencies": {
+    "@stripe/react-stripe-js": "^5.6.0",
+    "@stripe/stripe-js": "^8.7.0",
     "axios": "^1.6.2",
     "cheerio": "^1.2.0",
     "cors": "^2.8.5",

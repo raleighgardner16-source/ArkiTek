@@ -85,14 +85,14 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
 
     return (
       <div style={{ padding: '16px' }}>
-        <h3 style={{ color: '#00FFFF', fontSize: '1.2rem', margin: '0 0 16px 0', fontWeight: 'bold' }}>
+        <h3 style={{ color: '#5dade2', fontSize: '1.2rem', margin: '0 0 16px 0', fontWeight: 'bold' }}>
           Token Usage by Model/Provider
         </h3>
         {/* Content from the original component */}
         <div style={{ marginBottom: '16px' }}>
           <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
             <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
-              <strong style={{ color: '#00FFFF' }}>Total Tokens:</strong> {totalTokens.toLocaleString()}
+              <strong style={{ color: '#5dade2' }}>Total Tokens:</strong> {totalTokens.toLocaleString()}
             </div>
             {totalReasoning > 0 && (
               <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
@@ -101,13 +101,13 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
             )}
           </div>
           {Object.entries(groupedByProvider).map(([provider, data]) => (
-            <div key={provider} style={{ marginBottom: '20px', padding: '12px', background: 'rgba(0, 255, 255, 0.05)', borderRadius: '8px', border: '1px solid rgba(0, 255, 255, 0.2)' }}>
-              <h4 style={{ color: '#00FFFF', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
+            <div key={provider} style={{ marginBottom: '20px', padding: '12px', background: 'rgba(93, 173, 226, 0.05)', borderRadius: '8px', border: '1px solid rgba(93, 173, 226, 0.2)' }}>
+              <h4 style={{ color: '#5dade2', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
                 {provider === 'openai' ? 'Chatgpt' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
               </h4>
               <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', fontSize: '0.85rem', color: '#aaaaaa' }}>
-                <div><strong style={{ color: '#00FFFF' }}>Input:</strong> {data.totalInput.toLocaleString()}</div>
-                <div><strong style={{ color: '#00FF00' }}>Output:</strong> {data.totalOutput.toLocaleString()}</div>
+                <div><strong style={{ color: '#5dade2' }}>Input:</strong> {data.totalInput.toLocaleString()}</div>
+                <div><strong style={{ color: '#48c9b0' }}>Output:</strong> {data.totalOutput.toLocaleString()}</div>
                 {data.totalReasoning > 0 && (
                   <div><strong style={{ color: '#ffaa00' }}>Reasoning:</strong> {data.totalReasoning.toLocaleString()}</div>
                 )}
@@ -139,11 +139,11 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
           position: 'fixed',
           bottom: '80px',
           right: '20px', // Position in bottom-right, stacked above summary
-          background: 'rgba(0, 255, 255, 0.2)',
-          border: '1px solid rgba(0, 255, 255, 0.5)',
+          background: 'rgba(93, 173, 226, 0.2)',
+          border: '1px solid rgba(93, 173, 226, 0.5)',
           borderRadius: '12px',
           padding: '12px 20px',
-          color: '#00FFFF',
+          color: '#5dade2',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -151,9 +151,9 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
           zIndex: 140,
           fontSize: '0.9rem',
           fontWeight: '500',
-          boxShadow: '0 0 20px rgba(0, 255, 255, 0.3)',
+          boxShadow: '0 0 20px rgba(93, 173, 226, 0.3)',
         }}
-        whileHover={{ background: 'rgba(0, 255, 255, 0.3)', scale: 1.05 }}
+        whileHover={{ background: 'rgba(93, 173, 226, 0.3)', scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
       >
         <Maximize2 size={16} />
@@ -196,7 +196,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
             onClick={(e) => e.stopPropagation()}
             style={{
               background: 'rgba(0, 0, 0, 0.95)',
-              border: '2px solid #00FFFF',
+              border: '2px solid #5dade2',
               borderRadius: '16px',
               padding: '24px',
               maxWidth: '800px',
@@ -204,11 +204,11 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
               maxHeight: '80vh',
               overflowY: 'auto',
               position: 'relative',
-              boxShadow: '0 8px 32px rgba(0, 255, 255, 0.3)',
+              boxShadow: '0 8px 32px rgba(93, 173, 226, 0.3)',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ color: '#00FFFF', fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>
+              <h2 style={{ color: '#5dade2', fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>
                 Token Usage by Model/Provider
               </h2>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -218,19 +218,19 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                     setIsMinimized(true)
                   }}
                   style={{
-                    background: 'rgba(0, 255, 255, 0.1)',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    background: 'rgba(93, 173, 226, 0.1)',
+                    border: '1px solid rgba(93, 173, 226, 0.3)',
                     borderRadius: '8px',
                     padding: '8px',
-                    color: '#00FFFF',
+                    color: '#5dade2',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     transition: 'background 0.2s',
                   }}
-                  onMouseEnter={(e) => e.target.style.background = 'rgba(0, 255, 255, 0.2)'}
-                  onMouseLeave={(e) => e.target.style.background = 'rgba(0, 255, 255, 0.1)'}
+                  onMouseEnter={(e) => e.target.style.background = 'rgba(93, 173, 226, 0.2)'}
+                  onMouseLeave={(e) => e.target.style.background = 'rgba(93, 173, 226, 0.1)'}
                   title="Minimize"
                 >
                   <Minimize2 size={20} />
@@ -261,14 +261,14 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
             {/* Summary */}
             <div
               style={{
-                background: 'rgba(0, 255, 255, 0.1)',
-                border: '1px solid rgba(0, 255, 255, 0.3)',
+                background: 'rgba(93, 173, 226, 0.1)',
+                border: '1px solid rgba(93, 173, 226, 0.3)',
                 borderRadius: '12px',
                 padding: '16px',
                 marginBottom: '24px',
               }}
             >
-              <h3 style={{ color: '#00FFFF', fontSize: '1.1rem', margin: '0 0 12px 0', fontWeight: 'bold' }}>
+              <h3 style={{ color: '#5dade2', fontSize: '1.1rem', margin: '0 0 12px 0', fontWeight: 'bold' }}>
                 Total Usage
               </h3>
               <div style={{ display: 'grid', gridTemplateColumns: totalReasoning > 0 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '12px' }}>
@@ -294,7 +294,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                 )}
                 <div>
                   <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '4px' }}>Total Tokens</div>
-                  <div style={{ color: '#00FFFF', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                  <div style={{ color: '#5dade2', fontSize: '1.2rem', fontWeight: 'bold' }}>
                     {totalTokens.toLocaleString()}
                   </div>
                 </div>
@@ -306,15 +306,15 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
               <div
                 key={provider}
                 style={{
-                  background: 'rgba(0, 255, 255, 0.05)',
-                  border: '1px solid rgba(0, 255, 255, 0.2)',
+                  background: 'rgba(93, 173, 226, 0.05)',
+                  border: '1px solid rgba(93, 173, 226, 0.2)',
                   borderRadius: '12px',
                   padding: '16px',
                   marginBottom: '16px',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h3 style={{ color: '#00FFFF', fontSize: '1rem', margin: 0, fontWeight: 'bold', textTransform: 'capitalize' }}>
+                  <h3 style={{ color: '#5dade2', fontSize: '1rem', margin: 0, fontWeight: 'bold', textTransform: 'capitalize' }}>
                     {provider}
                   </h3>
                   <div style={{ display: 'grid', gridTemplateColumns: providerData.totalReasoning > 0 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '12px', fontSize: '0.85rem' }}>
@@ -340,7 +340,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                     )}
                     <div>
                       <div style={{ color: '#888', fontSize: '0.7rem', marginBottom: '2px' }}>Total</div>
-                      <div style={{ color: '#00FFFF', fontSize: '1rem', fontWeight: 'bold' }}>
+                      <div style={{ color: '#5dade2', fontSize: '1rem', fontWeight: 'bold' }}>
                         {providerData.totalTokens.toLocaleString()}
                       </div>
                     </div>
@@ -352,7 +352,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                       key={index}
                       style={{
                         background: 'rgba(0, 0, 0, 0.3)',
-                        border: '1px solid rgba(0, 255, 255, 0.1)',
+                        border: '1px solid rgba(93, 173, 226, 0.1)',
                         borderRadius: '8px',
                         padding: '10px',
                         fontSize: '0.8rem',
@@ -365,7 +365,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                         <div style={{ 
                           color: '#888', 
                           fontSize: '0.7rem',
-                          background: 'rgba(0, 255, 255, 0.1)',
+                          background: 'rgba(93, 173, 226, 0.1)',
                           padding: '2px 6px',
                           borderRadius: '4px',
                         }}>
@@ -391,7 +391,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                         )}
                         <div>
                           <div style={{ color: '#888', marginBottom: '2px' }}>Total</div>
-                          <div style={{ color: '#00FFFF', fontWeight: 'bold' }}>
+                          <div style={{ color: '#5dade2', fontWeight: 'bold' }}>
                             {modelData.total.toLocaleString()}
                           </div>
                         </div>

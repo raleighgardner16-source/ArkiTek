@@ -77,7 +77,7 @@ const WelcomeScreen = () => {
               position: 'absolute',
               width: '2px',
               height: '2px',
-              background: i % 2 === 0 ? '#00FFFF' : '#00FF00',
+              background: i % 2 === 0 ? '#5dade2' : '#48c9b0',
               borderRadius: '50%',
               left: `${Math.random() * 100}%`,
               top: `${Math.random() * 100}%`,
@@ -104,7 +104,7 @@ const WelcomeScreen = () => {
           width: '300px',
           height: 'auto',
           marginBottom: '40px',
-          filter: 'drop-shadow(0 0 20px rgba(0, 255, 255, 0.5))',
+          filter: 'drop-shadow(0 0 20px rgba(93, 173, 226, 0.5))',
         }}
         animate={{
           scale: [1, 1.05, 1],
@@ -120,7 +120,7 @@ const WelcomeScreen = () => {
         style={{
           fontSize: '2.5rem',
           fontWeight: 'bold',
-          background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+          background: 'linear-gradient(90deg, #5dade2, #48c9b0)',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           marginBottom: '20px',
@@ -173,8 +173,8 @@ const WelcomeScreen = () => {
       {/* Pricing Info */}
       <motion.div
         style={{
-          background: 'rgba(0, 255, 255, 0.1)',
-          border: '1px solid rgba(0, 255, 255, 0.3)',
+          background: 'rgba(93, 173, 226, 0.1)',
+          border: '1px solid rgba(93, 173, 226, 0.3)',
           borderRadius: '12px',
           padding: '24px 40px',
           marginBottom: '40px',
@@ -188,7 +188,7 @@ const WelcomeScreen = () => {
           style={{
             fontSize: '1.5rem',
             marginBottom: '12px',
-            background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+            background: 'linear-gradient(90deg, #5dade2, #48c9b0)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
           }}
@@ -196,7 +196,7 @@ const WelcomeScreen = () => {
           Subscription Pricing
         </h2>
         <p style={{ fontSize: '1rem', color: '#cccccc' }}>
-          Base subscription: <strong style={{ color: '#00FF00' }}>$20/month</strong>
+          Base subscription: <strong style={{ color: '#48c9b0' }}>$15/month</strong>
         </p>
         <p style={{ fontSize: '0.9rem', color: '#aaaaaa', marginTop: '8px' }}>
           Additional charges apply based on token usage when using our API keys.
@@ -212,12 +212,12 @@ const WelcomeScreen = () => {
           padding: '16px 48px',
           fontSize: '1.2rem',
           fontWeight: 'bold',
-          background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+          background: 'linear-gradient(90deg, #5dade2, #48c9b0)',
           border: 'none',
           borderRadius: '8px',
           color: '#000000',
           cursor: 'pointer',
-          boxShadow: '0 0 20px rgba(0, 255, 255, 0.5)',
+          boxShadow: '0 0 20px rgba(93, 173, 226, 0.5)',
           transition: 'all 0.3s ease',
         }}
         initial={{ y: 20, opacity: 0 }}
@@ -225,7 +225,7 @@ const WelcomeScreen = () => {
         transition={{ delay: 0.9 }}
         whileHover={{
           scale: 1.05,
-          boxShadow: '0 0 30px rgba(0, 255, 255, 0.8)',
+          boxShadow: '0 0 30px rgba(93, 173, 226, 0.8)',
         }}
         whileTap={{ scale: 0.95 }}
       >

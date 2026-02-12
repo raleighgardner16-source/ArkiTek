@@ -46,7 +46,7 @@ export const useStore = create(
         set({ responses: [] })
         // Also clear summary, GPT-4o-mini response, debug data, and reset window states when clearing responses
         set({ summary: null })
-        set({ gpt4oMiniResponse: null })
+        set({ geminiDetectionResponse: null })
         set({ ragDebugData: null })
         set({ showFactsWindow: true }) // Reset to default state
         set({ showPipelineDebugWindow: true }) // Reset to default state
@@ -105,20 +105,6 @@ export const useStore = create(
         set({ stats: newStats })
       },
 
-      // Background/UI
-      currentBackground: 'default',
-      setCurrentBackground: (bg) => set({ currentBackground: bg }),
-
-      // VR Navigation
-      vrMode: false,
-      setVrMode: (mode) => set({ vrMode: mode }),
-      cameraPosition: { x: 0, y: 0, z: 0 },
-      setCameraPosition: (pos) => set({ cameraPosition: pos }),
-
-      // Prompt box visibility
-      showPromptBox: false,
-      setShowPromptBox: (show) => set({ showPromptBox: show }),
-
       // Active tab
       activeTab: 'home',
       setActiveTab: (tab) => set({ activeTab: tab }),
@@ -143,9 +129,9 @@ export const useStore = create(
       setShowPipelineDebugWindow: (show) => set({ showPipelineDebugWindow: show }),
 
       // GPT-4o-mini response for category detection display
-      gpt4oMiniResponse: null,
-      setGpt4oMiniResponse: (response) => set({ gpt4oMiniResponse: response }),
-      clearGpt4oMiniResponse: () => set({ gpt4oMiniResponse: null }),
+      geminiDetectionResponse: null,
+      setGeminiDetectionResponse: (response) => set({ geminiDetectionResponse: response }),
+      clearGeminiDetectionResponse: () => set({ geminiDetectionResponse: null }),
       isSummaryMinimized: false,
       setSummaryMinimized: (minimized) => set({ isSummaryMinimized: minimized }),
       
@@ -166,9 +152,14 @@ export const useStore = create(
       statsRefreshTrigger: 0,
       triggerStatsRefresh: () => set((state) => ({ statsRefreshTrigger: state.statsRefreshTrigger + 1 })),
 
-      // Research mode: 'independent', 'interpretation', or null (none selected)
-      researchMode: null,
-      setResearchMode: (mode) => set({ researchMode: mode }),
+      // Navigation bar expanded state
+      isNavExpanded: false,
+      setNavExpanded: (expanded) => set({ isNavExpanded: expanded }),
+
+      // Council responses panel visibility
+      showCouncilPanel: false,
+      setShowCouncilPanel: (show) => set({ showCouncilPanel: show }),
+      toggleCouncilPanel: () => set((state) => ({ showCouncilPanel: !state.showCouncilPanel })),
 
       // Theme: 'light' or 'dark'
       theme: 'dark',

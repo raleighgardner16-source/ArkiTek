@@ -33,12 +33,12 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
           onClick={(e) => e.stopPropagation()}
           style={{
             backgroundColor: '#1a1a1a',
-            border: '2px solid rgba(0, 255, 255, 0.3)',
+            border: '2px solid rgba(93, 173, 226, 0.3)',
             borderRadius: '16px',
             padding: '24px',
             maxWidth: '400px',
             width: '90%',
-            boxShadow: '0 8px 32px rgba(0, 255, 255, 0.2)',
+            boxShadow: '0 8px 32px rgba(93, 173, 226, 0.2)',
           }}
         >
           {/* Header */}

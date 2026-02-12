@@ -108,8 +108,10 @@ export const getAllModels = () => {
 }
 
 // API call functions
+import { API_URL } from '../utils/config'
+
 // Use backend proxy for all API calls to avoid CORS issues
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+const BACKEND_URL = API_URL
 
 export const callLLM = async (providerKey, model, prompt, userId = null, isSummary = false) => {
   const provider = LLM_PROVIDERS[providerKey]
@@ -123,7 +125,6 @@ export const callLLM = async (providerKey, model, prompt, userId = null, isSumma
     console.warn(`Model ${model} not found in provider ${providerKey} model list. Attempting API call anyway.`)
   }
 
-  console.log(`[Frontend] Making API call to ${providerKey} with model: ${model} via backend proxy${isSummary ? ' (SUMMARY CALL)' : ''}`) // Debug log
 
   try {
     // Call backend proxy - API keys are now stored in the backend
@@ -144,12 +145,6 @@ export const callLLM = async (providerKey, model, prompt, userId = null, isSumma
     )
     
     // Log model verification
-    if (response.data.model) {
-      console.log(`[Frontend] Model Verification:`)
-      console.log(`  - User Selected: ${response.data.originalModel || model}`)
-      console.log(`  - API Called: ${response.data.model}`)
-      console.log(`  - Mapping: ${(response.data.originalModel || model) === response.data.model ? 'NONE (passed through as-is)' : `${response.data.originalModel || model} → ${response.data.model}`}`)
-    }
     
     // Return object with model info, but for backward compatibility, also support string return
     const result = {
@@ -204,7 +199,7 @@ export const searchWithSerper = async (query, num = 10, userId = null) => {
     throw new Error('Search query is required')
   }
 
-  console.log(`[Serper] Searching for: "${query}"`)
+
 
   try {
     const response = await axios.post(
@@ -221,7 +216,6 @@ export const searchWithSerper = async (query, num = 10, userId = null) => {
       }
     )
 
-    console.log(`[Serper] Search successful, found ${response.data?.results?.length || 0} results`)
     return response.data
   } catch (error) {
     console.error('[Serper] Search error:', error)

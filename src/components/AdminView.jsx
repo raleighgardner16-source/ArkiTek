@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Users, DollarSign, Shield, TrendingUp, Database, CreditCard, Lock, User, Package, Receipt, ArrowLeft, Search, ChevronDown, ChevronRight, BarChart3, MessageSquare } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import axios from 'axios'
+import { API_URL } from '../utils/config'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 
 const AdminView = () => {
@@ -29,10 +30,7 @@ const AdminView = () => {
   const [userFilter, setUserFilter] = useState('all') // 'all', 'active', 'notActive', 'canceled'
 
   useEffect(() => {
-    console.log('[AdminView] Mounted, currentUser:', currentUser?.id)
-    // If no user, show login
     if (!currentUser?.id) {
-      console.log('[AdminView] No currentUser, showing login')
       setLoading(false)
       setShowLogin(true)
       setIsAdmin(false)
@@ -42,8 +40,7 @@ const AdminView = () => {
     
     // User exists - but we still want to verify they're an admin
     // So we'll check admin status, but keep login hidden for now
-    console.log('[AdminView] User exists, checking admin status...')
-    setShowLogin(false) // Hide login since user is logged in
+    setShowLogin(false)
     setLoading(true) // Set loading while checking
     setAdminCheckComplete(false) // Reset check completion
     checkAdminStatus()
@@ -55,23 +52,17 @@ const AdminView = () => {
     setLoginLoading(true)
 
     try {
-      console.log('[AdminView] Attempting login with username:', loginData.username)
-      const response = await axios.post(`http://localhost:3001/api/auth/signin`, {
+      const response = await axios.post(`${API_URL}/api/auth/signin`, {
         username: loginData.username,
         password: loginData.password,
       })
-
-      console.log('[AdminView] Login response:', response.data)
       
       if (response.data.success) {
-        console.log('[AdminView] ✅ Login successful, user:', response.data.user)
-        console.log('[AdminView] User ID:', response.data.user?.id, 'Username:', response.data.user?.username)
         setCurrentUser(response.data.user)
         setShowLogin(false)
         setLoginData({ username: '', password: '' })
         // checkAdminStatus will be called automatically via useEffect when currentUser changes
       } else {
-        console.log('[AdminView] ⚠️ Login response not successful:', response.data)
         setLoginError('Login failed. Please try again.')
       }
     } catch (err) {
@@ -92,24 +83,19 @@ const AdminView = () => {
       return
     }
     
-    console.log('[AdminView] Checking admin status for user:', currentUser.id, 'username:', currentUser.username)
-    setLoading(true) // Set loading to true while checking
+    setLoading(true)
     setAdminCheckComplete(false)
     try {
-      const response = await axios.get(`http://localhost:3001/api/admin/check`, {
+      const response = await axios.get(`${API_URL}/api/admin/check`, {
         params: { userId: currentUser.id },
       })
-      console.log('[AdminView] Admin check response:', response.data)
       const userIsAdmin = response.data.isAdmin === true
-      console.log('[AdminView] User isAdmin:', userIsAdmin)
       setIsAdmin(userIsAdmin)
       setAdminCheckComplete(true)
       if (!userIsAdmin) {
-        console.log('[AdminView] ⚠️ User is not admin, will show access denied...')
         setLoading(false)
         // Don't redirect immediately - let the user see the access denied message
       } else {
-        console.log('[AdminView] ✅ User is admin, fetching data...')
         // Only fetch data if user is admin
         fetchAdminData()
       }
@@ -135,9 +121,9 @@ const AdminView = () => {
       // Include requestingUserId for admin authentication
       const adminParams = { requestingUserId: currentUser?.id }
       const [usersResponse, pricingResponse, costsResponse] = await Promise.all([
-        axios.get('http://localhost:3001/api/admin/users', { params: adminParams }),
-        axios.get('http://localhost:3001/api/admin/pricing', { params: adminParams }),
-        axios.get('http://localhost:3001/api/admin/costs', { params: adminParams }),
+        axios.get(`${API_URL}/api/admin/users`, { params: adminParams }),
+        axios.get(`${API_URL}/api/admin/pricing`, { params: adminParams }),
+        axios.get(`${API_URL}/api/admin/costs`, { params: adminParams }),
       ])
       setUsersData(usersResponse.data)
       setPricingData(pricingResponse.data)
@@ -217,8 +203,8 @@ const AdminView = () => {
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           style={{
-            background: 'rgba(0, 255, 255, 0.1)',
-            border: '1px solid rgba(0, 255, 255, 0.3)',
+            background: 'rgba(93, 173, 226, 0.1)',
+            border: '1px solid rgba(93, 173, 226, 0.3)',
             borderRadius: '16px',
             padding: '40px',
             width: '100%',
@@ -226,7 +212,7 @@ const AdminView = () => {
           }}
         >
           <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-            <Shield size={48} color="#00FFFF" style={{ marginBottom: '16px' }} />
+            <Shield size={48} color="#5dade2" style={{ marginBottom: '16px' }} />
             <h2 style={{ color: '#ffffff', fontSize: '1.8rem', marginBottom: '8px' }}>
               Admin Login
             </h2>
@@ -247,7 +233,7 @@ const AdminView = () => {
                   marginBottom: '8px',
                 }}
               >
-                <User size={16} color="#00FFFF" />
+                <User size={16} color="#5dade2" />
                 Username
               </label>
               <input
@@ -259,7 +245,7 @@ const AdminView = () => {
                   width: '100%',
                   padding: '12px 16px',
                   background: 'rgba(0, 0, 0, 0.5)',
-                  border: '1px solid rgba(0, 255, 255, 0.3)',
+                  border: '1px solid rgba(93, 173, 226, 0.3)',
                   borderRadius: '8px',
                   color: '#ffffff',
                   fontSize: '1rem',
@@ -280,7 +266,7 @@ const AdminView = () => {
                   marginBottom: '8px',
                 }}
               >
-                <Lock size={16} color="#00FFFF" />
+                <Lock size={16} color="#5dade2" />
                 Password
               </label>
               <input
@@ -292,7 +278,7 @@ const AdminView = () => {
                   width: '100%',
                   padding: '12px 16px',
                   background: 'rgba(0, 0, 0, 0.5)',
-                  border: '1px solid rgba(0, 255, 255, 0.3)',
+                  border: '1px solid rgba(93, 173, 226, 0.3)',
                   borderRadius: '8px',
                   color: '#ffffff',
                   fontSize: '1rem',
@@ -325,8 +311,8 @@ const AdminView = () => {
                 width: '100%',
                 padding: '14px',
                 background: loginLoading
-                  ? 'rgba(0, 255, 255, 0.3)'
-                  : 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                  ? 'rgba(93, 173, 226, 0.3)'
+                  : 'linear-gradient(90deg, #5dade2, #48c9b0)',
                 color: '#000000',
                 border: 'none',
                 borderRadius: '8px',
@@ -366,8 +352,8 @@ const AdminView = () => {
       >
         <div
           style={{
-            background: 'rgba(0, 255, 255, 0.1)',
-            border: '1px solid rgba(0, 255, 255, 0.3)',
+            background: 'rgba(93, 173, 226, 0.1)',
+            border: '1px solid rgba(93, 173, 226, 0.3)',
             borderRadius: '16px',
             padding: '40px',
             textAlign: 'center',
@@ -388,8 +374,8 @@ const AdminView = () => {
             onClick={() => window.location.href = '/'}
             style={{
               padding: '10px 20px',
-              background: 'rgba(0, 255, 255, 0.2)',
-              border: '1px solid rgba(0, 255, 255, 0.3)',
+              background: 'rgba(93, 173, 226, 0.2)',
+              border: '1px solid rgba(93, 173, 226, 0.3)',
               borderRadius: '8px',
               color: '#ffffff',
               cursor: 'pointer',
@@ -406,7 +392,6 @@ const AdminView = () => {
   // Main admin dashboard - should only reach here if user is admin, not loading, and logged in
   // Safety check - if we somehow reach here without being ready, show loading
   if (!isAdmin || loading || !currentUser) {
-    console.log('[AdminView] ⚠️ Not ready for dashboard, showing loading:', { isAdmin, loading, currentUser: !!currentUser })
     return (
       <motion.div
         initial={{ opacity: 0 }}
@@ -428,8 +413,6 @@ const AdminView = () => {
       </motion.div>
     )
   }
-  
-  console.log('[AdminView] ✅ Rendering admin dashboard')
 
   // Main dashboard view
   const renderMainDashboard = () => (
@@ -457,7 +440,7 @@ const AdminView = () => {
             fontSize: '5rem',
             fontWeight: 'bold',
             margin: 0,
-            background: 'linear-gradient(135deg, #00FFFF, #00FF00)',
+            background: 'linear-gradient(135deg, #5dade2, #48c9b0)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             letterSpacing: '4px',
@@ -489,8 +472,8 @@ const AdminView = () => {
             fetchAdminData()
           }}
           style={{
-            background: 'rgba(0, 255, 255, 0.1)',
-            border: '2px solid rgba(0, 255, 255, 0.3)',
+            background: 'rgba(93, 173, 226, 0.1)',
+            border: '2px solid rgba(93, 173, 226, 0.3)',
             borderRadius: '20px',
             padding: '40px',
             cursor: 'pointer',
@@ -501,15 +484,15 @@ const AdminView = () => {
             gap: '20px',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.border = '2px solid rgba(0, 255, 255, 0.6)'
-            e.currentTarget.style.background = 'rgba(0, 255, 255, 0.15)'
+            e.currentTarget.style.border = '2px solid rgba(93, 173, 226, 0.6)'
+            e.currentTarget.style.background = 'rgba(93, 173, 226, 0.15)'
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.border = '2px solid rgba(0, 255, 255, 0.3)'
-            e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
+            e.currentTarget.style.border = '2px solid rgba(93, 173, 226, 0.3)'
+            e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
           }}
         >
-          <Users size={64} color="#00FFFF" />
+          <Users size={64} color="#5dade2" />
           <h2
             style={{
               fontSize: '1.8rem',
@@ -531,8 +514,8 @@ const AdminView = () => {
             fetchAdminData()
           }}
           style={{
-            background: 'rgba(0, 255, 255, 0.1)',
-            border: '2px solid rgba(0, 255, 255, 0.3)',
+            background: 'rgba(93, 173, 226, 0.1)',
+            border: '2px solid rgba(93, 173, 226, 0.3)',
             borderRadius: '20px',
             padding: '40px',
             cursor: 'pointer',
@@ -543,15 +526,15 @@ const AdminView = () => {
             gap: '20px',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.border = '2px solid rgba(0, 255, 255, 0.6)'
-            e.currentTarget.style.background = 'rgba(0, 255, 255, 0.15)'
+            e.currentTarget.style.border = '2px solid rgba(93, 173, 226, 0.6)'
+            e.currentTarget.style.background = 'rgba(93, 173, 226, 0.15)'
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.border = '2px solid rgba(0, 255, 255, 0.3)'
-            e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
+            e.currentTarget.style.border = '2px solid rgba(93, 173, 226, 0.3)'
+            e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
           }}
         >
-          <Package size={64} color="#00FFFF" />
+          <Package size={64} color="#5dade2" />
           <h2
             style={{
               fontSize: '1.8rem',
@@ -573,8 +556,8 @@ const AdminView = () => {
             fetchAdminData()
           }}
           style={{
-            background: 'rgba(0, 255, 0, 0.1)',
-            border: '2px solid rgba(0, 255, 0, 0.3)',
+            background: 'rgba(72, 201, 176, 0.1)',
+            border: '2px solid rgba(72, 201, 176, 0.3)',
             borderRadius: '20px',
             padding: '40px',
             cursor: 'pointer',
@@ -585,15 +568,15 @@ const AdminView = () => {
             gap: '20px',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.border = '2px solid rgba(0, 255, 0, 0.6)'
-            e.currentTarget.style.background = 'rgba(0, 255, 0, 0.15)'
+            e.currentTarget.style.border = '2px solid rgba(72, 201, 176, 0.6)'
+            e.currentTarget.style.background = 'rgba(72, 201, 176, 0.15)'
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.border = '2px solid rgba(0, 255, 0, 0.3)'
-            e.currentTarget.style.background = 'rgba(0, 255, 0, 0.1)'
+            e.currentTarget.style.border = '2px solid rgba(72, 201, 176, 0.3)'
+            e.currentTarget.style.background = 'rgba(72, 201, 176, 0.1)'
           }}
         >
-          <DollarSign size={64} color="#00FF00" />
+          <DollarSign size={64} color="#48c9b0" />
           <h2
             style={{
               fontSize: '1.8rem',
@@ -690,8 +673,8 @@ const AdminView = () => {
               alignItems: 'center',
               gap: '8px',
               padding: '12px 20px',
-              background: 'rgba(0, 255, 255, 0.1)',
-              border: '1px solid rgba(0, 255, 255, 0.3)',
+              background: 'rgba(93, 173, 226, 0.1)',
+              border: '1px solid rgba(93, 173, 226, 0.3)',
               borderRadius: '8px',
               color: '#ffffff',
               cursor: 'pointer',
@@ -700,10 +683,10 @@ const AdminView = () => {
               transition: 'all 0.2s ease',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(0, 255, 255, 0.2)'
+              e.currentTarget.style.background = 'rgba(93, 173, 226, 0.2)'
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
+              e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
             }}
           >
             <ArrowLeft size={20} />
@@ -719,12 +702,12 @@ const AdminView = () => {
             {/* Header */}
             <div style={{ marginBottom: '40px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px' }}>
-                <Shield size={40} color="#00FFFF" />
+                <Shield size={40} color="#5dade2" />
                 <h1
                   style={{
                     fontSize: '2.5rem',
                     margin: 0,
-                    background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                    background: 'linear-gradient(90deg, #5dade2, #48c9b0)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                   }}
@@ -761,8 +744,8 @@ const AdminView = () => {
                       <div
                         onClick={() => setUserFilter('all')}
                         style={{
-                          background: userFilter === 'all' ? 'rgba(0, 255, 255, 0.2)' : 'rgba(0, 255, 255, 0.1)',
-                          border: userFilter === 'all' ? '2px solid rgba(0, 255, 255, 0.6)' : '1px solid rgba(0, 255, 255, 0.3)',
+                          background: userFilter === 'all' ? 'rgba(93, 173, 226, 0.2)' : 'rgba(93, 173, 226, 0.1)',
+                          border: userFilter === 'all' ? '2px solid rgba(93, 173, 226, 0.6)' : '1px solid rgba(93, 173, 226, 0.3)',
                           borderRadius: '16px',
                           padding: '30px',
                           display: 'flex',
@@ -773,24 +756,24 @@ const AdminView = () => {
                         }}
                         onMouseEnter={(e) => {
                           if (userFilter !== 'all') {
-                            e.currentTarget.style.background = 'rgba(0, 255, 255, 0.15)'
+                            e.currentTarget.style.background = 'rgba(93, 173, 226, 0.15)'
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (userFilter !== 'all') {
-                            e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
+                            e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
                           }
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <Users size={32} color="#00FFFF" />
+                          <Users size={32} color="#5dade2" />
                           <h2 style={{ fontSize: '1.2rem', color: '#ffffff', margin: 0 }}>Total Users</h2>
                         </div>
                         <p
                           style={{
                             fontSize: '3rem',
                             fontWeight: 'bold',
-                            background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                            background: 'linear-gradient(90deg, #5dade2, #48c9b0)',
                             WebkitBackgroundClip: 'text',
                             WebkitTextFillColor: 'transparent',
                             margin: 0,
@@ -804,8 +787,8 @@ const AdminView = () => {
                       <div
                         onClick={() => setUserFilter('active')}
                         style={{
-                          background: userFilter === 'active' ? 'rgba(0, 255, 0, 0.2)' : 'rgba(0, 255, 0, 0.1)',
-                          border: userFilter === 'active' ? '2px solid rgba(0, 255, 0, 0.6)' : '1px solid rgba(0, 255, 0, 0.3)',
+                          background: userFilter === 'active' ? 'rgba(72, 201, 176, 0.2)' : 'rgba(72, 201, 176, 0.1)',
+                          border: userFilter === 'active' ? '2px solid rgba(72, 201, 176, 0.6)' : '1px solid rgba(72, 201, 176, 0.3)',
                           borderRadius: '16px',
                           padding: '30px',
                           display: 'flex',
@@ -816,24 +799,24 @@ const AdminView = () => {
                         }}
                         onMouseEnter={(e) => {
                           if (userFilter !== 'active') {
-                            e.currentTarget.style.background = 'rgba(0, 255, 0, 0.15)'
+                            e.currentTarget.style.background = 'rgba(72, 201, 176, 0.15)'
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (userFilter !== 'active') {
-                            e.currentTarget.style.background = 'rgba(0, 255, 0, 0.1)'
+                            e.currentTarget.style.background = 'rgba(72, 201, 176, 0.1)'
                           }
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <TrendingUp size={32} color="#00FF00" />
+                          <TrendingUp size={32} color="#48c9b0" />
                           <h2 style={{ fontSize: '1.2rem', color: '#ffffff', margin: 0 }}>Active Users</h2>
                         </div>
                         <p
                           style={{
                             fontSize: '3rem',
                             fontWeight: 'bold',
-                            background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                            background: 'linear-gradient(90deg, #5dade2, #48c9b0)',
                             WebkitBackgroundClip: 'text',
                             WebkitTextFillColor: 'transparent',
                             margin: 0,
@@ -876,7 +859,7 @@ const AdminView = () => {
                           style={{
                             fontSize: '3rem',
                             fontWeight: 'bold',
-                            background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                            background: 'linear-gradient(90deg, #5dade2, #48c9b0)',
                             WebkitBackgroundClip: 'text',
                             WebkitTextFillColor: 'transparent',
                             margin: 0,
@@ -919,7 +902,7 @@ const AdminView = () => {
                           style={{
                             fontSize: '3rem',
                             fontWeight: 'bold',
-                            background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                            background: 'linear-gradient(90deg, #5dade2, #48c9b0)',
                             WebkitBackgroundClip: 'text',
                             WebkitTextFillColor: 'transparent',
                             margin: 0,
@@ -949,7 +932,7 @@ const AdminView = () => {
                           style={{
                             fontSize: '3rem',
                             fontWeight: 'bold',
-                            background: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+                            background: 'linear-gradient(90deg, #5dade2, #48c9b0)',
                             WebkitBackgroundClip: 'text',
                             WebkitTextFillColor: 'transparent',
                             margin: 0,
@@ -966,15 +949,15 @@ const AdminView = () => {
                 {usersData && costsData && (
           <div
             style={{
-              background: 'rgba(0, 255, 255, 0.1)',
-              border: '1px solid rgba(0, 255, 255, 0.3)',
+              background: 'rgba(93, 173, 226, 0.1)',
+              border: '1px solid rgba(93, 173, 226, 0.3)',
               borderRadius: '16px',
               padding: '30px',
               marginBottom: '40px',
             }}
           >
             <h2 style={{ fontSize: '1.8rem', color: '#ffffff', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Users size={28} color="#00FFFF" />
+              <Users size={28} color="#5dade2" />
               Users Usage & Costs ({usersData.totalUsers})
             </h2>
             
@@ -989,7 +972,7 @@ const AdminView = () => {
               >
                 <Search
                   size={20}
-                  color="#00FFFF"
+                  color="#5dade2"
                   style={{
                     position: 'absolute',
                     left: '16px',
@@ -1005,7 +988,7 @@ const AdminView = () => {
                     width: '100%',
                     padding: '12px 16px 12px 48px',
                     background: 'rgba(0, 0, 0, 0.3)',
-                    border: '1px solid rgba(0, 255, 255, 0.3)',
+                    border: '1px solid rgba(93, 173, 226, 0.3)',
                     borderRadius: '8px',
                     color: '#ffffff',
                     fontSize: '0.95rem',
@@ -1013,10 +996,10 @@ const AdminView = () => {
                     transition: 'border-color 0.2s',
                   }}
                   onFocus={(e) => {
-                    e.target.style.borderColor = 'rgba(0, 255, 255, 0.6)'
+                    e.target.style.borderColor = 'rgba(93, 173, 226, 0.6)'
                   }}
                   onBlur={(e) => {
-                    e.target.style.borderColor = 'rgba(0, 255, 255, 0.3)'
+                    e.target.style.borderColor = 'rgba(93, 173, 226, 0.3)'
                   }}
                 />
               </div>
@@ -1162,8 +1145,8 @@ const AdminView = () => {
                     <div
                       key={userCost.userId}
                       style={{
-                        background: 'rgba(0, 255, 255, 0.05)',
-                        border: '1px solid rgba(0, 255, 255, 0.2)',
+                        background: 'rgba(93, 173, 226, 0.05)',
+                        border: '1px solid rgba(93, 173, 226, 0.2)',
                         borderRadius: '12px',
                         overflow: 'hidden',
                       }}
@@ -1189,10 +1172,10 @@ const AdminView = () => {
                         transition: 'background 0.2s',
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
+                        e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(0, 255, 255, 0.05)'
+                        e.currentTarget.style.background = 'rgba(93, 173, 226, 0.05)'
                       }}
                     >
                       <div style={{ flex: 1 }}>
@@ -1203,12 +1186,12 @@ const AdminView = () => {
                           {user?.isAdmin && (
                             <span
                               style={{
-                                background: 'rgba(0, 255, 0, 0.2)',
-                                border: '1px solid rgba(0, 255, 0, 0.5)',
+                                background: 'rgba(72, 201, 176, 0.2)',
+                                border: '1px solid rgba(72, 201, 176, 0.5)',
                                 borderRadius: '4px',
                                 padding: '2px 8px',
                                 fontSize: '0.75rem',
-                                color: '#00FF00',
+                                color: '#48c9b0',
                                 fontWeight: '600',
                               }}
                             >
@@ -1217,12 +1200,12 @@ const AdminView = () => {
                           )}
                           <span
                             style={{
-                              background: userStatus === 'active' ? 'rgba(0, 255, 0, 0.2)' : userStatus === 'canceled' ? 'rgba(255, 0, 0, 0.2)' : 'rgba(255, 165, 0, 0.2)',
-                              border: userStatus === 'active' ? '1px solid rgba(0, 255, 0, 0.5)' : userStatus === 'canceled' ? '1px solid rgba(255, 0, 0, 0.5)' : '1px solid rgba(255, 165, 0, 0.5)',
+                              background: userStatus === 'active' ? 'rgba(72, 201, 176, 0.2)' : userStatus === 'canceled' ? 'rgba(255, 0, 0, 0.2)' : 'rgba(255, 165, 0, 0.2)',
+                              border: userStatus === 'active' ? '1px solid rgba(72, 201, 176, 0.5)' : userStatus === 'canceled' ? '1px solid rgba(255, 0, 0, 0.5)' : '1px solid rgba(255, 165, 0, 0.5)',
                               borderRadius: '4px',
                               padding: '2px 8px',
                               fontSize: '0.75rem',
-                              color: userStatus === 'active' ? '#00FF00' : userStatus === 'canceled' ? '#FF0000' : '#FFA500',
+                              color: userStatus === 'active' ? '#48c9b0' : userStatus === 'canceled' ? '#FF0000' : '#FFA500',
                               fontWeight: '600',
                               textTransform: 'capitalize',
                             }}
@@ -1233,14 +1216,9 @@ const AdminView = () => {
                         <p style={{ color: '#aaaaaa', fontSize: '0.85rem', margin: '4px 0' }}>
                           @{userCost.username} • {userCost.email}
                         </p>
-                        {(user?.lastActiveDate || user?.lastLoginDate) && (
+                        {user?.lastActiveAt && (
                           <p style={{ color: '#888888', fontSize: '0.75rem', margin: '4px 0 0 0' }}>
-                            {user?.lastActiveDate 
-                              ? `Last Active: ${new Date(user.lastActiveDate).toLocaleString()}`
-                              : user?.lastLoginDate 
-                                ? `Last Login: ${new Date(user.lastLoginDate).toLocaleString()}`
-                                : 'Never active'
-                            }
+                            Last Active: {new Date(user.lastActiveAt).toLocaleString()}
                           </p>
                         )}
                       </div>
@@ -1249,13 +1227,13 @@ const AdminView = () => {
                         <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                           <div style={{ textAlign: 'right' }}>
                             <p style={{ color: '#aaaaaa', fontSize: '0.7rem', margin: '0 0 2px 0' }}>Total Queries</p>
-                            <p style={{ color: '#00FFFF', fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
+                            <p style={{ color: '#5dade2', fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
                               {formatNumber(userCost.totalQueries || 0)}
                             </p>
                           </div>
                           <div style={{ textAlign: 'right' }}>
                             <p style={{ color: '#aaaaaa', fontSize: '0.7rem', margin: '0 0 2px 0' }}>Total Tokens</p>
-                            <p style={{ color: '#00FFFF', fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
+                            <p style={{ color: '#5dade2', fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
                               {formatTokens(userCost.totalTokens || 0)}
                             </p>
                           </div>
@@ -1269,7 +1247,7 @@ const AdminView = () => {
                             <p style={{ color: '#aaaaaa', fontSize: '0.7rem', margin: '0 0 2px 0' }}>End of Month Price</p>
                             <p
                               style={{
-                                color: (userCost.cost || 0) > 5.00 ? '#ff6b6b' : '#00FF00',
+                                color: (userCost.cost || 0) > 5.00 ? '#ff6b6b' : '#48c9b0',
                                 fontSize: '1rem',
                                 fontWeight: 'bold',
                                 margin: 0,
@@ -1287,7 +1265,7 @@ const AdminView = () => {
 
                     {/* User Stats Details */}
                     {isExpanded && (
-                      <div style={{ padding: '20px', borderTop: '1px solid rgba(0, 255, 255, 0.2)', background: 'rgba(0, 0, 0, 0.2)' }}>
+                      <div style={{ padding: '20px', borderTop: '1px solid rgba(93, 173, 226, 0.2)', background: 'rgba(0, 0, 0, 0.2)' }}>
                         {loadingUserStats[userCost.userId] ? (
                           <div style={{ textAlign: 'center', padding: '40px' }}>
                             <p style={{ color: '#aaaaaa', fontSize: '1rem' }}>Loading statistics...</p>
@@ -1300,33 +1278,33 @@ const AdminView = () => {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                                 {/* Overview Stats */}
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }}>
-                                  <div style={{ background: 'rgba(0, 255, 255, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                                  <div style={{ background: 'rgba(93, 173, 226, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
                                     <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: '0 0 8px 0' }}>Total Tokens</p>
-                                    <p style={{ color: '#00FFFF', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                                    <p style={{ color: '#5dade2', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
                                       {formatTokens(stats.totalTokens || 0)}
                                     </p>
                                   </div>
-                                  <div style={{ background: 'rgba(0, 255, 255, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                                  <div style={{ background: 'rgba(93, 173, 226, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
                                     <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: '0 0 8px 0' }}>Input Tokens</p>
-                                    <p style={{ color: '#00FFFF', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                                    <p style={{ color: '#5dade2', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
                                       {formatTokens(stats.totalInputTokens || 0)}
                                     </p>
                                   </div>
-                                  <div style={{ background: 'rgba(0, 255, 255, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                                  <div style={{ background: 'rgba(93, 173, 226, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
                                     <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: '0 0 8px 0' }}>Output Tokens</p>
-                                    <p style={{ color: '#00FFFF', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                                    <p style={{ color: '#5dade2', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
                                       {formatTokens(stats.totalOutputTokens || 0)}
                                     </p>
                                   </div>
-                                  <div style={{ background: 'rgba(0, 255, 255, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                                  <div style={{ background: 'rgba(93, 173, 226, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
                                     <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: '0 0 8px 0' }}>Total Prompts</p>
-                                    <p style={{ color: '#00FF00', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                                    <p style={{ color: '#48c9b0', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
                                       {formatNumber(stats.totalPrompts || 0)}
                                     </p>
                                   </div>
-                                  <div style={{ background: 'rgba(0, 255, 255, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                                  <div style={{ background: 'rgba(93, 173, 226, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
                                     <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: '0 0 8px 0' }}>Total Queries</p>
-                                    <p style={{ color: '#00FF00', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                                    <p style={{ color: '#48c9b0', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
                                       {formatNumber(stats.totalQueries || 0)}
                                     </p>
                                   </div>
@@ -1334,33 +1312,33 @@ const AdminView = () => {
 
                                 {/* Monthly Stats */}
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }}>
-                                  <div style={{ background: 'rgba(0, 255, 0, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                                  <div style={{ background: 'rgba(72, 201, 176, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
                                     <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: '0 0 8px 0' }}>Monthly Tokens</p>
-                                    <p style={{ color: '#00FF00', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                                    <p style={{ color: '#48c9b0', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
                                       {formatTokens(stats.monthlyTokens || 0)}
                                     </p>
                                   </div>
-                                  <div style={{ background: 'rgba(0, 255, 0, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                                  <div style={{ background: 'rgba(72, 201, 176, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
                                     <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: '0 0 8px 0' }}>Monthly Input</p>
-                                    <p style={{ color: '#00FF00', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                                    <p style={{ color: '#48c9b0', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
                                       {formatTokens(stats.monthlyInputTokens || 0)}
                                     </p>
                                   </div>
-                                  <div style={{ background: 'rgba(0, 255, 0, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                                  <div style={{ background: 'rgba(72, 201, 176, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
                                     <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: '0 0 8px 0' }}>Monthly Output</p>
-                                    <p style={{ color: '#00FF00', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                                    <p style={{ color: '#48c9b0', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
                                       {formatTokens(stats.monthlyOutputTokens || 0)}
                                     </p>
                                   </div>
-                                  <div style={{ background: 'rgba(0, 255, 0, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                                  <div style={{ background: 'rgba(72, 201, 176, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
                                     <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: '0 0 8px 0' }}>Monthly Prompts</p>
-                                    <p style={{ color: '#00FF00', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                                    <p style={{ color: '#48c9b0', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
                                       {formatNumber(stats.monthlyPrompts || 0)}
                                     </p>
                                   </div>
-                                  <div style={{ background: 'rgba(0, 255, 0, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                                  <div style={{ background: 'rgba(72, 201, 176, 0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
                                     <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: '0 0 8px 0' }}>Monthly Queries</p>
-                                    <p style={{ color: '#00FF00', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                                    <p style={{ color: '#48c9b0', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
                                       {formatNumber(stats.monthlyQueries || 0)}
                                     </p>
                                   </div>
@@ -1369,7 +1347,7 @@ const AdminView = () => {
                                 {/* Provider Breakdown */}
                                 {Object.keys(stats.providers || {}).length > 0 && (
                                   <div>
-                                    <h3 style={{ color: '#00FFFF', fontSize: '1rem', marginBottom: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <h3 style={{ color: '#5dade2', fontSize: '1rem', marginBottom: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                       <BarChart3 size={20} />
                                       Provider Statistics
                                     </h3>
@@ -1386,8 +1364,8 @@ const AdminView = () => {
                                             <div
                                               key={provider}
                                               style={{
-                                                background: 'rgba(0, 255, 255, 0.05)',
-                                                border: '1px solid rgba(0, 255, 255, 0.2)',
+                                                background: 'rgba(93, 173, 226, 0.05)',
+                                                border: '1px solid rgba(93, 173, 226, 0.2)',
                                                 borderRadius: '8px',
                                                 overflow: 'hidden',
                                               }}
@@ -1405,8 +1383,8 @@ const AdminView = () => {
                                                 }}
                                               >
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                  {isProviderExpanded ? <ChevronDown size={16} color="#00FFFF" /> : <ChevronRight size={16} color="#00FFFF" />}
-                                                  <span style={{ color: '#00FFFF', fontSize: '0.9rem', textTransform: 'capitalize' }}>{provider}</span>
+                                                  {isProviderExpanded ? <ChevronDown size={16} color="#5dade2" /> : <ChevronRight size={16} color="#5dade2" />}
+                                                  <span style={{ color: '#5dade2', fontSize: '0.9rem', textTransform: 'capitalize' }}>{provider}</span>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '16px' }}>
                                                   <span style={{ color: '#aaaaaa', fontSize: '0.75rem' }}>Tokens: {formatTokens(data.totalTokens)}</span>
@@ -1414,12 +1392,12 @@ const AdminView = () => {
                                                 </div>
                                               </div>
                                               {isProviderExpanded && providerModels.length > 0 && (
-                                                <div style={{ padding: '12px 16px 12px 32px', borderTop: '1px solid rgba(0, 255, 255, 0.2)' }}>
+                                                <div style={{ padding: '12px 16px 12px 32px', borderTop: '1px solid rgba(93, 173, 226, 0.2)' }}>
                                                   {providerModels.map(([modelKey, modelData]) => (
                                                     <div
                                                       key={modelKey}
                                                       style={{
-                                                        background: 'rgba(0, 255, 255, 0.03)',
+                                                        background: 'rgba(93, 173, 226, 0.03)',
                                                         padding: '8px 12px',
                                                         borderRadius: '6px',
                                                         marginBottom: '6px',
@@ -1445,8 +1423,8 @@ const AdminView = () => {
 
                                 {/* Cost Information */}
                                 {userCost.cost > 0 && (
-                                  <div style={{ background: 'rgba(0, 255, 0, 0.1)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(0, 255, 0, 0.3)' }}>
-                                    <h3 style={{ color: '#00FF00', fontSize: '1rem', marginBottom: '12px', fontWeight: '600' }}>
+                                  <div style={{ background: 'rgba(72, 201, 176, 0.1)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(72, 201, 176, 0.3)' }}>
+                                    <h3 style={{ color: '#48c9b0', fontSize: '1rem', marginBottom: '12px', fontWeight: '600' }}>
                                       Total Cost: {formatCurrency(userCost.cost)}
                                     </h3>
                                     {Object.keys(userCost.modelCosts || {}).length > 0 && (
@@ -1458,14 +1436,14 @@ const AdminView = () => {
                                               display: 'flex',
                                               justifyContent: 'space-between',
                                               padding: '8px 12px',
-                                              background: 'rgba(0, 255, 0, 0.05)',
+                                              background: 'rgba(72, 201, 176, 0.05)',
                                               borderRadius: '6px',
                                             }}
                                           >
                                             <span style={{ color: '#cccccc', fontSize: '0.85rem' }}>
                                               {modelCost.provider} - {modelCost.model}
                                             </span>
-                                            <span style={{ color: '#00FF00', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                                            <span style={{ color: '#48c9b0', fontSize: '0.9rem', fontWeight: 'bold' }}>
                                               {formatCurrency(modelCost.cost)}
                                             </span>
                                           </div>
@@ -1498,14 +1476,14 @@ const AdminView = () => {
             {activeSection === 'models' && (
               <div
                 style={{
-                  background: 'rgba(0, 255, 255, 0.1)',
-                  border: '1px solid rgba(0, 255, 255, 0.3)',
+                  background: 'rgba(93, 173, 226, 0.1)',
+                  border: '1px solid rgba(93, 173, 226, 0.3)',
                   borderRadius: '16px',
                   padding: '30px',
                 }}
               >
                 <h2 style={{ fontSize: '1.8rem', color: '#ffffff', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <Package size={28} color="#00FFFF" />
+                  <Package size={28} color="#5dade2" />
                   Models & Releases
                 </h2>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -1515,8 +1493,8 @@ const AdminView = () => {
                       <div
                         key={providerKey}
                         style={{
-                          background: 'rgba(0, 255, 255, 0.05)',
-                          border: '1px solid rgba(0, 255, 255, 0.2)',
+                          background: 'rgba(93, 173, 226, 0.05)',
+                          border: '1px solid rgba(93, 173, 226, 0.2)',
                           borderRadius: '12px',
                           overflow: 'hidden',
                         }}
@@ -1538,13 +1516,13 @@ const AdminView = () => {
                             transition: 'background 0.2s',
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
+                            e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'rgba(0, 255, 255, 0.05)'
+                            e.currentTarget.style.background = 'rgba(93, 173, 226, 0.05)'
                           }}
                         >
-                          <h3 style={{ fontSize: '1.1rem', color: '#00FFFF', margin: 0 }}>
+                          <h3 style={{ fontSize: '1.1rem', color: '#5dade2', margin: 0 }}>
                             {provider.name}
                           </h3>
                           <span style={{ color: '#888888', fontSize: '0.85rem' }}>
@@ -1555,14 +1533,14 @@ const AdminView = () => {
 
                         {/* Models List */}
                         {isExpanded && (
-                          <div style={{ padding: '12px 20px 20px 20px', borderTop: '1px solid rgba(0, 255, 255, 0.2)' }}>
+                          <div style={{ padding: '12px 20px 20px 20px', borderTop: '1px solid rgba(93, 173, 226, 0.2)' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
                               {provider.models.map((model) => (
                                 <div
                                   key={model.id}
                                   style={{
-                                    background: 'rgba(0, 255, 255, 0.03)',
-                                    border: '1px solid rgba(0, 255, 255, 0.15)',
+                                    background: 'rgba(93, 173, 226, 0.03)',
+                                    border: '1px solid rgba(93, 173, 226, 0.15)',
                                     borderRadius: '8px',
                                     padding: '16px',
                                     display: 'grid',
@@ -1585,8 +1563,8 @@ const AdminView = () => {
                                   {/* Replacement Model Placeholder */}
                                   <div
                                     style={{
-                                      background: 'rgba(0, 255, 0, 0.05)',
-                                      border: '1px dashed rgba(0, 255, 0, 0.3)',
+                                      background: 'rgba(72, 201, 176, 0.05)',
+                                      border: '1px dashed rgba(72, 201, 176, 0.3)',
                                       borderRadius: '8px',
                                       padding: '12px',
                                       minHeight: '60px',
@@ -1635,14 +1613,14 @@ const AdminView = () => {
             {activeSection === 'prices' && pricingData && (
               <div
                 style={{
-                  background: 'rgba(0, 255, 255, 0.1)',
-                  border: '1px solid rgba(0, 255, 255, 0.3)',
+                  background: 'rgba(93, 173, 226, 0.1)',
+                  border: '1px solid rgba(93, 173, 226, 0.3)',
                   borderRadius: '16px',
                   padding: '30px',
                 }}
               >
             <h2 style={{ fontSize: '1.8rem', color: '#ffffff', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <DollarSign size={28} color="#00FFFF" />
+              <DollarSign size={28} color="#5dade2" />
               Model Pricing (per 1M tokens)
             </h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1655,8 +1633,8 @@ const AdminView = () => {
                     <div
                       key={providerKey}
                       style={{
-                        background: 'rgba(0, 255, 255, 0.05)',
-                        border: '1px solid rgba(0, 255, 255, 0.2)',
+                        background: 'rgba(93, 173, 226, 0.05)',
+                        border: '1px solid rgba(93, 173, 226, 0.2)',
                         borderRadius: '12px',
                         overflow: 'hidden',
                       }}
@@ -1678,13 +1656,13 @@ const AdminView = () => {
                           transition: 'background 0.2s',
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
+                          e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'rgba(0, 255, 255, 0.05)'
+                          e.currentTarget.style.background = 'rgba(93, 173, 226, 0.05)'
                         }}
                       >
-                        <h3 style={{ fontSize: '1.1rem', color: '#00FFFF', margin: 0, textTransform: 'capitalize' }}>
+                        <h3 style={{ fontSize: '1.1rem', color: '#5dade2', margin: 0, textTransform: 'capitalize' }}>
                           {providerData.name}
                         </h3>
                         <span style={{ color: '#888888', fontSize: '0.85rem' }}>
@@ -1695,14 +1673,14 @@ const AdminView = () => {
 
                       {/* Query Tiers List */}
                       {isExpanded && (
-                        <div style={{ padding: '12px 20px 20px 20px', borderTop: '1px solid rgba(0, 255, 255, 0.2)' }}>
+                        <div style={{ padding: '12px 20px 20px 20px', borderTop: '1px solid rgba(93, 173, 226, 0.2)' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
                             {providerData.queryTiers.map((tier, index) => (
                               <div
                                 key={index}
                                 style={{
-                                  background: 'rgba(0, 255, 255, 0.03)',
-                                  border: '1px solid rgba(0, 255, 255, 0.15)',
+                                  background: 'rgba(93, 173, 226, 0.03)',
+                                  border: '1px solid rgba(93, 173, 226, 0.15)',
                                   borderRadius: '8px',
                                   padding: '12px 16px',
                                   display: 'flex',
@@ -1717,7 +1695,7 @@ const AdminView = () => {
                                 </div>
                                 <div style={{ textAlign: 'right' }}>
                                   <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: 0 }}>Price per 1k credits</p>
-                                  <p style={{ color: '#00FFFF', fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
+                                  <p style={{ color: '#5dade2', fontSize: '1rem', fontWeight: 'bold', margin: 0 }}>
                                     ${tier.pricePer1k.toFixed(2)}
                                   </p>
                                 </div>
@@ -1735,8 +1713,8 @@ const AdminView = () => {
                   <div
                     key={providerKey}
                     style={{
-                      background: 'rgba(0, 255, 255, 0.05)',
-                      border: '1px solid rgba(0, 255, 255, 0.2)',
+                      background: 'rgba(93, 173, 226, 0.05)',
+                      border: '1px solid rgba(93, 173, 226, 0.2)',
                       borderRadius: '12px',
                       overflow: 'hidden',
                     }}
@@ -1758,13 +1736,13 @@ const AdminView = () => {
                         transition: 'background 0.2s',
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
+                        e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(0, 255, 255, 0.05)'
+                        e.currentTarget.style.background = 'rgba(93, 173, 226, 0.05)'
                       }}
                     >
-                      <h3 style={{ fontSize: '1.1rem', color: '#00FFFF', margin: 0, textTransform: 'capitalize' }}>
+                      <h3 style={{ fontSize: '1.1rem', color: '#5dade2', margin: 0, textTransform: 'capitalize' }}>
                         {providerData.name}
                       </h3>
                       <span style={{ color: '#888888', fontSize: '0.85rem' }}>
@@ -1775,14 +1753,14 @@ const AdminView = () => {
 
                     {/* Models List */}
                     {isExpanded && providerData.models && (
-                      <div style={{ padding: '12px 20px 20px 20px', borderTop: '1px solid rgba(0, 255, 255, 0.2)' }}>
+                      <div style={{ padding: '12px 20px 20px 20px', borderTop: '1px solid rgba(93, 173, 226, 0.2)' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
                           {Object.entries(providerData.models).map(([modelName, pricing]) => (
                             <div
                               key={modelName}
                               style={{
-                                background: 'rgba(0, 255, 255, 0.03)',
-                                border: '1px solid rgba(0, 255, 255, 0.15)',
+                                background: 'rgba(93, 173, 226, 0.03)',
+                                border: '1px solid rgba(93, 173, 226, 0.15)',
                                 borderRadius: '8px',
                                 padding: '12px 16px',
                                 display: 'flex',
@@ -1808,11 +1786,11 @@ const AdminView = () => {
                                     defaultValue={pricing.input !== null && pricing.input !== undefined ? pricing.input.toFixed(2) : '0.10'}
                                     placeholder="0.10"
                                     style={{
-                                      background: 'rgba(0, 255, 255, 0.1)',
-                                      border: '1px solid rgba(0, 255, 255, 0.3)',
+                                      background: 'rgba(93, 173, 226, 0.1)',
+                                      border: '1px solid rgba(93, 173, 226, 0.3)',
                                       borderRadius: '6px',
                                       padding: '6px 10px',
-                                      color: '#00FFFF',
+                                      color: '#5dade2',
                                       fontSize: '1rem',
                                       fontWeight: 'bold',
                                       width: '80px',
@@ -1846,11 +1824,11 @@ const AdminView = () => {
                                     defaultValue={pricing.output !== null && pricing.output !== undefined ? pricing.output.toFixed(2) : '0.40'}
                                     placeholder="0.40"
                                     style={{
-                                      background: 'rgba(0, 255, 0, 0.1)',
-                                      border: '1px solid rgba(0, 255, 0, 0.3)',
+                                      background: 'rgba(72, 201, 176, 0.1)',
+                                      border: '1px solid rgba(72, 201, 176, 0.3)',
                                       borderRadius: '6px',
                                       padding: '6px 10px',
-                                      color: '#00FF00',
+                                      color: '#48c9b0',
                                       fontSize: '1rem',
                                       fontWeight: 'bold',
                                       width: '80px',

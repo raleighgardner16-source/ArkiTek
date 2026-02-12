@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import axios from 'axios'
+import { API_URL } from '../utils/config'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import { CreditCard, CheckCircle, XCircle, AlertCircle, Loader, Pause, Trash2, X } from 'lucide-react'
@@ -9,7 +10,7 @@ const SubscriptionManager = () => {
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const [subscriptionStatus, setSubscriptionStatus] = useState(null)
-  const [subscriptionEndDate, setSubscriptionEndDate] = useState(null)
+  const [subscriptionRenewalDate, setSubscriptionRenewalDate] = useState(null)
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState(null)
@@ -25,7 +26,7 @@ const SubscriptionManager = () => {
 
     try {
       setLoading(true)
-      const response = await axios.get('http://localhost:3001/api/stripe/subscription-status', {
+      const response = await axios.get(`${API_URL}/api/stripe/subscription-status`, {
         params: { 
           userId: currentUser.id,
           sync: forceSync ? 'true' : undefined
@@ -34,7 +35,7 @@ const SubscriptionManager = () => {
 
       const newStatus = response.data.subscriptionStatus
       setSubscriptionStatus(newStatus)
-      setSubscriptionEndDate(response.data.subscriptionEndDate)
+      setSubscriptionRenewalDate(response.data.subscriptionRenewalDate)
       setError(null)
       
       // If status was synced and is now active, show success message
@@ -52,8 +53,7 @@ const SubscriptionManager = () => {
         }
       } else if (newStatus === 'inactive' && !forceSync) {
         // If status is inactive, try syncing once from Stripe
-        console.log('[Subscription] Status is inactive, attempting to sync from Stripe...')
-        const syncResponse = await axios.get('http://localhost:3001/api/stripe/subscription-status', {
+        const syncResponse = await axios.get(`${API_URL}/api/stripe/subscription-status`, {
           params: { 
             userId: currentUser.id,
             sync: 'true'
@@ -63,7 +63,7 @@ const SubscriptionManager = () => {
         if (syncResponse.data.subscriptionStatus !== newStatus) {
           // Status changed after sync
           setSubscriptionStatus(syncResponse.data.subscriptionStatus)
-          setSubscriptionEndDate(syncResponse.data.subscriptionEndDate)
+          setSubscriptionRenewalDate(syncResponse.data.subscriptionRenewalDate)
           if (syncResponse.data.subscriptionStatus === 'active') {
             setSuccessMessage('Subscription found and activated!')
             setTimeout(() => setSuccessMessage(null), 5000)
@@ -117,16 +117,15 @@ const SubscriptionManager = () => {
         
         retryTimeoutRef.current = setTimeout(async () => {
           retryCountRef.current++
-          console.log(`[Subscription] Retrying status fetch (attempt ${retryCountRef.current})...`)
           
           try {
-            const response = await axios.get('http://localhost:3001/api/stripe/subscription-status', {
+            const response = await axios.get(`${API_URL}/api/stripe/subscription-status`, {
               params: { userId: currentUser.id },
             })
             
             const newStatus = response.data.subscriptionStatus
             setSubscriptionStatus(newStatus)
-            setSubscriptionEndDate(response.data.subscriptionEndDate)
+            setSubscriptionRenewalDate(response.data.subscriptionRenewalDate)
             
             // If still not active, schedule another retry
             if (newStatus !== 'active' && retryCountRef.current < 5) {
@@ -134,7 +133,6 @@ const SubscriptionManager = () => {
             } else if (newStatus === 'active') {
               retryCountRef.current = 0
               setIsRetrying(false)
-              console.log('[Subscription] Subscription status updated to active!')
             }
           } catch (err) {
             console.error('[Subscription] Error during retry:', err)
@@ -167,8 +165,6 @@ const SubscriptionManager = () => {
   }, [fetchSubscriptionStatus, currentUser?.id])
 
   const handleSubscribe = async () => {
-    console.log('[Subscription] Subscribe button clicked')
-    console.log('[Subscription] Current user:', currentUser)
     
     // Debug: Show alert if button is clicked
     if (!currentUser?.id) {
@@ -182,17 +178,13 @@ const SubscriptionManager = () => {
     }
 
     try {
-      console.log('[Subscription] Creating checkout session for user:', currentUser.id)
       setProcessing(true)
       setError(null)
-      const response = await axios.post('http://localhost:3001/api/stripe/create-checkout-session', {
+      const response = await axios.post(`${API_URL}/api/stripe/create-checkout-session`, {
         userId: currentUser.id,
       })
-      
-      console.log('[Subscription] Checkout session response:', response.data)
 
       if (response.data.url) {
-        console.log('[Subscription] Redirecting to Stripe Checkout:', response.data.url)
         // Redirect to Stripe Checkout
         window.location.href = response.data.url
       } else {
@@ -219,6 +211,64 @@ const SubscriptionManager = () => {
     }
   }
 
+  const handleResubscribe = async () => {
+    if (!currentUser?.id) {
+      setError('Please sign in to resubscribe')
+      return
+    }
+
+    try {
+      setProcessing(true)
+      setError(null)
+
+      const response = await axios.post(`${API_URL}/api/stripe/resume-subscription`, {
+        userId: currentUser.id,
+      })
+
+      if (response.data.success) {
+        // Subscription reactivated seamlessly — update local state
+        setSuccessMessage(response.data.message || 'Subscription reactivated!')
+        setSubscriptionStatus(response.data.subscriptionStatus)
+        setSubscriptionRenewalDate(response.data.subscriptionRenewalDate)
+        
+        // Update the global store so the app knows immediately
+        const currentUserData = useStore.getState().currentUser
+        if (currentUserData) {
+          useStore.getState().setCurrentUser({
+            ...currentUserData,
+            subscriptionStatus: response.data.subscriptionStatus,
+            subscriptionRenewalDate: response.data.subscriptionRenewalDate,
+          })
+        }
+
+        setTimeout(() => setSuccessMessage(null), 5000)
+      }
+    } catch (err) {
+      console.error('[Subscription] Error resubscribing:', err)
+      
+      if (err.response?.data?.needsCheckout) {
+        // No saved payment method — fall back to Stripe Checkout
+        console.log('[Subscription] No saved card, falling back to checkout')
+        try {
+          const checkoutResponse = await axios.post(`${API_URL}/api/stripe/create-checkout-session`, {
+            userId: currentUser.id,
+          })
+          if (checkoutResponse.data.url) {
+            window.location.href = checkoutResponse.data.url
+          } else {
+            setError('Failed to create checkout session')
+          }
+        } catch (checkoutErr) {
+          setError(checkoutErr.response?.data?.error || 'Failed to start checkout')
+        }
+      } else {
+        setError(err.response?.data?.error || 'Failed to resubscribe. Please try again.')
+      }
+    } finally {
+      setProcessing(false)
+    }
+  }
+
   const handlePauseSubscription = async () => {
     if (!currentUser?.id) {
       setError('Please sign in to pause subscription')
@@ -230,19 +280,22 @@ const SubscriptionManager = () => {
       setError(null)
       setShowPauseConfirm(false)
       
-      const response = await axios.post('http://localhost:3001/api/stripe/pause-subscription', {
+      const response = await axios.post(`${API_URL}/api/stripe/pause-subscription`, {
         userId: currentUser.id,
       })
 
       if (response.data.success) {
-        setSuccessMessage('Subscription paused successfully. You can reactivate it anytime from the signup page.')
+        setSuccessMessage('Subscription paused successfully. You still have full access until the end of your current billing period.')
+        // Update the user's subscription status in the store so the app knows it's paused
+        const currentUserData = useStore.getState().currentUser
+        if (currentUserData) {
+          useStore.getState().setCurrentUser({
+            ...currentUserData,
+            subscriptionStatus: 'paused',
+          })
+        }
         // Refresh subscription status
         await fetchSubscriptionStatus()
-        // Log out user since they can't use the app anymore
-        setTimeout(() => {
-          useStore.getState().setCurrentUser(null)
-          window.location.href = '/'
-        }, 3000)
       } else {
         setError('Failed to pause subscription')
       }
@@ -265,7 +318,7 @@ const SubscriptionManager = () => {
       setError(null)
       setShowCancelConfirm(false)
       
-      const response = await axios.post('http://localhost:3001/api/stripe/cancel-subscription-delete-account', {
+      const response = await axios.post(`${API_URL}/api/stripe/cancel-subscription-delete-account`, {
         userId: currentUser.id,
       })
 
@@ -419,8 +472,8 @@ const SubscriptionManager = () => {
         <div
           style={{
             padding: '12px',
-            background: 'rgba(0, 255, 0, 0.2)',
-            border: '1px solid rgba(0, 255, 0, 0.5)',
+            background: 'rgba(72, 201, 176, 0.2)',
+            border: '1px solid rgba(72, 201, 176, 0.5)',
             borderRadius: '8px',
             marginBottom: '16px',
             color: theme === 'dark' ? '#00cc88' : '#008855',
@@ -457,10 +510,10 @@ const SubscriptionManager = () => {
           </div>
         </div>
 
-        {subscriptionEndDate && (
+        {subscriptionRenewalDate && (
           <div style={{ color: currentTheme.textSecondary, fontSize: '0.9rem', marginTop: '8px' }}>
             {subscriptionStatus === 'active' ? 'Renews on' : 'Expires on'}:{' '}
-            <span style={{ color: currentTheme.accent }}>{formatDate(subscriptionEndDate)}</span>
+            <span style={{ color: currentTheme.accent }}>{formatDate(subscriptionRenewalDate)}</span>
           </div>
         )}
 
@@ -475,7 +528,7 @@ const SubscriptionManager = () => {
           }}
         >
           <div style={{ color: currentTheme.accent, fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '4px' }}>
-            $25/month
+            $15/month
           </div>
           <div style={{ color: currentTheme.textSecondary, fontSize: '0.9rem' }}>Full access to all features</div>
         </div>
@@ -528,10 +581,10 @@ const SubscriptionManager = () => {
                 padding: '14px 24px',
                 background: processing
                   ? currentTheme.buttonBackground
-                  : 'rgba(255, 107, 107, 0.2)', // Keep red for danger action
-                border: '1px solid rgba(255, 107, 107, 0.5)', // Keep red for danger action
+                  : 'rgba(255, 107, 107, 0.2)',
+                border: '1px solid rgba(255, 107, 107, 0.5)',
                 borderRadius: '8px',
-                color: processing ? currentTheme.textMuted : '#ff6b6b', // Keep red for danger action
+                color: processing ? currentTheme.textMuted : '#ff6b6b',
                 fontSize: '1rem',
                 fontWeight: 'bold',
                 cursor: processing ? 'not-allowed' : 'pointer',
@@ -555,8 +608,103 @@ const SubscriptionManager = () => {
               )}
             </button>
           </>
+        ) : (subscriptionStatus === 'paused' || subscriptionStatus === 'canceled') ? (
+          <>
+            {/* Resume / Resubscribe Button for paused/canceled users */}
+            {(successMessage && isRetrying) ? (
+              <button
+                disabled
+                style={{
+                  padding: '14px 24px',
+                  background: 'rgba(128, 128, 128, 0.3)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#666666',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  cursor: 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+              >
+                <Loader size={18} className="spin" />
+                Activating subscription...
+              </button>
+            ) : (
+              <button
+                onClick={handleResubscribe}
+                disabled={processing}
+                style={{
+                  padding: '14px 24px',
+                  background: processing
+                    ? currentTheme.buttonBackground
+                    : currentTheme.accentGradient,
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: processing ? currentTheme.textMuted : (theme === 'dark' ? '#000000' : '#ffffff'),
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  cursor: processing ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+              >
+                {processing ? (
+                  <>
+                    <Loader size={18} className="spin" />
+                    Reactivating...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard size={18} />
+                    Resubscribe
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Delete Account Button for paused/canceled users */}
+            <button
+              onClick={() => setShowCancelConfirm(true)}
+              disabled={processing}
+              style={{
+                padding: '14px 24px',
+                background: processing
+                  ? currentTheme.buttonBackground
+                  : 'rgba(255, 107, 107, 0.2)',
+                border: '1px solid rgba(255, 107, 107, 0.5)',
+                borderRadius: '8px',
+                color: processing ? currentTheme.textMuted : '#ff6b6b',
+                fontSize: '1rem',
+                fontWeight: 'bold',
+                cursor: processing ? 'not-allowed' : 'pointer',
+                transition: 'all 0.3s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
+            >
+              {processing ? (
+                <>
+                  <Loader size={18} className="spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={18} />
+                  Delete Account
+                </>
+              )}
+            </button>
+          </>
         ) : (
-          // Show loading state if we're retrying after successful checkout
+          // Inactive / incomplete / other - show Subscribe Now
           (successMessage && isRetrying && subscriptionStatus !== 'active') ? (
             <button
               disabled
@@ -608,7 +756,7 @@ const SubscriptionManager = () => {
               ) : (
                 <>
                   <CreditCard size={18} />
-                  Subscribe Now - $25/month
+                  Subscribe Now - $15/month
                 </>
               )}
             </button>
@@ -701,41 +849,50 @@ const SubscriptionManager = () => {
             >
               <X size={24} />
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', justifyContent: 'center' }}>
               <Pause size={24} color="#ffaa00" />
               <h4 style={{ color: currentTheme.text, margin: 0, fontSize: '1.3rem' }}>
                 Pause Subscription
               </h4>
             </div>
-            <p style={{ color: currentTheme.textSecondary, marginBottom: '12px', lineHeight: '1.6', textAlign: 'center' }}>
-              Pausing your subscription will stop all recurring payments and prevent you from using the app.
+            <p style={{ color: currentTheme.textSecondary, marginBottom: '14px', lineHeight: '1.7', textAlign: 'center' }}>
+              If you pause your account, you will <span style={{ color: '#ffaa00', fontWeight: '600' }}>not be charged</span> for the next billing cycle.
             </p>
-            <p style={{ color: currentTheme.textSecondary, marginBottom: '12px', lineHeight: '1.6', textAlign: 'center' }}>
-              Your account will be kept in our database. If you decide to come back, you can reactivate your subscription from the signup page without creating a new account.
+            {subscriptionRenewalDate && (
+              <p style={{ color: currentTheme.textSecondary, marginBottom: '14px', lineHeight: '1.7', textAlign: 'center' }}>
+                You'll still have <span style={{ color: currentTheme.accent, fontWeight: '600' }}>full access</span> until{' '}
+                <span style={{ color: currentTheme.accent, fontWeight: '600' }}>
+                  {new Date(subscriptionRenewalDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </span>.
+              </p>
+            )}
+            <p style={{ color: currentTheme.textSecondary, marginBottom: '14px', lineHeight: '1.7', textAlign: 'center' }}>
+              You can always come back and unpause your account — <span style={{ color: '#00cc88', fontWeight: '600' }}>all your data will still be here</span>.
             </p>
-            <p style={{ color: '#ffaa00', marginBottom: '20px', lineHeight: '1.6', textAlign: 'center', fontWeight: 'bold' }}>
+            <p style={{ color: '#ffaa00', marginBottom: '24px', lineHeight: '1.6', textAlign: 'center', fontWeight: 'bold' }}>
               Are you sure you want to pause your subscription?
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
               <button
                 onClick={() => setShowPauseConfirm(false)}
                 style={{
-                  padding: '10px 20px',
-                  background: 'rgba(128, 128, 128, 0.3)',
-                  border: '1px solid rgba(128, 128, 128, 0.5)',
+                  padding: '10px 24px',
+                  background: '#ffffff',
+                  border: '1px solid rgba(255, 255, 255, 0.8)',
                   borderRadius: '8px',
-                  color: currentTheme.text,
+                  color: '#000000',
                   cursor: 'pointer',
                   fontSize: '0.9rem',
+                  fontWeight: '600',
                 }}
               >
-                Cancel
+                No
               </button>
               <button
                 onClick={handlePauseSubscription}
                 disabled={processing}
                 style={{
-                  padding: '10px 20px',
+                  padding: '10px 24px',
                   background: processing ? 'rgba(128, 128, 128, 0.3)' : 'rgba(255, 170, 0, 0.3)',
                   border: '1px solid rgba(255, 170, 0, 0.5)',
                   borderRadius: '8px',
@@ -800,43 +957,85 @@ const SubscriptionManager = () => {
             >
               <X size={24} />
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', justifyContent: 'center' }}>
               <Trash2 size={24} color="#ff6b6b" />
               <h4 style={{ color: currentTheme.text, margin: 0, fontSize: '1.3rem' }}>
-                Cancel Subscription / Delete Account
+                Delete Account
               </h4>
             </div>
-            <p style={{ color: currentTheme.textSecondary, marginBottom: '12px', lineHeight: '1.6', textAlign: 'center' }}>
-              This action will permanently delete your account and cancel your subscription. All your data will be removed from our database.
+            <div
+              style={{
+                padding: '14px 18px',
+                borderRadius: '10px',
+                background: 'rgba(255, 59, 48, 0.1)',
+                border: '1px solid rgba(255, 59, 48, 0.3)',
+                marginBottom: '18px',
+              }}
+            >
+              <p style={{ color: '#ff6b6b', margin: '0 0 8px 0', lineHeight: '1.7', textAlign: 'center', fontWeight: '600', fontSize: '0.95rem' }}>
+                ⚠️ If you delete your account, all data from this account will be permanently lost and cannot be recovered.
+              </p>
+              <p style={{ color: '#ff6b6b', margin: 0, lineHeight: '1.7', textAlign: 'center', fontSize: '0.9rem' }}>
+                Your subscription will be canceled for good. This includes all your statistics, saved conversations, usage history, and leaderboard posts.
             </p>
-            <p style={{ color: currentTheme.textSecondary, marginBottom: '12px', lineHeight: '1.6', textAlign: 'center' }}>
-              If you want to use the app again in the future, you will need to sign up as a new user.
+            </div>
+            <div
+              style={{
+                padding: '14px 18px',
+                borderRadius: '10px',
+                background: 'rgba(255, 170, 0, 0.08)',
+                border: '1px solid rgba(255, 170, 0, 0.3)',
+                marginBottom: '20px',
+              }}
+            >
+              <p style={{ color: '#ffaa00', margin: 0, lineHeight: '1.7', textAlign: 'center', fontSize: '0.9rem' }}>
+                💡 Want to take a break instead? You can <strong>pause your account</strong> — your data will be saved and you can come back anytime.
             </p>
-            <p style={{ color: '#ff6b6b', marginBottom: '20px', lineHeight: '1.6', textAlign: 'center', fontWeight: 'bold' }}>
+            </div>
+            <p style={{ color: '#ff6b6b', marginBottom: '24px', lineHeight: '1.6', textAlign: 'center', fontWeight: 'bold' }}>
               This action cannot be undone. Are you absolutely sure?
             </p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
               <button
                 onClick={() => setShowCancelConfirm(false)}
                 style={{
-                  padding: '10px 20px',
-                  background: 'rgba(128, 128, 128, 0.3)',
-                  border: '1px solid rgba(128, 128, 128, 0.5)',
+                  padding: '10px 24px',
+                  background: '#ffffff',
+                  border: '1px solid rgba(255, 255, 255, 0.8)',
                   borderRadius: '8px',
-                  color: currentTheme.text,
+                  color: '#000000',
                   cursor: 'pointer',
                   fontSize: '0.9rem',
+                  fontWeight: '600',
                 }}
               >
-                Cancel
+                No
+              </button>
+              <button
+                onClick={() => {
+                  setShowCancelConfirm(false)
+                  setShowPauseConfirm(true)
+                }}
+                style={{
+                  padding: '10px 24px',
+                  background: 'rgba(255, 170, 0, 0.2)',
+                  border: '1px solid rgba(255, 170, 0, 0.5)',
+                  borderRadius: '8px',
+                  color: '#ffaa00',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: '500',
+                }}
+              >
+                Pause Instead
               </button>
               <button
                 onClick={handleCancelSubscription}
                 disabled={processing}
                 style={{
-                  padding: '10px 20px',
-                  background: processing ? 'rgba(128, 128, 128, 0.3)' : 'rgba(255, 107, 107, 0.3)',
-                  border: '1px solid rgba(255, 107, 107, 0.5)',
+                  padding: '10px 24px',
+                  background: processing ? 'rgba(128, 128, 128, 0.3)' : 'rgba(255, 59, 48, 0.3)',
+                  border: '1px solid rgba(255, 59, 48, 0.5)',
                   borderRadius: '8px',
                   color: processing ? '#666666' : '#ff6b6b',
                   cursor: processing ? 'not-allowed' : 'pointer',
@@ -844,7 +1043,7 @@ const SubscriptionManager = () => {
                   fontWeight: 'bold',
                 }}
               >
-                {processing ? 'Processing...' : 'Yes, Delete Everything'}
+                {processing ? 'Deleting...' : 'Confirm Delete Account'}
               </button>
             </div>
           </div>

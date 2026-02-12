@@ -6,15 +6,19 @@
  * to enable efficient queries and avoid the 16MB document limit.
  * 
  * Collections:
- * - users: Core user info and aggregated totals
+ * - users: Core user profile, auth, subscription, and purchased credits
+ * - user_stats: Aggregated stats, monthly costs, and overage billing (one per user)
+ * - usage_data: Full usage cache per user (single source of truth for all usage)
  * - prompts: Individual prompt documents with responses (one per prompt)
- * - usage_daily: Daily usage statistics per user
- * - usage_monthly: Monthly usage statistics per user  
  * - purchases: Individual purchase records
  * - judge_context: Judge conversation context (max 5 per user)
  * - leaderboard_posts: Public posts for voting/leaderboard
  * - metadata: App-wide statistics and admin tracking
  * - admins: Admin user list
+ * 
+ * REMOVED (data now lives in usage_data):
+ * - usage_daily (removed — daily data stored in usage_data.dailyUsage)
+ * - user_monthly_usage (removed — monthly data stored in usage_data.monthlyUsage)
  */
 
 // Note: Using native MongoDB driver, not Mongoose, for more control
@@ -23,22 +27,57 @@
 /**
  * USERS COLLECTION
  * 
- * Stores core user info and aggregated totals.
- * Updated incrementally, never needs full rewrite.
+ * Stores core user profile, auth, subscription, and purchased credits.
+ * This collection does NOT store stats, monthly costs, or overage data.
  * 
  * Index: { _id: 1 } (default)
  * Index: { email: 1 } (unique, for auth)
+ * Index: { username: 1 } (unique, for auth lookup)
  * Index: { stripeCustomerId: 1 } (sparse, for Stripe lookups)
  */
 export const usersSchema = {
-  _id: 'string',              // username/userId (e.g., "raleighgardner")
+  _id: 'string',              // UUID (e.g., "a1b2c3d4-...")
   email: 'string',            // user email
   password: 'string',         // hashed password (if using local auth)
+  firstName: 'string',        // user's first name
+  lastName: 'string',         // user's last name
+  username: 'string',         // display username (unique, used for login)
   stripeCustomerId: 'string', // Stripe customer ID (optional)
-  subscriptionStatus: 'string', // 'active', 'canceled', 'past_due', etc.
-  subscriptionId: 'string',   // Stripe subscription ID
+  stripeSubscriptionId: 'string', // Stripe subscription ID
+  subscriptionStatus: 'string', // 'active', 'canceled', 'paused', 'past_due', 'inactive'
+  subscriptionRenewalDate: 'Date', // When user will be auto-charged next (null if not active)
+  subscriptionStartedDate: 'Date', // When user first subscribed (never changes once set)
+  subscriptionPausedDate: 'Date',  // When user paused their subscription (null until paused)
+  cancellationHistory: [{          // Array tracking every time the user has canceled
+    date: 'Date',                  // When the cancellation happened
+    reason: 'string',              // Optional reason (e.g., 'user_requested', 'payment_failed')
+  }],
   createdAt: 'Date',
-  lastActiveAt: 'Date',
+  lastActiveAt: 'Date',       // Last activity timestamp (single consolidated field)
+  purchasedCredits: {          // Purchased usage credits
+    total: 'number',          // Total ever purchased
+    remaining: 'number',      // Currently available
+  },
+}
+
+/**
+ * USER_STATS COLLECTION
+ * 
+ * Stores aggregated stats, monthly usage costs, and overage billing.
+ * One document per user (_id = userId for 1:1 mapping).
+ * Separated from users to keep the users collection clean (auth/profile only).
+ * 
+ * Index: { _id: 1 } (default, matches userId)
+ */
+export const userStatsSchema = {
+  _id: 'string',              // Same as userId for direct lookup
+  userId: 'string',           // Foreign key to users._id (redundant but explicit)
+  
+  // Monthly usage cost tracking { "2026-02": 3.45 }
+  monthlyUsageCost: 'object',
+  
+  // Monthly overage billing tracking { "2026-02": 5.23 }
+  monthlyOverageBilled: 'object',
   
   // Aggregated totals (updated incrementally)
   stats: {
@@ -58,20 +97,6 @@ export const usersSchema = {
       // e.g., "xai-grok-4-1-fast-reasoning": { totalTokens, totalPrompts, ... }
     }
   },
-  
-  // Purchased credits tracking
-  purchasedCredits: {
-    total: 'number',          // Total ever purchased
-    remaining: 'number',      // Currently available
-  },
-  
-  // User's saved/bookmarked posts from leaderboard
-  savedPosts: ['string'],     // Array of leaderboard post IDs
-  
-  // User status tracking
-  status: 'string',           // 'active', 'inactive', 'canceled'
-  lastLoginAt: 'Date',        // Last login timestamp
-  canceledAt: 'Date',         // When subscription was canceled (if applicable)
 }
 
 /**
@@ -138,57 +163,8 @@ export const promptsSchema = {
   wasSearched: 'boolean'
 }
 
-/**
- * USAGE_DAILY COLLECTION
- * 
- * Daily aggregated statistics. One document per user per day.
- * Enables efficient date range queries without loading prompt history.
- * 
- * Index: { userId: 1, date: -1 } (compound for user+date queries)
- * Index: { date: -1 } (for admin dashboards)
- */
-export const usageDailySchema = {
-  _id: 'ObjectId',
-  
-  userId: 'string',           // Foreign key to users._id
-  date: 'string',             // YYYY-MM-DD format
-  
-  inputTokens: 'number',
-  outputTokens: 'number',
-  queries: 'number',          // Serper queries for this day
-  prompts: 'number',          // Number of prompts this day
-  
-  // Per-model breakdown for this day
-  models: {
-    // e.g., "xai-grok-4-1-fast-reasoning": { inputTokens, outputTokens }
-  }
-}
-
-/**
- * USAGE_MONTHLY COLLECTION
- * 
- * Monthly aggregated statistics. One document per user per month.
- * Used for billing calculations and usage dashboards.
- * 
- * Index: { userId: 1, month: -1 } (compound for user+month queries)
- */
-export const usageMonthlySchema = {
-  _id: 'ObjectId',
-  
-  userId: 'string',           // Foreign key to users._id
-  month: 'string',            // YYYY-MM format
-  
-  tokens: 'number',
-  inputTokens: 'number',
-  outputTokens: 'number',
-  queries: 'number',
-  prompts: 'number',
-  
-  // Provider breakdown for this month
-  providers: {
-    // e.g., "xai": { tokens, inputTokens, outputTokens }
-  }
-}
+// USAGE_DAILY — REMOVED (data now in usage_data.dailyUsage)
+// USER_MONTHLY_USAGE — REMOVED (data now in usage_data.monthlyUsage)
 
 /**
  * PURCHASES COLLECTION
@@ -354,14 +330,8 @@ export const indexes = {
     { key: { category: 1, timestamp: -1 } }
   ],
   
-  usage_daily: [
-    { key: { userId: 1, date: -1 }, options: { unique: true } },
-    { key: { date: -1 } }
-  ],
-  
-  usage_monthly: [
-    { key: { userId: 1, month: -1 }, options: { unique: true } }
-  ],
+  // usage_daily — REMOVED
+  // user_monthly_usage — REMOVED
   
   purchases: [
     { key: { userId: 1, timestamp: -1 } },
@@ -382,10 +352,14 @@ export const indexes = {
   
   users: [
     { key: { email: 1 }, options: { unique: true } },
+    { key: { username: 1 }, options: { unique: true } },
     { key: { stripeCustomerId: 1 }, options: { sparse: true } },
-    { key: { status: 1 } },                        // For admin filtering
     { key: { subscriptionStatus: 1 } },            // For subscription filtering
     { key: { lastActiveAt: -1 } }                  // For activity sorting
+  ],
+  
+  user_stats: [
+    // _id = userId, so no extra indexes needed for user lookup
   ],
   
   metadata: [

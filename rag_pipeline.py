@@ -678,32 +678,82 @@ Format your response clearly with these sections. If sources are missing or unre
                         lines = judge_output.split('\n')
                         current_section = None
                         
+                        import re
+                        
+                        def is_list_item(text):
+                            """Check if a line is a list item (bullet, numbered, or asterisk)"""
+                            s = text.strip()
+                            if not s:
+                                return False
+                            # Matches: -, •, *, numbered (1., 2., etc.), or lines starting with content after a bullet
+                            return bool(re.match(r'^[-•*]\s', s) or re.match(r'^\d+[\.\)]\s', s))
+                        
+                        def clean_list_item(text):
+                            """Remove bullet/number prefix from a list item"""
+                            s = text.strip()
+                            # Remove bullet markers: -, •, *
+                            s = re.sub(r'^[-•*]\s+', '', s)
+                            # Remove numbered markers: 1., 2), etc.
+                            s = re.sub(r'^\d+[\.\)]\s+', '', s)
+                            # Remove bold markers
+                            s = s.replace('**', '')
+                            return s.strip()
+                        
+                        def is_section_header(text):
+                            """Check if a line is a section header (starts with ** or # or is all caps)"""
+                            s = text.strip()
+                            return s.startswith('**') or s.startswith('#') or (s.isupper() and len(s) > 3)
+                        
                         for line in lines:
-                            line_lower = line.lower()
-                            if 'consensus' in line_lower or 'summary' in line_lower:
-                                current_section = 'consensus'
-                            elif 'agreement' in line_lower:
-                                current_section = 'agreements'
-                            elif 'disagreement' in line_lower or 'contradict' in line_lower:
-                                current_section = 'disagreements'
-                            elif 'final summary' in line_lower:
-                                current_section = 'summary'
+                            line_lower = line.lower().strip()
                             
-                            if current_section == 'consensus' and line.strip() and not line.startswith('**'):
-                                consensus += line.strip() + " "
-                            elif current_section == 'agreements' and (line.strip().startswith('-') or line.strip().startswith('•')):
-                                agreements.append(line.strip().lstrip('-•*').strip())
-                            elif current_section == 'disagreements' and (line.strip().startswith('-') or line.strip().startswith('•')):
-                                disagreements.append(line.strip().lstrip('-•*').strip())
-                            elif current_section == 'summary' and line.strip() and not line.startswith('**'):
-                                summary += line.strip() + " "
+                            # Detect section headers - order matters! Check specific before generic.
+                            # Check 'disagreement' BEFORE 'agreement' since 'agreement' is a substring of 'disagreement'
+                            # Check 'final summary' BEFORE 'summary' since 'summary' is a substring of 'final summary'
+                            if 'final summary' in line_lower or 'synthesis' in line_lower:
+                                current_section = 'summary'
+                                continue
+                            elif 'reliability' in line_lower and ('assessment' in line_lower or 'note' in line_lower or 'caveat' in line_lower):
+                                current_section = 'reliability'
+                                continue
+                            elif 'disagreement' in line_lower or 'contradict' in line_lower or 'difference' in line_lower or 'diverge' in line_lower or 'conflict' in line_lower:
+                                current_section = 'disagreements'
+                                continue
+                            elif 'agreement' in line_lower or ('points of consensus' in line_lower):
+                                current_section = 'agreements'
+                                continue
+                            elif 'consensus' in line_lower or ('summary' in line_lower and 'final' not in line_lower and current_section is None):
+                                current_section = 'consensus'
+                                continue
+                            
+                            stripped = line.strip()
+                            if not stripped:
+                                continue
+                            
+                            if current_section == 'consensus' and not is_section_header(stripped):
+                                consensus += stripped + " "
+                            elif current_section == 'agreements' and (is_list_item(stripped) or (not is_section_header(stripped) and len(stripped) > 10)):
+                                item = clean_list_item(stripped) if is_list_item(stripped) else stripped
+                                if item:
+                                    agreements.append(item)
+                            elif current_section == 'disagreements' and (is_list_item(stripped) or (not is_section_header(stripped) and len(stripped) > 10)):
+                                item = clean_list_item(stripped) if is_list_item(stripped) else stripped
+                                if item:
+                                    disagreements.append(item)
+                            elif current_section == 'summary' and not is_section_header(stripped):
+                                summary += stripped + " "
+                            elif current_section == 'reliability' and not is_section_header(stripped):
+                                # Skip reliability section content - don't add to other sections
+                                pass
                         
                         # If parsing didn't work well, use the full output
                         if not consensus and not summary:
                             summary = judge_output
                             consensus = judge_output[:200] + "..."
                         
-                        print("[Judge] Analysis complete")
+                        print(f"[Judge] Analysis complete - Agreements: {len(agreements)}, Disagreements: {len(disagreements)}")
+                        if not disagreements:
+                            print(f"[Judge] WARNING: No disagreements parsed. Raw output preview:\n{judge_output[:500]}")
                         return JudgeAnalysis(
                             consensus=consensus.strip(),
                             agreements=agreements,

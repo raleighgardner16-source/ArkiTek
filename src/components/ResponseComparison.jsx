@@ -1,11 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send } from 'lucide-react'
+import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Save, Info, FileText } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
+import { API_URL } from '../utils/config'
 
 const ResponseComparison = () => {
+  const getProviderName = (modelName) => {
+    const name = (modelName || '').toLowerCase()
+    if (name.includes('gpt')) return 'Chatgpt'
+    if (name.includes('claude')) return 'Claude'
+    if (name.includes('gemini')) return 'Gemini'
+    if (name.includes('grok')) return 'Grok'
+    if (name.includes('llama')) return 'Meta'
+    if (name.includes('deepseek')) return 'DeepSeek'
+    if (name.includes('mistral')) return 'Mistral'
+    return 'Model'
+  }
   const responses = useStore((state) => state.responses)
   const ratings = useStore((state) => state.ratings)
   const setRating = useStore((state) => state.setRating)
@@ -16,9 +28,16 @@ const ResponseComparison = () => {
   const setSummaryMinimized = useStore((state) => state.setSummaryMinimized)
   const setSummary = useStore((state) => state.setSummary)
   const currentUser = useStore((state) => state.currentUser)
+  const activeTab = useStore((state) => state.activeTab)
+  const showCouncilPanel = useStore((state) => state.showCouncilPanel)
+  const setShowCouncilPanel = useStore((state) => state.setShowCouncilPanel)
+  const isNavExpanded = useStore((state) => state.isNavExpanded)
+  const ragDebugData = useStore((state) => state.ragDebugData)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const [expandedCards, setExpandedCards] = useState({})
+  const [sourcesMinimized, setSourcesMinimized] = useState(true)
+  const [sourcesMaximized, setSourcesMaximized] = useState(false)
   const [maximizedCard, setMaximizedCard] = useState(null)
   const [isMinimized, setIsMinimized] = useState(true) // Start minimized by default
   const [minimizedCards, setMinimizedCards] = useState({}) // Track which individual cards are minimized - all start minimized
@@ -37,6 +56,10 @@ const ResponseComparison = () => {
   const [conversationInputs, setConversationInputs] = useState({}) // { responseId: 'input text' }
   const [conversationHistories, setConversationHistories] = useState({}) // { responseId: [{ user, assistant, timestamp }] }
   const [sendingMessages, setSendingMessages] = useState({}) // { responseId: true/false }
+  const [savingStates, setSavingStates] = useState({}) // { responseId: 'idle'|'saving'|'saved' }
+  const [showSaveTooltip, setShowSaveTooltip] = useState({}) // { responseId: true/false }
+  const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
+  const lastSubmittedCategory = useStore((state) => state.lastSubmittedCategory || '')
 
   // Calculate width based on available space (15px padding from nav bar and prompt window)
   // Nav bar is 60px, prompt window starts at 260px (paddingLeft: '260px')
@@ -114,14 +137,12 @@ const ResponseComparison = () => {
         const response = responses.find(r => r.id === responseId)
         const modelName = response?.modelName || responseId.split('-').slice(0, 2).join('-')
         
-        await axios.post('http://localhost:3001/api/ratings', {
+        await axios.post(`${API_URL}/api/ratings`, {
           userId: currentUser.id,
           responseId: responseId,
           rating: rating,
           modelName: modelName
         })
-        
-        console.log('[Rating] Rating saved successfully:', { responseId, rating })
         
         // Trigger stats refresh so the stats page updates
         const triggerStatsRefresh = useStore.getState().triggerStatsRefresh
@@ -251,7 +272,7 @@ const ResponseComparison = () => {
           ).join('\n\n')
         : ''
       
-      const response = await axios.post('http://localhost:3001/api/model/conversation', {
+      const response = await axios.post(`${API_URL}/api/model/conversation`, {
         userId: currentUser.id,
         modelName: modelName,
         userMessage: input,
@@ -297,6 +318,44 @@ const ResponseComparison = () => {
       delete newInputs[responseId]
       return newInputs
     })
+  }
+
+  // Save individual model response + conversation to MongoDB
+  const handleSaveIndividual = async (responseId, modelName, responseText) => {
+    if (!currentUser?.id) {
+      alert('Please sign in to save conversations')
+      return
+    }
+    
+    setSavingStates(prev => ({ ...prev, [responseId]: 'saving' }))
+    
+    try {
+      const history = conversationHistories[responseId] || []
+      const conversation = history.map(h => ([
+        { role: 'user', text: h.user, timestamp: h.timestamp },
+        { role: 'assistant', text: h.assistant, timestamp: h.timestamp },
+      ])).flat()
+
+      await axios.post(`${API_URL}/api/conversations/save`, {
+        userId: currentUser.id,
+        type: 'individual',
+        originalPrompt: lastSubmittedPrompt || '',
+        category: lastSubmittedCategory || 'General',
+        modelName,
+        modelResponse: responseText,
+        conversation,
+      })
+
+      setSavingStates(prev => ({ ...prev, [responseId]: 'saved' }))
+    } catch (error) {
+      console.error('[Save] Error saving individual conversation:', error)
+      if (error.response?.data?.alreadySaved) {
+        setSavingStates(prev => ({ ...prev, [responseId]: 'saved' }))
+      } else {
+        alert('Failed to save conversation. Please try again.')
+        setSavingStates(prev => ({ ...prev, [responseId]: 'idle' }))
+      }
+    }
   }
 
   // Auto-minimize only once when responses first appear (so summary is seen first)
@@ -405,6 +464,11 @@ const ResponseComparison = () => {
     return null
   }
 
+  // When on home tab, MainView handles inline display - don't show popup
+  if (activeTab === 'home' && responses.length === 1) {
+    return null
+  }
+
   // Handle single response as a popup (like Summary window)
   if (responses.length === 1) {
     const response = responses[0]
@@ -504,7 +568,7 @@ const ResponseComparison = () => {
               clearLastSubmittedPrompt()
               // Clear judge conversation context
               if (currentUser?.id) {
-                axios.post('http://localhost:3001/api/judge/clear-context', {
+                axios.post(`${API_URL}/api/judge/clear-context`, {
                   userId: currentUser.id
                 }).catch(err => console.error('[Clear Context] Error:', err))
               }
@@ -543,41 +607,38 @@ const ResponseComparison = () => {
     if (singleResponseMaximized) {
       return (
         <div
+          onClick={() => {
+            setSingleResponseMaximized(false)
+            setSingleResponseMinimized(true)
+          }}
           style={{
             position: 'fixed',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'rgba(0, 0, 0, 0.8)',
             zIndex: 10000,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '40px',
-          }}
-          onClick={() => {
-            setSingleResponseMaximized(false)
-            setSingleResponseMinimized(true)
           }}
         >
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: currentTheme.backgroundOverlay,
-              border: `1px solid ${currentTheme.border}`,
-              borderRadius: '16px',
-              padding: '30px',
-              maxWidth: '900px',
-              width: '100%',
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              position: 'relative',
-              boxShadow: `0 0 40px ${currentTheme.shadow}`,
-            }}
-          >
+        <motion.div
+          onClick={(e) => e.stopPropagation()}
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          style={{
+            background: currentTheme.backgroundOverlay,
+            border: `1px solid ${currentTheme.border}`,
+            borderRadius: '16px',
+            padding: '30px',
+            maxWidth: '900px',
+            width: 'calc(100% - 80px)',
+            maxHeight: '80vh',
+            overflowY: 'auto',
+            boxShadow: `0 0 40px ${currentTheme.shadow}`,
+          }}
+        >
             {/* Minimize button */}
             <button
               onClick={() => {
@@ -730,6 +791,41 @@ const ResponseComparison = () => {
               </div>
             )}
 
+            {/* Fetching Response Indicator */}
+            {sendingMessages[response.id] && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '12px 16px',
+                  marginTop: '16px',
+                }}
+              >
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                  style={{
+                    width: '16px',
+                    height: '16px',
+                    border: `2px solid ${currentTheme.borderLight}`,
+                    borderTop: `2px solid ${currentTheme.accent}`,
+                    borderRadius: '50%',
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{
+                  fontSize: '0.85rem',
+                  color: currentTheme.textMuted,
+                  fontStyle: 'italic',
+                }}>
+                  Fetching response from {formatModelName(response.modelName)}...
+                </span>
+              </motion.div>
+            )}
+
             {/* Conversation Input */}
             <div
               style={{
@@ -791,6 +887,67 @@ const ResponseComparison = () => {
                     color={conversationInputs[response.id]?.trim() ? '#fff' : currentTheme.textMuted} 
                   />
                 </motion.button>
+                {/* Save Individual Response Button */}
+                <div style={{ position: 'relative' }}>
+                  <motion.button
+                    onClick={() => handleSaveIndividual(response.id, response.modelName, responseText)}
+                    disabled={savingStates[response.id] === 'saving' || savingStates[response.id] === 'saved'}
+                    style={{
+                      padding: '10px 16px',
+                      background: savingStates[response.id] === 'saved' ? 'rgba(0, 200, 100, 0.2)' : currentTheme.buttonBackground,
+                      border: `1px solid ${savingStates[response.id] === 'saved' ? 'rgba(0, 200, 100, 0.5)' : currentTheme.borderLight}`,
+                      borderRadius: '12px',
+                      cursor: (savingStates[response.id] === 'saving' || savingStates[response.id] === 'saved') ? 'not-allowed' : 'pointer',
+                      opacity: savingStates[response.id] === 'saving' ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      whiteSpace: 'nowrap',
+                      color: savingStates[response.id] === 'saved' ? '#00c864' : currentTheme.accent,
+                      fontSize: '0.85rem',
+                      fontWeight: '500',
+                    }}
+                    whileHover={(savingStates[response.id] !== 'saving' && savingStates[response.id] !== 'saved') ? { scale: 1.05 } : {}}
+                    whileTap={(savingStates[response.id] !== 'saving' && savingStates[response.id] !== 'saved') ? { scale: 0.95 } : {}}
+                    title={savingStates[response.id] === 'saved' ? 'Already saved' : "Save this model's response & conversation"}
+                  >
+                    <Save 
+                      size={18} 
+                      color={savingStates[response.id] === 'saved' ? '#00c864' : currentTheme.accent}
+                    />
+                    {savingStates[response.id] === 'saving'
+                      ? 'Saving...'
+                      : savingStates[response.id] === 'saved'
+                      ? 'Saved!'
+                      : `Save ${getProviderName(response.modelName)} Convo`}
+                  </motion.button>
+                  {/* Info tooltip icon */}
+                  <div
+                    style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help' }}
+                    onMouseEnter={() => setShowSaveTooltip(prev => ({ ...prev, [response.id]: true }))}
+                    onMouseLeave={() => setShowSaveTooltip(prev => ({ ...prev, [response.id]: false }))}
+                  >
+                    <Info size={14} color={currentTheme.textMuted} />
+                    {showSaveTooltip[response.id] && (
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '20px',
+                        right: 0,
+                        background: currentTheme.backgroundOverlay,
+                        border: `1px solid ${currentTheme.borderLight}`,
+                        borderRadius: '8px',
+                        padding: '8px 12px',
+                        fontSize: '0.75rem',
+                        color: currentTheme.textSecondary,
+                        width: '200px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        zIndex: 100,
+                      }}>
+                        Save this model's response and conversation history to your saved conversations.
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
               <p style={{ 
                 fontSize: '0.75rem', 
@@ -798,7 +955,7 @@ const ResponseComparison = () => {
                 marginTop: '8px',
                 fontStyle: 'italic'
               }}>
-                Press Enter to send, Shift+Enter for new line. Context: last 5 exchanges.
+                {savingStates[response.id] === 'saved' ? '✓ Saved!' : 'Press Enter to send, Shift+Enter for new line. Context: last 5 exchanges.'}
               </p>
             </div>
           </motion.div>
@@ -886,7 +1043,7 @@ const ResponseComparison = () => {
                 clearLastSubmittedPrompt()
                 // Clear judge conversation context
                 if (currentUser?.id) {
-                  axios.post('http://localhost:3001/api/judge/clear-context', {
+                  axios.post(`${API_URL}/api/judge/clear-context`, {
                     userId: currentUser.id
                   }).catch(err => console.error('[Clear Context] Error:', err))
                 }
@@ -995,42 +1152,42 @@ const ResponseComparison = () => {
 
     return (
       <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          background: theme === 'light' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(0, 0, 0, 0.95)',
-          zIndex: 300,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '40px',
-        }}
         onClick={() => {
           setMaximizedCard(null)
-          // Return card to minimized state
           setMinimizedCards((prev) => ({
             ...prev,
             [maximizedCard]: true
           }))
         }}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 300,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
       >
         <motion.div
+          onClick={(e) => e.stopPropagation()}
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          onClick={(e) => e.stopPropagation()}
           style={{
-            background: theme === 'light' ? '#ffffff' : 'rgba(0, 0, 0, 0.95)',
+            background: theme === 'light' ? '#ffffff' : 'rgba(10, 10, 20, 0.98)',
             border: `1px solid ${currentTheme.borderLight}`,
             borderRadius: '16px',
             padding: '30px',
+            width: '90%',
             maxWidth: '900px',
-            width: '100%',
             maxHeight: '80vh',
             overflowY: 'auto',
             position: 'relative',
+            boxShadow: theme === 'light' 
+              ? '0 8px 40px rgba(0, 0, 0, 0.2)' 
+              : '0 8px 40px rgba(0, 0, 0, 0.6)',
           }}
         >
           <button
@@ -1169,6 +1326,41 @@ const ResponseComparison = () => {
             </div>
           )}
 
+          {/* Fetching Response Indicator */}
+          {sendingMessages[response.id] && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '12px 16px',
+                marginTop: '16px',
+              }}
+            >
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                style={{
+                  width: '16px',
+                  height: '16px',
+                  border: `2px solid ${currentTheme.borderLight}`,
+                  borderTop: `2px solid ${currentTheme.accent}`,
+                  borderRadius: '50%',
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{
+                fontSize: '0.85rem',
+                color: currentTheme.textMuted,
+                fontStyle: 'italic',
+              }}>
+                Fetching response from {formatModelName(response.modelName)}...
+              </span>
+            </motion.div>
+          )}
+
           {/* Conversation Input */}
           <div
             style={{
@@ -1230,6 +1422,66 @@ const ResponseComparison = () => {
                   color={conversationInputs[response.id]?.trim() ? '#fff' : currentTheme.textMuted} 
                 />
               </motion.button>
+              {/* Save Individual Response Button */}
+              <div style={{ position: 'relative' }}>
+                <motion.button
+                  onClick={() => handleSaveIndividual(response.id, response.modelName, responseText)}
+                  disabled={savingStates[response.id] === 'saving' || savingStates[response.id] === 'saved'}
+                  style={{
+                    padding: '10px 16px',
+                    background: savingStates[response.id] === 'saved' ? 'rgba(0, 200, 100, 0.2)' : currentTheme.buttonBackground,
+                    border: `1px solid ${savingStates[response.id] === 'saved' ? 'rgba(0, 200, 100, 0.5)' : currentTheme.borderLight}`,
+                    borderRadius: '12px',
+                    cursor: (savingStates[response.id] === 'saving' || savingStates[response.id] === 'saved') ? 'not-allowed' : 'pointer',
+                    opacity: savingStates[response.id] === 'saving' ? 0.6 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    whiteSpace: 'nowrap',
+                    color: savingStates[response.id] === 'saved' ? '#00c864' : currentTheme.accent,
+                    fontSize: '0.85rem',
+                    fontWeight: '500',
+                  }}
+                  whileHover={(savingStates[response.id] !== 'saving' && savingStates[response.id] !== 'saved') ? { scale: 1.05 } : {}}
+                  whileTap={(savingStates[response.id] !== 'saving' && savingStates[response.id] !== 'saved') ? { scale: 0.95 } : {}}
+                  title={savingStates[response.id] === 'saved' ? 'Already saved' : "Save this model's response & conversation"}
+                >
+                  <Save 
+                    size={18} 
+                    color={savingStates[response.id] === 'saved' ? '#00c864' : currentTheme.accent}
+                  />
+                  {savingStates[response.id] === 'saving'
+                    ? 'Saving...'
+                    : savingStates[response.id] === 'saved'
+                    ? 'Saved!'
+                    : `Save ${getProviderName(response.modelName)} Convo`}
+                </motion.button>
+                <div
+                  style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help' }}
+                  onMouseEnter={() => setShowSaveTooltip(prev => ({ ...prev, [`card-${response.id}`]: true }))}
+                  onMouseLeave={() => setShowSaveTooltip(prev => ({ ...prev, [`card-${response.id}`]: false }))}
+                >
+                  <Info size={14} color={currentTheme.textMuted} />
+                  {showSaveTooltip[`card-${response.id}`] && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '20px',
+                      right: 0,
+                      background: currentTheme.backgroundOverlay,
+                      border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '0.75rem',
+                      color: currentTheme.textSecondary,
+                      width: '200px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                      zIndex: 100,
+                    }}>
+                      Save this model's response and conversation history to your saved conversations.
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             <p style={{ 
               fontSize: '0.75rem', 
@@ -1237,7 +1489,7 @@ const ResponseComparison = () => {
               marginTop: '8px',
               fontStyle: 'italic'
             }}>
-              Press Enter to send, Shift+Enter for new line. Context: last 5 exchanges.
+              {savingStates[response.id] === 'saved' ? '✓ Saved!' : 'Press Enter to send, Shift+Enter for new line. Context: last 5 exchanges.'}
             </p>
           </div>
         </motion.div>
@@ -1245,37 +1497,69 @@ const ResponseComparison = () => {
     )
   }
 
+  // If the panel is not open, don't render the cards container
+  if (!showCouncilPanel) return null
+
   return (
-    <div
+    <AnimatePresence>
+      {showCouncilPanel && (
+    <motion.div
+      initial={{ opacity: 0, x: 40 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 40 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
       style={{
         position: 'fixed',
-        top: 'calc(50% - 39px)', // Position below Summary (50% - 87px + 48px Summary height + 0px gap, then marginTop adds spacing)
-        left: '75px', // 15px padding from nav bar (60px nav + 15px)
-        width: `calc(${cardWidth} + 12px)`, // Add space for badge extension
-        maxHeight: 'calc(100vh - 100px)', // Leave space for top and bottom
-        zIndex: 100,
-        overflowY: 'auto', // Allow vertical scrolling if needed
-        overflowX: 'visible', // Allow badges to extend horizontally
-        pointerEvents: 'none', // Don't block pointer events for cards outside
+        top: '80px',
+        right: '20px',
+        width: `calc(${cardWidth} + 12px)`,
+        maxHeight: 'calc(100vh - 120px)',
+        zIndex: 200,
+        overflowY: 'auto',
+        overflowX: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'flex-start', // Align to left
-        paddingRight: '25px', // Increased padding to accommodate badge extension
-        paddingTop: '0px', // No padding - marginTop on inner div handles spacing
+        alignItems: 'flex-end',
+        paddingLeft: '12px',
+        paddingBottom: '20px',
       }}
     >
+      {/* Panel header */}
+      <div style={{
+        width: '100%',
+        maxWidth: cardWidth,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '12px',
+        padding: '10px 14px',
+        background: theme === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(10, 10, 20, 0.95)',
+        border: `1px solid ${currentTheme.borderLight}`,
+        borderRadius: '12px',
+        backdropFilter: 'blur(12px)',
+        pointerEvents: 'auto',
+      }}>
+        <span style={{
+          fontSize: '0.8rem',
+          fontWeight: '600',
+          color: currentTheme.accent,
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+        }}>
+          Council Responses ({responses.length})
+        </span>
+      </div>
+
       <div
         style={{
           display: 'flex',
-          flexDirection: 'column', // Stack vertically
-          gap: '15px', // 15px vertical gap between cards (same as between last card and Clear All)
+          flexDirection: 'column',
+          gap: '12px',
           paddingBottom: '10px',
-          marginTop: '10px', // Gap between Summary and first Council response
-          alignItems: 'flex-start',
-          pointerEvents: 'none', // Don't block pointer events
-          position: 'relative', // Make this a positioning context
-          width: '100%', // Full width of container
-          overflow: 'visible', // Allow badges to extend outside
+          alignItems: 'flex-end',
+          position: 'relative',
+          width: '100%',
+          overflow: 'visible',
         }}
       >
         {responses.map((response, index) => {
@@ -1365,7 +1649,7 @@ const ResponseComparison = () => {
                     width: '100%',
                     minWidth: cardWidth,
                     maxWidth: cardWidth,
-                    background: theme === 'light' ? '#ffffff' : 'rgba(0, 255, 255, 0.05)',
+                    background: theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)',
                     border: `1px solid ${currentTheme.borderLight}`,
                     borderRadius: '8px',
                     padding: '0',
@@ -1387,12 +1671,12 @@ const ResponseComparison = () => {
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.borderColor = currentTheme.borderActive
-                    e.currentTarget.style.background = theme === 'light' ? currentTheme.buttonBackgroundHover : 'rgba(0, 255, 255, 0.3)'
+                    e.currentTarget.style.background = theme === 'light' ? currentTheme.buttonBackgroundHover : 'rgba(93, 173, 226, 0.3)'
                     e.currentTarget.style.boxShadow = `0 0 15px ${currentTheme.shadow}, 0 0 30px ${currentTheme.shadowLight}`
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor = currentTheme.borderLight
-                    e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(0, 255, 255, 0.05)'
+                    e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)'
                     e.currentTarget.style.boxShadow = 'none'
                   }}
                 >
@@ -1890,6 +2174,227 @@ const ResponseComparison = () => {
           )
         })}
         
+        {/* Sources Card */}
+        {ragDebugData && ragDebugData.search && ragDebugData.search.results && ragDebugData.search.results.length > 0 && (
+          <div
+            style={{
+              position: 'relative',
+              width: '100%',
+              minWidth: cardWidth,
+              maxWidth: cardWidth,
+              overflow: 'visible',
+              pointerEvents: 'auto',
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{
+                width: '100%',
+                minWidth: cardWidth,
+                maxWidth: cardWidth,
+                background: theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)',
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '8px',
+                padding: '0',
+                boxShadow: 'none',
+                cursor: sourcesMinimized ? 'pointer' : 'default',
+                pointerEvents: 'auto',
+                position: 'relative',
+                zIndex: 1000,
+                transition: 'all 0.2s ease',
+              }}
+              onClick={(e) => {
+                if (sourcesMinimized) {
+                  e.stopPropagation()
+                  setSourcesMinimized(false)
+                  setSourcesMaximized(true)
+                }
+              }}
+              onMouseEnter={(e) => {
+                if (sourcesMinimized) {
+                  e.currentTarget.style.borderColor = currentTheme.borderActive
+                  e.currentTarget.style.boxShadow = `0 0 20px ${currentTheme.shadow}`
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (sourcesMinimized) {
+                  e.currentTarget.style.borderColor = currentTheme.borderLight
+                  e.currentTarget.style.boxShadow = 'none'
+                }
+              }}
+            >
+              <div
+                style={{
+                  padding: '10px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={16} color={currentTheme.accent} />
+                  <h3
+                    key={`sources-card-title-${theme}`}
+                    style={{
+                      fontSize: '0.85rem',
+                      background: currentTheme.accentGradient,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      margin: 0,
+                      fontWeight: '500',
+                    }}
+                  >
+                    Sources ({ragDebugData.search.results.length})
+                  </h3>
+                </div>
+                <ChevronRight size={16} color={currentTheme.accent} />
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Sources Maximized View */}
+        {sourcesMaximized && ragDebugData && ragDebugData.search && ragDebugData.search.results && (
+          <div
+            onClick={() => {
+              setSourcesMaximized(false)
+              setSourcesMinimized(true)
+            }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 300,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <motion.div
+              onClick={(e) => e.stopPropagation()}
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              style={{
+                background: theme === 'light' ? '#ffffff' : 'rgba(10, 10, 20, 0.98)',
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '16px',
+                padding: '30px',
+                width: '90%',
+                maxWidth: '900px',
+                maxHeight: '80vh',
+                overflowY: 'auto',
+                position: 'relative',
+                boxShadow: theme === 'light' 
+                  ? '0 8px 40px rgba(0, 0, 0, 0.2)' 
+                  : '0 8px 40px rgba(0, 0, 0, 0.6)',
+              }}
+            >
+              <button
+                onClick={() => {
+                  setSourcesMaximized(false)
+                  setSourcesMinimized(true)
+                }}
+                style={{
+                  position: 'absolute',
+                  top: '20px',
+                  right: '20px',
+                  background: currentTheme.buttonBackground,
+                  border: `1px solid ${currentTheme.borderLight}`,
+                  borderRadius: '8px',
+                  padding: '8px',
+                  color: currentTheme.accent,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 10,
+                }}
+                title="Minimize"
+              >
+                <Minimize2 size={20} />
+              </button>
+
+              <div style={{ marginBottom: '24px', paddingRight: '40px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <FileText size={28} color={currentTheme.accent} />
+                  <h2
+                    key={`sources-maximized-title-${theme}`}
+                    style={{
+                      fontSize: '1.8rem',
+                      margin: 0,
+                      background: currentTheme.accentGradient,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                    }}
+                  >
+                    Sources
+                  </h2>
+                </div>
+              </div>
+
+              {ragDebugData.search.results.length > 0 ? (
+                <div>
+                  <div style={{ color: currentTheme.accentSecondary, fontSize: '16px', fontWeight: 'bold', marginBottom: '16px' }}>
+                    Search Results ({ragDebugData.search.results.length})
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {ragDebugData.search.results.map((result, index) => (
+                      <div
+                        key={index}
+                        style={{
+                          padding: '16px',
+                          backgroundColor: theme === 'light' ? currentTheme.backgroundSecondary : '#0a0a0a',
+                          borderRadius: '8px',
+                          border: `1px solid ${currentTheme.border}`,
+                        }}
+                      >
+                        <div style={{ color: currentTheme.text, marginBottom: '12px', fontWeight: '500', fontSize: '16px' }}>
+                          {result.title || 'No title'}
+                        </div>
+                        {result.snippet && (
+                          <div style={{ color: currentTheme.textSecondary, fontSize: '14px', marginBottom: '12px', lineHeight: '1.6' }}>
+                            {result.snippet}
+                          </div>
+                        )}
+                        {result.link && (
+                          <a
+                            href={result.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              color: currentTheme.accent,
+                              fontSize: '13px',
+                              textDecoration: 'underline',
+                              wordBreak: 'break-all',
+                            }}
+                          >
+                            🔗 {result.link}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ 
+                  padding: '32px', 
+                  backgroundColor: theme === 'light' ? currentTheme.backgroundSecondary : '#1a0a0a', 
+                  borderRadius: '8px', 
+                  border: '1px solid rgba(255, 68, 68, 0.5)',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ color: '#ff4444', fontSize: '16px', fontWeight: 'bold' }}>
+                    ⚠️ No sources found
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+
         {/* Clear All Response Windows Button - Underneath minimized windows */}
         {responses.length > 0 && (
           <motion.div
@@ -1921,7 +2426,7 @@ const ResponseComparison = () => {
                 setSummaryMinimized(true)
                 // Clear judge conversation context
                 if (currentUser?.id) {
-                  axios.post('http://localhost:3001/api/judge/clear-context', {
+                  axios.post(`${API_URL}/api/judge/clear-context`, {
                     userId: currentUser.id
                   }).catch(err => console.error('[Clear Context] Error:', err))
                 }
@@ -1965,7 +2470,9 @@ const ResponseComparison = () => {
           </motion.div>
         )}
       </div>
-    </div>
+    </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
 

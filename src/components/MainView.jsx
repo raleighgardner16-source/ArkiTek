@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, Check, Trash2, X, XCircle, Flame, Sparkles, Info, Trophy, Search } from 'lucide-react'
+import { Send, ChevronDown, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Save, Lock, FileText, LayoutGrid, Trash2 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 import { detectCategory } from '../utils/categoryDetector'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
-import { ProviderIcon } from './ProviderIcons'
+import { API_URL } from '../utils/config'
+// ProviderIcon import kept available for future use
+// import { ProviderIcon } from './ProviderIcons'
 
-const MainView = ({ onClearAll }) => {
+const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
   const selectedModels = useStore((state) => state.selectedModels)
   const setSelectedModels = useStore((state) => state.setSelectedModels)
   const currentPrompt = useStore((state) => state.currentPrompt)
@@ -18,21 +20,42 @@ const MainView = ({ onClearAll }) => {
   const triggerSubmit = useStore((state) => state.triggerSubmit)
   const responses = useStore((state) => state.responses || [])
   const clearResponses = useStore((state) => state.clearResponses)
+  const clearLastSubmittedPrompt = useStore((state) => state.clearLastSubmittedPrompt)
   const currentUser = useStore((state) => state.currentUser)
   const summary = useStore((state) => state.summary)
+  const setSummary = useStore((state) => state.setSummary)
   const ragDebugData = useStore((state) => state.ragDebugData)
   const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
   const theme = useStore((state) => state.theme || 'dark')
+  const isNavExpanded = useStore((state) => state.isNavExpanded)
+  const showCouncilPanel = useStore((state) => state.showCouncilPanel)
+  const setShowCouncilPanel = useStore((state) => state.setShowCouncilPanel)
+  const toggleCouncilPanel = useStore((state) => state.toggleCouncilPanel)
   const currentTheme = getTheme(theme)
+  const navWidth = isNavExpanded ? '260px' : '60px'
   const [streakDays, setStreakDays] = useState(0)
-  const gpt4oMiniResponse = useStore((state) => state.gpt4oMiniResponse)
-  const setGpt4oMiniResponse = useStore((state) => state.setGpt4oMiniResponse)
-  const clearGpt4oMiniResponse = useStore((state) => state.clearGpt4oMiniResponse)
+  const setGeminiDetectionResponse = useStore((state) => state.setGeminiDetectionResponse)
   const isSearchingWeb = useStore((state) => state.isSearchingWeb)
   const [showNoModelNotification, setShowNoModelNotification] = useState(false)
   const [showVotingConfirm, setShowVotingConfirm] = useState(false)
   const [isSubmittingToVote, setIsSubmittingToVote] = useState(false)
-  // Mode selection removed - always use Independent Research Mode
+  const [saveAllState, setSaveAllState] = useState('idle') // 'idle'|'saving'|'saved'
+  const [showSaveAllTooltip, setShowSaveAllTooltip] = useState(false)
+  const [showCouncilTooltip, setShowCouncilTooltip] = useState(false)
+
+  // Inline conversation state (moved from SummaryWindow)
+  const [conversationInput, setConversationInput] = useState('')
+  const [isSendingConvo, setIsSendingConvo] = useState(false)
+  const [isSearchingInConvo, setIsSearchingInConvo] = useState(false)
+  const [conversationContext, setConversationContext] = useState([])
+  const [convoSavingState, setConvoSavingState] = useState('idle')
+  const [showConvoSaveTooltip, setShowConvoSaveTooltip] = useState(false)
+
+  // Refs for chat layout
+  const textareaRef = useRef(null)
+  const chatAreaRef = useRef(null)
+  const chatEndRef = useRef(null)
+  const convoTextareaRef = useRef(null)
 
   // Fetch streak data
   useEffect(() => {
@@ -43,7 +66,7 @@ const MainView = ({ onClearAll }) => {
 
   const fetchStreak = async () => {
     try {
-      const response = await axios.get(`http://localhost:3001/api/stats/${currentUser.id}/streak`)
+      const response = await axios.get(`${API_URL}/api/stats/${currentUser.id}/streak`)
       setStreakDays(response.data.streakDays || 0)
     } catch (error) {
       console.error('Error fetching streak:', error)
@@ -95,6 +118,9 @@ const MainView = ({ onClearAll }) => {
   const [expandedProviders, setExpandedProviders] = useState({})
   const [autoSmartProviders, setAutoSmartProviders] = useState({}) // Track which providers have auto smart enabled
   const [dropdownPositions, setDropdownPositions] = useState({}) // Store dropdown positions
+
+  // Shift the bottom bar up when a provider dropdown is open so model options are visible
+  const isAnyProviderExpanded = Object.values(expandedProviders).some(v => v)
   const [tooltipState, setTooltipState] = useState({ show: false, type: null, x: 0, y: 0 }) // Tooltip state
   const dropdownRefs = useRef({})
   const providerButtonRefs = useRef({})
@@ -104,28 +130,31 @@ const MainView = ({ onClearAll }) => {
     e.stopPropagation()
     e.preventDefault()
     
-    // Calculate dropdown position based on button position
+    const isCurrentlyExpanded = expandedProviders[providerKey]
+    
+    // Set an initial dropdown position above the button
     const buttonRef = providerButtonRefs.current[providerKey]
-    if (buttonRef) {
+    if (buttonRef && !isCurrentlyExpanded) {
       const rect = buttonRef.getBoundingClientRect()
+      // Position above the button by default (since buttons are at bottom of screen)
       setDropdownPositions((prev) => ({
         ...prev,
         [providerKey]: {
-          top: rect.bottom + window.scrollY + 8,
-          left: rect.left + window.scrollX,
-          width: rect.width,
+          top: rect.top - 8, // will be adjusted by height in useEffect
+          left: rect.left,
+          width: Math.max(rect.width, 220),
+          positionAbove: true,
         },
       }))
     }
     
     // Toggle the expanded state for this provider
     setExpandedProviders((prev) => {
-      const isCurrentlyExpanded = prev[providerKey]
-      // If clicking the same provider, close it. Otherwise, open this one and close others
-      if (isCurrentlyExpanded) {
+      const wasExpanded = prev[providerKey]
+      if (wasExpanded) {
         return {}
       } else {
-      return { [providerKey]: true }
+        return { [providerKey]: true }
       }
     })
   }
@@ -145,7 +174,6 @@ const MainView = ({ onClearAll }) => {
       return
     }
     
-    console.log('[handleProviderTabClick] Clicked provider:', providerKey)
     
     // Check if any models from this provider are already selected
     const selectedFromProvider = providerData.models.filter(model => 
@@ -218,6 +246,9 @@ const MainView = ({ onClearAll }) => {
       ...prev,
       [providerKey]: !prev[providerKey],
     }))
+
+    // Close dropdown and shift bar back down after toggling auto smart
+    setExpandedProviders({})
   }
 
   // Close dropdown when clicking outside
@@ -248,14 +279,23 @@ const MainView = ({ onClearAll }) => {
       Object.keys(expandedProviders).forEach((providerKey) => {
         if (expandedProviders[providerKey]) {
           const buttonRef = providerButtonRefs.current[providerKey]
+          const dropdownRef = dropdownRefs.current[providerKey]
           if (buttonRef) {
             const rect = buttonRef.getBoundingClientRect()
+            const dropdownHeight = dropdownRef ? dropdownRef.offsetHeight : 300
+            
+            let top = rect.top - dropdownHeight - 8
+            if (top < 10) {
+              top = rect.bottom + 8
+            }
+            
             setDropdownPositions((prev) => ({
               ...prev,
               [providerKey]: {
-                top: rect.bottom + window.scrollY + 8,
-                left: rect.left + window.scrollX,
-                width: rect.width,
+                top,
+                left: rect.left,
+                width: Math.max(rect.width, 220),
+                positionAbove: true,
               },
             }))
           }
@@ -273,8 +313,43 @@ const MainView = ({ onClearAll }) => {
     }
   }, [expandedProviders])
 
-  // Function to determine the best model for a provider based on prompt category
-  // getBestModelForProvider removed - now using Gemini 2.5 Flash Lite recommendations via detectCategory
+  // Recalculate dropdown positions after expanding
+  useEffect(() => {
+    if (!isAnyProviderExpanded) return
+
+    // Use a short delay to let the DOM update, then position the dropdown above the button
+    const timer = setTimeout(() => {
+      Object.keys(expandedProviders).forEach((providerKey) => {
+        if (expandedProviders[providerKey]) {
+          const buttonRef = providerButtonRefs.current[providerKey]
+          const dropdownRef = dropdownRefs.current[providerKey]
+          if (buttonRef) {
+            const rect = buttonRef.getBoundingClientRect()
+            const dropdownHeight = dropdownRef ? dropdownRef.offsetHeight : 300
+            
+            // Position above the button
+            let top = rect.top - dropdownHeight - 8
+            // If it would go above the viewport, position below instead
+            if (top < 10) {
+              top = rect.bottom + 8
+            }
+            
+            setDropdownPositions((prev) => ({
+              ...prev,
+              [providerKey]: {
+                top,
+                left: rect.left,
+                width: Math.max(rect.width, 220),
+                positionAbove: true,
+              },
+            }))
+          }
+        }
+      })
+    }, 50)
+
+    return () => clearTimeout(timer)
+  }, [isAnyProviderExpanded, expandedProviders]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tooltip content for model types
   const getModelTypeTooltip = (type) => {
@@ -334,11 +409,6 @@ const MainView = ({ onClearAll }) => {
     }, 100)
   }
 
-  // Auto-select is now handled in handleSubmit when the user actually submits the prompt
-
-
-  // Dropdown positioning is handled by absolute positioning within the container
-
   // Clean up selectedModels - remove any that don't exist in availableModels
   useEffect(() => {
     const validModelIds = availableModels.map(m => m.id)
@@ -356,12 +426,10 @@ const MainView = ({ onClearAll }) => {
       if (e.key !== 'Enter' || e.shiftKey) return
       
       // Don't trigger if user is focused on ANY input/textarea
-      // The element's own onKeyDown handler will take care of submission
       const activeElement = document.activeElement
       const tagName = activeElement?.tagName?.toLowerCase()
       
       if (tagName === 'input' || tagName === 'textarea') {
-        // Let the focused element's own handler deal with it
         return
       }
       
@@ -371,13 +439,11 @@ const MainView = ({ onClearAll }) => {
       // Check if any models are selected or Auto Smart is enabled
       const hasAutoSmart = Object.values(autoSmartProviders).some(v => v)
       if (selectedModels.length === 0 && !hasAutoSmart) {
-        // Show notification
         setShowNoModelNotification(true)
         setTimeout(() => setShowNoModelNotification(false), 4000)
         return
       }
       
-      // Prevent default Enter behavior and submit
       e.preventDefault()
       handleSubmitRef.current()
     }
@@ -390,60 +456,54 @@ const MainView = ({ onClearAll }) => {
   const handleSubmitRef = useRef(null)
 
   const toggleModel = (modelId) => {
-    // Find which provider this model belongs to
     const model = availableModels.find(m => m.id === modelId)
     if (!model || !model.provider) return
     
     const providerKey = model.provider
     
     if (selectedModels.includes(modelId)) {
-      // Deselecting: remove this model
       setSelectedModels(selectedModels.filter((id) => id !== modelId))
     } else {
-      // Selecting: first remove any other models from the same provider, then add this one
-      const otherModelsFromSameProvider = selectedModels.filter(id => {
-        const m = availableModels.find(am => am.id === id)
-        return m && m.provider === providerKey
-      })
-      
-      // Remove other models from same provider
       const newSelectedModels = selectedModels.filter(id => {
         const m = availableModels.find(am => am.id === id)
         return !m || m.provider !== providerKey
       })
       
-      // Add the new model
       setSelectedModels([...newSelectedModels, modelId])
       
-      // When a model is manually selected, disable Auto Smart for that provider
       setAutoSmartProviders((prev) => {
         const newState = { ...prev }
         delete newState[providerKey]
         return newState
       })
     }
+
+    // Close dropdown and shift bar back down after model selection
+    setExpandedProviders({})
   }
 
   const handleSubmit = async () => {
+    if (subscriptionRestricted) return
     if (!currentPrompt.trim()) return
 
-    // Check if any providers have Auto Smart enabled
     const providersWithAutoSmart = Object.entries(autoSmartProviders).filter(([_, isEnabled]) => isEnabled)
-    
-    // Check if we have any models selected (either manually or from Auto Smart)
     const hasSelectedModels = selectedModels.length > 0
     
-    // If no models selected and no Auto Smart enabled, can't submit
     if (!hasSelectedModels && providersWithAutoSmart.length === 0) {
       console.warn('[Submit] No models selected and no Auto Smart enabled')
       setShowNoModelNotification(true)
-      // Auto-hide after 4 seconds
       setTimeout(() => setShowNoModelNotification(false), 4000)
       return
     }
     
+    // Reset conversation state for new prompt
+    setConversationInput('')
+    setConversationContext([])
+    setConvoSavingState('idle')
+    setSaveAllState('idle')
+    setShowCouncilPanel(false)
+    
     if (providersWithAutoSmart.length > 0) {
-      // Build list of selected providers with their models
       const selectedProvidersData = providersWithAutoSmart.map(([providerKey]) => {
         const providerData = modelsByProvider[providerKey]
         return {
@@ -453,24 +513,15 @@ const MainView = ({ onClearAll }) => {
         }
       })
 
-      // Get model recommendations from Gemini 2.5 Flash Lite
       try {
         const detectionResult = await detectCategory(currentPrompt, selectedProvidersData)
         const { recommendedModels, recommendedModelType, rawResponse } = detectionResult
         
-        // Store raw response for display
-        setGpt4oMiniResponse(rawResponse || 'No response received')
+        setGeminiDetectionResponse(rawResponse || 'No response received')
         
-        console.log('[Auto Smart] Gemini 2.5 Flash Lite recommendations:', { recommendedModels, recommendedModelType })
-        
-        // Update selected models based on recommendations
-        // IMPORTANT: Start with an empty array, not existing selectedModels
-        // This ensures we only use Auto Smart selections, not previous manual selections
         let newSelectedModels = []
         let hasAutoSmartSelection = false
 
-        // Remove any existing models from Auto Smart providers (cleanup step)
-        // This ensures we don't have leftover models from previous selections
         const allProviderModelIds = new Set()
         providersWithAutoSmart.forEach(([providerKey]) => {
           const providerData = modelsByProvider[providerKey]
@@ -481,8 +532,6 @@ const MainView = ({ onClearAll }) => {
           }
         })
         
-        // Keep only models from providers that DON'T have Auto Smart enabled
-        // This preserves manual selections for providers without Auto Smart
         const providersWithoutAutoSmart = Object.keys(modelsByProvider).filter(
           providerKey => !autoSmartProviders[providerKey]
         )
@@ -497,10 +546,7 @@ const MainView = ({ onClearAll }) => {
           }
         })
 
-        // Priority: Use recommendedModelType for ALL Auto Smart providers
-        // Only use specific recommendedModels if they match the recommended type
         if (recommendedModelType) {
-          console.log(`[Auto Smart] Using recommendedModelType: "${recommendedModelType}" for all Auto Smart providers`)
           providersWithAutoSmart.forEach(([providerKey]) => {
             const providerData = modelsByProvider[providerKey]
             if (!providerData) {
@@ -508,50 +554,23 @@ const MainView = ({ onClearAll }) => {
               return
             }
             
-            console.log(`[Auto Smart] Processing ${providerKey}, available models:`, 
-              providerData.models.map(m => ({ id: m.id, type: m.type, label: m.label })))
-            
-            // Check if there's a specific recommendation for this provider
             const specificRecommendation = recommendedModels?.[providerKey]
             let modelToUse = null
             
             if (specificRecommendation) {
-              // Verify the specific recommendation matches the recommended type
               const recommendedModel = availableModels.find(m => m.id === specificRecommendation)
-              console.log(`[Auto Smart] Checking specific recommendation for ${providerKey}:`, {
-                recommended: specificRecommendation,
-                found: !!recommendedModel,
-                modelType: recommendedModel?.type,
-                requiredType: recommendedModelType,
-                matches: recommendedModel?.type === recommendedModelType
-              })
               
               if (recommendedModel && recommendedModel.type === recommendedModelType) {
-                // Use the specific recommendation if it matches the type
                 modelToUse = specificRecommendation
-                console.log(`[Auto Smart] ✓ Using specific recommendation ${modelToUse} for ${providerKey} (matches ${recommendedModelType} type)`)
-              } else {
-                // Specific recommendation doesn't match type, use type-based selection instead
-                console.log(`[Auto Smart] ✗ Specific recommendation ${specificRecommendation} (type: ${recommendedModel?.type}) doesn't match ${recommendedModelType} type, using type-based selection for ${providerKey}`)
               }
-            } else {
-              console.log(`[Auto Smart] No specific recommendation for ${providerKey}, using type-based selection`)
             }
             
-            // If no valid specific recommendation, use the recommended type
             if (!modelToUse) {
               const modelByType = providerData.models.find(m => m.type === recommendedModelType)
-              console.log(`[Auto Smart] Looking for ${recommendedModelType} model in ${providerKey}:`, {
-                found: !!modelByType,
-                modelId: modelByType?.id,
-                availableTypes: providerData.models.map(m => m.type)
-              })
               
               if (modelByType) {
                 modelToUse = modelByType.id
-                console.log(`[Auto Smart] ✓ Selected ${modelToUse} (${recommendedModelType} type) for ${providerKey}`)
               } else {
-                // Fallback: try versatile, then any available model
                 const versatileModel = providerData.models.find(m => m.type === 'versatile')
                 if (versatileModel) {
                   modelToUse = versatileModel.id
@@ -565,7 +584,6 @@ const MainView = ({ onClearAll }) => {
               }
             }
             
-            // Remove any existing model from this provider
             const existingModelIndex = newSelectedModels.findIndex(id => {
               const m = availableModels.find(am => am.id === id)
               return m && m.provider === providerKey
@@ -574,34 +592,25 @@ const MainView = ({ onClearAll }) => {
               newSelectedModels.splice(existingModelIndex, 1)
             }
             
-            // Add the selected model
             if (modelToUse && !newSelectedModels.includes(modelToUse)) {
               newSelectedModels.push(modelToUse)
               hasAutoSmartSelection = true
             }
           })
         } else {
-          // Fallback: Use specific recommendations if no type is recommended
           Object.entries(recommendedModels).forEach(([providerKey, modelId]) => {
             if (modelId && !newSelectedModels.includes(modelId)) {
               newSelectedModels.push(modelId)
               hasAutoSmartSelection = true
-              console.log(`[Auto Smart] Selected ${modelId} for ${providerKey} (no type recommendation, using specific)`)
             }
           })
         }
         
-        // Final deduplication check
         newSelectedModels = [...new Set(newSelectedModels)]
 
-        // If we got models from Auto Smart, use them; otherwise use existing selected models
         if (hasAutoSmartSelection || newSelectedModels.length > 0) {
-          // Ensure final deduplication
           const finalModels = [...new Set(newSelectedModels)]
-          console.log('[Auto Smart] Final models to submit:', finalModels)
           
-          // Clear Auto Smart for providers that now have models explicitly selected
-          // This prevents double-counting in the Clear Selected button
           const providersWithSelectedModels = new Set()
           finalModels.forEach(modelId => {
             const model = availableModels.find(m => m.id === modelId)
@@ -610,7 +619,6 @@ const MainView = ({ onClearAll }) => {
             }
           })
           
-          // Clear Auto Smart for providers that now have explicit model selections
           setAutoSmartProviders((prev) => {
             const newState = { ...prev }
             providersWithSelectedModels.forEach(providerKey => {
@@ -621,12 +629,10 @@ const MainView = ({ onClearAll }) => {
           
           setSelectedModels(finalModels)
           
-          // Wait for state to update, then trigger submit
           setTimeout(() => {
       triggerSubmit()
-          }, 100) // Increased timeout to ensure state updates
+          }, 100)
         } else {
-          // Auto Smart failed to select models, but we should still try if we have manually selected models
           if (selectedModels.length > 0) {
             triggerSubmit()
           } else {
@@ -636,7 +642,6 @@ const MainView = ({ onClearAll }) => {
         }
       } catch (error) {
         console.error('[Auto Smart] Error getting model recommendations:', error)
-        // Fall back to submitting with current models if we have any
         if (selectedModels.length > 0) {
           triggerSubmit()
         } else {
@@ -644,7 +649,6 @@ const MainView = ({ onClearAll }) => {
         }
       }
     } else {
-      // No auto smart enabled, submit immediately if models are selected
       if (selectedModels.length > 0) {
         triggerSubmit()
       }
@@ -654,83 +658,253 @@ const MainView = ({ onClearAll }) => {
   // Keep ref updated with latest handleSubmit
   handleSubmitRef.current = handleSubmit
 
+  // Save All: saves all council responses, judge summary, sources, and conversations
+  const handleSaveAll = async () => {
+    if (!currentUser?.id) {
+      alert('Please sign in to save conversations')
+      return
+    }
+    setSaveAllState('saving')
+    try {
+      const allResponses = responses.map(r => ({
+        modelName: r.modelName || r.model || '',
+        modelResponse: r.text || r.response || '',
+        conversation: [],
+      }))
+
+      const summaryData = useStore.getState().summary
+      const ragData = useStore.getState().ragDebugData
+
+      await axios.post(`${API_URL}/api/conversations/save`, {
+        userId: currentUser.id,
+        type: 'full',
+        originalPrompt: lastSubmittedPrompt || '',
+        category: lastSubmittedCategory || 'General',
+        responses: allResponses,
+        summary: summaryData ? {
+          text: summaryData.text || '',
+          originalPrompt: summaryData.originalPrompt || '',
+          singleModel: summaryData.singleModel || false,
+          modelName: summaryData.modelName || null,
+        } : null,
+        sources: ragData?.sources || ragData?.webResults || [],
+        facts: ragData?.facts || [],
+      })
+
+      setSaveAllState('saved')
+    } catch (error) {
+      console.error('[Save All] Error:', error)
+      if (error.response?.data?.alreadySaved) {
+        setSaveAllState('saved')
+      } else {
+        alert('Failed to save conversation. Please try again.')
+        setSaveAllState('idle')
+      }
+    }
+  }
+
+  // ---- Inline Conversation Handlers ---- //
+  
+  // Scroll to top when initial response/summary loads, scroll to bottom only for follow-up messages
+  const prevConvoLengthRef = useRef(0)
+  const lastScrolledPromptRef = useRef(null) // Track which prompt we already scrolled to top for
+  useEffect(() => {
+    const convoLength = summary?.conversationHistory?.length || 0
+    
+    if (convoLength > prevConvoLengthRef.current && convoLength > 0) {
+      // Follow-up conversation message added — scroll to bottom to see the new reply
+      setTimeout(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 150)
+    } else if (chatAreaRef.current && (summary || responses.length > 0)) {
+      // Only scroll to top ONCE per new prompt — don't re-scroll while the user is reading
+      const currentPromptKey = lastSubmittedPrompt + '|' + responses.length
+      if (lastScrolledPromptRef.current !== currentPromptKey) {
+        lastScrolledPromptRef.current = currentPromptKey
+        setTimeout(() => {
+          chatAreaRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+        }, 150)
+      }
+    }
+    
+    prevConvoLengthRef.current = convoLength
+  }, [summary?.text, summary?.conversationHistory?.length, responses.length, lastSubmittedPrompt])
+
+  // Fetch conversation context when summary appears
+  useEffect(() => {
+    if (summary && currentUser?.id) {
+      fetchConversationContext()
+    }
+  }, [summary?.text, currentUser?.id])
+
+  const fetchConversationContext = async () => {
+    if (!currentUser?.id) return
+    try {
+      const response = await axios.get(`${API_URL}/api/judge/context`, {
+        params: { userId: currentUser.id }
+      })
+      setConversationContext(response.data.context || [])
+    } catch (error) {
+      console.error('[MainView] Error fetching conversation context:', error)
+      setConversationContext([])
+    }
+  }
+
+  const handleSendConversation = async () => {
+    if (!conversationInput.trim() || !currentUser?.id || isSendingConvo) return
+    
+    setIsSendingConvo(true)
+    setIsSearchingInConvo(false)
+    
+    try {
+      // Check if web search is needed
+      const detectResponse = await axios.post(`${API_URL}/api/detect-search-needed`, {
+        query: conversationInput.trim(),
+        userId: currentUser.id
+      })
+      
+      if (detectResponse.data.needsSearch) {
+        setIsSearchingInConvo(true)
+      }
+      
+      const response = await axios.post(`${API_URL}/api/judge/conversation`, {
+        userId: currentUser.id,
+        userMessage: conversationInput.trim(),
+        conversationContext: conversationContext
+      })
+      
+      const initialSummary = summary.initialSummary || summary.text
+      
+      setSummary({
+        ...summary,
+        text: response.data.response,
+        summary: response.data.response,
+        initialSummary: initialSummary,
+        prompt: `${summary.prompt || ''}\n\nUser: ${conversationInput.trim()}`,
+        conversationHistory: [...(summary.conversationHistory || []), {
+          user: conversationInput.trim(),
+          assistant: response.data.response,
+          timestamp: Date.now()
+        }]
+      })
+      
+      setConversationInput('')
+      
+      // Handle RAG debug data updates
+      const store = useStore.getState()
+      if (response.data.debugData && response.data.usedSearch) {
+        const existingDebugData = store.ragDebugData || {}
+        store.setRAGDebugData({
+          ...existingDebugData,
+          search: response.data.debugData.search,
+          refiner: response.data.debugData.refiner,
+          categoryDetection: response.data.debugData.categoryDetection,
+          conversationContext: existingDebugData.conversationContext || []
+        })
+        
+        if (response.data.searchResults && response.data.searchResults.length > 0) {
+          store.setShowFactsWindow(true)
+        }
+      }
+      
+      // Refresh context
+      setTimeout(async () => {
+        await fetchConversationContext()
+        const ragDebugData = store.ragDebugData
+        if (ragDebugData && currentUser?.id) {
+          try {
+            const contextResponse = await axios.get(`${API_URL}/api/judge/context`, {
+              params: { userId: currentUser.id }
+            })
+            const updatedContext = contextResponse.data.context || []
+            store.setRAGDebugData({
+              ...ragDebugData,
+              conversationContext: updatedContext
+            })
+          } catch (error) {
+            console.error('[MainView] Error updating debug pipeline context:', error)
+          }
+        }
+      }, 500)
+    } catch (error) {
+      console.error('[MainView] Error sending conversation:', error)
+      alert('Failed to send message. Please try again.')
+    } finally {
+      setIsSendingConvo(false)
+      setIsSearchingInConvo(false)
+    }
+  }
+
+  const handleSaveConversation = async () => {
+    if (!currentUser?.id || !summary) return
+    setConvoSavingState('saving')
+    try {
+      const conversation = conversationContext.map(ctx => ([
+        { role: 'user', text: ctx.user, timestamp: ctx.timestamp },
+        { role: 'assistant', text: ctx.judge || ctx.assistant, timestamp: ctx.timestamp },
+      ])).flat()
+
+      await axios.post(`${API_URL}/api/conversations/save`, {
+        userId: currentUser.id,
+        type: 'individual',
+        originalPrompt: summary.originalPrompt || lastSubmittedPrompt || '',
+        category: lastSubmittedCategory || 'General',
+        modelName: summary.singleModel ? (summary.modelName || 'Single Model') : 'Judge Summary',
+        modelResponse: summary.text || '',
+        conversation,
+      })
+      setConvoSavingState('saved')
+    } catch (error) {
+      console.error('[Save] Error saving summary:', error)
+      if (error.response?.data?.alreadySaved) {
+        setConvoSavingState('saved')
+      } else {
+        alert('Failed to save. Please try again.')
+        setConvoSavingState('idle')
+      }
+    }
+  }
+
+  // Auto-grow conversation textarea
+  const adjustConvoTextarea = () => {
+    const textarea = convoTextareaRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+      textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px'
+    }
+  }
+
+  // ---- Computed values for inline display ---- //
+  const hasActiveConversation = !!(lastSubmittedPrompt && (responses.length > 0 || summary))
+  const inlineResponseText = summary
+    ? (summary.singleModel && summary.summary ? summary.summary : (summary.initialSummary || summary.text))
+    : (responses.length === 1 ? responses[0].text : null)
+  const inlineResponseLabel = summary
+    ? (summary.singleModel ? (summary.modelName || 'Model') : 'Summary')
+    : (responses.length === 1 ? (responses[0].modelName || 'Model') : null)
+  const showConversationInput = summary && !summary.singleModel
+  const bottomBarStyle = {
+    flexShrink: 0,
+    padding: '12px 40px 20px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    borderTop: hasActiveConversation ? `1px solid ${currentTheme.borderLight}` : 'none',
+    background: currentTheme.background,
+    ...(hasActiveConversation
+      ? {}
+      : {
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '100%',
+          zIndex: 20,
+        }),
+  }
+
   return (
     <>
-      {/* Debug Windows Container - Top Row */}
-      <div
-        style={{
-          position: 'fixed',
-          top: '20px',
-          left: '20px',
-          right: '20px',
-          display: 'flex',
-          gap: '12px',
-          zIndex: 10000,
-          flexWrap: 'wrap',
-          alignItems: 'flex-start',
-        }}
-      >
-        {/* GPT-4o-mini Response Display Window - Hidden for now, code kept for future use */}
-        {false && gpt4oMiniResponse && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            style={{
-              width: '400px',
-              maxHeight: '500px',
-              background: currentTheme.backgroundOverlay,
-              border: `2px solid ${currentTheme.accent}`,
-              borderRadius: '12px',
-              padding: '20px',
-              boxShadow: `0 4px 20px ${currentTheme.shadow}`,
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-              flexShrink: 0,
-            }}
-          >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ color: currentTheme.accent, fontSize: '1.1rem', margin: 0, fontWeight: 'bold' }}>
-              GPT-4o-mini Response
-            </h3>
-            <button
-              onClick={() => clearGpt4oMiniResponse()}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#ff6b6b',
-                cursor: 'pointer',
-                padding: '4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <X size={20} />
-            </button>
-          </div>
-          <div
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              color: currentTheme.textSecondary,
-              fontSize: '0.85rem',
-              fontFamily: 'monospace',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              padding: '12px',
-              background: 'rgba(0, 255, 255, 0.05)',
-              borderRadius: '8px',
-              border: '1px solid rgba(0, 255, 255, 0.2)',
-            }}
-          >
-            {gpt4oMiniResponse}
-          </div>
-        </motion.div>
-        )}
-      </div>
-
       <style>
         {`
           .model-dropdown::-webkit-scrollbar {
@@ -741,13 +915,12 @@ const MainView = ({ onClearAll }) => {
             border-radius: 4px;
           }
           .model-dropdown::-webkit-scrollbar-thumb {
-            background: rgba(0, 255, 255, 0.5);
+            background: rgba(93, 173, 226, 0.5);
             border-radius: 4px;
           }
           .model-dropdown::-webkit-scrollbar-thumb:hover {
-            background: rgba(0, 255, 255, 0.7);
+            background: rgba(93, 173, 226, 0.7);
           }
-          /* Horizontal scrollbar for provider tabs */
           .provider-tabs-container::-webkit-scrollbar {
             height: 8px;
           }
@@ -756,11 +929,27 @@ const MainView = ({ onClearAll }) => {
             border-radius: 4px;
           }
           .provider-tabs-container::-webkit-scrollbar-thumb {
-            background: rgba(0, 255, 255, 0.5);
+            background: rgba(93, 173, 226, 0.5);
             border-radius: 4px;
           }
           .provider-tabs-container::-webkit-scrollbar-thumb:hover {
-            background: rgba(0, 255, 255, 0.7);
+            background: rgba(93, 173, 226, 0.7);
+          }
+          .chat-area::-webkit-scrollbar {
+            width: 6px;
+          }
+          .chat-area::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .chat-area::-webkit-scrollbar-thumb {
+            background: rgba(128, 128, 128, 0.3);
+            border-radius: 3px;
+          }
+          .chat-area::-webkit-scrollbar-thumb:hover {
+            background: rgba(128, 128, 128, 0.5);
+          }
+          .main-prompt-input::placeholder {
+            color: ${currentTheme.textMuted};
           }
         `}
       </style>
@@ -768,718 +957,915 @@ const MainView = ({ onClearAll }) => {
         style={{
           position: 'fixed',
           top: 0,
-          left: 0,
-          width: '100%',
+          left: navWidth,
+          width: `calc(100% - ${navWidth})`,
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'flex-start',
-          padding: '40px',
-          paddingTop: '180px', // Moved down further
-          paddingLeft: '260px', // Account for nav bar
+          transition: 'left 0.3s ease, width 0.3s ease',
           zIndex: 10,
-          overflowY: 'auto',
         }}
       >
+        {/* ===== SCROLLABLE CHAT AREA ===== */}
       <div
+          ref={chatAreaRef}
+          className="chat-area"
         style={{
-          width: '100%',
-          maxWidth: '1200px',
+            flex: 1,
+            overflowY: 'auto',
+            padding: '100px 40px 20px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '16px',
-        }}
-      >
-        {/* Header */}
-        <div style={{ marginBottom: '8px' }}>
-          <div>
-          <h1
-            key={`title-${theme}`}
-            style={{
-              fontSize: '2rem',
-              marginBottom: '8px',
-              color: currentTheme.accent,
-              background: currentTheme.accentGradient,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              display: 'inline-block',
-            }}
-          >
-            Welcome to the Council of the LLMs
-          </h1>
-          <p style={{ color: currentTheme.textSecondary, fontSize: '0.95rem' }}>
-            Select models and enter your prompt to compare responses side-by-side and a summary of the responses
+          }}
+        >
+          <div style={{ maxWidth: '800px', width: '100%', margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
+            
+            {/* Welcome header removed - title now lives in provider tab */}
+
+            {/* ===== CONVERSATION FLOW ===== */}
+            {hasActiveConversation && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', paddingTop: '20px', paddingBottom: '20px' }}>
+                
+                {/* User Prompt Bubble */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <div style={{
+                    maxWidth: '75%',
+                    background: currentTheme.buttonBackground,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '16px 16px 4px 16px',
+                    padding: '12px 18px',
+                  }}>
+                    <div style={{
+                      fontSize: '0.7rem',
+                      fontWeight: '600',
+                      color: currentTheme.text,
+                      marginBottom: '4px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      You
+                    </div>
+                    <p style={{
+                      color: currentTheme.text,
+                      lineHeight: '1.6',
+                      fontSize: '1rem',
+                      whiteSpace: 'pre-wrap',
+                      margin: 0,
+                    }}>
+                      {lastSubmittedPrompt}
           </p>
           </div>
         </div>
 
-        {/* Prompt Input */}
-        <div
-            style={{
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            marginBottom: '20px',
-          }}
-        >
-          {/* Web Searching Icon - Top Right Corner (to the left of streak) */}
-          {isSearchingWeb && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '12px',
-                right: streakDays > 0 ? '140px' : '12px', // Position to left of streak if streak exists
+                {/* Response - Free flowing text, NO container/border */}
+                {inlineResponseText && (
+                  <div style={{ padding: '4px 0 0 4px' }}>
+                    <div style={{
+                      marginBottom: '14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '12px',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FileText size={16} color={currentTheme.accent} />
+                        <span style={{
+                          color: currentTheme.accent,
+                          fontSize: '0.8rem',
+                          fontWeight: '600',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                        }}>
+                          {inlineResponseLabel}
+                        </span>
+                      </div>
+                      
+                    </div>
+                    <div style={{
+                      color: currentTheme.textSecondary,
+                      lineHeight: '1.85',
+                      fontSize: '1rem',
+                      whiteSpace: 'pre-wrap',
+                      margin: 0,
+                    }}>
+                      {inlineResponseText}
+                    </div>
+                  </div>
+                )}
+
+                {/* Conversation History */}
+                {summary?.conversationHistory && summary.conversationHistory.length > 0 && (
+                  summary.conversationHistory.map((exchange, idx) => (
+                    <React.Fragment key={`convo-${idx}`}>
+                      {/* User follow-up bubble */}
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <div style={{
+                          maxWidth: '75%',
+                          background: currentTheme.buttonBackground,
+                          border: `1px solid ${currentTheme.borderLight}`,
+                          borderRadius: '16px 16px 4px 16px',
+                          padding: '12px 18px',
+                        }}>
+                          <div style={{
+                            fontSize: '0.7rem',
+                            fontWeight: '600',
+                            color: currentTheme.text,
+                            marginBottom: '4px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                          }}>
+                            You
+                          </div>
+                          <p style={{
+                            color: currentTheme.text,
+                            lineHeight: '1.6',
+                            fontSize: '1rem',
+                            whiteSpace: 'pre-wrap',
+                            margin: 0,
+                          }}>
+                            {exchange.user}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Response - free flowing */}
+                      <div style={{ padding: '4px 0 0 4px' }}>
+                        <div style={{
+                          marginBottom: '10px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '4px',
-                background: 'transparent',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '6px 10px',
-                zIndex: 10,
-              }}
-            >
+                          gap: '6px',
+                        }}>
+                          <span style={{
+                            color: currentTheme.accent,
+                            fontSize: '0.8rem',
+                            fontWeight: '600',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                          }}>
+                            Response
+                          </span>
+                        </div>
+                        <div style={{
+                          color: currentTheme.textSecondary,
+                          lineHeight: '1.85',
+                          fontSize: '1rem',
+                          whiteSpace: 'pre-wrap',
+                          margin: 0,
+                        }}>
+                          {exchange.assistant || exchange.judge}
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  ))
+                )}
+
+                {/* Fetching Response Indicator */}
+                {isSendingConvo && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '12px 16px',
+                      maxWidth: '85%',
+                    }}
+                  >
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        border: `2px solid ${currentTheme.borderLight}`,
+                        borderTop: `2px solid ${currentTheme.accent}`,
+                        borderRadius: '50%',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{
+                      fontSize: '0.85rem',
+                      color: currentTheme.textMuted,
+                      fontStyle: 'italic',
+                    }}>
+                      Fetching response...
+                    </span>
+                  </motion.div>
+                )}
+
+                {/* Inline Conversation Continuation Input */}
+                {showConversationInput && (
+                  <div style={{ padding: '8px 0 0 0' }}>
+                    {/* Web Search Indicator */}
+                    {isSearchingInConvo && (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  color: currentTheme.accent,
-                  fontSize: '0.75rem',
-                  fontWeight: 'bold',
+                          marginBottom: '10px',
+                          padding: '6px 12px',
+                          background: currentTheme.buttonBackground,
+                          borderRadius: '20px',
+                          width: 'fit-content',
                 }}
               >
                 <Search size={14} color={currentTheme.accent} />
-                <span>Searching the web</span>
+                        <span style={{ 
+                          fontSize: '0.85rem', 
+                          color: currentTheme.text,
+                          background: currentTheme.accentGradient,
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent',
+                        }}>
+                          Searching the web
+                        </span>
                 <motion.span
                   animate={{ opacity: [1, 0.3, 1] }}
-                  transition={{
-                    duration: 1.5,
-                    repeat: Infinity,
-                    ease: 'easeInOut'
+                          transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                          style={{
+                            background: currentTheme.accentGradient,
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
                   }}
                 >
                   ...
                 </motion.span>
               </motion.div>
-            </div>
-          )}
+                    )}
+                    {(responses.length > 0 && lastSubmittedPrompt) && (
+                      <div style={{ display: 'flex', justifyContent: 'stretch', gap: '6px', marginBottom: '8px', width: '100%' }}>
+                        {/* Clear Summary Button */}
+                        <motion.button
+                          onClick={() => {
+                            clearResponses()
+                            clearLastSubmittedPrompt()
+                            // Clear judge conversation context
+                            if (currentUser?.id) {
+                              axios.post(`${API_URL}/api/judge/clear-context`, {
+                                userId: currentUser.id
+                              }).catch(err => console.error('[Clear Context] Error:', err))
+                            }
+                            // Reset inline conversation state
+                            setConversationInput('')
+                            setConversationContext([])
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '4px 6px',
+                            background: theme === 'light' ? 'rgba(255, 59, 48, 0.85)' : 'rgba(255, 59, 48, 0.15)',
+                            border: theme === 'light' ? '1px solid rgba(200, 40, 30, 0.8)' : '1px solid rgba(255, 59, 48, 0.4)',
+                            borderRadius: '12px',
+                            color: theme === 'light' ? '#fff' : '#ff6b6b',
+                            fontSize: '0.7rem',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            transition: 'all 0.2s ease',
+                            whiteSpace: 'nowrap',
+                            height: '28px',
+                          }}
+                          whileHover={{ 
+                            background: theme === 'light' ? 'rgba(255, 40, 30, 0.95)' : 'rgba(255, 59, 48, 0.25)',
+                          }}
+                          whileTap={{ scale: 0.96 }}
+                          title="Clear summary and all council responses"
+                        >
+                          <Trash2 size={12} />
+                          Clear Summary
+                        </motion.button>
 
-          {/* Streak Icon - Top Right Corner of Prompt Container */}
-          {streakDays > 0 && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '12px',
-                right: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                background: 'transparent',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '6px 10px',
-                zIndex: 10,
-              }}
-            >
-              <Flame size={14} color="#FF6B00" /> {/* Keep orange for streak */}
-              <span style={{ color: '#FF6B00', fontSize: '0.75rem', fontWeight: 'bold' }}> {/* Keep orange for streak */}
-                {streakDays} day streak
-              </span>
-            </div>
-          )}
+                        <motion.button
+                          onClick={() => {
+                            if (!currentUser?.id) {
+                              alert('Please sign in to submit prompts to the leaderboard')
+                              return
+                            }
+                            setShowVotingConfirm(true)
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '4px 6px',
+                            background: theme === 'light' ? 'rgba(255, 140, 0, 0.85)' : 'rgba(255, 170, 0, 0.15)',
+                            border: theme === 'light' ? '1px solid rgba(200, 100, 0, 0.8)' : '1px solid rgba(255, 170, 0, 0.4)',
+                            borderRadius: '12px',
+                            color: theme === 'light' ? '#fff' : '#ffaa00',
+                            fontSize: '0.7rem',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            transition: 'all 0.2s ease',
+                            whiteSpace: 'nowrap',
+                            height: '28px',
+                          }}
+                          whileHover={{ 
+                            background: theme === 'light' ? 'rgba(255, 120, 0, 0.95)' : 'rgba(255, 170, 0, 0.25)',
+                          }}
+                          whileTap={{ scale: 0.96 }}
+                        >
+                          <Trophy size={12} />
+                          Post Prompt
+                        </motion.button>
 
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '12px',
-              height: '28px',
-            }}
-          >
-            <label
-              style={{
-              color: currentTheme.text,
-              fontSize: '1.1rem',
-              fontWeight: '500',
-            }}
-            >
-              Enter your prompt
-            </label>
-          </div>
-          <textarea
-            className="main-prompt-input"
-            value={currentPrompt}
-            onChange={(e) => setCurrentPrompt(e.target.value)}
-            placeholder="Type your prompt here... (Enter to submit, Shift+Enter for new line)"
+                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
+                          <motion.button
+                            onClick={handleSaveAll}
+                            disabled={saveAllState === 'saving' || saveAllState === 'saved'}
+                            style={{
+                              flex: 1,
+                              padding: '4px 6px',
+                              background: saveAllState === 'saved'
+                                ? 'rgba(0, 200, 100, 0.18)'
+                                : theme === 'light' ? 'rgba(59, 130, 246, 0.85)' : 'rgba(59, 130, 246, 0.15)',
+                              border: saveAllState === 'saved'
+                                ? '1px solid rgba(0, 200, 100, 0.45)'
+                                : theme === 'light' ? '1px solid rgba(37, 99, 235, 0.8)' : '1px solid rgba(59, 130, 246, 0.4)',
+                              borderRadius: '12px',
+                              color: saveAllState === 'saved'
+                                ? '#00c864'
+                                : theme === 'light' ? '#fff' : '#60a5fa',
+                              fontSize: '0.7rem',
+                              fontWeight: '500',
+                              cursor: (saveAllState === 'saving' || saveAllState === 'saved') ? 'not-allowed' : 'pointer',
+                              opacity: saveAllState === 'saving' ? 0.6 : 1,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px',
+                              transition: 'all 0.2s ease',
+                              whiteSpace: 'nowrap',
+                              height: '28px',
+                            }}
+                            whileHover={(saveAllState !== 'saving' && saveAllState !== 'saved') ? { 
+                              background: saveAllState === 'saved' ? 'rgba(0, 200, 100, 0.28)' : theme === 'light' ? 'rgba(37, 99, 235, 0.95)' : 'rgba(59, 130, 246, 0.25)',
+                            } : {}}
+                            whileTap={(saveAllState !== 'saving' && saveAllState !== 'saved') ? { scale: 0.96 } : {}}
+                            title={saveAllState === 'saved' ? 'Already saved' : 'Save all council responses'}
+                          >
+                            <Save size={12} />
+                            {saveAllState === 'saving' ? 'Saving...' : saveAllState === 'saved' ? 'Saved!' : 'Save Council'}
+                          </motion.button>
+                          <div
+                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
+                            onMouseEnter={() => setShowSaveAllTooltip(true)}
+                            onMouseLeave={() => setShowSaveAllTooltip(false)}
+                          >
+                            <Info size={10} color={currentTheme.textMuted} />
+                            {showSaveAllTooltip && (
+                              <div style={{
+                                position: 'absolute',
+                                bottom: '16px',
+                                right: 0,
+                                background: currentTheme.backgroundOverlay,
+                                border: `1px solid ${currentTheme.borderLight}`,
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                fontSize: '0.7rem',
+                                color: currentTheme.textSecondary,
+                                width: '180px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                zIndex: 100,
+                              }}>
+                                Save all model responses from this session as one bundle.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
+                          <motion.button
+                            onClick={handleSaveConversation}
+                            disabled={convoSavingState === 'saving' || convoSavingState === 'saved'}
+                            style={{
+                              flex: 1,
+                              padding: '4px 6px',
+                              background: convoSavingState === 'saved' ? 'rgba(0, 200, 100, 0.18)' : currentTheme.buttonBackground,
+                              border: `1px solid ${convoSavingState === 'saved' ? 'rgba(0, 200, 100, 0.45)' : currentTheme.borderLight}`,
+                              borderRadius: '12px',
+                              color: convoSavingState === 'saved' ? '#00c864' : currentTheme.accent,
+                              fontSize: '0.7rem',
+                              fontWeight: '500',
+                              cursor: (convoSavingState === 'saving' || convoSavingState === 'saved') ? 'not-allowed' : 'pointer',
+                              opacity: convoSavingState === 'saving' ? 0.6 : 1,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px',
+                              whiteSpace: 'nowrap',
+                              height: '28px',
+                            }}
+                            whileHover={(convoSavingState !== 'saving' && convoSavingState !== 'saved') ? { scale: 1.02 } : {}}
+                            title={convoSavingState === 'saved' ? 'Already saved' : 'Save the summary conversation'}
+                          >
+                            <Save size={12} />
+                            {convoSavingState === 'saving' ? 'Saving...' : convoSavingState === 'saved' ? 'Saved!' : 'Save Convo'}
+                          </motion.button>
+                          <div
+                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
+                            onMouseEnter={() => setShowConvoSaveTooltip(true)}
+                            onMouseLeave={() => setShowConvoSaveTooltip(false)}
+                          >
+                            <Info size={10} color={currentTheme.textMuted} />
+                            {showConvoSaveTooltip && (
+                              <div style={{
+                                position: 'absolute',
+                                bottom: '16px',
+                                right: 0,
+                                background: currentTheme.backgroundOverlay,
+                                border: `1px solid ${currentTheme.borderLight}`,
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                fontSize: '0.7rem',
+                                color: currentTheme.textSecondary,
+                                width: '180px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                zIndex: 100,
+                              }}>
+                                Save the summary judge conversation and its history.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Council Responses toggle button */}
+                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
+                          <motion.button
+                            onClick={toggleCouncilPanel}
+                            style={{
+                              flex: 1,
+                              padding: '4px 6px',
+                              background: showCouncilPanel 
+                                ? (theme === 'light' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.2)')
+                                : currentTheme.buttonBackground,
+                              border: `1px solid ${showCouncilPanel ? 'rgba(59, 130, 246, 0.5)' : currentTheme.borderLight}`,
+                              borderRadius: '12px',
+                              color: showCouncilPanel ? '#60a5fa' : currentTheme.textSecondary,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px',
+                              transition: 'all 0.2s ease',
+                              whiteSpace: 'nowrap',
+                              height: '28px',
+                              fontSize: '0.7rem',
+                              fontWeight: '500',
+                            }}
+                            whileHover={{ 
+                              background: showCouncilPanel 
+                                ? (theme === 'light' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.3)')
+                                : (theme === 'light' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.15)'),
+                            }}
+                            whileTap={{ scale: 0.96 }}
+                            title={showCouncilPanel ? 'Hide Council Responses' : 'Show Council Responses'}
+                          >
+                            <LayoutGrid size={12} />
+                            {showCouncilPanel ? 'Hide Council' : 'Show Council'}
+                          </motion.button>
+                          <div
+                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
+                            onMouseEnter={() => setShowCouncilTooltip(true)}
+                            onMouseLeave={() => setShowCouncilTooltip(false)}
+                          >
+                            <Info size={10} color={currentTheme.textMuted} />
+                            {showCouncilTooltip && (
+                              <div style={{
+                                position: 'absolute',
+                                bottom: '16px',
+                                right: 0,
+                                background: currentTheme.backgroundOverlay,
+                                border: `1px solid ${currentTheme.borderLight}`,
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                fontSize: '0.7rem',
+                                color: currentTheme.textSecondary,
+                                width: '180px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                zIndex: 100,
+                              }}>
+                                Toggle the council panel to view individual responses from each AI model.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                      <div style={{ flex: 1, position: 'relative' }}>
+                        <textarea
+                          ref={convoTextareaRef}
+                          value={conversationInput}
+                          onChange={(e) => {
+                            setConversationInput(e.target.value)
+                            adjustConvoTextarea()
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault()
+                              handleSendConversation()
+                            }
+                          }}
+                          placeholder="Continue the conversation..."
+                          disabled={isSendingConvo}
             style={{
               width: '100%',
-              minHeight: '200px',
-              height: '200px',
-              padding: '20px',
-              paddingRight: '60px', // Make room for the send button
+                            minHeight: '48px',
+                            maxHeight: '150px',
+                            padding: '12px 48px 12px 18px',
               background: currentTheme.buttonBackground,
               border: `1px solid ${currentTheme.borderLight}`,
-              borderRadius: '12px',
+                            borderRadius: '24px',
               color: currentTheme.text,
-              fontSize: '1rem',
+                            fontSize: '0.95rem',
+                            resize: 'none',
               fontFamily: 'inherit',
-              resize: 'vertical',
-              lineHeight: '1.6',
-            }}
-            onKeyDown={(e) => {
-              // Submit on Enter (unless Shift is held for new line)
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault() // Prevent default newline
-                const hasAutoSmart = Object.values(autoSmartProviders).some(enabled => enabled)
-                if (currentPrompt.trim()) {
-                  if (selectedModels.length > 0 || hasAutoSmart) {
-                    handleSubmit()
-                  } else {
-                    // Show notification when trying to submit without models
-                    setShowNoModelNotification(true)
-                    setTimeout(() => setShowNoModelNotification(false), 4000)
-                  }
-                }
-              }
-            }}
-          />
-          {/* Send Icon Button - Bottom Right Corner */}
-          {(() => {
-            const hasAutoSmart = Object.values(autoSmartProviders).some(enabled => enabled)
-            const hasModels = selectedModels.length > 0 || hasAutoSmart
-            const canSubmit = currentPrompt.trim() && hasModels
-            const hasPromptOnly = currentPrompt.trim() && !hasModels
-            
-            return (
+                            outline: 'none',
+                            lineHeight: '1.5',
+                            overflow: 'hidden',
+                          }}
+                        />
           <motion.button
-            onClick={() => {
-              if (canSubmit) {
-                handleSubmit()
-              } else if (hasPromptOnly) {
-                // Show notification when trying to submit without models
-                setShowNoModelNotification(true)
-                setTimeout(() => setShowNoModelNotification(false), 4000)
-              }
-            }}
+                          onClick={handleSendConversation}
+                          disabled={!conversationInput.trim() || isSendingConvo}
             style={{
               position: 'absolute',
-              bottom: '16px',
-              right: '16px',
-              width: '44px',
-              height: '44px',
-              borderRadius: '50%',
-                  background: canSubmit
-                  ? currentTheme.accentGradient
-                  : hasPromptOnly 
-                    ? 'rgba(255, 170, 0, 0.5)'
-                    : 'rgba(128, 128, 128, 0.3)',
+                            right: '8px',
+                            bottom: '8px',
+                            background: 'transparent',
               border: 'none',
-                  color: canSubmit ? (theme === 'dark' ? '#000000' : '#ffffff') : hasPromptOnly ? '#ffffff' : currentTheme.textMuted,
-                  cursor: (canSubmit || hasPromptOnly) ? 'pointer' : 'not-allowed',
+                            color: conversationInput.trim() && !isSendingConvo ? currentTheme.accent : currentTheme.textMuted,
+                            cursor: conversationInput.trim() && !isSendingConvo ? 'pointer' : 'not-allowed',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-                  boxShadow: canSubmit
-                  ? `0 4px 12px ${currentTheme.shadow}`
-                  : 'none',
               transition: 'all 0.2s ease',
-              zIndex: 10,
-            }}
-            whileHover={
-                  (canSubmit || hasPromptOnly)
-                ? { scale: 1.1, boxShadow: `0 6px 16px ${currentTheme.shadow}` }
-                : {}
-            }
-                whileTap={(canSubmit || hasPromptOnly) ? { scale: 0.95 } : {}}
-          >
-            <Send size={20} />
+                          }}
+                          whileHover={conversationInput.trim() && !isSendingConvo ? { scale: 1.1 } : {}}
+                          whileTap={conversationInput.trim() && !isSendingConvo ? { scale: 0.95 } : {}}
+                        >
+                          <Send size={16} />
           </motion.button>
-            )
-          })()}
-          
-          {/* Submit to Leaderboard Button - Only show after prompt has been submitted (responses exist) */}
-          {responses.length > 0 && lastSubmittedPrompt && (
-            <div
-              style={{
-                position: 'absolute',
-                bottom: '16px',
-                left: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                zIndex: 10,
-              }}
-            >
-              <motion.button
-                onClick={() => {
-                  if (!currentUser?.id) {
-                    alert('Please sign in to submit prompts to the leaderboard')
-                    return
-                  }
-                  setShowVotingConfirm(true)
-                }}
-                style={{
-                  padding: '8px 16px',
-                  background: theme === 'light' ? 'rgba(255, 140, 0, 0.85)' : 'rgba(255, 170, 0, 0.2)',
-                  border: theme === 'light' ? '1px solid rgba(200, 100, 0, 0.8)' : '1px solid rgba(255, 170, 0, 0.5)',
-                  borderRadius: '8px',
-                  color: theme === 'light' ? '#fff' : '#ffaa00',
-                  fontSize: '0.85rem',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'all 0.2s ease',
-                }}
-                whileHover={{ 
-                  background: theme === 'light' ? 'rgba(255, 120, 0, 0.95)' : 'rgba(255, 170, 0, 0.3)',
-                  borderColor: theme === 'light' ? 'rgba(180, 80, 0, 0.9)' : 'rgba(255, 170, 0, 0.7)',
-                }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Trophy size={16} />
-                Submit for Voting
-              </motion.button>
-              
-              {/* Voting Confirmation Popup */}
-              <AnimatePresence>
-                {showVotingConfirm && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                    transition={{ duration: 0.15 }}
-                    style={{
-                      position: 'absolute',
-                      bottom: '50px',
-                      left: '0',
-                      background: currentTheme.backgroundOverlay,
-                      border: `1px solid rgba(255, 170, 0, 0.5)`,
-                      borderRadius: '12px',
-                      padding: '16px 20px',
-                      boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
-                      zIndex: 100,
-                      minWidth: '280px',
-                    }}
-                  >
-                    <p style={{ 
-                      color: currentTheme.text, 
-                      margin: '0 0 12px 0', 
-                      fontSize: '0.9rem',
-                      lineHeight: '1.4'
-                    }}>
-                      Submit this prompt and responses to the leaderboard for voting?
-                    </p>
-                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                      <motion.button
-                        onClick={() => setShowVotingConfirm(false)}
-                        style={{
-                          padding: '8px 16px',
-                          background: 'transparent',
-                          border: `1px solid ${currentTheme.borderLight}`,
-                          borderRadius: '6px',
-                          color: currentTheme.textSecondary,
-                          fontSize: '0.85rem',
-                          cursor: 'pointer',
-                        }}
-                        whileHover={{ background: currentTheme.buttonBackgroundHover }}
-                      >
-                        Cancel
-                      </motion.button>
-                      <motion.button
-                        onClick={async () => {
-                          setIsSubmittingToVote(true)
-                          try {
-                            // Prepare facts and sources from RAG debug data
-                            let facts = null
-                            let sources = null
-                            
-                            if (ragDebugData) {
-                              // Extract facts with citations from refined data
-                              if (ragDebugData.refiner?.primary?.facts_with_citations) {
-                                facts = ragDebugData.refiner.primary.facts_with_citations.map(f => ({
-                                  fact: f.fact,
-                                  source_quote: f.source_quote || null,
-                                }))
-                              } else if (ragDebugData.refiner?.backup?.facts_with_citations) {
-                                facts = ragDebugData.refiner.backup.facts_with_citations.map(f => ({
-                                  fact: f.fact,
-                                  source_quote: f.source_quote || null,
-                                }))
-                              }
-                              
-                              // Extract search results (sources)
-                              if (ragDebugData.search?.results && Array.isArray(ragDebugData.search.results)) {
-                                sources = ragDebugData.search.results.map(s => ({
-                                  title: s.title,
-                                  link: s.link,
-                                  snippet: s.snippet,
-                                }))
-                              }
-                            }
-                            
-                            const response = await axios.post('http://localhost:3001/api/leaderboard/submit', {
-                              userId: currentUser.id,
-                              promptText: lastSubmittedPrompt.trim(),
-                              category: lastSubmittedCategory || 'General Knowledge/Other',
-                              responses: responses.length > 0 ? responses.map(r => ({
-                                modelName: r.modelName,
-                                actualModelName: r.actualModelName,
-                                originalModelName: r.originalModelName,
-                                text: r.text,
-                                error: r.error || false,
-                                tokens: r.tokens || null,
-                              })) : null,
-                              summary: summary || null,
-                              facts: facts,
-                              sources: sources,
-                            })
-                            
-                            if (response.data.success) {
-                              setShowVotingConfirm(false)
-                              // Successfully submitted - no alert needed
-                            }
-                          } catch (error) {
-                            console.error('Error submitting to leaderboard:', error)
-                            // Only show alert on error so user knows something went wrong
-                            alert(error.response?.data?.error || 'Failed to submit prompt to leaderboard')
-                          } finally {
-                            setIsSubmittingToVote(false)
-                          }
-                        }}
-                        disabled={isSubmittingToVote}
-                        style={{
-                          padding: '8px 16px',
-                          background: 'rgba(255, 170, 0, 0.3)',
-                          border: '1px solid rgba(255, 170, 0, 0.6)',
-                          borderRadius: '6px',
-                          color: '#ffaa00',
-                          fontSize: '0.85rem',
-                          fontWeight: '500',
-                          cursor: isSubmittingToVote ? 'wait' : 'pointer',
-                          opacity: isSubmittingToVote ? 0.7 : 1,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                        }}
-                        whileHover={!isSubmittingToVote ? { background: 'rgba(255, 170, 0, 0.4)' } : {}}
-                      >
-                        {isSubmittingToVote ? 'Submitting...' : 'Confirm Submit'}
-                      </motion.button>
+                      </div>
                     </div>
-                  </motion.div>
+                  </div>
                 )}
-              </AnimatePresence>
-              
-              {/* Info Icon with Tooltip */}
-              <div
-                style={{
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-                onMouseEnter={(e) => {
-                  const tooltip = e.currentTarget.querySelector('[data-tooltip]')
-                  if (tooltip) tooltip.style.display = 'block'
-                }}
-                onMouseLeave={(e) => {
-                  const tooltip = e.currentTarget.querySelector('[data-tooltip]')
-                  if (tooltip) tooltip.style.display = 'none'
-                }}
-              >
-                <Info 
-                  size={18} 
-                  color={theme === 'light' ? '#c06000' : '#ffaa00'}
-                  style={{ cursor: 'help' }}
-                />
-                <div
-                  data-tooltip
-                  style={{
-                    display: 'none',
-                    position: 'absolute',
-                    bottom: '100%',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    marginBottom: '8px',
-                    padding: '14px 18px',
-                    background: theme === 'light' ? 'rgba(255, 255, 255, 0.98)' : 'rgba(0, 0, 0, 0.95)',
-                    border: theme === 'light' ? '1px solid rgba(200, 100, 0, 0.4)' : '1px solid rgba(255, 170, 0, 0.5)',
-                    borderRadius: '10px',
-                    color: theme === 'light' ? '#1a1a1a' : currentTheme.text,
-                    fontSize: '0.9rem',
-                    lineHeight: '1.6',
-                    width: '320px',
-                    textAlign: 'left',
-                    zIndex: 1000,
-                    boxShadow: theme === 'light' ? '0 4px 16px rgba(0, 0, 0, 0.15)' : '0 4px 12px rgba(0, 0, 0, 0.5)',
-                  }}
-                >
-                  Submit your prompt/model responses to the leaderboard for other users to vote on. The top 5 most liked prompts each day at 12 AM receive $10 of token usage credit!
-                </div>
+
+                {/* Buttons for single model response (no conversation input) */}
+                {!showConversationInput && inlineResponseText && lastSubmittedPrompt && (
+                  <div style={{ display: 'flex', justifyContent: 'stretch', gap: '6px', marginTop: '16px', width: '100%' }}>
+                    {/* Clear Button */}
+                    <motion.button
+                      onClick={() => {
+                        clearResponses()
+                        clearLastSubmittedPrompt()
+                        if (currentUser?.id) {
+                          axios.post(`${API_URL}/api/judge/clear-context`, {
+                            userId: currentUser.id
+                          }).catch(err => console.error('[Clear Context] Error:', err))
+                        }
+                        setConversationInput('')
+                        setConversationContext([])
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '4px 6px',
+                        background: theme === 'light' ? 'rgba(255, 59, 48, 0.85)' : 'rgba(255, 59, 48, 0.15)',
+                        border: theme === 'light' ? '1px solid rgba(200, 40, 30, 0.8)' : '1px solid rgba(255, 59, 48, 0.4)',
+                        borderRadius: '12px',
+                        color: theme === 'light' ? '#fff' : '#ff6b6b',
+                        fontSize: '0.7rem',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                        transition: 'all 0.2s ease',
+                        whiteSpace: 'nowrap',
+                        height: '28px',
+                      }}
+                      whileHover={{ 
+                        background: theme === 'light' ? 'rgba(255, 40, 30, 0.95)' : 'rgba(255, 59, 48, 0.25)',
+                      }}
+                      whileTap={{ scale: 0.96 }}
+                      title="Clear response"
+                    >
+                      <Trash2 size={12} />
+                      Clear
+                    </motion.button>
+
+                    {/* Post Prompt Button */}
+                    <motion.button
+                      onClick={() => {
+                        if (!currentUser?.id) {
+                          alert('Please sign in to submit prompts to the leaderboard')
+                          return
+                        }
+                        setShowVotingConfirm(true)
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '4px 6px',
+                        background: theme === 'light' ? 'rgba(255, 140, 0, 0.85)' : 'rgba(255, 170, 0, 0.15)',
+                        border: theme === 'light' ? '1px solid rgba(200, 100, 0, 0.8)' : '1px solid rgba(255, 170, 0, 0.4)',
+                        borderRadius: '12px',
+                        color: theme === 'light' ? '#fff' : '#ffaa00',
+                        fontSize: '0.7rem',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                        transition: 'all 0.2s ease',
+                        whiteSpace: 'nowrap',
+                        height: '28px',
+                      }}
+                      whileHover={{ 
+                        background: theme === 'light' ? 'rgba(255, 120, 0, 0.95)' : 'rgba(255, 170, 0, 0.25)',
+                      }}
+                      whileTap={{ scale: 0.96 }}
+                    >
+                      <Trophy size={12} />
+                      Post Prompt
+                    </motion.button>
+
+                    {/* Save Convo Button */}
+                    <motion.button
+                      onClick={handleSaveConversation}
+                      disabled={convoSavingState === 'saving' || convoSavingState === 'saved'}
+                      style={{
+                        flex: 1,
+                        padding: '4px 6px',
+                        background: convoSavingState === 'saved' ? 'rgba(0, 200, 100, 0.18)' : currentTheme.buttonBackground,
+                        border: `1px solid ${convoSavingState === 'saved' ? 'rgba(0, 200, 100, 0.45)' : currentTheme.borderLight}`,
+                        borderRadius: '12px',
+                        color: convoSavingState === 'saved' ? '#00c864' : currentTheme.accent,
+                        fontSize: '0.7rem',
+                        fontWeight: '500',
+                        cursor: (convoSavingState === 'saving' || convoSavingState === 'saved') ? 'not-allowed' : 'pointer',
+                        opacity: convoSavingState === 'saving' ? 0.6 : 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                        whiteSpace: 'nowrap',
+                        height: '28px',
+                      }}
+                      whileHover={(convoSavingState !== 'saving' && convoSavingState !== 'saved') ? { scale: 1.02 } : {}}
+                      title={convoSavingState === 'saved' ? 'Already saved' : 'Save this conversation'}
+                    >
+                      <Save size={12} />
+                      {convoSavingState === 'saving' ? 'Saving...' : convoSavingState === 'saved' ? 'Saved!' : 'Save Convo'}
+                    </motion.button>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
+
+            <div ref={chatEndRef} />
+          </div>
         </div>
 
-        {/* Provider Tabs - Always Visible */}
-        {availableModels.length > 0 && (
-          <>
-            {/* Explanation Text */}
-            <div style={{ 
-              color: currentTheme.text, 
-              fontSize: '0.8rem', 
-              marginBottom: '12px',
-              textAlign: 'center'
-            }}>
-              Click a provider tab to auto select a model | Click the arrow of the tab to manually select a model
-            </div>
-            
-            <div
-              style={{
-                position: 'relative',
-                background: currentTheme.backgroundOverlay,
-                border: `1px solid ${currentTheme.borderLight}`,
-                borderRadius: '12px',
-                padding: '20px',
-                overflow: 'visible',
-                zIndex: 1000,
-                boxShadow: `0 0 30px ${currentTheme.shadow}`,
-              }}
-            >
-              {/* Provider Tabs - Horizontal Row with Even Spacing + Clear Selected Button */}
+        {/* ===== BOTTOM INPUT BAR ===== */}
+        <div style={bottomBarStyle}>
+          <div style={{ maxWidth: '1100px', width: '100%', margin: '0 auto' }}>
+            {/* Streak & Searching indicator row - above prompt area */}
+            {(streakDays > 0 || isSearchingWeb) && (
               <div
-                className="provider-tabs-container"
                 style={{
                   display: 'flex',
-                  flexDirection: 'row',
-                  justifyContent: 'flex-start',
-                  alignItems: 'flex-start',
-                  gap: '12px',
-                  marginBottom: '20px',
+                  justifyContent: isSearchingWeb && streakDays > 0 ? 'space-between' : isSearchingWeb ? 'flex-start' : 'flex-end',
+                  alignItems: 'center',
                   paddingBottom: '8px',
-                  width: '100%',
-                  flexWrap: 'nowrap',
-                  position: 'relative',
-                  overflowX: 'auto',
-                  overflowY: 'hidden',
-                  scrollbarWidth: 'thin',
-                  scrollbarColor: 'rgba(0, 255, 255, 0.5) rgba(0, 0, 0, 0.1)',
                 }}
               >
-                {/* Clear Selected Button - Moved to first position */}
-                <div
-                  style={{
-                    position: 'relative',
-                    flex: '0 0 auto',
-                    minWidth: '150px',
-                  }}
-                >
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      // Clear all selected models
-                        setSelectedModels([])
-                      // Clear all Auto Smart selections
-                      setAutoSmartProviders({})
-                    }}
-                    disabled={(() => {
-                      const hasModels = selectedModels && selectedModels.length > 0
-                      const hasAutoSmart = Object.keys(autoSmartProviders).length > 0
-                      return !hasModels && !hasAutoSmart
-                    })()}
+                {isSearchingWeb && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
                     style={{
-                      width: '100%',
-                      padding: '14px 20px',
-                      background: (() => {
-                        const hasModels = selectedModels && selectedModels.length > 0
-                        const hasAutoSmart = Object.keys(autoSmartProviders).length > 0
-                        return hasModels || hasAutoSmart
-                        ? 'rgba(255, 0, 0, 0.2)'
-                          : 'rgba(128, 128, 128, 0.1)'
-                      })(),
-                      border: (() => {
-                        const hasModels = selectedModels && selectedModels.length > 0
-                        const hasAutoSmart = Object.keys(autoSmartProviders).length > 0
-                        return hasModels || hasAutoSmart
-                        ? '1px solid rgba(255, 0, 0, 0.5)'
-                          : '1px solid rgba(128, 128, 128, 0.3)'
-                      })(),
-                      borderRadius: '8px',
-                      color: (() => {
-                        const hasModels = selectedModels && selectedModels.length > 0
-                        const hasAutoSmart = Object.keys(autoSmartProviders).length > 0
-                        return hasModels || hasAutoSmart
-                        ? '#FF0000'
-                          : '#888888'
-                      })(),
-                      cursor: (() => {
-                        const hasModels = selectedModels && selectedModels.length > 0
-                        const hasAutoSmart = Object.keys(autoSmartProviders).length > 0
-                        return hasModels || hasAutoSmart
-                        ? 'pointer'
-                          : 'not-allowed'
-                      })(),
-                      fontSize: '1rem',
-                      fontWeight: (() => {
-                        const hasModels = selectedModels && selectedModels.length > 0
-                        const hasAutoSmart = Object.keys(autoSmartProviders).length > 0
-                        return hasModels || hasAutoSmart ? '600' : '500'
-                      })(),
-                      whiteSpace: 'nowrap',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '10px',
-                      transition: 'all 0.2s ease',
-                      opacity: (() => {
-                        const hasModels = selectedModels && selectedModels.length > 0
-                        const hasAutoSmart = Object.keys(autoSmartProviders).length > 0
-                        return hasModels || hasAutoSmart ? 1 : 0.6
-                      })(),
-                    }}
-                    onMouseEnter={(e) => {
-                      const hasModels = selectedModels && selectedModels.length > 0
-                      const hasAutoSmart = Object.keys(autoSmartProviders).length > 0
-                      if (hasModels || hasAutoSmart) {
-                        e.currentTarget.style.background = 'rgba(255, 0, 0, 0.3)'
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      const hasModels = selectedModels && selectedModels.length > 0
-                      const hasAutoSmart = Object.keys(autoSmartProviders).length > 0
-                      if (hasModels || hasAutoSmart) {
-                        e.currentTarget.style.background = 'rgba(255, 0, 0, 0.2)'
-                      } else {
-                        e.currentTarget.style.background = 'rgba(128, 128, 128, 0.1)'
-                      }
+                      gap: '4px',
                     }}
                   >
-                    <XCircle size={18} />
-                    <span>Clear Selected</span>
-                    {(() => {
-                      const hasModels = selectedModels && selectedModels.length > 0
-                      const hasAutoSmart = Object.keys(autoSmartProviders).length > 0
-                      
-                      // Count only providers with Auto Smart that don't have explicit model selections
-                      // to avoid double-counting when Auto Smart has selected models
-                      const autoSmartOnlyCount = Object.keys(autoSmartProviders).filter(providerKey => {
-                        // Check if this provider has any models in selectedModels
-                        const hasExplicitModel = selectedModels.some(modelId => {
-                          const model = availableModels.find(m => m.id === modelId)
-                          return model && model.provider === providerKey
-                        })
-                        return !hasExplicitModel // Only count if no explicit model is selected
-                      }).length
-                      
-                      const totalCount = (selectedModels?.length || 0) + autoSmartOnlyCount
-                      return (hasModels || hasAutoSmart) && totalCount > 0 ? (
-                      <span
-                        style={{
-                          background: 'rgba(255, 0, 0, 0.3)',
-                          color: '#FF0000', // Keep red for clear button
-                          padding: '3px 8px',
-                          borderRadius: '10px',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                        }}
-                      >
-                          {totalCount}
-                      </span>
-                      ) : null
-                    })()}
-                  </button>
+                    <Search size={14} color={currentTheme.accent} />
+                    <span style={{ color: currentTheme.accent, fontSize: '0.75rem', fontWeight: 'bold' }}>Searching the web</span>
+                    <motion.span
+                      animate={{ opacity: [1, 0.3, 1] }}
+                      transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                      style={{ color: currentTheme.accent, fontSize: '0.75rem' }}
+                    >
+                      ...
+                    </motion.span>
+                  </motion.div>
+                )}
+                {streakDays > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Flame size={14} color="#FF6B00" />
+                    <span style={{ color: '#FF6B00', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                      {streakDays} day streak
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Welcome Title */}
+            <h2
+              key={`welcome-title-${theme}`}
+              style={{
+                textAlign: 'center',
+                fontSize: '1.3rem',
+                fontWeight: '600',
+                margin: '0 0 12px 0',
+                background: currentTheme.accentGradient,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                letterSpacing: '0.3px',
+              }}
+            >
+              Welcome to the Council of the LLMs
+            </h2>
+
+            {/* Unified Prompt Box with embedded provider buttons */}
+            <div style={{
+              position: 'relative',
+              background: currentTheme.buttonBackground,
+              border: `1px solid ${currentTheme.borderLight}`,
+              borderRadius: '20px',
+              overflow: 'visible',
+              boxShadow: `0 2px 12px ${currentTheme.shadow}`,
+            }}>
+              {/* Subscription Restricted Overlay */}
+              {subscriptionRestricted && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 50,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'rgba(0, 0, 0, 0.7)',
+                    backdropFilter: 'blur(4px)',
+                    borderRadius: '20px',
+                    gap: '8px',
+                    padding: '12px',
+                  }}
+                >
+                  <Lock size={24} color="#ff6b6b" />
+                  <p style={{ color: '#ff6b6b', fontSize: '0.85rem', fontWeight: '600', textAlign: 'center', margin: 0 }}>
+                    Resubscribe to send prompts
+                  </p>
+                </div>
+              )}
+
+              {/* Textarea */}
+              <textarea
+                ref={textareaRef}
+                className="main-prompt-input"
+                value={currentPrompt}
+                onChange={(e) => {
+                  if (!subscriptionRestricted) {
+                    setCurrentPrompt(e.target.value)
+                    const textarea = e.target
+                    textarea.style.height = 'auto'
+                    textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px'
+                  }
+                }}
+                disabled={subscriptionRestricted}
+                placeholder={subscriptionRestricted ? "Resubscribe to send prompts..." : "Enter a new prompt here to receive responses from the Council of LLMs..."}
+                style={{
+                  width: '100%',
+                  minHeight: '70px',
+                  maxHeight: '200px',
+                  padding: '16px 20px 8px 20px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '20px 20px 0 0',
+                  color: currentTheme.text,
+                  fontSize: '1rem',
+                  fontFamily: 'inherit',
+                  resize: 'none',
+                  lineHeight: '1.5',
+                  overflow: 'hidden',
+                  outline: 'none',
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    const hasAutoSmart = Object.values(autoSmartProviders).some(enabled => enabled)
+                    if (currentPrompt.trim()) {
+                      if (selectedModels.length > 0 || hasAutoSmart) {
+                        handleSubmit()
+                      } else {
+                        setShowNoModelNotification(true)
+                        setTimeout(() => setShowNoModelNotification(false), 4000)
+                      }
+                    }
+                  }
+                }}
+              />
+
+              {/* Bottom bar: provider buttons + send */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 12px 10px 12px',
+                gap: '8px',
+              }}>
+                {/* Left side: placeholder or future "+" button */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                  {/* Could add attachment button here in the future */}
                 </div>
 
-                {sortedProviders.map(([providerKey, providerData]) => {
-                  const isPlaceholder = providerData.isPlaceholder || false
-                  const isExpanded = expandedProviders[providerKey]
-                  // Check if any model from this provider is selected (only one should be possible)
-                  const hasSelectedModels = providerData.models.some(m => 
-                    selectedModels.includes(m.id)
-                  )
-                  const hasAutoSmart = autoSmartProviders[providerKey] || false
-                  const isActive = isExpanded || hasSelectedModels || hasAutoSmart
-                  
-                  return (
-                    <div
-                      key={providerKey}
-                      style={{
-                        position: 'relative',
-                        flex: '1 1 0',
-                        minWidth: '180px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      {/* Provider Tab Button */}
-                      <button
-                        ref={(el) => {
-                          if (el) {
-                            providerButtonRefs.current[providerKey] = el
-                          }
-                        }}
-                        onClick={(e) => {
-                          if (!isPlaceholder) {
+                {/* Right side: provider buttons + send */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {availableModels.length > 0 && sortedProviders.map(([providerKey, providerData]) => {
+                    const isPlaceholder = providerData.isPlaceholder || false
+                    if (isPlaceholder) return null
+                    const hasSelectedModels = providerData.models.some(m => selectedModels.includes(m.id))
+                    const hasAutoSmart = autoSmartProviders[providerKey] || false
+                    const isActive = hasSelectedModels || hasAutoSmart
+                    const isExpanded = expandedProviders[providerKey]
+
+                    return (
+                      <div key={providerKey} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <button
+                          ref={(el) => {
+                            if (el) providerButtonRefs.current[providerKey] = el
+                          }}
+                          onClick={(e) => {
                             handleProviderTabClick(providerKey, e)
-                            // Blur the button to prevent Enter key from re-triggering
                             e.currentTarget.blur()
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          // Prevent Enter from re-triggering the button
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                          }
-                        }}
-                        disabled={isPlaceholder}
-                        style={{
-                          padding: '12px 16px',
-                          background: isPlaceholder
-                            ? 'rgba(128, 128, 128, 0.1)'
-                            : isActive
-                            ? currentTheme.buttonBackgroundActive
-                            : currentTheme.buttonBackground,
-                          border: isPlaceholder
-                            ? '1px solid rgba(128, 128, 128, 0.3)'
-                            : isActive
-                            ? `2px solid ${currentTheme.borderActive}`
-                            : `1px solid ${currentTheme.border}`,
-                          borderRadius: '8px',
-                          color: isPlaceholder ? currentTheme.textMuted : currentTheme.text,
-                          cursor: isPlaceholder ? 'not-allowed' : 'pointer',
-                          fontSize: '1.1rem',
-                          fontWeight: isActive ? '600' : '500',
-                          whiteSpace: 'nowrap',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '10px',
-                          transition: 'all 0.2s ease',
-                          flexShrink: 0,
-                          width: '100%',
-                          minWidth: 0,
-                          overflow: 'hidden',
-                          boxShadow: isPlaceholder
-                            ? 'none'
-                            : isActive
-                            ? `0 0 15px ${currentTheme.shadow}, 0 0 30px ${currentTheme.shadowLight}`
-                            : 'none',
-                          opacity: isPlaceholder ? 0.5 : 1,
-                          outline: 'none', // Remove default browser outline
-                          WebkitTapHighlightColor: 'transparent', // Remove mobile tap highlight
-                        }}
-                      >
-                        {!isPlaceholder && (
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.preventDefault()
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '5px 8px',
+                            height: '30px',
+                            background: isActive
+                              ? `${currentTheme.accent}18`
+                              : 'transparent',
+                            border: `1px solid ${isActive ? currentTheme.accent + '50' : currentTheme.borderLight}`,
+                            borderRadius: '8px',
+                            color: isActive ? currentTheme.accent : currentTheme.textSecondary,
+                            cursor: 'pointer',
+                            fontSize: '0.8rem',
+                            fontWeight: isActive ? '600' : '500',
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.2s ease',
+                            outline: 'none',
+                            WebkitTapHighlightColor: 'transparent',
+                          }}
+                        >
+                          <span>{providerData.providerName}</span>
+                          {isActive && (
+                            <XCircle
+                              size={13}
+                              style={{ flexShrink: 0, opacity: 0.7 }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                // Deselect all models from this provider
+                                const newSelectedModels = selectedModels.filter(id =>
+                                  !providerData.models.some(model => model.id === id)
+                                )
+                                setSelectedModels(newSelectedModels)
+                                setAutoSmartProviders((prev) => {
+                                  const newState = { ...prev }
+                                  delete newState[providerKey]
+                                  return newState
+                                })
+                                setExpandedProviders((prev) => {
+                                  const newState = { ...prev }
+                                  delete newState[providerKey]
+                                  return newState
+                                })
+                              }}
+                            />
+                          )}
                           <div
                             data-arrow-wrapper
                             onClick={(e) => handleArrowClick(providerKey, e)}
@@ -1489,12 +1875,14 @@ const MainView = ({ onClearAll }) => {
                               justifyContent: 'center',
                               cursor: 'pointer',
                               flexShrink: 0,
-                              padding: '4px',
-                              width: '32px',
+                              padding: '0 1px',
+                              marginLeft: '2px',
+                              borderLeft: `1px solid ${isActive ? currentTheme.accent + '30' : currentTheme.borderLight}`,
+                              paddingLeft: '4px',
                             }}
                           >
                             <ChevronDown
-                              size={24}
+                              size={14}
                               style={{
                                 transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                                 transition: 'transform 0.2s ease',
@@ -1502,45 +1890,60 @@ const MainView = ({ onClearAll }) => {
                               }}
                             />
                           </div>
-                        )}
-                        <span 
-                          key={`provider-name-${providerKey}-${theme}`}
-                          style={{ 
-                          textAlign: 'center', 
-                          whiteSpace: 'nowrap', 
-                          fontSize: '1.2rem',
-                          flex: 1,
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          minWidth: 0,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          background: isPlaceholder ? 'none' : currentTheme.accentGradient,
-                          WebkitBackgroundClip: isPlaceholder ? 'unset' : 'text',
-                          WebkitTextFillColor: 'transparent',
-                          color: isPlaceholder ? currentTheme.textMuted : currentTheme.accent
-                        }}>
-                          {providerData.providerName}
-                        </span>
-                        {!isPlaceholder && (
-                          <div style={{ 
-                            flexShrink: 0, 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            width: '32px',
-                          }}>
-                            <ProviderIcon provider={providerKey} />
-                          </div>
-                        )}
-                      </button>
+                        </button>
+                      </div>
+                    )
+                  })}
 
-                    </div>
-                  )
-                })}
-                
-                {/* Provider Models Dropdowns - Rendered outside container */}
+                  {/* Send Button */}
+                  {(() => {
+                    const hasAutoSmart = Object.values(autoSmartProviders).some(enabled => enabled)
+                    const hasModels = selectedModels.length > 0 || hasAutoSmart
+                    const canSubmit = currentPrompt.trim() && hasModels
+                    const hasPromptOnly = currentPrompt.trim() && !hasModels
+                    
+                    return (
+                      <motion.button
+                        onClick={() => {
+                          if (canSubmit) {
+                            handleSubmit()
+                          } else if (hasPromptOnly) {
+                            setShowNoModelNotification(true)
+                            setTimeout(() => setShowNoModelNotification(false), 4000)
+                          }
+                        }}
+                        style={{
+                          padding: '5px 16px',
+                          height: '30px',
+                          background: canSubmit ? currentTheme.accent : hasPromptOnly ? '#ffaa00' : currentTheme.borderLight,
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: canSubmit || hasPromptOnly ? '#fff' : currentTheme.textMuted,
+                          cursor: (canSubmit || hasPromptOnly) ? 'pointer' : 'not-allowed',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          fontSize: '0.8rem',
+                          fontWeight: '600',
+                          transition: 'all 0.2s ease',
+                          whiteSpace: 'nowrap',
+                        }}
+                        whileHover={(canSubmit || hasPromptOnly) ? { scale: 1.03 } : {}}
+                        whileTap={(canSubmit || hasPromptOnly) ? { scale: 0.97 } : {}}
+                      >
+                        Send
+                      </motion.button>
+                    )
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Provider Models Dropdowns - rendered at top level to avoid transform containing block issues */}
                 <AnimatePresence>
                   {Object.entries(expandedProviders).map(([providerKey, isExpanded]) => {
                     if (!isExpanded || !dropdownPositions[providerKey]) return null
@@ -1554,14 +1957,12 @@ const MainView = ({ onClearAll }) => {
                         <motion.div
                         key={`dropdown-${providerKey}`}
                           ref={(el) => {
-                            if (el) {
-                              dropdownRefs.current[providerKey] = el
-                            }
+                              if (el) dropdownRefs.current[providerKey] = el
                           }}
                         onClick={(e) => e.stopPropagation()}
-                          initial={{ opacity: 0, y: -10 }}
+                          initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
+                          exit={{ opacity: 0, y: 10 }}
                           transition={{ duration: 0.2 }}
                           className="model-dropdown"
                           style={{
@@ -1572,14 +1973,13 @@ const MainView = ({ onClearAll }) => {
                           minWidth: `${position.width}px`,
                             background: currentTheme.backgroundOverlay,
                             border: `1px solid ${currentTheme.borderLight}`,
-                            borderRadius: '8px',
-                            padding: '16px',
+                            borderRadius: '12px',
+                            padding: '12px',
                           zIndex: 2000,
-                            boxShadow: `0 4px 20px ${currentTheme.shadow}`,
+                            boxShadow: `0 -4px 20px ${currentTheme.shadow}`,
                           maxHeight: '400px',
                             overflowY: 'auto',
                             overflowX: 'hidden',
-                            // Custom scrollbar styling for Firefox
                             scrollbarWidth: 'thin',
                             scrollbarColor: `${currentTheme.accent} ${currentTheme.backgroundOverlayLighter}`,
                           }}
@@ -1593,10 +1993,10 @@ const MainView = ({ onClearAll }) => {
                               gap: '10px',
                               padding: '10px',
                               background: autoSmartProviders[providerKey]
-                                ? 'rgba(0, 255, 0, 0.1)'
+                                ? 'rgba(72, 201, 176, 0.1)'
                                 : currentTheme.buttonBackground,
                               border: autoSmartProviders[providerKey]
-                                ? '1px solid rgba(0, 255, 0, 0.5)'
+                                ? '1px solid rgba(72, 201, 176, 0.5)'
                                 : `1px solid ${currentTheme.border}`,
                               borderRadius: '6px',
                               cursor: 'pointer',
@@ -1605,12 +2005,12 @@ const MainView = ({ onClearAll }) => {
                             }}
                             onMouseEnter={(e) => {
                               e.currentTarget.style.background = autoSmartProviders[providerKey]
-                                ? 'rgba(0, 255, 0, 0.15)'
+                                ? 'rgba(72, 201, 176, 0.15)'
                                 : currentTheme.buttonBackgroundHover
                             }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.background = autoSmartProviders[providerKey]
-                                ? 'rgba(0, 255, 0, 0.1)'
+                                ? 'rgba(72, 201, 176, 0.1)'
                                 : currentTheme.buttonBackground
                             }}
                           >
@@ -1623,7 +2023,7 @@ const MainView = ({ onClearAll }) => {
                                 width: '18px',
                                 height: '18px',
                                 cursor: 'pointer',
-                                accentColor: autoSmartProviders[providerKey] ? '#00FF00' : '#00FFFF',
+                                accentColor: autoSmartProviders[providerKey] ? '#48c9b0' : '#5dade2',
                               }}
                             />
                             <Sparkles size={16} color={autoSmartProviders[providerKey] ? currentTheme.accentSecondary : currentTheme.accent} />
@@ -1635,13 +2035,7 @@ const MainView = ({ onClearAll }) => {
                             )}
                           </label>
                           
-                          <div
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '8px',
-                            }}
-                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             {providerData.models.map((model) => {
                               const isSelected = selectedModels.includes(model.id)
                               return (
@@ -1654,24 +2048,24 @@ const MainView = ({ onClearAll }) => {
                                     padding: '12px',
                                     minHeight: '48px',
                                     background: isSelected
-                                      ? 'rgba(0, 255, 255, 0.2)'
-                                      : 'rgba(0, 255, 255, 0.05)',
+                                      ? 'rgba(93, 173, 226, 0.2)'
+                                      : 'rgba(93, 173, 226, 0.05)',
                                     border: isSelected
-                                      ? '1px solid rgba(0, 255, 255, 0.5)'
-                                      : '1px solid rgba(0, 255, 255, 0.2)',
+                                      ? '1px solid rgba(93, 173, 226, 0.5)'
+                                      : '1px solid rgba(93, 173, 226, 0.2)',
                                     borderRadius: '6px',
                                     cursor: 'pointer',
                                     transition: 'all 0.2s ease',
                                   }}
                                   onMouseEnter={(e) => {
                                     if (!isSelected) {
-                                      e.currentTarget.style.background = 'rgba(0, 255, 255, 0.1)'
+                                      e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
                                     }
                                   }}
                                   onMouseLeave={(e) => {
                                     e.currentTarget.style.background = isSelected
-                                      ? 'rgba(0, 255, 255, 0.2)'
-                                      : 'rgba(0, 255, 255, 0.05)'
+                                      ? 'rgba(93, 173, 226, 0.2)'
+                                      : 'rgba(93, 173, 226, 0.05)'
                                   }}
                                 >
                                   <input
@@ -1683,7 +2077,7 @@ const MainView = ({ onClearAll }) => {
                                       width: '18px',
                                       height: '18px',
                                       cursor: 'pointer',
-                                      accentColor: '#00FFFF',
+                                      accentColor: '#5dade2',
                                     }}
                                   />
                                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -1725,13 +2119,149 @@ const MainView = ({ onClearAll }) => {
                   )
                 })}
                   </AnimatePresence>
+
+      {/* Voting Confirmation Popup */}
+      <AnimatePresence>
+        {showVotingConfirm && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowVotingConfirm(false)}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0, 0, 0, 0.3)',
+                zIndex: 10002,
+              }}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.15 }}
+              style={{
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                background: currentTheme.backgroundOverlay,
+                border: `1px solid rgba(255, 170, 0, 0.5)`,
+                borderRadius: '12px',
+                padding: '20px 24px',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+                zIndex: 10003,
+                minWidth: '320px',
+              }}
+            >
+              <p style={{ 
+                color: currentTheme.text, 
+                margin: '0 0 16px 0', 
+                fontSize: '0.95rem',
+                lineHeight: '1.4'
+              }}>
+                Submit this prompt and responses to the leaderboard for voting?
+              </p>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <motion.button
+                  onClick={() => setShowVotingConfirm(false)}
+                  style={{
+                    padding: '8px 16px',
+                    background: 'transparent',
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '6px',
+                    color: currentTheme.textSecondary,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                  }}
+                  whileHover={{ background: currentTheme.buttonBackgroundHover }}
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  onClick={async () => {
+                    setIsSubmittingToVote(true)
+                    try {
+                      let facts = null
+                      let sources = null
+                      
+                      if (ragDebugData) {
+                        if (ragDebugData.refiner?.primary?.facts_with_citations) {
+                          facts = ragDebugData.refiner.primary.facts_with_citations.map(f => ({
+                            fact: f.fact,
+                            source_quote: f.source_quote || null,
+                          }))
+                        } else if (ragDebugData.refiner?.backup?.facts_with_citations) {
+                          facts = ragDebugData.refiner.backup.facts_with_citations.map(f => ({
+                            fact: f.fact,
+                            source_quote: f.source_quote || null,
+                          }))
+                        }
+                        
+                        if (ragDebugData.search?.results && Array.isArray(ragDebugData.search.results)) {
+                          sources = ragDebugData.search.results.map(s => ({
+                            title: s.title,
+                            link: s.link,
+                            snippet: s.snippet,
+                          }))
+                        }
+                      }
+                      
+                      const response = await axios.post(`${API_URL}/api/leaderboard/submit`, {
+                        userId: currentUser.id,
+                        promptText: lastSubmittedPrompt.trim(),
+                        category: lastSubmittedCategory || 'General Knowledge/Other',
+                        responses: responses.length > 0 ? responses.map(r => ({
+                          modelName: r.modelName,
+                          actualModelName: r.actualModelName,
+                          originalModelName: r.originalModelName,
+                          text: r.text,
+                          error: r.error || false,
+                          tokens: r.tokens || null,
+                        })) : null,
+                        summary: summary || null,
+                        facts: facts,
+                        sources: sources,
+                      })
+                      
+                      if (response.data.success) {
+                        setShowVotingConfirm(false)
+                      }
+                    } catch (error) {
+                      console.error('Error submitting to leaderboard:', error)
+                      alert(error.response?.data?.error || 'Failed to submit prompt to leaderboard')
+                    } finally {
+                      setIsSubmittingToVote(false)
+                    }
+                  }}
+                  disabled={isSubmittingToVote}
+                  style={{
+                    padding: '8px 16px',
+                    background: 'rgba(255, 170, 0, 0.3)',
+                    border: '1px solid rgba(255, 170, 0, 0.6)',
+                    borderRadius: '6px',
+                    color: '#ffaa00',
+                    fontSize: '0.85rem',
+                    fontWeight: '500',
+                    cursor: isSubmittingToVote ? 'wait' : 'pointer',
+                    opacity: isSubmittingToVote ? 0.7 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  whileHover={!isSubmittingToVote ? { background: 'rgba(255, 170, 0, 0.4)' } : {}}
+                >
+                  {isSubmittingToVote ? 'Submitting...' : 'Confirm Submit'}
+                </motion.button>
               </div>
-          </div>
+            </motion.div>
           </>
         )}
-
-      </div>
-    </div>
+      </AnimatePresence>
 
       {/* Model Type Tooltip */}
       <AnimatePresence>
@@ -1746,12 +2276,12 @@ const MainView = ({ onClearAll }) => {
               left: `${tooltipState.x}px`,
               top: `${tooltipState.y}px`,
               background: 'rgba(0, 0, 0, 0.95)',
-              border: '1px solid rgba(0, 255, 255, 0.5)',
+              border: '1px solid rgba(93, 173, 226, 0.5)',
               borderRadius: '8px',
               padding: '12px 16px',
               zIndex: 10001,
               maxWidth: '280px',
-              boxShadow: '0 4px 20px rgba(0, 255, 255, 0.3)',
+              boxShadow: '0 4px 20px rgba(93, 173, 226, 0.3)',
               pointerEvents: 'none',
             }}
             onMouseEnter={() => {
@@ -1763,42 +2293,6 @@ const MainView = ({ onClearAll }) => {
           >
             <div style={{ color: currentTheme.text, fontSize: '0.85rem', lineHeight: '1.5' }}>
               {getModelTypeTooltip(tooltipState.type)}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Mode selection removed */}
-      <AnimatePresence>
-        {false && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8, y: -20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.8, y: -20 }}
-          style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            background: 'rgba(0, 0, 0, 0.95)',
-            border: '2px solid rgba(0, 255, 255, 0.5)',
-            borderRadius: '12px',
-            padding: '20px 24px',
-            zIndex: 10002,
-            boxShadow: '0 8px 32px rgba(0, 255, 255, 0.3)',
-            minWidth: '280px',
-            maxWidth: '320px',
-            textAlign: 'center',
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{ color: currentTheme.text, fontSize: '1rem', lineHeight: '1.5' }}>
-            <div style={{ marginBottom: '12px', color: currentTheme.accent, fontSize: '1.1rem', fontWeight: '600' }}>
-              Mode Required
-            </div>
-            <div style={{ color: currentTheme.textSecondary }}>
-              Please select a mode before submitting your prompt.
-            </div>
           </div>
         </motion.div>
       )}
@@ -1808,7 +2302,6 @@ const MainView = ({ onClearAll }) => {
       <AnimatePresence>
         {showNoModelNotification && (
           <>
-            {/* Backdrop - click anywhere to dismiss */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1897,4 +2390,3 @@ const MainView = ({ onClearAll }) => {
 }
 
 export default MainView
-

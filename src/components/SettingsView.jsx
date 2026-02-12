@@ -81,11 +81,8 @@ const SettingsView = () => {
           >
             About ArkiTek
           </h3>
-          <p style={{ color: currentTheme.textSecondary, marginBottom: '12px', lineHeight: '1.6', textAlign: 'left' }}>
-            <strong style={{ color: currentTheme.accentSecondary }}>Mission & Goal:</strong> ArkiTek provides unified access to multiple AI providers through a single platform, simplifying AI development and research. We eliminate the complexity of working with multiple providers while delivering comprehensive analytics, usage tracking, and intelligent response aggregation to help you make better decisions with confidence.
-          </p>
           <p style={{ color: currentTheme.textSecondary, lineHeight: '1.6', textAlign: 'left' }}>
-            <strong style={{ color: currentTheme.accentSecondary }}>What We Solve:</strong> No more managing multiple AIs, platforms, and subscriptions. Send your prompt to multiple AI models simultaneously, compare their responses side-by-side, and receive an intelligent summary that combines all responses into one comprehensive answer. This aggregation helps identify commonalities and reduces hallucinations, giving you greater confidence that the information you receive is accurate and reliable.
+            <strong style={{ color: currentTheme.accentSecondary }}>Our Mission:</strong> ArkiTek provides unified access to multiple AI providers through a single platform, eliminating the complexity of managing multiple AIs, platforms, and subscriptions. Send your prompt to multiple AI models simultaneously, compare their responses side-by-side, and receive an intelligent summary that combines all responses into one comprehensive answer. This aggregation helps identify commonalities and reduces hallucinations, giving you greater confidence that the information you receive is accurate and reliable — all backed by comprehensive analytics, usage tracking, and intelligent response aggregation.
           </p>
         </div>
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Minimize2, Maximize2, DollarSign } from 'lucide-react'
 import axios from 'axios'
+import { API_URL } from '../utils/config'
 import { useStore } from '../store/useStore'
 
 const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inline = false }) => {
@@ -14,7 +15,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
   useEffect(() => {
     const fetchPricing = async () => {
       try {
-        const response = await axios.get('http://localhost:3001/api/admin/pricing')
+        const response = await axios.get(`${API_URL}/api/admin/pricing`)
         setPricingData(response.data)
       } catch (error) {
         console.error('Error fetching pricing data:', error)
@@ -137,11 +138,11 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                   <strong style={{ color: '#FFD700' }}>Total Cost:</strong> ${totalCost.toFixed(4)}
                 </div>
                 <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
-                  <strong style={{ color: '#00FFFF' }}>Model Cost:</strong> ${totalModelCost.toFixed(4)}
+                  <strong style={{ color: '#5dade2' }}>Model Cost:</strong> ${totalModelCost.toFixed(4)}
                 </div>
                 {queryCost > 0 && (
                   <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
-                    <strong style={{ color: '#00FF00' }}>Search Queries ({queryCount}):</strong> ${queryCost.toFixed(4)}
+                    <strong style={{ color: '#48c9b0' }}>Search Queries ({queryCount}):</strong> ${queryCost.toFixed(4)}
                   </div>
                 )}
               </div>
@@ -152,7 +153,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                   </h4>
                   <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', fontSize: '0.85rem', color: '#aaaaaa' }}>
                     <div><strong style={{ color: '#FFD700' }}>Total Cost:</strong> ${data.totalCost.toFixed(4)}</div>
-                    <div><strong style={{ color: '#00FFFF' }}>Tokens:</strong> {data.totalTokens.toLocaleString()}</div>
+                    <div><strong style={{ color: '#5dade2' }}>Tokens:</strong> {data.totalTokens.toLocaleString()}</div>
                   </div>
                   {data.models.map((item, idx) => (
                     <div key={idx} style={{ marginLeft: '12px', marginBottom: '8px', fontSize: '0.8rem', color: '#cccccc' }}>

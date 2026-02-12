@@ -176,7 +176,7 @@ export const ProviderIcon = ({ provider, style }) => {
           lineHeight: '1.4',
           textAlign: 'center',
           zIndex: 10000,
-          boxShadow: '0 2px 8px rgba(0, 255, 255, 0.4)',
+          boxShadow: '0 2px 8px rgba(93, 173, 226, 0.4)',
           pointerEvents: 'none',
           animation: 'tooltipFadeIn 0.15s ease-out',
         }}

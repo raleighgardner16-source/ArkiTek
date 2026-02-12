@@ -2,17 +2,11 @@ import express from 'express'
 import cors from 'cors'
 import axios from 'axios'
 import dotenv from 'dotenv'
-import fs from 'fs'
-import path from 'path'
 import crypto from 'crypto'
-import { fileURLToPath } from 'url'
 import * as cheerio from 'cheerio'
 import { countTokens, extractTokensFromResponse, estimateTokensFallback } from './utils/tokenCounters.js'
 import Stripe from 'stripe'
 import db from './database/db.js'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
 
 dotenv.config()
 
@@ -31,15 +25,19 @@ const initDatabase = async () => {
   }
 }
 
-// Graceful shutdown
+// Graceful shutdown — flush all pending data to MongoDB before closing
 process.on('SIGINT', async () => {
   console.log('\n[Server] Shutting down gracefully...')
+  if (usageSyncTimer) clearTimeout(usageSyncTimer)
+  await flushUsageToMongo()
   await db.close()
   process.exit(0)
 })
 
 process.on('SIGTERM', async () => {
   console.log('\n[Server] Received SIGTERM, shutting down...')
+  if (usageSyncTimer) clearTimeout(usageSyncTimer)
+  await flushUsageToMongo()
   await db.close()
   process.exit(0)
 })
@@ -57,27 +55,11 @@ const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || ''
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || ''
 
 // ============================================================================
-// ADMIN LIST (kept in simple JSON file since it rarely changes)
+// ADMIN LIST (MongoDB only)
 // ============================================================================
-const ADMINS_FILE = path.join(__dirname, 'ADMIN', 'admins.json')
 
 const readAdmins = () => {
-  // First try to use MongoDB cache (populated on server startup)
-  if (cacheLoaded && adminsCache.admins.length > 0) {
     return { admins: adminsCache.admins }
-  }
-  
-  // Fall back to JSON file during startup or if cache is empty
-  try {
-    if (fs.existsSync(ADMINS_FILE)) {
-      const data = fs.readFileSync(ADMINS_FILE, 'utf8')
-      if (data.trim() === '') return { admins: [] }
-      return JSON.parse(data)
-    }
-  } catch (error) {
-    console.error('Error reading admins file:', error)
-  }
-  return { admins: [] }
 }
 
 const isAdmin = (userId) => {
@@ -111,23 +93,125 @@ const requireAdmin = (req, res, next) => {
 }
 
 // ============================================================================
-// MONGODB-BACKED DATA LAYER (Replaces JSON File Operations)
+// MONGODB-ONLY DATA LAYER (No JSON files)
 // ============================================================================
-// These functions maintain backwards compatibility with existing code
-// while storing all data in MongoDB instead of JSON files
+// In-memory cache for fast reads, fully synced to MongoDB for persistence.
+// All data survives server restarts.
 
-// In-memory cache for usage data (synced with MongoDB)
 let usageCache = {}
 let usersCache = {}
 let leaderboardCache = { prompts: [] }
 let adminsCache = { admins: [] }
 let cacheLoaded = false
 
-// Load cache from MongoDB on startup
+// --- Usage sync (debounced to batch rapid writes) ---
+let usageSyncTimer = null
+let usageDirtyUsers = new Set()
+
+const scheduleUsageSync = (userId) => {
+  if (userId) usageDirtyUsers.add(userId)
+  if (usageSyncTimer) clearTimeout(usageSyncTimer)
+  usageSyncTimer = setTimeout(() => flushUsageToMongo(), 2000)
+}
+
+const flushUsageToMongo = async () => {
+  if (usageDirtyUsers.size === 0) return
+  const usersToSync = [...usageDirtyUsers]
+  usageDirtyUsers.clear()
+  
+  try {
+    const dbInstance = await db.getDb()
+    const collection = dbInstance.collection('usage_data')
+    for (const userId of usersToSync) {
+      if (!usageCache[userId]) continue
+      await collection.updateOne(
+        { _id: userId },
+        { $set: { ...usageCache[userId], _id: userId, updatedAt: new Date() } },
+        { upsert: true }
+      )
+      // Also sync stats to user_stats collection (aggregated totals, purchased credits)
+      syncUserStatsToMongo(userId)
+    }
+  } catch (error) {
+    console.error('[Usage Sync] Failed to flush to MongoDB:', error.message)
+    // Re-queue failed users
+    for (const u of usersToSync) usageDirtyUsers.add(u)
+  }
+}
+
+// --- Users sync (immediate since user changes are critical) ---
+// Only writes profile + subscription + purchasedCredits to 'users' collection
+const syncUserToMongo = async (userId, userData) => {
+  try {
+    const dbInstance = await db.getDb()
+    const usageData = usageCache[userId] || {}
+    await dbInstance.collection('users').updateOne(
+      { _id: userId },
+      { $set: {
+        _id: userId,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        username: userData.username,
+        email: userData.email,
+        password: userData.password,
+        createdAt: userData.createdAt ? new Date(userData.createdAt) : new Date(),
+        stripeCustomerId: userData.stripeCustomerId || null,
+        stripeSubscriptionId: userData.stripeSubscriptionId || null,
+        subscriptionStatus: userData.subscriptionStatus || 'inactive',
+        subscriptionRenewalDate: userData.subscriptionRenewalDate || null,
+        subscriptionStartedDate: userData.subscriptionStartedDate || null,
+        subscriptionPausedDate: userData.subscriptionPausedDate || null,
+        cancellationHistory: userData.cancellationHistory || [],
+        lastActiveAt: userData.lastActiveAt || null,
+        purchasedCredits: usageData.purchasedCredits || { total: 0, remaining: 0 },
+      }},
+      { upsert: true }
+    )
+  } catch (error) {
+    console.error(`[Users Sync] Failed for ${userId}:`, error.message)
+  }
+}
+
+// --- User Stats sync (writes costs, stats, overage to 'user_stats' collection) ---
+const syncUserStatsToMongo = async (userId) => {
+  try {
+    const dbInstance = await db.getDb()
+    const userData = usersCache[userId] || {}
+    const usageData = usageCache[userId] || {}
+    
+    await dbInstance.collection('user_stats').updateOne(
+      { _id: userId },
+      { $set: {
+        _id: userId,
+        userId: userId,
+        monthlyUsageCost: userData.monthlyUsageCost || {},
+        monthlyOverageBilled: userData.monthlyOverageBilled || {},
+        stats: {
+          totalTokens: usageData.totalTokens || 0,
+          totalInputTokens: usageData.totalInputTokens || 0,
+          totalOutputTokens: usageData.totalOutputTokens || 0,
+          totalQueries: usageData.totalQueries || 0,
+          totalPrompts: usageData.totalPrompts || 0,
+          councilPrompts: usageData.councilPrompts || 0,
+          providers: usageData.providers || {},
+          models: usageData.models || {},
+        },
+        updatedAt: new Date(),
+      }},
+      { upsert: true }
+    )
+  } catch (error) {
+    console.error(`[UserStats Sync] Failed for ${userId}:`, error.message)
+  }
+}
+
+// Load ALL data from MongoDB on startup
 const loadCacheFromMongoDB = async () => {
   try {
-    // Load all users
-    const allUsers = await db.users.getAll()
+    const dbInstance = await db.getDb()
+    
+    // 1. Load all users (profile + subscription + purchasedCredits only)
+    const allUsers = await dbInstance.collection('users').find({}).toArray()
     for (const user of allUsers) {
       usersCache[user._id] = {
         id: user._id,
@@ -137,39 +221,93 @@ const loadCacheFromMongoDB = async () => {
         email: user.email,
         password: user.password,
         createdAt: user.createdAt?.toISOString?.() || user.createdAt,
-        stripeCustomerId: user.stripeCustomerId,
-        stripeSubscriptionId: user.stripeSubscriptionId,
-        subscriptionStatus: user.subscriptionStatus,
-        subscriptionEndDate: user.subscriptionEndDate,
-        monthlyUsageCost: user.monthlyUsageCost || {},
-        lastLoginDate: user.lastLoginDate?.toISOString?.() || user.lastLoginDate,
-      }
-      
-      // Build usage data from user stats
-      usageCache[user._id] = {
-        totalTokens: user.stats?.totalTokens || 0,
-        totalInputTokens: user.stats?.totalInputTokens || 0,
-        totalOutputTokens: user.stats?.totalOutputTokens || 0,
-        totalQueries: user.stats?.totalQueries || 0,
-        totalPrompts: user.stats?.totalPrompts || 0,
-        monthlyUsage: {},
-        dailyUsage: {},
-        providers: user.stats?.providers || {},
-        models: user.stats?.models || {},
-        promptHistory: [],
-        categories: {},
-        categoryPrompts: {},
-        ratings: {},
-        lastActiveDate: user.lastActiveAt?.toISOString?.()?.split('T')[0] || null,
-        lastLoginDate: user.lastLoginDate?.toISOString?.() || null,
-        streakDays: 0,
-        judgeConversationContext: [],
-        purchasedCredits: user.purchasedCredits || { total: 0, remaining: 0 },
+        stripeCustomerId: user.stripeCustomerId || null,
+        stripeSubscriptionId: user.stripeSubscriptionId || null,
+        subscriptionStatus: user.subscriptionStatus || 'inactive',
+        subscriptionRenewalDate: user.subscriptionRenewalDate || null,
+        subscriptionStartedDate: user.subscriptionStartedDate || null,
+        subscriptionPausedDate: user.subscriptionPausedDate || null,
+        cancellationHistory: user.cancellationHistory || [],
+        lastActiveAt: user.lastActiveAt || null,
+        // monthlyUsageCost and monthlyOverageBilled loaded from user_stats below
+        monthlyUsageCost: {},
+        monthlyOverageBilled: {},
       }
     }
     
-    // Load leaderboard posts
-    const dbInstance = await db.getDb()
+    // 1b. Load user_stats (costs, aggregated stats, purchased credits, overage billing)
+    const allUserStats = await dbInstance.collection('user_stats').find({}).toArray()
+    for (const statsDoc of allUserStats) {
+      const userId = statsDoc._id
+      // Merge cost/overage fields into usersCache (for quick access by billing logic)
+      if (usersCache[userId]) {
+        usersCache[userId].monthlyUsageCost = statsDoc.monthlyUsageCost || {}
+        usersCache[userId].monthlyOverageBilled = statsDoc.monthlyOverageBilled || {}
+      }
+      // Merge aggregated stats into usageCache
+      if (!usageCache[userId]) usageCache[userId] = {}
+      if (statsDoc.stats) {
+        usageCache[userId].totalTokens = statsDoc.stats.totalTokens || usageCache[userId].totalTokens || 0
+        usageCache[userId].totalInputTokens = statsDoc.stats.totalInputTokens || usageCache[userId].totalInputTokens || 0
+        usageCache[userId].totalOutputTokens = statsDoc.stats.totalOutputTokens || usageCache[userId].totalOutputTokens || 0
+        usageCache[userId].totalQueries = statsDoc.stats.totalQueries || usageCache[userId].totalQueries || 0
+        usageCache[userId].totalPrompts = statsDoc.stats.totalPrompts || usageCache[userId].totalPrompts || 0
+        // Only overwrite providers/models if they have data (don't clobber existing)
+        if (Object.keys(statsDoc.stats.providers || {}).length > 0) {
+          usageCache[userId].providers = statsDoc.stats.providers
+        }
+        if (Object.keys(statsDoc.stats.models || {}).length > 0) {
+          usageCache[userId].models = statsDoc.stats.models
+        }
+      }
+    }
+    // Load purchasedCredits from users collection into usageCache (for compatibility)
+    for (const user of allUsers) {
+      if (!usageCache[user._id]) usageCache[user._id] = {}
+      if (user.purchasedCredits) {
+        usageCache[user._id].purchasedCredits = user.purchasedCredits
+      }
+    }
+    console.log(`[Cache] Loaded ${allUserStats.length} user_stats documents`)
+    
+    // 2. Load all usage data (full — includes dailyUsage, monthlyUsage, etc.)
+    const allUsage = await dbInstance.collection('usage_data').find({}).toArray()
+    for (const doc of allUsage) {
+      const { _id, updatedAt, ...data } = doc
+      usageCache[_id] = data
+    }
+    
+    // For users that exist but have no usage_data doc yet, initialize empty usage
+    for (const userId of Object.keys(usersCache)) {
+      if (!usageCache[userId]) {
+        usageCache[userId] = {
+          totalTokens: 0,
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          totalQueries: 0,
+          totalPrompts: 0,
+          monthlyUsage: {},
+          dailyUsage: {},
+          providers: {},
+          models: {},
+          promptHistory: [],
+          categories: {},
+          categoryPrompts: {},
+          ratings: {},
+          lastActiveAt: null,
+          streakDays: 0,
+          judgeConversationContext: [],
+          purchasedCredits: { total: 0, remaining: 0 },
+        }
+        usageDirtyUsers.add(userId) // Mark dirty so it gets flushed to usage_data
+      }
+    }
+    
+    if (usageDirtyUsers.size > 0) {
+      setTimeout(() => flushUsageToMongo(), 1000)
+    }
+    
+    // 3. Load leaderboard posts
     const posts = await dbInstance.collection('leaderboard_posts').find({}).toArray()
     leaderboardCache.prompts = posts.map(p => ({
       id: p._id,
@@ -186,116 +324,80 @@ const loadCacheFromMongoDB = async () => {
       comments: p.comments || [],
     }))
     
-    // Load admins list
+    // 4. Load admins list
     const adminsDoc = await dbInstance.collection('admins').findOne({ _id: 'admin_list' })
     if (adminsDoc && adminsDoc.admins) {
       adminsCache.admins = adminsDoc.admins
     }
     
     cacheLoaded = true
-    console.log(`[Cache] Loaded ${Object.keys(usersCache).length} users, ${leaderboardCache.prompts.length} leaderboard posts, ${adminsCache.admins.length} admins`)
+    console.log(`[Cache] Loaded ${Object.keys(usersCache).length} users, ${Object.keys(usageCache).length} usage records, ${leaderboardCache.prompts.length} leaderboard posts, ${adminsCache.admins.length} admins`)
   } catch (error) {
     console.error('[Cache] Failed to load from MongoDB:', error.message)
   }
 }
 
-// Sync cache to MongoDB (debounced)
-let syncTimeout = null
-const syncToMongoDB = async (collection, id, data) => {
-  try {
-    const dbInstance = await db.getDb()
-    if (collection === 'users') {
-      await dbInstance.collection('users').updateOne(
-        { _id: id },
-        { $set: data },
-        { upsert: true }
-      )
-    } else if (collection === 'usage') {
-      // Usage data is embedded in user document
-      await dbInstance.collection('users').updateOne(
-        { _id: id },
-        { 
-          $set: {
-            'stats.totalTokens': data.totalTokens || 0,
-            'stats.totalInputTokens': data.totalInputTokens || 0,
-            'stats.totalOutputTokens': data.totalOutputTokens || 0,
-            'stats.totalQueries': data.totalQueries || 0,
-            'stats.totalPrompts': data.totalPrompts || 0,
-            'stats.providers': data.providers || {},
-            'stats.models': data.models || {},
-            lastActiveAt: new Date(),
-          }
-        },
-        { upsert: true }
-      )
-    } else if (collection === 'leaderboard') {
-      // Handled separately
-    }
-  } catch (error) {
-    console.error(`[Sync] Failed to sync ${collection}/${id}:`, error.message)
-  }
-}
+// --- Public read/write functions (same API, now fully backed by MongoDB) ---
 
-// MongoDB-backed readUsers (uses cache)
 const readUsers = () => {
   return usersCache
 }
 
-// MongoDB-backed writeUsers (updates cache + syncs to MongoDB)
-const writeUsers = (users) => {
+const writeUsers = (users, changedUserId = null) => {
   usersCache = users
-  // Sync each user to MongoDB
+  // Sync changed users to MongoDB immediately
+  if (changedUserId) {
+    // Only sync the specific user that changed
+    const userData = users[changedUserId]
+    if (userData) {
+      syncUserToMongo(changedUserId, userData)
+      syncUserStatsToMongo(changedUserId) // Also sync stats to user_stats collection
+    }
+  } else {
+    // Sync all users
   for (const [userId, userData] of Object.entries(users)) {
-    syncToMongoDB('users', userId, {
-      _id: userId,
-      firstName: userData.firstName,
-      lastName: userData.lastName,
-      username: userData.username,
-      email: userData.email,
-      password: userData.password,
-      createdAt: userData.createdAt ? new Date(userData.createdAt) : new Date(),
-      stripeCustomerId: userData.stripeCustomerId,
-      stripeSubscriptionId: userData.stripeSubscriptionId,
-      subscriptionStatus: userData.subscriptionStatus,
-      subscriptionEndDate: userData.subscriptionEndDate,
-      monthlyUsageCost: userData.monthlyUsageCost || {},
-      lastLoginDate: userData.lastLoginDate ? new Date(userData.lastLoginDate) : null,
-    })
+      syncUserToMongo(userId, userData)
+      syncUserStatsToMongo(userId)
+    }
   }
 }
 
-// MongoDB-backed readUsage (uses cache)
 const readUsage = () => {
   return usageCache
 }
 
-// MongoDB-backed writeUsage (updates cache + syncs to MongoDB)
-const writeUsage = (usage) => {
-  usageCache = usage
-  // Sync each user's usage to MongoDB
-  for (const [userId, userData] of Object.entries(usage)) {
-    syncToMongoDB('usage', userId, userData)
+const writeUsage = (usage, changedUserId = null) => {
+  // Mark dirty users for MongoDB sync
+  // NOTE: callers modify usageCache in-place via readUsage() reference,
+  // so reference equality (usage[id] !== usageCache[id]) won't detect changes.
+  // If a specific userId was provided, only mark that one dirty.
+  // Otherwise mark all users (safe fallback for in-place mutations).
+  if (changedUserId) {
+    usageDirtyUsers.add(changedUserId)
+  } else {
+    for (const userId of Object.keys(usage)) {
+      usageDirtyUsers.add(userId)
   }
 }
+  usageCache = usage
+  // Debounced sync to MongoDB (batches rapid writes)
+  if (usageSyncTimer) clearTimeout(usageSyncTimer)
+  usageSyncTimer = setTimeout(() => flushUsageToMongo(), 2000)
+}
 
-// MongoDB-backed readLeaderboard
 const readLeaderboard = () => {
   return leaderboardCache
 }
 
-// MongoDB-backed writeLeaderboard
 const writeLeaderboard = async (leaderboard) => {
   leaderboardCache = leaderboard
   
   try {
     const dbInstance = await db.getDb()
-    
-    // Sync each post
     for (const post of leaderboard.prompts) {
       await dbInstance.collection('leaderboard_posts').updateOne(
         { _id: post.id },
-        { 
-          $set: {
+        { $set: {
             userId: post.userId,
             username: post.username,
             promptText: post.promptText,
@@ -307,8 +409,7 @@ const writeLeaderboard = async (leaderboard) => {
             summary: post.summary,
             sources: post.sources || [],
             comments: post.comments || [],
-          }
-        },
+        }},
         { upsert: true }
       )
     }
@@ -385,8 +486,7 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
       categories: {},
       categoryPrompts: {},
       ratings: {},
-      lastActiveDate: null,
-      lastLoginDate: null,
+      lastActiveAt: null,
       streakDays: 0,
       judgeConversationContext: [], // Store last 5 summaries from judge model conversations
     }
@@ -424,11 +524,8 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
     userUsage.ratings = {}
   }
   // Migration: Ensure streak tracking exists
-  if (!userUsage.lastActiveDate) {
-    userUsage.lastActiveDate = null
-  }
-  if (userUsage.lastLoginDate === undefined) {
-    userUsage.lastLoginDate = null
+  if (!userUsage.lastActiveAt) {
+    userUsage.lastActiveAt = null
   }
   if (userUsage.streakDays === undefined) {
     userUsage.streakDays = 0
@@ -436,6 +533,17 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
   // Migration: Ensure judge conversation context exists
   if (!userUsage.judgeConversationContext) {
     userUsage.judgeConversationContext = []
+  }
+  // Migration: Ensure councilPrompts exists
+  if (userUsage.councilPrompts === undefined) {
+    userUsage.councilPrompts = 0
+  }
+
+  // Track council prompts (prompts sent to 3+ providers/models)
+  const responseCount = promptData?.responses?.length || 0
+  if (responseCount >= 3) {
+    userUsage.councilPrompts = (userUsage.councilPrompts || 0) + 1
+    console.log(`[Prompt Tracking] User ${userId}: Council prompt detected (${responseCount} models). Total council prompts: ${userUsage.councilPrompts}`)
   }
 
   // Update prompt totals
@@ -502,9 +610,9 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
     }
     
     userUsage.promptHistory.unshift(promptEntry)
-    // Keep only last 100 prompts
-    if (userUsage.promptHistory.length > 100) {
-      userUsage.promptHistory = userUsage.promptHistory.slice(0, 100)
+    // Keep only last 10 prompts
+    if (userUsage.promptHistory.length > 10) {
+      userUsage.promptHistory = userUsage.promptHistory.slice(0, 10)
     }
   }
 
@@ -572,8 +680,8 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
   }
 
   // Update streak
-  if (userUsage.lastActiveDate) {
-    const lastDate = new Date(userUsage.lastActiveDate)
+  if (userUsage.lastActiveAt) {
+    const lastDate = new Date(userUsage.lastActiveAt)
     const todayDate = new Date(today)
     const diffTime = todayDate - lastDate
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
@@ -593,54 +701,28 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
     userUsage.streakDays = 1
   }
   const activeDate = new Date().toISOString()
-  userUsage.lastActiveDate = today
+  userUsage.lastActiveAt = today
 
   writeUsage(usage)
   
-  // Also update users.json with last active date and status
+  // Also update users cache with last active date
   const users = readUsers()
   if (users[userId]) {
-    // Always update lastActiveDate
-    users[userId].lastActiveDate = activeDate
+    users[userId].lastActiveAt = activeDate
     
-    // Update status based on activity within last month (only if not canceled)
-    if (users[userId].status !== 'canceled' && users[userId].canceled !== true) {
-      const now = new Date()
-      const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-      const lastActive = new Date(activeDate)
-      
-      if (lastActive >= oneMonthAgo) {
-        users[userId].status = 'active'
-      } else {
-        users[userId].status = 'inactive'
-      }
-    }
-    
-    // Always write users.json when updating lastActiveDate
     try {
-      writeUsers(users)
-      console.log(`[User Update] Updated ${userId} in users.json: lastActiveDate=${activeDate}, status=${users[userId].status}`)
+      writeUsers(users, userId)
+      console.log(`[User Update] Updated ${userId} in users cache: lastActiveAt=${activeDate}`)
     } catch (error) {
-      console.error(`[User Update] Error updating users.json for ${userId}:`, error)
+      console.error(`[User Update] Error updating users cache for ${userId}:`, error)
     }
   }
 }
 
-// Refiner models - these are internal pipeline models whose tokens should NOT be shown to users
-// but their COST should still be tracked and billed
-const REFINER_MODELS = [
-  'gemini-2.5-flash-lite',
-  'gemini-1.5-flash-lite', 
-  'gpt-4o-mini'
-]
-
-// Check if a model is a refiner model (internal pipeline model)
-const isRefinerModel = (model) => {
-  return REFINER_MODELS.some(refiner => model.includes(refiner))
-}
-
 // Track usage for a user
-const trackUsage = async (userId, provider, model, inputTokens, outputTokens) => {
+// isPipeline = true for internal pipeline calls (category detection, refiner, summary, judge pipeline)
+// Pipeline usage is included in totals/cost but NOT shown in per-model stats on the UI
+const trackUsage = async (userId, provider, model, inputTokens, outputTokens, isPipeline = false) => {
   const usage = readUsage()
   if (!usage[userId]) {
     usage[userId] = {
@@ -661,35 +743,21 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens) =>
   const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
   const tokensUsed = inputTokens + outputTokens
   const modelKey = `${provider}-${model}`
-  
-  // Check if this is a refiner model (internal pipeline model)
-  // Refiner models: their cost is tracked but tokens are NOT shown to users
-  const isRefiner = isRefinerModel(model)
-  
-  if (isRefiner) {
-    console.log(`[Usage] Tracking refiner model ${modelKey}: ${tokensUsed} tokens (hidden from user count, included in cost)`)
-  }
 
-  // Update totals - ONLY for non-refiner models (user-visible token counts)
-  if (!isRefiner) {
-    userUsage.totalTokens += tokensUsed
-    userUsage.totalInputTokens = (userUsage.totalInputTokens || 0) + inputTokens
-    userUsage.totalOutputTokens = (userUsage.totalOutputTokens || 0) + outputTokens
-  }
-  // Note: totalQueries is now only incremented when Serper queries are made, not for LLM calls
+  // Update totals
+  userUsage.totalTokens += tokensUsed
+  userUsage.totalInputTokens = (userUsage.totalInputTokens || 0) + inputTokens
+  userUsage.totalOutputTokens = (userUsage.totalOutputTokens || 0) + outputTokens
 
-  // Update monthly usage - ONLY for non-refiner models (user-visible token counts)
+  // Update monthly usage
   if (!userUsage.monthlyUsage[currentMonth]) {
     userUsage.monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
   }
-  if (!isRefiner) {
-    userUsage.monthlyUsage[currentMonth].tokens += tokensUsed
-    userUsage.monthlyUsage[currentMonth].inputTokens = (userUsage.monthlyUsage[currentMonth].inputTokens || 0) + inputTokens
-    userUsage.monthlyUsage[currentMonth].outputTokens = (userUsage.monthlyUsage[currentMonth].outputTokens || 0) + outputTokens
-  }
-  // Note: queries are now only incremented when Serper queries are made, not for LLM calls
+  userUsage.monthlyUsage[currentMonth].tokens += tokensUsed
+  userUsage.monthlyUsage[currentMonth].inputTokens = (userUsage.monthlyUsage[currentMonth].inputTokens || 0) + inputTokens
+  userUsage.monthlyUsage[currentMonth].outputTokens = (userUsage.monthlyUsage[currentMonth].outputTokens || 0) + outputTokens
 
-  // Update provider stats - ONLY for non-refiner models (user-visible token counts)
+  // Update provider stats
   if (!userUsage.providers[provider]) {
     userUsage.providers[provider] = {
       totalTokens: 0,
@@ -702,12 +770,10 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens) =>
       monthlyQueries: {},
     }
   }
-  if (!isRefiner) {
-    userUsage.providers[provider].totalTokens += tokensUsed
-    userUsage.providers[provider].totalInputTokens = (userUsage.providers[provider].totalInputTokens || 0) + inputTokens
-    userUsage.providers[provider].totalOutputTokens = (userUsage.providers[provider].totalOutputTokens || 0) + outputTokens
-  }
-  // Note: provider queries are now only incremented when Serper queries are made, not for LLM calls
+  userUsage.providers[provider].totalTokens += tokensUsed
+  userUsage.providers[provider].totalInputTokens = (userUsage.providers[provider].totalInputTokens || 0) + inputTokens
+  userUsage.providers[provider].totalOutputTokens = (userUsage.providers[provider].totalOutputTokens || 0) + outputTokens
+
   if (!userUsage.providers[provider].monthlyTokens[currentMonth]) {
     userUsage.providers[provider].monthlyTokens[currentMonth] = 0
     userUsage.providers[provider].monthlyInputTokens = userUsage.providers[provider].monthlyInputTokens || {}
@@ -716,37 +782,32 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens) =>
     userUsage.providers[provider].monthlyOutputTokens[currentMonth] = 0
     userUsage.providers[provider].monthlyQueries[currentMonth] = 0
   }
-  if (!isRefiner) {
-    userUsage.providers[provider].monthlyTokens[currentMonth] += tokensUsed
-    userUsage.providers[provider].monthlyInputTokens[currentMonth] = (userUsage.providers[provider].monthlyInputTokens[currentMonth] || 0) + inputTokens
-    userUsage.providers[provider].monthlyOutputTokens[currentMonth] = (userUsage.providers[provider].monthlyOutputTokens[currentMonth] || 0) + outputTokens
-  }
-  // Note: provider monthly queries are now only incremented when Serper queries are made, not for LLM calls
+  userUsage.providers[provider].monthlyTokens[currentMonth] += tokensUsed
+  userUsage.providers[provider].monthlyInputTokens[currentMonth] = (userUsage.providers[provider].monthlyInputTokens[currentMonth] || 0) + inputTokens
+  userUsage.providers[provider].monthlyOutputTokens[currentMonth] = (userUsage.providers[provider].monthlyOutputTokens[currentMonth] || 0) + outputTokens
 
-  // Update model stats (within provider) - ONLY for non-refiner models
-  if (!isRefiner) {
+  // Update model stats
+  // Update per-model stats only for user-initiated calls (not pipeline internals)
+  if (!isPipeline) {
     if (!userUsage.models[modelKey]) {
       userUsage.models[modelKey] = {
         totalTokens: 0,
         totalInputTokens: 0,
         totalOutputTokens: 0,
         totalQueries: 0,
-        totalPrompts: 0, // Track how many times this model was used
+        totalPrompts: 0,
         provider: provider,
         model: model,
-        pricing: null, // Will be set later
+        pricing: null,
       }
     }
     userUsage.models[modelKey].totalTokens += tokensUsed
     userUsage.models[modelKey].totalInputTokens = (userUsage.models[modelKey].totalInputTokens || 0) + inputTokens
     userUsage.models[modelKey].totalOutputTokens = (userUsage.models[modelKey].totalOutputTokens || 0) + outputTokens
-    // Increment prompt count for this model (each time trackUsage is called, it's one prompt/usage)
     userUsage.models[modelKey].totalPrompts = (userUsage.models[modelKey].totalPrompts || 0) + 1
   }
-  // Note: model queries are now only incremented when Serper queries are made, not for LLM calls
 
-  // Update daily usage (for COST calculation - includes ALL models including refiners)
-  // This is used by the cost calculation function to determine billing
+  // Update daily usage (for cost calculation and daily breakdown chart)
   if (!userUsage.dailyUsage) {
     userUsage.dailyUsage = {}
   }
@@ -756,22 +817,19 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens) =>
   if (!userUsage.dailyUsage[currentMonth][today]) {
     userUsage.dailyUsage[currentMonth][today] = { inputTokens: 0, outputTokens: 0, queries: 0, models: {} }
   }
-  // Only add to aggregate daily totals for non-refiner models (user-visible)
-  if (!isRefiner) {
-    userUsage.dailyUsage[currentMonth][today].inputTokens = (userUsage.dailyUsage[currentMonth][today].inputTokens || 0) + inputTokens
-    userUsage.dailyUsage[currentMonth][today].outputTokens = (userUsage.dailyUsage[currentMonth][today].outputTokens || 0) + outputTokens
-  }
+  userUsage.dailyUsage[currentMonth][today].inputTokens = (userUsage.dailyUsage[currentMonth][today].inputTokens || 0) + inputTokens
+  userUsage.dailyUsage[currentMonth][today].outputTokens = (userUsage.dailyUsage[currentMonth][today].outputTokens || 0) + outputTokens
   
-  // Track which models were used on this day - ALL models including refiners (for cost calculation)
+  // Track which models were used on this day (for cost calculation)
   if (!userUsage.dailyUsage[currentMonth][today].models[modelKey]) {
     userUsage.dailyUsage[currentMonth][today].models[modelKey] = { inputTokens: 0, outputTokens: 0 }
   }
   userUsage.dailyUsage[currentMonth][today].models[modelKey].inputTokens = (userUsage.dailyUsage[currentMonth][today].models[modelKey].inputTokens || 0) + inputTokens
   userUsage.dailyUsage[currentMonth][today].models[modelKey].outputTokens = (userUsage.dailyUsage[currentMonth][today].models[modelKey].outputTokens || 0) + outputTokens
 
-  writeUsage(usage)
+  writeUsage(usage, userId)
   
-  // ALSO update the monthlyUsageCost in users.json immediately
+  // ALSO update the monthlyUsageCost in users cache immediately
   // This ensures costs are tracked incrementally and won't be lost if dailyUsage is reset
   try {
     const users = readUsers()
@@ -787,7 +845,7 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens) =>
         }
         const existingCost = user.monthlyUsageCost[currentMonth] || 0
         user.monthlyUsageCost[currentMonth] = existingCost + thisCost
-        writeUsers(users)
+        writeUsers(users, userId)
         console.log(`[Usage] Added $${thisCost.toFixed(6)} to monthlyUsageCost. New total: $${user.monthlyUsageCost[currentMonth].toFixed(4)}`)
       }
     }
@@ -795,13 +853,8 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens) =>
     console.error('[Usage] Error updating monthlyUsageCost:', costErr)
   }
   
-  // Also track in MongoDB (non-blocking, for gradual migration)
-  // Only track non-refiner models in user-visible stats
-  if (!isRefiner) {
-    db.trackUsage(userId, provider, model, inputTokens, outputTokens).catch(err => 
-      console.warn('[Usage] MongoDB tracking failed (non-critical):', err.message)
-    )
-  }
+  // Usage is tracked in the in-memory cache (flushed to usage_data collection).
+  // No separate MongoDB tracking needed — usage_data is the single source of truth.
 }
 
 // API Keys from environment variables (stored securely in .env file)
@@ -842,7 +895,7 @@ app.post('/api/auth/signup', async (req, res) => {
     console.log('[Auth] Signup attempt for username:', username)
 
     // Check if username or email already exists in MongoDB
-    const existingUser = await db.users.get(username)
+    const existingUser = await db.users.getByUsername(username)
     if (existingUser) {
       return res.status(400).json({ error: 'Username already exists' })
     }
@@ -852,9 +905,9 @@ app.post('/api/auth/signup', async (req, res) => {
       return res.status(400).json({ error: 'Email already registered' })
     }
 
-    // Create new user in MongoDB
+    // Create new user in MongoDB with a proper UUID (not the username)
     const hashedPassword = hashPassword(password)
-    const userId = username
+    const userId = crypto.randomUUID()
     
     await db.users.create(userId, {
       email,
@@ -878,8 +931,13 @@ app.post('/api/auth/signup', async (req, res) => {
       stripeCustomerId: null,
       stripeSubscriptionId: null,
       subscriptionStatus: 'inactive',
-      subscriptionEndDate: null,
+      subscriptionRenewalDate: null,
+      subscriptionStartedDate: null,
+      subscriptionPausedDate: null,
+      cancellationHistory: [],
+      lastActiveAt: null,
       monthlyUsageCost: {},
+      monthlyOverageBilled: {},
     }
     usersCache = users
 
@@ -899,8 +957,7 @@ app.post('/api/auth/signup', async (req, res) => {
       categories: {},
       categoryPrompts: {},
       ratings: {},
-      lastActiveDate: null,
-      lastLoginDate: null,
+      lastActiveAt: null,
       streakDays: 0,
       judgeConversationContext: [],
       purchasedCredits: { total: 0, remaining: 0 },
@@ -916,7 +973,7 @@ app.post('/api/auth/signup', async (req, res) => {
         username,
         email,
         subscriptionStatus: 'inactive',
-        subscriptionEndDate: null,
+        subscriptionRenewalDate: null,
       },
     })
   } catch (error) {
@@ -933,8 +990,8 @@ app.post('/api/auth/signin', async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' })
     }
 
-    // Get user from MongoDB
-    const dbUser = await db.users.get(username)
+    // Get user from MongoDB by username field (not _id)
+    const dbUser = await db.users.getByUsername(username)
     
     if (!dbUser) {
       console.log('[Auth] User not found in MongoDB:', username)
@@ -948,24 +1005,27 @@ app.post('/api/auth/signin', async (req, res) => {
       return res.status(401).json({ error: 'Invalid password. Please check your password and try again.' })
     }
 
-    // Update last login in MongoDB
+    // Use the actual _id (UUID for new users, username for legacy users)
+    const userId = dbUser._id
+
+    // Update last active in MongoDB
     const loginDate = new Date()
-    await db.users.update(username, { lastLoginDate: loginDate, lastActiveAt: loginDate })
+    await db.users.update(userId, { lastActiveAt: loginDate })
     
-    // Update cache
+    // Update cache (keyed by _id)
     const users = readUsers()
-    if (users[username]) {
-      users[username].lastLoginDate = loginDate.toISOString()
+    if (users[userId]) {
+      users[userId].lastActiveAt = loginDate.toISOString()
       usersCache = users
     }
     
     const usage = readUsage()
-    if (usage[username]) {
-      usage[username].lastLoginDate = loginDate.toISOString()
+    if (usage[userId]) {
+      usage[userId].lastActiveAt = loginDate.toISOString()
       usageCache = usage
     }
     
-    console.log('[Auth] Successful sign in for user:', username)
+    console.log('[Auth] Successful sign in for user:', username, '(id:', userId, ')')
     res.json({
       success: true,
       user: {
@@ -975,7 +1035,7 @@ app.post('/api/auth/signin', async (req, res) => {
         username: dbUser.username,
         email: dbUser.email,
         subscriptionStatus: dbUser.subscriptionStatus || 'inactive',
-        subscriptionEndDate: dbUser.subscriptionEndDate || null,
+        subscriptionRenewalDate: dbUser.subscriptionRenewalDate || null,
       },
     })
   } catch (error) {
@@ -1066,7 +1126,7 @@ app.delete('/api/auth/account', async (req, res) => {
     // Store user info for logging before deletion
     const userInfo = { username: dbUser.username, email: dbUser.email }
 
-    // Delete user and all associated data from MongoDB
+    // Delete user and ALL associated data from MongoDB (covers every collection)
     await db.users.delete(userId)
     console.log('[Account Deletion] User and all data deleted from MongoDB:', userId, userInfo)
 
@@ -1160,18 +1220,47 @@ app.get('/api/stats/:userId', (req, res) => {
   // Calculate monthly cost and remaining free allocation
   const FREE_MONTHLY_ALLOCATION = 5.00 // $5 per month included in subscription
   
-  // Get the tracked monthly cost directly from users.json
-  // This is accumulated incrementally by trackUsage() when usage occurs
-  let monthlyCost = user?.monthlyUsageCost?.[currentMonth] || 0
-  
-  // Log the tracked cost for debugging
-  console.log(`[Stats] Monthly cost for ${userId} in ${currentMonth}: $${monthlyCost.toFixed(4)}`)
-  
-  let remainingFreeAllocation = Math.max(0, FREE_MONTHLY_ALLOCATION - monthlyCost)
+  // Get the tracked monthly cost from users cache (incremental counter)
+  let cachedMonthlyCost = user?.monthlyUsageCost?.[currentMonth] || 0
   
   // Get pricing data and daily usage for the daily breakdown chart
   const pricing = getPricingData()
   const dailyData = userUsage.dailyUsage?.[currentMonth] || {}
+  
+  // ALSO calculate monthly cost from daily usage data (ground truth from per-model token counts)
+  // This ensures costs are accurate even if the incremental counter got reset/lost
+  let calculatedMonthlyCost = 0
+  Object.keys(dailyData).forEach((dateStr) => {
+    const dayData = dailyData[dateStr]
+    if (dayData && dayData.models) {
+      Object.keys(dayData.models).forEach((modelKey) => {
+        const modelDayData = dayData.models[modelKey]
+        const dayInputTokens = modelDayData.inputTokens || 0
+        const dayOutputTokens = modelDayData.outputTokens || 0
+        calculatedMonthlyCost += calculateModelCost(modelKey, dayInputTokens, dayOutputTokens, pricing)
+      })
+    }
+    // Include Serper query costs
+    const dayQueries = dayData?.queries || 0
+    if (dayQueries > 0) {
+      calculatedMonthlyCost += calculateSerperQueryCost(dayQueries)
+    }
+  })
+  
+  // Use the higher of cached vs calculated (handles both counter drift and data gaps)
+  let monthlyCost = Math.max(cachedMonthlyCost, calculatedMonthlyCost)
+  
+  // If the calculated cost is higher than cached, update the cache for future consistency
+  if (calculatedMonthlyCost > cachedMonthlyCost && user) {
+    if (!user.monthlyUsageCost) user.monthlyUsageCost = {}
+    user.monthlyUsageCost[currentMonth] = calculatedMonthlyCost
+    writeUsers(users, userId)
+    console.log(`[Stats] Corrected monthlyUsageCost from $${cachedMonthlyCost.toFixed(6)} to $${calculatedMonthlyCost.toFixed(6)} (from daily data)`)
+  }
+  
+  console.log(`[Stats] Monthly cost for ${userId} in ${currentMonth}: $${monthlyCost.toFixed(4)} (cached: $${cachedMonthlyCost.toFixed(4)}, calculated: $${calculatedMonthlyCost.toFixed(4)})`)
+  
+  let remainingFreeAllocation = Math.max(0, FREE_MONTHLY_ALLOCATION - monthlyCost)
   
   // Get purchased credits
   let purchasedCredits = userUsage.purchasedCredits || { total: 0, remaining: 0, purchases: [] }
@@ -1285,18 +1374,57 @@ app.get('/api/stats/:userId', (req, res) => {
     categories: userUsage.categories || {},
     ratings: userUsage.ratings || {},
     streakDays: userUsage.streakDays || 0,
+    councilPrompts: userUsage.councilPrompts || 0,
     createdAt: createdAt,
+    earnedBadges: userUsage.earnedBadges || [],
   })
 })
 
-// Get prompt history (last 12 prompts)
+// Save earned badges (permanent — badges can only be added, never removed)
+app.post('/api/stats/:userId/badges', (req, res) => {
+  const { userId } = req.params
+  const { newBadges } = req.body // Array of badge IDs like ["tokens-0", "prompts-1"]
+  
+  if (!Array.isArray(newBadges) || newBadges.length === 0) {
+    return res.json({ success: true, earnedBadges: [] })
+  }
+  
+  const usage = readUsage()
+  if (!usage[userId]) {
+    return res.status(404).json({ error: 'User not found' })
+  }
+  
+  if (!usage[userId].earnedBadges) {
+    usage[userId].earnedBadges = []
+  }
+  
+  // Only add badges that aren't already saved (append-only, never remove)
+  const existing = new Set(usage[userId].earnedBadges)
+  let added = 0
+  for (const badgeId of newBadges) {
+    if (!existing.has(badgeId)) {
+      usage[userId].earnedBadges.push(badgeId)
+      existing.add(badgeId)
+      added++
+    }
+  }
+  
+  if (added > 0) {
+    writeUsage(usage, userId)
+    console.log(`[Badges] Saved ${added} new badges for ${userId}. Total: ${usage[userId].earnedBadges.length}`)
+  }
+  
+  res.json({ success: true, earnedBadges: usage[userId].earnedBadges })
+})
+
+// Get prompt history (last 10 prompts)
 app.get('/api/stats/:userId/history', (req, res) => {
   const { userId } = req.params
   const usage = readUsage()
   const userUsage = usage[userId] || {}
   const promptHistory = userUsage.promptHistory || []
-  // Return last 12 prompts
-  res.json({ prompts: promptHistory.slice(0, 12) })
+  // Return last 10 prompts
+  res.json({ prompts: promptHistory.slice(0, 10) })
 })
 
 // Clear prompt history
@@ -1345,7 +1473,7 @@ app.get('/api/judge/context/:userId', (req, res) => {
 })
 
 // Also support query-only endpoint for better compatibility
-app.get('/api/judge/context', async (req, res) => {
+app.get('/api/judge/context', (req, res) => {
   try {
     const userId = req.query.userId
     
@@ -1353,22 +1481,13 @@ app.get('/api/judge/context', async (req, res) => {
       return res.status(400).json({ error: 'userId query parameter is required' })
     }
     
-    // Decode the userId in case it was URL encoded
     const decodedUserId = decodeURIComponent(userId)
     console.log('[Judge Context] Fetching context for userId (query):', decodedUserId)
     
-    // Try MongoDB first, fallback to JSON
-    let context = []
-    try {
-      context = await db.judgeContext.get(decodedUserId)
-      console.log('[Judge Context] Got context from MongoDB:', context.length, 'entries')
-    } catch (dbErr) {
-      // Fallback to JSON file
-      console.warn('[Judge Context] MongoDB failed, using JSON fallback:', dbErr.message)
+    // Read from in-memory cache (fully synced with MongoDB)
       const usage = readUsage()
       const userUsage = usage[decodedUserId] || {}
-      context = (userUsage.judgeConversationContext || []).slice(0, 5)
-    }
+    const context = (userUsage.judgeConversationContext || []).slice(0, 5)
     
     console.log('[Judge Context] Found context entries:', context.length)
     res.json({ context })
@@ -1379,7 +1498,7 @@ app.get('/api/judge/context', async (req, res) => {
 })
 
 // Clear judge conversation context (called when user starts new prompt or clears)
-app.post('/api/judge/clear-context', async (req, res) => {
+app.post('/api/judge/clear-context', (req, res) => {
   try {
     const { userId } = req.body
     
@@ -1387,20 +1506,11 @@ app.post('/api/judge/clear-context', async (req, res) => {
       return res.status(400).json({ error: 'userId is required' })
     }
     
-    // Clear in JSON (backward compatibility)
     const usage = readUsage()
     if (usage[userId]) {
       usage[userId].judgeConversationContext = []
       writeUsage(usage)
-      console.log(`[Judge Context] Cleared context in JSON for user ${userId}`)
-    }
-    
-    // Also clear in MongoDB
-    try {
-      await db.judgeContext.clear(userId)
-      console.log(`[Judge Context] Cleared context in MongoDB for user ${userId}`)
-    } catch (dbErr) {
-      console.warn('[Judge Context] MongoDB clear failed (non-critical):', dbErr.message)
+      console.log(`[Judge Context] Cleared context for user ${userId}`)
     }
     
     res.json({ success: true, message: 'Context cleared' })
@@ -1469,11 +1579,11 @@ User prompt:
       }
     )
     
-    // Track tokens for category detection
+    // Track tokens for category detection (pipeline — not shown in per-model stats)
     if (userId) {
       const responseTokens = extractTokensFromResponse(response.data, 'google')
       if (responseTokens) {
-        trackUsage(userId, 'google', 'gemini-2.5-flash-lite', responseTokens.inputTokens || 0, responseTokens.outputTokens || 0)
+        trackUsage(userId, 'google', 'gemini-2.5-flash-lite', responseTokens.inputTokens || 0, responseTokens.outputTokens || 0, true)
       }
     }
 
@@ -1550,8 +1660,8 @@ app.post('/api/judge/conversation', async (req, res) => {
       return res.status(400).json({ error: 'userId and userMessage are required' })
     }
     
-    // Check subscription status
-    const subscriptionCheck = checkSubscriptionStatus(userId)
+    // Check subscription status (async — syncs with Stripe if needed)
+    const subscriptionCheck = await checkSubscriptionStatusAsync(userId)
     if (!subscriptionCheck.hasAccess) {
       return res.status(403).json({ 
         error: 'Active subscription required. Please subscribe to use this service.',
@@ -1728,8 +1838,8 @@ app.post('/api/model/conversation', async (req, res) => {
       return res.status(400).json({ error: 'userId, modelName, and userMessage are required' })
     }
     
-    // Check subscription status
-    const subscriptionCheck = checkSubscriptionStatus(userId)
+    // Check subscription status (async — syncs with Stripe if needed)
+    const subscriptionCheck = await checkSubscriptionStatusAsync(userId)
     if (!subscriptionCheck.hasAccess) {
       return res.status(403).json({ 
         error: 'Active subscription required. Please subscribe to use this service.',
@@ -1990,6 +2100,54 @@ app.delete('/api/stats/:userId/categories/*/prompts', (req, res) => {
   }
 })
 
+// Delete a single prompt from a category by index
+app.delete('/api/stats/:userId/categories/*/prompts/:promptIndex', (req, res) => {
+  const { userId } = req.params
+  const categoryPath = req.params[0] || ''
+  const promptIndex = parseInt(req.params.promptIndex, 10)
+  const usage = readUsage()
+
+  console.log(`[Delete Prompt] DELETE request for user: ${userId}, category: ${categoryPath}, index: ${promptIndex}`)
+
+  if (!usage[userId]) {
+    return res.status(404).json({ error: 'User not found' })
+  }
+
+  const decodedCategory = decodeURIComponent(categoryPath)
+
+  if (!usage[userId].categoryPrompts) {
+    return res.status(404).json({ error: 'No category prompts found' })
+  }
+
+  // Find the category (case-insensitive)
+  let prompts = null
+  let matchedKey = null
+  const categoryKeys = Object.keys(usage[userId].categoryPrompts)
+  for (const key of categoryKeys) {
+    if (key === decodedCategory || key.toLowerCase() === decodedCategory.toLowerCase() || decodeURIComponent(key) === decodedCategory) {
+      prompts = usage[userId].categoryPrompts[key]
+      matchedKey = key
+      break
+    }
+  }
+
+  if (!prompts || !matchedKey) {
+    return res.status(404).json({ error: `Category "${decodedCategory}" not found` })
+  }
+
+  if (promptIndex < 0 || promptIndex >= prompts.length) {
+    return res.status(400).json({ error: `Invalid prompt index: ${promptIndex}` })
+  }
+
+  // Remove the prompt at the given index
+  prompts.splice(promptIndex, 1)
+  usage[userId].categoryPrompts[matchedKey] = prompts
+  writeUsage(usage)
+
+  console.log(`[Delete Prompt] Deleted prompt at index ${promptIndex} from "${decodedCategory}" for user: ${userId}`)
+  res.json({ success: true, message: `Prompt deleted from category: ${decodedCategory}` })
+})
+
 // Save a rating for a model response
 app.post('/api/ratings', (req, res) => {
   try {
@@ -2018,8 +2176,7 @@ app.post('/api/ratings', (req, res) => {
         categories: {},
         categoryPrompts: {},
         ratings: {},
-        lastActiveDate: null,
-        lastLoginDate: null,
+        lastActiveAt: null,
         streakDays: 0,
       }
     }
@@ -2057,7 +2214,7 @@ app.get('/api/stats/:userId/streak', (req, res) => {
   const userUsage = usage[userId] || {}
   res.json({ 
     streakDays: userUsage.streakDays || 0,
-    lastActiveDate: userUsage.lastActiveDate || null,
+    lastActiveAt: userUsage.lastActiveAt || null,
   })
 })
 
@@ -2074,6 +2231,12 @@ const checkSubscriptionStatus = (userId) => {
     return { hasAccess: false, reason: 'No user ID provided' }
   }
 
+  // Admins always have access regardless of subscription status
+  if (isAdmin(userId)) {
+    console.log(`[Subscription Check] Admin bypass for user ${userId}`)
+    return { hasAccess: true }
+  }
+
   const users = readUsers()
   const user = users[userId]
 
@@ -2086,10 +2249,10 @@ const checkSubscriptionStatus = (userId) => {
   const status = user.subscriptionStatus || 'inactive'
   console.log(`[Subscription Check] User ${userId} status: ${status}, customerId: ${user.stripeCustomerId || 'none'}, subscriptionId: ${user.stripeSubscriptionId || 'none'}`)
 
-  if (status === 'active') {
+  if (status === 'active' || status === 'trialing') {
     // Check if subscription hasn't expired
-    if (user.subscriptionEndDate) {
-      const endDate = new Date(user.subscriptionEndDate)
+    if (user.subscriptionRenewalDate) {
+      const endDate = new Date(user.subscriptionRenewalDate)
       const now = new Date()
       if (endDate < now) {
         console.log(`[Subscription Check] Subscription expired for user ${userId}: ${endDate} < ${now}`)
@@ -2100,14 +2263,44 @@ const checkSubscriptionStatus = (userId) => {
     return { hasAccess: true }
   }
 
-  // Paused users don't have access (but are kept in database)
-  if (status === 'paused') {
-    console.log(`[Subscription Check] Access denied - subscription paused for user ${userId}`)
-    return { hasAccess: false, reason: 'Subscription is paused. Please reactivate to continue.' }
+  // Canceled/paused users still have full access until their paid period ends
+  if (status === 'canceled' || status === 'paused') {
+    if (user.subscriptionRenewalDate) {
+      const endDate = new Date(user.subscriptionRenewalDate)
+      const now = new Date()
+      if (endDate > now) {
+        console.log(`[Subscription Check] Access granted for ${status} user ${userId} — paid period ends ${endDate.toISOString()}`)
+        return { hasAccess: true }
+      }
+    }
+    console.log(`[Subscription Check] Access denied - subscription ${status} and paid period ended for user ${userId}`)
+    return { hasAccess: false, reason: `Your subscription has been ${status}. Please resubscribe to send prompts.` }
   }
 
   console.log(`[Subscription Check] Access denied for user ${userId}: status is ${status}`)
   return { hasAccess: false, reason: `Subscription status: ${status}` }
+}
+
+// Async version that syncs with Stripe before denying access
+const checkSubscriptionStatusAsync = async (userId) => {
+  const result = checkSubscriptionStatus(userId)
+  
+  // If access is granted, return immediately
+  if (result.hasAccess) return result
+  
+  // If access denied and user has a Stripe customer ID, sync from Stripe before final denial
+  const users = readUsers()
+  const user = users[userId]
+  if (user && user.stripeCustomerId) {
+    console.log(`[Subscription Check] Access denied locally for ${userId}, syncing from Stripe before final denial...`)
+    const syncResult = await syncSubscriptionFromStripe(userId, 1)
+    if (syncResult.synced && (syncResult.status === 'active' || syncResult.status === 'trialing')) {
+      console.log(`[Subscription Check] Stripe sync restored access for ${userId}: ${syncResult.status}`)
+      return { hasAccess: true }
+    }
+  }
+  
+  return result
 }
 
 // API endpoint to proxy LLM calls
@@ -2136,7 +2329,7 @@ app.post('/api/llm', async (req, res) => {
 
     // Check subscription status (skip for summary calls to allow summaries even without subscription)
     if (!isSummary && userId) {
-      const subscriptionCheck = checkSubscriptionStatus(userId)
+      const subscriptionCheck = await checkSubscriptionStatusAsync(userId)
       if (!subscriptionCheck.hasAccess) {
         return res.status(403).json({ 
           error: 'Active subscription required. Please subscribe to use this service.',
@@ -2772,10 +2965,10 @@ app.post('/api/search', async (req, res) => {
       }
       userUsage.dailyUsage[currentMonth][today].queries = (userUsage.dailyUsage[currentMonth][today].queries || 0) + 1
       
-      writeUsage(usage)
+      writeUsage(usage, userId)
       console.log(`[Query Tracking] User ${userId}: Total queries ${userUsage.totalQueries}, Monthly queries ${userUsage.monthlyUsage[currentMonth].queries}`)
       
-      // Also add query cost to monthlyUsageCost in users.json
+      // Also add query cost to monthlyUsageCost in users cache
       try {
         const users = readUsers()
         const user = users[userId]
@@ -2786,7 +2979,7 @@ app.post('/api/search', async (req, res) => {
           }
           const existingCost = user.monthlyUsageCost[currentMonth] || 0
           user.monthlyUsageCost[currentMonth] = existingCost + queryCost
-          writeUsers(users)
+          writeUsers(users, userId)
           console.log(`[Query Tracking] Added $${queryCost.toFixed(6)} query cost. New total: $${user.monthlyUsageCost[currentMonth].toFixed(4)}`)
         }
       } catch (costErr) {
@@ -3207,9 +3400,9 @@ ${formattedResults}`
           outputTokens = await countTokens(content, 'openai', 'gpt-4o-mini')
         }
         
-        // Track usage if userId is provided
+        // Track usage for backup refiner (pipeline — not shown in per-model stats)
         if (userId) {
-          trackUsage(userId, 'openai', 'gpt-4o-mini', inputTokens, outputTokens)
+          trackUsage(userId, 'openai', 'gpt-4o-mini', inputTokens, outputTokens, true)
         }
         
         tokenInfo = {
@@ -3311,9 +3504,9 @@ ${formattedResults}`
         console.log(`[Refiner] ⚠️ Using tokenizer fallback for ${modelName}: input=${inputTokens}, output=${outputTokens}, total=${totalTokens}`)
       }
       
-      // Track usage in database if userId is provided
+      // Track usage for primary refiner (pipeline — not shown in per-model stats)
       if (userId) {
-        trackUsage(userId, 'google', modelName, inputTokens, outputTokens)
+        trackUsage(userId, 'google', modelName, inputTokens, outputTokens, true)
       }
       
       // Always return tokenInfo (even if userId is null or content is empty) so it can be displayed
@@ -3518,9 +3711,9 @@ If both summaries have similar citation quality, prefer the one with more citati
           outputTokens = await countTokens(content, 'xai', 'grok-4-1-fast-reasoning')
         }
         
-        // Track usage if userId is provided
+        // Track usage for judge refiner selection (pipeline — not shown in per-model stats)
         if (userId) {
-          trackUsage(userId, 'xai', 'grok-4-1-fast-reasoning', inputTokens, outputTokens)
+          trackUsage(userId, 'xai', 'grok-4-1-fast-reasoning', inputTokens, outputTokens, true)
         }
         
         judgeTokenInfo = {
@@ -3719,9 +3912,9 @@ DISAGREEMENTS:
         outputTokens = await countTokens(content, 'xai', 'grok-4-1-fast-reasoning')
       }
       
-      // Track usage if userId is provided
+      // Track usage for judge finalization (pipeline — not shown in per-model stats)
       if (userId) {
-        trackUsage(userId, 'xai', 'grok-4-1-fast-reasoning', inputTokens, outputTokens)
+        trackUsage(userId, 'xai', 'grok-4-1-fast-reasoning', inputTokens, outputTokens, true)
       }
       
       judgeTokenInfo = {
@@ -3964,7 +4157,7 @@ Provide only the summary (max 75 tokens):`
         outputTokens = await countTokens(summary, 'google', 'gemini-2.5-flash-lite')
       }
       
-      trackUsage(userId, 'google', 'gemini-2.5-flash-lite', inputTokens, outputTokens)
+      trackUsage(userId, 'google', 'gemini-2.5-flash-lite', inputTokens, outputTokens, true)
     }
     
     console.log(`[Summarize] Summary created: ${tokens} tokens`)
@@ -4179,10 +4372,10 @@ app.post('/api/rag', async (req, res) => {
       }
       userUsage.dailyUsage[currentMonth][today].queries = (userUsage.dailyUsage[currentMonth][today].queries || 0) + 1
       
-      writeUsage(usage)
+      writeUsage(usage, userId)
       console.log(`[Query Tracking] User ${userId}: Total queries ${userUsage.totalQueries}, Monthly queries ${userUsage.monthlyUsage[currentMonth].queries}`)
       
-      // Also add query cost to monthlyUsageCost in users.json
+      // Also add query cost to monthlyUsageCost in users cache
       try {
         const users = readUsers()
         const user = users[userId]
@@ -4193,7 +4386,7 @@ app.post('/api/rag', async (req, res) => {
           }
           const existingCost = user.monthlyUsageCost[currentMonth] || 0
           user.monthlyUsageCost[currentMonth] = existingCost + queryCost
-          writeUsers(users)
+          writeUsers(users, userId)
           console.log(`[Query Tracking] Added $${queryCost.toFixed(6)} query cost. New total: $${user.monthlyUsageCost[currentMonth].toFixed(4)}`)
         }
       } catch (costErr) {
@@ -4782,33 +4975,16 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
       const userUsage = usage[user.id]
       
       // Check if user has been active within the last month
-      // ALWAYS use users.json dates for status calculation (most authoritative source)
-      // Only use usage.json as fallback if users.json doesn't have the date
-      // This ensures status is based on the authoritative source, not potentially stale usage.json data
-      const lastActiveDate = user.lastActiveDate || userUsage?.lastActiveDate
-      // For status calculation, ALWAYS prefer users.json lastLoginDate
-      // Only use usage.json if users.json doesn't have it
-      const lastLoginDate = user.lastLoginDate || userUsage?.lastLoginDate
+      // Use lastActiveAt from users cache, fall back to usage cache
+      const lastActiveAt = user.lastActiveAt || userUsage?.lastActiveAt
       
       let isActive = false
-      if (lastActiveDate || lastLoginDate) {
+      if (lastActiveAt) {
         const now = new Date()
         const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) // 30 days ago
-        
-        // Check last active date (from prompts/interactions)
-        if (lastActiveDate) {
-          const lastActive = new Date(lastActiveDate)
+        const lastActive = new Date(lastActiveAt)
           if (lastActive >= oneMonthAgo) {
             isActive = true
-          }
-        }
-        
-        // Check last login date
-        if (!isActive && lastLoginDate) {
-          const lastLogin = new Date(lastLoginDate)
-          if (lastLogin >= oneMonthAgo) {
-            isActive = true
-          }
         }
       }
       
@@ -4820,30 +4996,12 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
         status = 'active'
       }
       
-      // Update users.json with status and dates
-      if (users[user.id]) {
-        // Update dates if we have them from usage.json but not in users.json
-        if (lastActiveDate && (!users[user.id].lastActiveDate || new Date(users[user.id].lastActiveDate) < new Date(lastActiveDate))) {
-          users[user.id].lastActiveDate = lastActiveDate
-        }
-        // Only update lastLoginDate if usage.json has a MORE RECENT date than users.json
-        // This prevents overwriting users.json with stale/incorrect data from usage.json
-        if (userUsage?.lastLoginDate) {
-          const usersDate = users[user.id].lastLoginDate ? new Date(users[user.id].lastLoginDate) : null
-          const usageDate = new Date(userUsage.lastLoginDate)
-          // Only update if usage.json date is more recent AND users.json date doesn't exist or is older
-          if (!usersDate || usageDate > usersDate) {
-            users[user.id].lastLoginDate = userUsage.lastLoginDate
-          }
-        } else if (lastLoginDate && !users[user.id].lastLoginDate) {
-          // If users.json doesn't have it and usage.json doesn't have it, use the calculated value
-          users[user.id].lastLoginDate = lastLoginDate
-        }
-        // Always update status (unless user is canceled)
-        if (users[user.id].status !== 'canceled' && users[user.id].canceled !== true) {
-          users[user.id].status = status
-        }
+      // Sync lastActiveAt from usage cache to users cache if more recent
+      if (users[user.id] && lastActiveAt) {
+        if (!users[user.id].lastActiveAt || new Date(users[user.id].lastActiveAt) < new Date(lastActiveAt)) {
+          users[user.id].lastActiveAt = lastActiveAt
         writeUsers(users)
+        }
       }
       
       return {
@@ -4854,9 +5012,8 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
         lastName: user.lastName,
         createdAt: user.createdAt,
         isAdmin: admins.admins.includes(user.id),
-        status: status,
-        lastActiveDate: user.lastActiveDate || lastActiveDate || null,
-        lastLoginDate: user.lastLoginDate || lastLoginDate || null,
+        status: status, // Computed on the fly, not stored in DB
+        lastActiveAt: lastActiveAt || null,
       }
     })
     
@@ -5135,6 +5292,225 @@ app.post('/api/admin/remove', requireAdmin, async (req, res) => {
   }
 })
 
+// ==================== SAVED CONVERSATIONS ENDPOINTS ====================
+// Two separate collections:
+//   saved_individual — single model response + conversation
+//   saved_sessions   — full council + judge + sources
+
+const SAVED_COLLECTION = {
+  individual: 'saved_individual',
+  full: 'saved_sessions',
+}
+
+// Save a conversation
+app.post('/api/conversations/save', async (req, res) => {
+  try {
+    const { userId, type, originalPrompt, category } = req.body
+
+    if (!userId || !type || !SAVED_COLLECTION[type]) {
+      return res.status(400).json({ error: 'userId and valid type ("individual" or "full") are required' })
+    }
+
+    const users = readUsers()
+    if (!users[userId]) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    const dbInstance = await db.getDb()
+
+    // --- Enforce: each convo/response can only be saved ONCE ---
+    if (type === 'individual') {
+      const { modelName, modelResponse, conversation } = req.body
+      if (!modelName || !modelResponse) {
+        return res.status(400).json({ error: 'modelName and modelResponse are required for individual saves' })
+      }
+      // Check if this exact response was already saved
+      const alreadySaved = await dbInstance.collection('saved_individual').findOne({
+        userId,
+        originalPrompt: originalPrompt || '',
+        modelName,
+      })
+      if (alreadySaved) {
+        console.log(`[Conversations] Already saved individual: user=${userId}, model=${modelName}, prompt="${(originalPrompt || '').substring(0, 40)}"`)
+        return res.status(409).json({ error: 'This response has already been saved.', alreadySaved: true })
+      }
+    } else if (type === 'full') {
+      // Check if this session was already saved
+      const alreadySaved = await dbInstance.collection('saved_sessions').findOne({
+        userId,
+        originalPrompt: originalPrompt || '',
+      })
+      if (alreadySaved) {
+        console.log(`[Conversations] Already saved full session: user=${userId}, prompt="${(originalPrompt || '').substring(0, 40)}"`)
+        return res.status(409).json({ error: 'This session has already been saved.', alreadySaved: true })
+      }
+    }
+
+    const conversationId = `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const title = originalPrompt
+      ? originalPrompt.substring(0, 80) + (originalPrompt.length > 80 ? '...' : '')
+      : 'Untitled Conversation'
+
+    let doc = {
+      _id: conversationId,
+      userId,
+      type,
+      title,
+      originalPrompt: originalPrompt || '',
+      category: category || 'General',
+      savedAt: new Date(),
+    }
+
+    if (type === 'individual') {
+      const { modelName, modelResponse, conversation } = req.body
+      doc.modelName = modelName
+      doc.modelResponse = modelResponse
+      doc.conversation = conversation || []
+    } else if (type === 'full') {
+      const { responses, summary, sources, facts } = req.body
+
+      // Session save always includes ALL responses (individual saves are separate)
+      doc.responses = (responses || []).map(r => ({
+        modelName: r.modelName,
+        modelResponse: r.modelResponse || r.text || '',
+        conversation: r.conversation || [],
+      }))
+      doc.summary = summary || null
+      doc.sources = sources || []
+      doc.facts = facts || []
+    }
+
+    await dbInstance.collection(SAVED_COLLECTION[type]).insertOne(doc)
+
+    console.log(`[Conversations] Saved ${type} to ${SAVED_COLLECTION[type]} for user ${userId}: ${conversationId}`)
+    res.json({ success: true, conversationId, title })
+  } catch (error) {
+    console.error('[Conversations] Error saving:', error)
+    res.status(500).json({ error: 'Failed to save conversation' })
+  }
+})
+
+// Get full detail of a single saved conversation
+// NOTE: This route MUST be defined BEFORE /api/conversations/:userId to avoid Express matching "detail" as a userId
+app.get('/api/conversations/detail/:conversationId', async (req, res) => {
+  try {
+    const { conversationId } = req.params
+    const dbInstance = await db.getDb()
+
+    // Check both collections
+    let doc = await dbInstance.collection('saved_individual').findOne({ _id: conversationId })
+    if (!doc) {
+      doc = await dbInstance.collection('saved_sessions').findOne({ _id: conversationId })
+    }
+
+    if (!doc) {
+      return res.status(404).json({ error: 'Conversation not found' })
+    }
+
+    res.json({ conversation: { ...doc, id: doc._id } })
+  } catch (error) {
+    console.error('[Conversations] Error fetching detail:', error)
+    res.status(500).json({ error: 'Failed to fetch conversation' })
+  }
+})
+
+// List all saved conversations for a user (merges both collections)
+app.get('/api/conversations/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params
+    const { type: filterType } = req.query // optional: "individual" or "full"
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+
+    const dbInstance = await db.getDb()
+    const projection = { _id: 1, type: 1, title: 1, originalPrompt: 1, category: 1, savedAt: 1, modelName: 1 }
+
+    let results = []
+
+    if (!filterType || filterType === 'all' || filterType === 'individual') {
+      const individual = await dbInstance.collection('saved_individual')
+        .find({ userId })
+        .sort({ savedAt: -1 })
+        .project(projection)
+        .toArray()
+      results.push(...individual)
+    }
+
+    if (!filterType || filterType === 'all' || filterType === 'full') {
+      const sessions = await dbInstance.collection('saved_sessions')
+        .find({ userId })
+        .sort({ savedAt: -1 })
+        .project(projection)
+        .toArray()
+      results.push(...sessions)
+    }
+
+    // Sort combined results by date descending
+    results.sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt))
+
+    const mapped = results.map(c => ({
+      id: c._id,
+      type: c.type,
+      title: c.title,
+      originalPrompt: c.originalPrompt,
+      category: c.category,
+      savedAt: c.savedAt,
+      modelName: c.modelName || null,
+    }))
+
+    res.json({ conversations: mapped })
+  } catch (error) {
+    console.error('[Conversations] Error listing:', error)
+    res.status(500).json({ error: 'Failed to list conversations' })
+  }
+})
+
+// Delete a saved conversation
+app.delete('/api/conversations/:conversationId', async (req, res) => {
+  try {
+    const { conversationId } = req.params
+    const { userId, type } = req.body
+
+    if (!conversationId || !userId) {
+      return res.status(400).json({ error: 'conversationId and userId are required' })
+    }
+
+    const dbInstance = await db.getDb()
+
+    // If type is provided, delete from the specific collection; otherwise try both
+    let result
+    if (type && SAVED_COLLECTION[type]) {
+      result = await dbInstance.collection(SAVED_COLLECTION[type]).deleteOne({
+        _id: conversationId,
+        userId,
+      })
+    } else {
+      result = await dbInstance.collection('saved_individual').deleteOne({
+        _id: conversationId,
+        userId,
+      })
+      if (result.deletedCount === 0) {
+        result = await dbInstance.collection('saved_sessions').deleteOne({
+          _id: conversationId,
+          userId,
+        })
+      }
+    }
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Conversation not found or not owned by user' })
+    }
+
+    console.log(`[Conversations] Deleted conversation ${conversationId} for user ${userId}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[Conversations] Error deleting:', error)
+    res.status(500).json({ error: 'Failed to delete conversation' })
+  }
+})
+
 // ==================== LEADERBOARD ENDPOINTS ====================
 
 // Submit a prompt to the leaderboard
@@ -5219,6 +5595,7 @@ app.post('/api/leaderboard/submit', async (req, res) => {
 // - ?filter=today - Today's favorites (all prompts from today)
 // - ?filter=alltime - All time favorites (top 15 most liked)
 // - ?filter=profile&userId=xxx - User's profile (all prompts by user)
+// - ?filter=fyp&userId=xxx - For you prompts (mix of recent + popular; excludes user's own if userId provided)
 app.get('/api/leaderboard', (req, res) => {
   try {
     const leaderboard = readLeaderboard()
@@ -5266,6 +5643,25 @@ app.get('/api/leaderboard', (req, res) => {
       
       // Take only top 15
       prompts = prompts.slice(0, 15)
+    } else if (filter === 'fyp') {
+      // For You: Mix of recency + likes, optionally exclude user's own prompts
+      if (userId) {
+        prompts = prompts.filter(prompt => prompt.userId !== userId)
+      }
+
+      prompts = prompts
+        .map((prompt) => {
+          const createdAt = new Date(prompt.createdAt).getTime()
+          const hoursSince = Math.max(0, (Date.now() - createdAt) / (1000 * 60 * 60))
+          const recencyBoost = Math.max(0, (48 - hoursSince) / 48) // boost for ~2 days
+          const score = (prompt.likeCount || 0) * 2 + recencyBoost
+
+          return { ...prompt, score }
+        })
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score
+          return new Date(b.createdAt) - new Date(a.createdAt)
+        })
     } else if (filter === 'profile' && userId) {
       // My Profile: All prompts submitted by the user
       prompts = prompts.filter(prompt => prompt.userId === userId)
@@ -5344,7 +5740,7 @@ app.post('/api/leaderboard/like', (req, res) => {
 })
 
 // Delete a prompt (only by owner)
-app.delete('/api/leaderboard/delete/:promptId', (req, res) => {
+app.delete('/api/leaderboard/delete/:promptId', async (req, res) => {
   try {
     const { promptId } = req.params
     const { userId } = req.body
@@ -5367,9 +5763,18 @@ app.delete('/api/leaderboard/delete/:promptId', (req, res) => {
       return res.status(403).json({ error: 'You can only delete your own prompts' })
     }
     
-    // Remove the prompt from the leaderboard
+    // Remove the prompt from the leaderboard cache
     leaderboard.prompts.splice(promptIndex, 1)
     writeLeaderboard(leaderboard)
+    
+    // Also delete from MongoDB directly
+    try {
+      const dbInstance = await db.getDb()
+      await dbInstance.collection('leaderboard_posts').deleteOne({ _id: promptId })
+      console.log(`[Leaderboard] Deleted prompt ${promptId} from MongoDB`)
+    } catch (dbErr) {
+      console.error(`[Leaderboard] MongoDB delete error:`, dbErr.message)
+    }
     
     console.log(`[Leaderboard] User ${userId} deleted prompt ${promptId}`)
     
@@ -5440,12 +5845,24 @@ app.get('/api/leaderboard/user-stats/:userId', (req, res) => {
     // Sort notifications by timestamp (most recent first)
     notifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     
+    // Count total comments and replies made by this user across all prompts
+    let totalComments = 0
+    leaderboard.prompts.forEach(prompt => {
+      (prompt.comments || []).forEach(comment => {
+        if (comment.userId === userId) totalComments++
+        ;(comment.replies || []).forEach(reply => {
+          if (reply.userId === userId) totalComments++
+        })
+      })
+    })
+
     res.json({
       wins: wins.sort((a, b) => new Date(b.date) - new Date(a.date)),
       winCount: wins.length,
       notifications: notifications.slice(0, 10), // Last 10 notifications
       totalLikes: userPrompts.reduce((sum, p) => sum + (p.likes?.length || 0), 0),
       totalPrompts: userPrompts.length,
+      totalComments,
     })
   } catch (error) {
     console.error('[Leaderboard] Error fetching user stats:', error)
@@ -5812,8 +6229,8 @@ app.post('/api/stripe/setup-card', async (req, res) => {
       customer: customerId,
       payment_method_types: ['card'],
       mode: 'setup',
-      success_url: `${req.headers.origin || 'http://localhost:5173'}/statistics?card_added=success`,
-      cancel_url: `${req.headers.origin || 'http://localhost:5173'}/statistics?card_added=canceled`,
+      success_url: `${req.headers.origin || 'http://localhost:3000'}/?card_added=success`,
+      cancel_url: `${req.headers.origin || 'http://localhost:3000'}/`,
       metadata: {
         userId: userId,
         type: 'add_card'
@@ -5830,89 +6247,236 @@ app.post('/api/stripe/setup-card', async (req, res) => {
   }
 })
 
-// Buy additional usage credits
-app.post('/api/stripe/buy-usage', async (req, res) => {
+// ============================================================================
+// SAVED CARDS
+// ============================================================================
+
+// List user's saved payment methods (cards only)
+app.get('/api/stripe/saved-cards', async (req, res) => {
   try {
-    const { userId, amount, fee, total } = req.body
-    
-    if (!userId || !amount || amount <= 0) {
-      return res.status(400).json({ error: 'userId and valid amount are required' })
+    const { userId } = req.query
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
     }
+
+    const users = readUsers()
+    const user = users[userId]
+    if (!user || !user.stripeCustomerId) {
+      return res.json({ cards: [] })
+    }
+
+    const paymentMethods = await stripe.paymentMethods.list({
+      customer: user.stripeCustomerId,
+      type: 'card',
+    })
+
+    const cards = paymentMethods.data.map(pm => ({
+      id: pm.id,
+      brand: pm.card.brand,           // visa, mastercard, amex, etc.
+      last4: pm.card.last4,
+      expMonth: pm.card.exp_month,
+      expYear: pm.card.exp_year,
+    }))
+
+    res.json({ cards })
+  } catch (error) {
+    console.error('[Stripe] Error fetching saved cards:', error)
+    res.status(500).json({ error: 'Failed to fetch saved cards' })
+  }
+})
+
+// Charge a saved card for usage purchase (no card entry needed)
+app.post('/api/stripe/charge-saved-card', async (req, res) => {
+  try {
+    const { userId, paymentMethodId, amount } = req.body
     
-    // Validate amounts
+    if (!userId || !paymentMethodId || !amount || amount <= 0) {
+      return res.status(400).json({ error: 'userId, paymentMethodId, and valid amount are required' })
+    }
     if (amount < 1 || amount > 500) {
       return res.status(400).json({ error: 'Amount must be between $1 and $500' })
     }
     
     const users = readUsers()
     const user = users[userId]
-    
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' })
+    if (!user || !user.stripeCustomerId) {
+      return res.status(404).json({ error: 'User not found or no Stripe customer' })
     }
-    
-    if (!user.stripeCustomerId) {
-      return res.status(400).json({ error: 'No payment method on file. Please subscribe first.' })
-    }
-    
-    // Get the customer's default payment method
-    let paymentMethodId = null
-    
-    const customer = await stripe.customers.retrieve(user.stripeCustomerId, {
-      expand: ['invoice_settings.default_payment_method']
-    })
-    
-    if (customer.invoice_settings?.default_payment_method) {
-      paymentMethodId = customer.invoice_settings.default_payment_method.id
-    } else {
-      // Try to get any payment method attached to customer
-      const paymentMethods = await stripe.paymentMethods.list({
-        customer: user.stripeCustomerId,
-        type: 'card',
-        limit: 1,
-      })
-      
-      if (paymentMethods.data.length > 0) {
-        paymentMethodId = paymentMethods.data[0].id
-      }
-    }
-    
-    if (!paymentMethodId) {
-      return res.status(400).json({ error: 'No payment method on file' })
-    }
-    
-    // Calculate total with 5% fee
-    const calculatedFee = amount * 0.05
+
+    const TRANSACTION_FEE_PERCENT = 3.5
+    const calculatedFee = Math.round(amount * (TRANSACTION_FEE_PERCENT / 100) * 100) / 100
     const calculatedTotal = amount + calculatedFee
-    
-    // Convert to cents for Stripe
     const totalCents = Math.round(calculatedTotal * 100)
-    
-    console.log(`[Buy Usage] User ${userId} purchasing $${amount} usage credits (+ $${calculatedFee.toFixed(2)} fee = $${calculatedTotal.toFixed(2)} total)`)
-    
-    // Create a payment intent and confirm it immediately
+
+    console.log(`[Buy Usage] Charging saved card ${paymentMethodId} for user ${userId}: $${calculatedTotal.toFixed(2)}`)
+
+    // Create and immediately confirm a PaymentIntent using the saved card
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totalCents,
       currency: 'usd',
       customer: user.stripeCustomerId,
       payment_method: paymentMethodId,
-      confirm: true,
-      off_session: true,
+      payment_method_types: ['card'],
+      confirm: true,                 // Charge immediately
+      off_session: true,             // Customer is not present
       description: `Usage credits purchase: $${amount.toFixed(2)}`,
       metadata: {
-        userId: userId,
+        userId,
         usageAmount: amount.toString(),
         fee: calculatedFee.toFixed(2),
-        type: 'usage_purchase'
-      }
+        type: 'usage_purchase',
+      },
     })
-    
-    if (paymentIntent.status !== 'succeeded') {
-      console.error(`[Buy Usage] Payment failed with status: ${paymentIntent.status}`)
-      return res.status(400).json({ error: 'Payment failed. Please try again.' })
+
+    if (paymentIntent.status === 'succeeded') {
+      // Add credits to user
+      const usage = readUsage()
+      if (!usage[userId]) usage[userId] = {}
+      if (!usage[userId].purchasedCredits) {
+        usage[userId].purchasedCredits = { total: 0, remaining: 0, purchases: [] }
+      }
+      usage[userId].purchasedCredits.total += amount
+      usage[userId].purchasedCredits.remaining += amount
+      usage[userId].purchasedCredits.purchases = usage[userId].purchasedCredits.purchases || []
+      usage[userId].purchasedCredits.purchases.push({
+        amount,
+        fee: calculatedFee,
+        total: calculatedTotal,
+        paymentIntentId: paymentIntent.id,
+        date: new Date().toISOString(),
+      })
+      writeUsage(usage)
+
+      console.log(`[Buy Usage] Added $${amount.toFixed(2)} credits to user ${userId} via saved card`)
+      res.json({ success: true, creditsAdded: amount, paymentIntentId: paymentIntent.id })
+    } else {
+      res.status(400).json({ error: `Payment status: ${paymentIntent.status}. Please try again.` })
+    }
+  } catch (error) {
+    console.error('[Buy Usage] Error charging saved card:', error)
+    // Handle card declined or authentication required
+    if (error.code === 'authentication_required') {
+      res.status(400).json({ error: 'This card requires authentication. Please use a new card instead.' })
+    } else {
+      res.status(500).json({ error: error.message || 'Failed to charge saved card. Please try again.' })
+    }
+  }
+})
+
+// Delete a saved card
+app.delete('/api/stripe/saved-cards/:paymentMethodId', async (req, res) => {
+  try {
+    const { paymentMethodId } = req.params
+    await stripe.paymentMethods.detach(paymentMethodId)
+    console.log(`[Stripe] Detached payment method ${paymentMethodId}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[Stripe] Error removing saved card:', error)
+    res.status(500).json({ error: 'Failed to remove card' })
+  }
+})
+
+// ============================================================================
+// BUY ADDITIONAL USAGE CREDITS
+// ============================================================================
+
+// Create a PaymentIntent for usage purchase (returns clientSecret for inline card collection)
+app.post('/api/stripe/create-usage-intent', async (req, res) => {
+  try {
+    const { userId, amount, saveCard } = req.body
+
+    if (!userId || !amount || amount <= 0) {
+      return res.status(400).json({ error: 'userId and valid amount are required' })
     }
     
-    console.log(`[Buy Usage] Payment successful! PaymentIntent: ${paymentIntent.id}`)
+    if (amount < 1 || amount > 500) {
+      return res.status(400).json({ error: 'Amount must be between $1 and $500' })
+    }
+
+    const users = readUsers()
+    const user = users[userId]
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    // Ensure user has a Stripe customer
+    let customerId = user.stripeCustomerId
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || userId,
+        metadata: { userId },
+      })
+      customerId = customer.id
+      user.stripeCustomerId = customerId
+      writeUsers(users)
+    }
+    
+    // Calculate total with 3.5% fee
+    const TRANSACTION_FEE_PERCENT = 3.5
+    const calculatedFee = Math.round(amount * (TRANSACTION_FEE_PERCENT / 100) * 100) / 100
+    const calculatedTotal = amount + calculatedFee
+    const totalCents = Math.round(calculatedTotal * 100)
+    
+    console.log(`[Buy Usage] Creating PaymentIntent for user ${userId}: $${amount} + $${calculatedFee.toFixed(2)} fee = $${calculatedTotal.toFixed(2)} (saveCard: ${!!saveCard})`)
+    
+    // Build PaymentIntent options
+    const piOptions = {
+      amount: totalCents,
+      currency: 'usd',
+      payment_method_types: ['card'],
+      description: `Usage credits purchase: $${amount.toFixed(2)}`,
+      metadata: {
+        userId,
+        stripeCustomerId: customerId,
+        usageAmount: amount.toString(),
+        fee: calculatedFee.toFixed(2),
+        type: 'usage_purchase',
+      },
+    }
+
+    // If user wants to save the card, attach to customer and set setup_future_usage
+    if (saveCard) {
+      piOptions.customer = customerId
+      piOptions.setup_future_usage = 'off_session'
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create(piOptions)
+
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+    })
+  } catch (error) {
+    console.error('[Buy Usage] Error creating usage intent:', error)
+    res.status(500).json({ error: 'Failed to initialize payment. Please try again.' })
+  }
+})
+
+// Confirm usage purchase after payment succeeds (called from frontend after stripe.confirmPayment)
+app.post('/api/stripe/confirm-usage-purchase', async (req, res) => {
+  try {
+    const { userId, paymentIntentId, amount } = req.body
+
+    if (!userId || !paymentIntentId || !amount) {
+      return res.status(400).json({ error: 'userId, paymentIntentId, and amount are required' })
+    }
+
+    // Verify the payment intent actually succeeded
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+    if (paymentIntent.status !== 'succeeded') {
+      return res.status(400).json({ error: 'Payment has not been completed.' })
+    }
+
+    // Verify metadata matches
+    if (paymentIntent.metadata?.userId !== userId || paymentIntent.metadata?.type !== 'usage_purchase') {
+      return res.status(400).json({ error: 'Payment verification failed.' })
+    }
+    
+    const usageAmount = parseFloat(paymentIntent.metadata.usageAmount)
+    const calculatedFee = parseFloat(paymentIntent.metadata.fee)
+    const calculatedTotal = usageAmount + calculatedFee
     
     // Add usage credits to the user's account
     const usage = readUsage()
@@ -5931,8 +6495,7 @@ app.post('/api/stripe/buy-usage', async (req, res) => {
         categories: {},
         categoryPrompts: {},
         ratings: {},
-        lastActiveDate: null,
-        lastLoginDate: null,
+        lastActiveAt: null,
         streakDays: 0,
         judgeConversationContext: [],
       }
@@ -5943,31 +6506,44 @@ app.post('/api/stripe/buy-usage', async (req, res) => {
       usage[userId].purchasedCredits = {
         total: 0,
         remaining: 0,
-        purchases: []
+        purchases: [],
       }
+    }
+
+    // Check if this purchase was already processed (idempotency)
+    const alreadyProcessed = usage[userId].purchasedCredits.purchases?.some(
+      (p) => p.paymentIntentId === paymentIntentId
+    )
+    if (alreadyProcessed) {
+      return res.json({
+        success: true,
+        message: 'Purchase already processed',
+        creditsAdded: usageAmount,
+        newBalance: usage[userId].purchasedCredits.remaining,
+      })
     }
     
     // Add the purchase
-    usage[userId].purchasedCredits.total += amount
-    usage[userId].purchasedCredits.remaining += amount
+    usage[userId].purchasedCredits.total += usageAmount
+    usage[userId].purchasedCredits.remaining += usageAmount
     usage[userId].purchasedCredits.purchases.push({
-      amount: amount,
+      amount: usageAmount,
       fee: calculatedFee,
       total: calculatedTotal,
-      paymentIntentId: paymentIntent.id,
-      timestamp: new Date().toISOString()
+      paymentIntentId: paymentIntentId,
+      timestamp: new Date().toISOString(),
     })
     
     writeUsage(usage)
     
-    console.log(`[Buy Usage] Added $${amount} usage credits to user ${userId}. New balance: $${usage[userId].purchasedCredits.remaining}`)
+    console.log(`[Buy Usage] Added $${usageAmount} credits to user ${userId}. New balance: $${usage[userId].purchasedCredits.remaining}`)
     
     res.json({
       success: true,
-      message: `Successfully purchased $${amount.toFixed(2)} in usage credits`,
-      creditsAdded: amount,
+      message: `Successfully purchased $${usageAmount.toFixed(2)} in usage credits`,
+      creditsAdded: usageAmount,
       newBalance: usage[userId].purchasedCredits.remaining,
-      paymentIntentId: paymentIntent.id
+      paymentIntentId,
     })
     
   } catch (error) {
@@ -5982,8 +6558,9 @@ app.post('/api/stripe/buy-usage', async (req, res) => {
   }
 })
 
-// Sync subscription status from Stripe API
-const syncSubscriptionFromStripe = async (userId) => {
+// Sync subscription status from Stripe API (with retry for incomplete → active transitions)
+const syncSubscriptionFromStripe = async (userId, retries = 3) => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
   try {
     const users = readUsers()
     const user = users[userId]
@@ -6000,11 +6577,10 @@ const syncSubscriptionFromStripe = async (userId) => {
     })
 
     if (subscriptions.data.length === 0) {
-      // No subscriptions found in Stripe
       if (user.subscriptionStatus !== 'inactive') {
         user.subscriptionStatus = 'inactive'
         user.stripeSubscriptionId = null
-        user.subscriptionEndDate = null
+          user.subscriptionRenewalDate = null
         writeUsers(users)
         console.log(`[Stripe] Synced subscription status to inactive for user: ${userId}`)
         return { synced: true, status: 'inactive' }
@@ -6014,13 +6590,49 @@ const syncSubscriptionFromStripe = async (userId) => {
 
     // Get the most recent active subscription (or the most recent one if none are active)
     const activeSubscription = subscriptions.data.find(sub => sub.status === 'active')
-    const subscription = activeSubscription || subscriptions.data[0]
+      const trialingSubscription = subscriptions.data.find(sub => sub.status === 'trialing')
+      const subscription = activeSubscription || trialingSubscription || subscriptions.data[0]
+
+      // If subscription is still incomplete and we have retries left, wait and try again
+      if (subscription.status === 'incomplete' && attempt < retries) {
+        console.log(`[Stripe] Subscription still incomplete for ${userId}, retrying in 2s... (attempt ${attempt}/${retries})`)
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        continue
+      }
+
+      // If subscription is incomplete, check if the latest invoice's payment intent succeeded
+      if (subscription.status === 'incomplete') {
+        try {
+          const expandedSub = await stripe.subscriptions.retrieve(subscription.id, {
+            expand: ['latest_invoice.payment_intent'],
+          })
+          const pi = expandedSub.latest_invoice?.payment_intent
+          if (pi && pi.status === 'succeeded') {
+            // Payment succeeded but subscription hasn't transitioned yet — force it
+            console.log(`[Stripe] Payment succeeded but sub still incomplete for ${userId}. Treating as active.`)
+            const oldStatus = user.subscriptionStatus
+            user.stripeSubscriptionId = subscription.id
+            user.subscriptionStatus = 'active'
+            user.subscriptionRenewalDate = new Date(expandedSub.current_period_end * 1000).toISOString()
+            if (!user.subscriptionStartedDate) {
+              user.subscriptionStartedDate = new Date().toISOString()
+            }
+            writeUsers(users)
+            if (oldStatus !== 'active') {
+              console.log(`[Stripe] Force-synced subscription for user ${userId}: ${oldStatus} → active`)
+            }
+            return { synced: true, status: 'active', subscriptionId: subscription.id, endDate: user.subscriptionRenewalDate }
+          }
+        } catch (expandErr) {
+          console.warn(`[Stripe] Could not expand subscription for ${userId}:`, expandErr.message)
+        }
+      }
 
     // Update user's subscription info
     const oldStatus = user.subscriptionStatus
     user.stripeSubscriptionId = subscription.id
     user.subscriptionStatus = subscription.status
-    user.subscriptionEndDate = new Date(subscription.current_period_end * 1000).toISOString()
+      user.subscriptionRenewalDate = new Date(subscription.current_period_end * 1000).toISOString()
     
     writeUsers(users)
     
@@ -6032,12 +6644,16 @@ const syncSubscriptionFromStripe = async (userId) => {
       synced: true, 
       status: subscription.status,
       subscriptionId: subscription.id,
-      endDate: user.subscriptionEndDate
+        endDate: user.subscriptionRenewalDate
     }
   } catch (error) {
-    console.error(`[Stripe] Error syncing subscription from Stripe for user ${userId}:`, error)
+      console.error(`[Stripe] Error syncing subscription from Stripe for user ${userId} (attempt ${attempt}):`, error)
+      if (attempt === retries) {
     return { synced: false, error: error.message }
   }
+    }
+  }
+  return { synced: false, reason: 'Retries exhausted' }
 }
 
 // Get subscription status for current user
@@ -6066,7 +6682,7 @@ app.get('/api/stripe/subscription-status', async (req, res) => {
         const updatedUser = updatedUsers[userId]
         return res.json({
           subscriptionStatus: updatedUser.subscriptionStatus || 'inactive',
-          subscriptionEndDate: updatedUser.subscriptionEndDate || null,
+          subscriptionRenewalDate: updatedUser.subscriptionRenewalDate || null,
           hasActiveSubscription: updatedUser.subscriptionStatus === 'active',
           synced: true,
         })
@@ -6075,7 +6691,7 @@ app.get('/api/stripe/subscription-status', async (req, res) => {
 
     res.json({
       subscriptionStatus: user.subscriptionStatus || 'inactive',
-      subscriptionEndDate: user.subscriptionEndDate || null,
+      subscriptionRenewalDate: user.subscriptionRenewalDate || null,
       hasActiveSubscription: user.subscriptionStatus === 'active',
       synced: false,
     })
@@ -6085,7 +6701,242 @@ app.get('/api/stripe/subscription-status', async (req, res) => {
   }
 })
 
-// Create Stripe Checkout Session for subscription
+// Get Stripe publishable key for frontend
+app.get('/api/stripe/config', (req, res) => {
+  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || ''
+  if (!publishableKey) {
+    return res.status(500).json({ error: 'Stripe publishable key not configured' })
+  }
+  res.json({ publishableKey })
+})
+
+// Create subscription with incomplete payment (for inline card collection)
+app.post('/api/stripe/create-subscription-intent', async (req, res) => {
+  try {
+    const { userId } = req.body
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+
+    if (!STRIPE_PRICE_ID) {
+      return res.status(500).json({ error: 'Stripe price ID not configured' })
+    }
+
+    const users = readUsers()
+    const user = users[userId]
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    // Create or retrieve Stripe customer
+    let customerId = user.stripeCustomerId
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || userId,
+        metadata: {
+          userId: userId,
+        },
+      })
+      customerId = customer.id
+
+      // Save customer ID to user
+      user.stripeCustomerId = customerId
+      writeUsers(users)
+      console.log(`[Stripe] Created new customer ${customerId} for user ${userId}`)
+    }
+
+    // Check if user already has an active subscription in Stripe
+    if (customerId) {
+      const existingSubs = await stripe.subscriptions.list({
+        customer: customerId,
+        status: 'all',
+        limit: 10,
+      })
+
+      // If there's an active/trialing subscription, update user and return
+      const activeSub = existingSubs.data.find(s => s.status === 'active' || s.status === 'trialing')
+      if (activeSub) {
+        user.subscriptionStatus = activeSub.status
+        user.stripeSubscriptionId = activeSub.id
+        user.subscriptionRenewalDate = new Date(activeSub.current_period_end * 1000).toISOString()
+        if (!user.subscriptionStartedDate) {
+          user.subscriptionStartedDate = new Date().toISOString()
+        }
+        writeUsers(users)
+        console.log(`[Stripe] User ${userId} already has active subscription ${activeSub.id}`)
+        return res.json({ alreadyActive: true, subscriptionId: activeSub.id })
+      }
+
+      // If there's an incomplete subscription, try to reuse it
+      const incompleteSub = existingSubs.data.find(s => s.status === 'incomplete')
+      if (incompleteSub) {
+        // Retrieve with expanded payment intent
+        const expandedSub = await stripe.subscriptions.retrieve(incompleteSub.id, {
+          expand: ['latest_invoice.payment_intent'],
+        })
+        const pi = expandedSub.latest_invoice?.payment_intent
+
+        if (pi && pi.status === 'succeeded') {
+          // Payment actually succeeded — subscription should be active soon
+          user.subscriptionStatus = 'active'
+          user.stripeSubscriptionId = incompleteSub.id
+          user.subscriptionRenewalDate = new Date(expandedSub.current_period_end * 1000).toISOString()
+          if (!user.subscriptionStartedDate) {
+            user.subscriptionStartedDate = new Date().toISOString()
+          }
+          writeUsers(users)
+          console.log(`[Stripe] User ${userId} incomplete sub ${incompleteSub.id} has succeeded PI — force activating`)
+          return res.json({ alreadyActive: true, subscriptionId: incompleteSub.id })
+        }
+
+        if (pi && (pi.status === 'requires_payment_method' || pi.status === 'requires_confirmation')) {
+          // Reuse this subscription — just return its client secret
+          console.log(`[Stripe] Reusing incomplete subscription ${incompleteSub.id} for user ${userId} (PI status: ${pi.status})`)
+          
+          // Save the subscription ID on the user
+          user.stripeSubscriptionId = incompleteSub.id
+          user.subscriptionStatus = 'incomplete'
+          writeUsers(users)
+
+          return res.json({
+            subscriptionId: incompleteSub.id,
+            clientSecret: pi.client_secret,
+          })
+        }
+
+        // Otherwise cancel the stale incomplete subscription
+        try {
+          await stripe.subscriptions.cancel(incompleteSub.id)
+          console.log(`[Stripe] Canceled stale incomplete subscription ${incompleteSub.id}`)
+        } catch (cancelErr) {
+          console.warn(`[Stripe] Could not cancel stale sub:`, cancelErr.message)
+        }
+      }
+    }
+
+    // Detach any existing payment methods from this customer so old cards don't show up
+    try {
+      const existingMethods = await stripe.paymentMethods.list({
+        customer: customerId,
+        type: 'card',
+      })
+      for (const pm of existingMethods.data) {
+        await stripe.paymentMethods.detach(pm.id)
+      }
+    } catch (detachErr) {
+      console.warn('[Stripe] Could not detach old payment methods:', detachErr.message)
+    }
+
+    // Create subscription with incomplete payment so we can collect card info inline
+    const subscription = await stripe.subscriptions.create({
+      customer: customerId,
+      items: [{ price: STRIPE_PRICE_ID }],
+      payment_behavior: 'default_incomplete',
+      payment_settings: {
+        save_default_payment_method: 'on_subscription',
+        payment_method_types: ['card'],
+      },
+      expand: ['latest_invoice.payment_intent'],
+      metadata: {
+        userId: userId,
+      },
+    })
+
+    const paymentIntent = subscription.latest_invoice.payment_intent
+
+    // Save subscription ID on the user record
+    user.stripeSubscriptionId = subscription.id
+    user.subscriptionStatus = 'incomplete'
+    writeUsers(users)
+
+    console.log(`[Stripe] Created subscription intent for user ${userId}, sub: ${subscription.id}, PI: ${paymentIntent.id}`)
+
+    res.json({
+      subscriptionId: subscription.id,
+      clientSecret: paymentIntent.client_secret,
+    })
+  } catch (error) {
+    console.error('[Stripe] Error creating subscription intent:', error)
+    res.status(500).json({ error: 'Failed to create subscription. Please try again.' })
+  }
+})
+
+// Confirm subscription after payment — called by frontend after stripe.confirmPayment succeeds
+app.post('/api/stripe/confirm-subscription', async (req, res) => {
+  try {
+    const { userId, subscriptionId } = req.body
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+
+    const users = readUsers()
+    const user = users[userId]
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    const subId = subscriptionId || user.stripeSubscriptionId
+    if (!subId) {
+      return res.status(400).json({ error: 'No subscription ID found for user' })
+    }
+
+    // Retrieve the subscription from Stripe with expanded payment intent
+    const subscription = await stripe.subscriptions.retrieve(subId, {
+      expand: ['latest_invoice.payment_intent'],
+    })
+
+    console.log(`[Stripe] Confirm-subscription for ${userId}: sub status=${subscription.status}, PI status=${subscription.latest_invoice?.payment_intent?.status}`)
+
+    const pi = subscription.latest_invoice?.payment_intent
+
+    if (subscription.status === 'active' || subscription.status === 'trialing') {
+      // Already active
+      user.subscriptionStatus = subscription.status
+      user.stripeSubscriptionId = subscription.id
+      user.subscriptionRenewalDate = new Date(subscription.current_period_end * 1000).toISOString()
+      writeUsers(users)
+      console.log(`[Stripe] Subscription ${subId} confirmed active for user ${userId}`)
+      return res.json({ 
+        success: true, 
+        subscriptionStatus: subscription.status,
+        subscriptionRenewalDate: user.subscriptionRenewalDate,
+      })
+    }
+
+    if (pi && pi.status === 'succeeded') {
+      // Payment succeeded but subscription hasn't transitioned yet — force active
+      user.subscriptionStatus = 'active'
+      user.stripeSubscriptionId = subscription.id
+      user.subscriptionRenewalDate = new Date(subscription.current_period_end * 1000).toISOString()
+      if (!user.subscriptionStartedDate) {
+        user.subscriptionStartedDate = new Date().toISOString()
+      }
+      writeUsers(users)
+      console.log(`[Stripe] Payment succeeded for sub ${subId}, force-activating user ${userId}`)
+      return res.json({ 
+        success: true, 
+        subscriptionStatus: 'active',
+        subscriptionRenewalDate: user.subscriptionRenewalDate,
+      })
+    }
+
+    // Still not active
+    return res.json({ 
+      success: false, 
+      subscriptionStatus: subscription.status,
+      paymentStatus: pi?.status || 'unknown',
+      message: `Subscription is ${subscription.status}, payment is ${pi?.status || 'unknown'}`,
+    })
+  } catch (error) {
+    console.error('[Stripe] Error confirming subscription:', error)
+    res.status(500).json({ error: 'Failed to confirm subscription status' })
+  }
+})
+
+// Create Stripe Checkout Session for subscription (legacy redirect flow)
 app.post('/api/stripe/create-checkout-session', async (req, res) => {
   try {
     const { userId } = req.body
@@ -6133,8 +6984,8 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
         },
       ],
       mode: 'subscription',
-      success_url: `${req.headers.origin || 'http://localhost:5173'}/settings?subscription=success`,
-      cancel_url: `${req.headers.origin || 'http://localhost:5173'}/settings?subscription=canceled`,
+      success_url: `${req.headers.origin || 'http://localhost:3000'}/?subscription=success`,
+      cancel_url: `${req.headers.origin || 'http://localhost:3000'}/`,
       metadata: {
         userId: userId,
       },
@@ -6166,20 +7017,193 @@ app.post('/api/stripe/pause-subscription', async (req, res) => {
       return res.status(400).json({ error: 'No active subscription found' })
     }
 
+    // Retrieve the subscription to get the current_period_end before canceling
+    let periodEnd = user.subscriptionRenewalDate
+    try {
+      const stripeSub = await stripe.subscriptions.retrieve(user.stripeSubscriptionId)
+      if (stripeSub.current_period_end) {
+        periodEnd = new Date(stripeSub.current_period_end * 1000).toISOString()
+      }
+    } catch (e) {
+      console.log(`[Stripe] Could not retrieve subscription for period end, using existing renewalDate`)
+    }
+
     // Cancel the subscription in Stripe (this will stop recurring payments)
     await stripe.subscriptions.cancel(user.stripeSubscriptionId)
 
     // Update user status to 'paused' (keep user in database)
+    // KEEP the subscriptionRenewalDate so user retains access until their paid period ends
     user.subscriptionStatus = 'paused'
-    user.subscriptionEndDate = null
+    user.subscriptionRenewalDate = periodEnd
+    user.subscriptionPausedDate = new Date().toISOString()
+    
+    // Add to cancellation history
+    if (!user.cancellationHistory) user.cancellationHistory = []
+    user.cancellationHistory.push({
+      date: new Date().toISOString(),
+      reason: 'user_paused',
+    })
+    
     // Keep stripeSubscriptionId for reference but subscription is canceled in Stripe
-    writeUsers(users)
+    writeUsers(users, userId)
 
     console.log(`[Stripe] Subscription paused for user: ${userId}`)
     res.json({ success: true, message: 'Subscription paused successfully' })
   } catch (error) {
     console.error('[Stripe] Error pausing subscription:', error)
     res.status(500).json({ error: 'Failed to pause subscription' })
+  }
+})
+
+// Resume/unpause subscription - re-subscribe the user
+app.post('/api/stripe/resume-subscription', async (req, res) => {
+  try {
+    const { userId } = req.body
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+
+    const users = readUsers()
+    const user = users[userId]
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    if (user.subscriptionStatus !== 'paused' && user.subscriptionStatus !== 'canceled') {
+      return res.status(400).json({ error: 'Subscription is not paused or canceled' })
+    }
+
+    if (!user.stripeCustomerId) {
+      return res.status(400).json({ error: 'No Stripe customer found. Please re-subscribe.' })
+    }
+
+    // Check if user is still within their paid period
+    const now = new Date()
+    const renewalDate = user.subscriptionRenewalDate ? new Date(user.subscriptionRenewalDate) : null
+    const isWithinPaidPeriod = renewalDate && renewalDate > now
+
+    if (isWithinPaidPeriod) {
+      // --- WITHIN PAID PERIOD: Reactivate seamlessly using saved card ---
+      // User already paid for this period, so create a new subscription that starts
+      // billing at the END of their current paid period (no immediate charge).
+      console.log(`[Stripe] Resuming within paid period for user ${userId}. Renewal: ${renewalDate.toISOString()}`)
+
+      // Get the customer's existing payment method
+      const paymentMethods = await stripe.paymentMethods.list({
+        customer: user.stripeCustomerId,
+        type: 'card',
+      })
+
+      if (paymentMethods.data.length === 0) {
+        // No saved card — fall back to checkout
+        console.log(`[Stripe] No saved payment method for ${userId}, falling back to checkout`)
+        return res.status(400).json({ 
+          error: 'No payment method on file. Please re-enter your card.',
+          needsCheckout: true,
+        })
+      }
+
+      const defaultPaymentMethod = paymentMethods.data[0].id
+
+      // Set the payment method as the customer's default
+      await stripe.customers.update(user.stripeCustomerId, {
+        invoice_settings: { default_payment_method: defaultPaymentMethod },
+      })
+
+      // Create a new subscription with trial_end = renewalDate
+      // This means: no charge now, billing starts when the already-paid period ends
+      const trialEndUnix = Math.floor(renewalDate.getTime() / 1000)
+      const subscription = await stripe.subscriptions.create({
+        customer: user.stripeCustomerId,
+        items: [{ price: STRIPE_PRICE_ID }],
+        default_payment_method: defaultPaymentMethod,
+        trial_end: trialEndUnix,
+        metadata: { userId },
+      })
+
+      // Update user — reactivate immediately
+      user.subscriptionStatus = 'active'
+      user.stripeSubscriptionId = subscription.id
+      user.subscriptionPausedDate = null
+      user.subscriptionRenewalDate = renewalDate.toISOString() // Keep the same renewal date
+      user.subscriptionStartedDate = user.subscriptionStartedDate || new Date().toISOString()
+
+      // Add to cancellation history
+      if (!user.cancellationHistory) user.cancellationHistory = []
+      user.cancellationHistory.push({
+        date: new Date().toISOString(),
+        reason: 'user_resumed',
+      })
+
+      writeUsers(users, userId)
+
+      console.log(`[Stripe] Subscription resumed for user ${userId}. New sub: ${subscription.id}, billing starts: ${renewalDate.toISOString()}`)
+      return res.json({
+        success: true,
+        subscriptionStatus: 'active',
+        subscriptionRenewalDate: user.subscriptionRenewalDate,
+        message: `Subscription reactivated! Your next billing date is ${renewalDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`,
+      })
+
+    } else {
+      // --- PAST PAID PERIOD: Need to charge immediately via checkout ---
+      console.log(`[Stripe] User ${userId} is past paid period, redirecting to checkout`)
+      
+      // Try to use saved card for immediate subscription
+      const paymentMethods = await stripe.paymentMethods.list({
+        customer: user.stripeCustomerId,
+        type: 'card',
+      })
+
+      if (paymentMethods.data.length > 0) {
+        // Has a saved card — create subscription that charges immediately
+        const defaultPaymentMethod = paymentMethods.data[0].id
+
+        await stripe.customers.update(user.stripeCustomerId, {
+          invoice_settings: { default_payment_method: defaultPaymentMethod },
+        })
+
+        const subscription = await stripe.subscriptions.create({
+          customer: user.stripeCustomerId,
+          items: [{ price: STRIPE_PRICE_ID }],
+          default_payment_method: defaultPaymentMethod,
+          metadata: { userId },
+        })
+
+        // Update user
+        user.subscriptionStatus = subscription.status // should be 'active'
+        user.stripeSubscriptionId = subscription.id
+        user.subscriptionPausedDate = null
+        user.subscriptionRenewalDate = new Date(subscription.current_period_end * 1000).toISOString()
+        user.subscriptionStartedDate = new Date().toISOString()
+
+        if (!user.cancellationHistory) user.cancellationHistory = []
+        user.cancellationHistory.push({
+          date: new Date().toISOString(),
+          reason: 'user_resumed',
+        })
+
+        writeUsers(users, userId)
+
+        console.log(`[Stripe] Subscription restarted for user ${userId}. Sub: ${subscription.id}, status: ${subscription.status}`)
+        return res.json({
+          success: true,
+          subscriptionStatus: subscription.status,
+          subscriptionRenewalDate: user.subscriptionRenewalDate,
+          message: 'Subscription reactivated and payment processed!',
+        })
+      } else {
+        // No saved card — must go through checkout
+        return res.status(400).json({
+          error: 'No payment method on file. Please re-enter your card.',
+          needsCheckout: true,
+        })
+      }
+    }
+  } catch (error) {
+    console.error('[Stripe] Error resuming subscription:', error)
+    res.status(500).json({ error: 'Failed to resume subscription. Please try again.' })
   }
 })
 
@@ -6209,16 +7233,33 @@ app.post('/api/stripe/cancel-subscription-delete-account', async (req, res) => {
       }
     }
 
-    // Delete user from database
+    if (!user.cancellationHistory) user.cancellationHistory = []
+    user.cancellationHistory.push({
+      date: new Date().toISOString(),
+      reason: 'account_deleted',
+    })
+
+    // Delete user from cache
     delete users[userId]
     writeUsers(users)
 
-    // Also delete user usage data if it exists
+    // Delete user usage data from cache
     const usage = readUsage()
     if (usage[userId]) {
       delete usage[userId]
       writeUsage(usage)
     }
+
+    // Delete ALL user data from MongoDB (one call covers every collection)
+    try {
+      await db.users.delete(userId)
+      console.log(`[Stripe] Deleted user ${userId} and all data from MongoDB`)
+    } catch (dbErr) {
+      console.error(`[Stripe] MongoDB cleanup error for ${userId}:`, dbErr.message)
+    }
+
+    // Increment deleted users count
+    await incrementDeletedUsers()
 
     console.log(`[Stripe] Account deleted for user: ${userId}`)
     res.json({ success: true, message: 'Account and subscription deleted successfully' })
@@ -6404,7 +7445,10 @@ app.post('/api/stripe/webhook', async (req, res) => {
           const user = users[userId]
           user.stripeSubscriptionId = subscription.id
           user.subscriptionStatus = subscription.status // 'active', 'canceled', 'past_due', etc.
-          user.subscriptionEndDate = new Date(subscription.current_period_end * 1000).toISOString()
+          user.subscriptionRenewalDate = new Date(subscription.current_period_end * 1000).toISOString()
+          if ((subscription.status === 'active' || subscription.status === 'trialing') && !user.subscriptionStartedDate) {
+            user.subscriptionStartedDate = new Date().toISOString()
+          }
 
           writeUsers(users)
           console.log(`[Stripe] Subscription ${event.type} for user: ${userId}, status: ${subscription.status}`)
@@ -6422,12 +7466,28 @@ app.post('/api/stripe/webhook', async (req, res) => {
 
         if (userId) {
           const user = users[userId]
+          // Only overwrite status if the user isn't already paused (paused is our own concept)
+          if (user.subscriptionStatus !== 'paused') {
           user.subscriptionStatus = 'canceled'
-          user.subscriptionEndDate = new Date(subscription.current_period_end * 1000).toISOString()
-          // Keep subscription ID for reference
+          }
+          // KEEP subscriptionRenewalDate if it exists so user retains access until paid period ends
+          // Only set it from Stripe's data if we have it and it's in the future
+          if (subscription.current_period_end) {
+            const periodEnd = new Date(subscription.current_period_end * 1000)
+            if (periodEnd > new Date()) {
+              user.subscriptionRenewalDate = periodEnd.toISOString()
+            }
+            // If period already ended, leave existing renewalDate (it may already be set)
+          }
+          // Track cancellation in history
+          if (!user.cancellationHistory) user.cancellationHistory = []
+          user.cancellationHistory.push({
+            date: new Date().toISOString(),
+            reason: subscription.cancellation_details?.reason || 'subscription_deleted',
+          })
 
-          writeUsers(users)
-          console.log(`[Stripe] Subscription canceled for user: ${userId}`)
+          writeUsers(users, userId)
+          console.log(`[Stripe] Subscription canceled for user: ${userId}, access until: ${user.subscriptionRenewalDate || 'none'}`)
         }
         break
       }
@@ -6444,7 +7504,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
           const user = users[userId]
           // Update subscription end date on successful payment
           const subscription = await stripe.subscriptions.retrieve(invoice.subscription)
-          user.subscriptionEndDate = new Date(subscription.current_period_end * 1000).toISOString()
+          user.subscriptionRenewalDate = new Date(subscription.current_period_end * 1000).toISOString()
           user.subscriptionStatus = subscription.status
 
           writeUsers(users)
@@ -6546,6 +7606,49 @@ app.post('/api/stripe/webhook', async (req, res) => {
 // ==================== END STRIPE ENDPOINTS ====================
 
 // ============================================================================
+// MONTHLY CLEANUP - Purge old daily usage data from cache
+// ============================================================================
+// Keeps the current month + previous month (for billing grace period).
+// Deletes everything older from the in-memory cache (which syncs to usage_data in MongoDB).
+
+const cleanupOldDailyUsage = async () => {
+  try {
+    const now = new Date()
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    
+    // Calculate previous month
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const previousMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`
+    
+    console.log(`[Cleanup] Running daily usage cleanup. Keeping months: ${previousMonth}, ${currentMonth}`)
+    
+    // Clean in-memory cache: remove old months from each user's dailyUsage
+    let cacheMonthsRemoved = 0
+    for (const userId of Object.keys(usageCache)) {
+      const userUsage = usageCache[userId]
+      let userRemoved = 0
+      if (userUsage?.dailyUsage) {
+        for (const month of Object.keys(userUsage.dailyUsage)) {
+          if (month < previousMonth) {
+            delete userUsage.dailyUsage[month]
+            cacheMonthsRemoved++
+            userRemoved++
+          }
+        }
+        // Mark dirty so the cleaned cache gets synced to MongoDB usage_data collection
+        if (userRemoved > 0) {
+          scheduleUsageSync(userId)
+        }
+      }
+    }
+    
+    console.log(`[Cleanup] Done. Removed ${cacheMonthsRemoved} old month entries from cache (synced to usage_data in MongoDB).`)
+  } catch (error) {
+    console.error('[Cleanup] Error during daily usage cleanup:', error.message)
+  }
+}
+
+// ============================================================================
 // SERVER STARTUP
 // ============================================================================
 const startServer = async () => {
@@ -6555,6 +7658,11 @@ const startServer = async () => {
   // Load cache from MongoDB
   console.log('[Server] Loading data from MongoDB...')
   await loadCacheFromMongoDB()
+  
+  // Run cleanup once on startup, then schedule daily (every 24 hours)
+  await cleanupOldDailyUsage()
+  setInterval(cleanupOldDailyUsage, 24 * 60 * 60 * 1000) // Run every 24 hours
+  console.log('[Server] 🗑️  Daily usage cleanup scheduled (runs every 24h)')
   
   // Start HTTP server
   app.listen(PORT, () => {
@@ -6567,6 +7675,7 @@ const startServer = async () => {
     console.log(`🗄️  MongoDB:          Connected (Primary Store)`)
     console.log(`👑 Admin Endpoints:   Ready`)
     console.log(`🏆 Leaderboard:       Ready`)
+    console.log(`🗑️  Cleanup:          Scheduled (daily)`)
     console.log('═══════════════════════════════════════════════════')
     console.log('')
   })

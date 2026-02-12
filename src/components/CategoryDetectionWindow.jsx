@@ -86,8 +86,8 @@ const CategoryDetectionWindow = ({ isOpen, onClose, detectionData, inline = fals
           position: 'fixed',
           bottom: '200px',
           right: '20px', // Position in bottom-right, stacked above cost breakdown
-          background: 'rgba(0, 170, 255, 0.2)',
-          border: '1px solid rgba(0, 170, 255, 0.5)',
+          background: 'rgba(93, 173, 226, 0.2)',
+          border: '1px solid rgba(93, 173, 226, 0.5)',
           borderRadius: '12px',
           padding: '12px 20px',
           color: '#00aaff',
@@ -98,9 +98,9 @@ const CategoryDetectionWindow = ({ isOpen, onClose, detectionData, inline = fals
           zIndex: 10000,
           fontSize: '0.9rem',
           fontWeight: '500',
-          boxShadow: '0 0 20px rgba(0, 170, 255, 0.3)',
+          boxShadow: '0 0 20px rgba(93, 173, 226, 0.3)',
         }}
-        whileHover={{ background: 'rgba(0, 170, 255, 0.3)', scale: 1.05 }}
+        whileHover={{ background: 'rgba(93, 173, 226, 0.3)', scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
       >
         <Maximize2 size={16} />
@@ -151,7 +151,7 @@ const CategoryDetectionWindow = ({ isOpen, onClose, detectionData, inline = fals
               maxHeight: '80vh',
               overflowY: 'auto',
               position: 'relative',
-              boxShadow: '0 8px 32px rgba(0, 170, 255, 0.3)',
+              boxShadow: '0 8px 32px rgba(93, 173, 226, 0.3)',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -173,8 +173,8 @@ const CategoryDetectionWindow = ({ isOpen, onClose, detectionData, inline = fals
                     setIsMinimized(true)
                   }}
                   style={{
-                    background: 'rgba(0, 170, 255, 0.1)',
-                    border: '1px solid rgba(0, 170, 255, 0.3)',
+                    background: 'rgba(93, 173, 226, 0.1)',
+                    border: '1px solid rgba(93, 173, 226, 0.3)',
                     borderRadius: '8px',
                     padding: '8px',
                     color: '#00aaff',
@@ -184,8 +184,8 @@ const CategoryDetectionWindow = ({ isOpen, onClose, detectionData, inline = fals
                     justifyContent: 'center',
                     transition: 'background 0.2s',
                   }}
-                  onMouseEnter={(e) => e.target.style.background = 'rgba(0, 170, 255, 0.2)'}
-                  onMouseLeave={(e) => e.target.style.background = 'rgba(0, 170, 255, 0.1)'}
+                  onMouseEnter={(e) => e.target.style.background = 'rgba(93, 173, 226, 0.2)'}
+                  onMouseLeave={(e) => e.target.style.background = 'rgba(93, 173, 226, 0.1)'}
                   title="Minimize"
                 >
                   <Minimize2 size={20} />
@@ -216,8 +216,8 @@ const CategoryDetectionWindow = ({ isOpen, onClose, detectionData, inline = fals
             {/* Detection Results */}
             <div
               style={{
-                background: 'rgba(0, 170, 255, 0.1)',
-                border: '1px solid rgba(0, 170, 255, 0.3)',
+                background: 'rgba(93, 173, 226, 0.1)',
+                border: '1px solid rgba(93, 173, 226, 0.3)',
                 borderRadius: '12px',
                 padding: '16px',
                 marginBottom: '20px',
@@ -251,8 +251,8 @@ const CategoryDetectionWindow = ({ isOpen, onClose, detectionData, inline = fals
             {/* Default Prompt */}
             <div
               style={{
-                background: 'rgba(0, 170, 255, 0.05)',
-                border: '1px solid rgba(0, 170, 255, 0.2)',
+                background: 'rgba(93, 173, 226, 0.05)',
+                border: '1px solid rgba(93, 173, 226, 0.2)',
                 borderRadius: '12px',
                 padding: '16px',
                 marginBottom: '20px',
@@ -285,8 +285,8 @@ const CategoryDetectionWindow = ({ isOpen, onClose, detectionData, inline = fals
             {/* Response */}
             <div
               style={{
-                background: 'rgba(0, 170, 255, 0.05)',
-                border: '1px solid rgba(0, 170, 255, 0.2)',
+                background: 'rgba(93, 173, 226, 0.05)',
+                border: '1px solid rgba(93, 173, 226, 0.2)',
                 borderRadius: '12px',
                 padding: '16px',
               }}

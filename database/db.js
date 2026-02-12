@@ -36,7 +36,7 @@ function getMongoUri() {
  * Get database name - reads at runtime AFTER dotenv has loaded
  */
 function getDbName() {
-  return process.env.DB_NAME || 'arktek'
+  return process.env.DB_NAME || 'Arkitek'
 }
 
 /**
@@ -108,6 +108,16 @@ const users = {
   },
   
   /**
+   * Get user by username
+   * @param {string} username 
+   * @returns {Promise<Object|null>}
+   */
+  async getByUsername(username) {
+    const db = await getDb()
+    return db.collection('users').findOne({ username })
+  },
+  
+  /**
    * Get user by email
    * @param {string} email 
    * @returns {Promise<Object|null>}
@@ -136,20 +146,9 @@ const users = {
       stripeCustomerId: null,
       stripeSubscriptionId: null,
       subscriptionStatus: 'inactive',
-      subscriptionEndDate: null,
+      subscriptionRenewalDate: null,
       createdAt: new Date(),
       lastActiveAt: new Date(),
-      lastLoginDate: new Date(),
-      monthlyUsageCost: {},
-      stats: {
-        totalTokens: 0,
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        totalQueries: 0,
-        totalPrompts: 0,
-        providers: {},
-        models: {}
-      },
       purchasedCredits: {
         total: 0,
         remaining: 0
@@ -182,19 +181,7 @@ const users = {
     return db.collection('users').find({}).toArray()
   },
   
-  /**
-   * Add to monthly usage cost
-   * @param {string} userId 
-   * @param {string} month - YYYY-MM
-   * @param {number} cost 
-   */
-  async addMonthlyUsageCost(userId, month, cost) {
-    const db = await getDb()
-    await db.collection('users').updateOne(
-      { _id: userId },
-      { $inc: { [`monthlyUsageCost.${month}`]: cost } }
-    )
-  },
+  // addMonthlyUsageCost removed — monthlyUsageCost lives in user_stats only
   
   /**
    * Verify password (returns user if match, null otherwise)
@@ -219,20 +206,26 @@ const users = {
     const db = await getDb()
     
     const $inc = {}
-    const $set = { lastActiveAt: new Date() }
-    
     if (stats.totalTokens) $inc['stats.totalTokens'] = stats.totalTokens
     if (stats.totalInputTokens) $inc['stats.totalInputTokens'] = stats.totalInputTokens
     if (stats.totalOutputTokens) $inc['stats.totalOutputTokens'] = stats.totalOutputTokens
     if (stats.totalQueries) $inc['stats.totalQueries'] = stats.totalQueries
     if (stats.totalPrompts) $inc['stats.totalPrompts'] = stats.totalPrompts
     
-    const update = { $set }
+    const update = { $set: { updatedAt: new Date() } }
     if (Object.keys($inc).length > 0) update.$inc = $inc
     
-    const result = await db.collection('users').updateOne(
+    // Stats live in user_stats collection, not users
+    const result = await db.collection('user_stats').updateOne(
       { _id: userId },
-      update
+      update,
+      { upsert: true }
+    )
+    
+    // Also update lastActiveAt on the users document
+    await db.collection('users').updateOne(
+      { _id: userId },
+      { $set: { lastActiveAt: new Date() } }
     )
     
     return result.modifiedCount > 0
@@ -252,9 +245,11 @@ const users = {
     if (stats.totalInputTokens) $inc[`stats.providers.${provider}.totalInputTokens`] = stats.totalInputTokens
     if (stats.totalOutputTokens) $inc[`stats.providers.${provider}.totalOutputTokens`] = stats.totalOutputTokens
     
-    await db.collection('users').updateOne(
+    // Stats live in user_stats collection, not users
+    await db.collection('user_stats').updateOne(
       { _id: userId },
-      { $inc }
+      { $inc },
+      { upsert: true }
     )
   },
   
@@ -279,10 +274,11 @@ const users = {
       [`stats.models.${modelKey}.model`]: stats.model
     }
     
-    await db.collection('users').updateOne(
+    // Stats live in user_stats collection, not users
+    await db.collection('user_stats').updateOne(
       { _id: userId },
       { $inc, $setOnInsert },
-      { upsert: false }
+      { upsert: true }
     )
   },
   
@@ -335,17 +331,20 @@ const users = {
   async delete(userId) {
     const db = await getDb()
     
-    // Delete from all collections
+    // Delete from ALL collections that store user data
     await Promise.all([
       db.collection('users').deleteOne({ _id: userId }),
       db.collection('prompts').deleteMany({ userId }),
-      db.collection('usage_daily').deleteMany({ userId }),
-      db.collection('usage_monthly').deleteMany({ userId }),
       db.collection('purchases').deleteMany({ userId }),
-      db.collection('judge_context').deleteOne({ _id: userId })
+      db.collection('judge_context').deleteOne({ _id: userId }),
+      db.collection('usage_data').deleteOne({ _id: userId }),
+      db.collection('user_stats').deleteOne({ _id: userId }),
+      db.collection('saved_individual').deleteMany({ userId }),
+      db.collection('saved_sessions').deleteMany({ userId }),
+      db.collection('leaderboard_posts').deleteMany({ userId }),
     ])
     
-    console.log(`[DB] Deleted user and all data: ${userId}`)
+    console.log(`[DB] Deleted user and ALL associated data: ${userId}`)
   },
   
   /**
@@ -538,139 +537,10 @@ const prompts = {
 // ============================================================================
 // USAGE STATS OPERATIONS
 // ============================================================================
-
-const usage = {
-  /**
-   * Update daily usage (upsert)
-   * @param {string} userId 
-   * @param {string} date - YYYY-MM-DD
-   * @param {Object} stats 
-   */
-  async updateDaily(userId, date, stats) {
-    const db = await getDb()
-    
-    const $inc = {}
-    if (stats.inputTokens) $inc.inputTokens = stats.inputTokens
-    if (stats.outputTokens) $inc.outputTokens = stats.outputTokens
-    if (stats.queries) $inc.queries = stats.queries
-    if (stats.prompts) $inc.prompts = stats.prompts
-    
-    // Model-level tracking
-    if (stats.modelKey) {
-      if (stats.inputTokens) $inc[`models.${stats.modelKey}.inputTokens`] = stats.inputTokens
-      if (stats.outputTokens) $inc[`models.${stats.modelKey}.outputTokens`] = stats.outputTokens
-    }
-    
-    await db.collection('usage_daily').updateOne(
-      { userId, date },
-      { 
-        $inc,
-        $setOnInsert: { userId, date }
-      },
-      { upsert: true }
-    )
-  },
-  
-  /**
-   * Update monthly usage (upsert)
-   * @param {string} userId 
-   * @param {string} month - YYYY-MM
-   * @param {Object} stats 
-   */
-  async updateMonthly(userId, month, stats) {
-    const db = await getDb()
-    
-    const $inc = {}
-    if (stats.tokens) $inc.tokens = stats.tokens
-    if (stats.inputTokens) $inc.inputTokens = stats.inputTokens
-    if (stats.outputTokens) $inc.outputTokens = stats.outputTokens
-    if (stats.queries) $inc.queries = stats.queries
-    if (stats.prompts) $inc.prompts = stats.prompts
-    
-    // Provider-level tracking
-    if (stats.provider) {
-      if (stats.tokens) $inc[`providers.${stats.provider}.tokens`] = stats.tokens
-      if (stats.inputTokens) $inc[`providers.${stats.provider}.inputTokens`] = stats.inputTokens
-      if (stats.outputTokens) $inc[`providers.${stats.provider}.outputTokens`] = stats.outputTokens
-    }
-    
-    await db.collection('usage_monthly').updateOne(
-      { userId, month },
-      { 
-        $inc,
-        $setOnInsert: { userId, month }
-      },
-      { upsert: true }
-    )
-  },
-  
-  /**
-   * Get monthly usage
-   * @param {string} userId 
-   * @param {string} month - YYYY-MM
-   */
-  async getMonthly(userId, month) {
-    const db = await getDb()
-    return db.collection('usage_monthly').findOne({ userId, month })
-  },
-  
-  /**
-   * Get daily usage for a date range
-   * @param {string} userId 
-   * @param {string} startDate - YYYY-MM-DD
-   * @param {string} endDate - YYYY-MM-DD
-   */
-  async getDailyRange(userId, startDate, endDate) {
-    const db = await getDb()
-    
-    return db.collection('usage_daily')
-      .find({
-        userId,
-        date: { $gte: startDate, $lte: endDate }
-      })
-      .sort({ date: 1 })
-      .toArray()
-  },
-  
-  /**
-   * Get usage by provider for current month
-   * @param {string} userId 
-   */
-  async getByProvider(userId) {
-    const db = await getDb()
-    
-    const currentMonth = new Date().toISOString().slice(0, 7)
-    const monthly = await db.collection('usage_monthly').findOne({ userId, month: currentMonth })
-    
-    return monthly?.providers || {}
-  },
-  
-  /**
-   * Get all-time usage summary
-   * @param {string} userId 
-   */
-  async getSummary(userId) {
-    const db = await getDb()
-    
-    const user = await db.collection('users').findOne({ _id: userId })
-    if (!user) return null
-    
-    const currentMonth = new Date().toISOString().slice(0, 7)
-    const monthly = await db.collection('usage_monthly').findOne({ userId, month: currentMonth })
-    
-    return {
-      allTime: user.stats,
-      currentMonth: monthly || {
-        tokens: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        queries: 0,
-        prompts: 0
-      },
-      purchasedCredits: user.purchasedCredits
-    }
-  }
-}
+// NOTE: usage_daily and user_monthly_usage collections have been removed.
+// All usage data is now tracked solely through the in-memory cache (usageCache)
+// which is persisted to the usage_data collection in MongoDB.
+// The usage_data collection is the single source of truth for all usage data.
 
 // ============================================================================
 // PURCHASE OPERATIONS
@@ -823,7 +693,8 @@ const leaderboard = {
   async getTopByPrompts(limit = 10) {
     const db = await getDb()
     
-    return db.collection('users')
+    // Stats live in user_stats collection
+    return db.collection('user_stats')
       .find({})
       .sort({ 'stats.totalPrompts': -1 })
       .limit(limit)
@@ -842,7 +713,8 @@ const leaderboard = {
   async getTopByTokens(limit = 10) {
     const db = await getDb()
     
-    return db.collection('users')
+    // Stats live in user_stats collection
+    return db.collection('user_stats')
       .find({})
       .sort({ 'stats.totalTokens': -1 })
       .limit(limit)
@@ -1109,96 +981,12 @@ const leaderboardPosts = {
 }
 
 // ============================================================================
-// COMBINED TRACKING (REPLACES trackUsage)
+// COMBINED TRACKING — REMOVED
 // ============================================================================
-
-/**
- * Track usage across all relevant collections
- * This is the main function that replaces the old trackUsage
- * 
- * @param {string} userId 
- * @param {string} provider 
- * @param {string} model 
- * @param {number} inputTokens 
- * @param {number} outputTokens 
- */
-async function trackUsage(userId, provider, model, inputTokens, outputTokens) {
-  const tokensUsed = inputTokens + outputTokens
-  const currentMonth = new Date().toISOString().slice(0, 7) // YYYY-MM
-  const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
-  const modelKey = `${provider}-${model}`
-  
-  // Run all updates in parallel
-  await Promise.all([
-    // 1. Update user totals
-    users.updateStats(userId, {
-      totalTokens: tokensUsed,
-      totalInputTokens: inputTokens,
-      totalOutputTokens: outputTokens
-    }),
-    
-    // 2. Update provider stats
-    users.updateProviderStats(userId, provider, {
-      totalTokens: tokensUsed,
-      totalInputTokens: inputTokens,
-      totalOutputTokens: outputTokens
-    }),
-    
-    // 3. Update model stats
-    users.updateModelStats(userId, modelKey, {
-      totalTokens: tokensUsed,
-      totalInputTokens: inputTokens,
-      totalOutputTokens: outputTokens,
-      provider,
-      model
-    }),
-    
-    // 4. Update daily usage
-    usage.updateDaily(userId, today, {
-      inputTokens,
-      outputTokens,
-      modelKey
-    }),
-    
-    // 5. Update monthly usage
-    usage.updateMonthly(userId, currentMonth, {
-      tokens: tokensUsed,
-      inputTokens,
-      outputTokens,
-      provider
-    })
-  ])
-}
-
-/**
- * Track a prompt submission
- * @param {string} userId 
- */
-async function trackPrompt(userId) {
-  const currentMonth = new Date().toISOString().slice(0, 7)
-  const today = new Date().toISOString().split('T')[0]
-  
-  await Promise.all([
-    users.updateStats(userId, { totalPrompts: 1 }),
-    usage.updateDaily(userId, today, { prompts: 1 }),
-    usage.updateMonthly(userId, currentMonth, { prompts: 1 })
-  ])
-}
-
-/**
- * Track a search query
- * @param {string} userId 
- */
-async function trackQuery(userId) {
-  const currentMonth = new Date().toISOString().slice(0, 7)
-  const today = new Date().toISOString().split('T')[0]
-  
-  await Promise.all([
-    users.updateStats(userId, { totalQueries: 1 }),
-    usage.updateDaily(userId, today, { queries: 1 }),
-    usage.updateMonthly(userId, currentMonth, { queries: 1 })
-  ])
-}
+// trackUsage, trackPrompt, and trackQuery have been removed.
+// All usage tracking is now handled by the in-memory cache in server.js
+// which is persisted to the usage_data collection. No separate MongoDB
+// tracking to usage_daily or user_monthly_usage is needed.
 
 // ============================================================================
 // METADATA COLLECTION (App-wide stats and admin tracking)
@@ -1432,7 +1220,6 @@ export default {
   // Collections
   users,
   prompts,
-  usage,
   purchases,
   judgeContext,
   leaderboard,
@@ -1440,11 +1227,6 @@ export default {
   metadata,
   admins,
   savedPosts,
-  
-  // Combined operations
-  trackUsage,
-  trackPrompt,
-  trackQuery
 }
 
 // Named exports for convenience
@@ -1453,7 +1235,6 @@ export {
   close,
   users,
   prompts,
-  usage,
   purchases,
   judgeContext,
   leaderboard,
@@ -1461,8 +1242,5 @@ export {
   metadata,
   admins,
   savedPosts,
-  trackUsage,
-  trackPrompt,
-  trackQuery
 }
 

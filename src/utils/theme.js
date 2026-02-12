@@ -16,27 +16,27 @@ export const themes = {
     textMuted: '#666666',
     
     // Borders
-    border: 'rgba(0, 255, 255, 0.2)',
-    borderActive: 'rgba(0, 255, 255, 0.8)',
-    borderLight: 'rgba(0, 255, 255, 0.3)',
+    border: 'rgba(93, 173, 226, 0.2)',
+    borderActive: 'rgba(93, 173, 226, 0.7)',
+    borderLight: 'rgba(93, 173, 226, 0.25)',
     
-    // Accent colors (cyan/green gradient)
-    accent: '#00FFFF',
-    accentSecondary: '#00FF00',
-    accentGradient: 'linear-gradient(90deg, #00FFFF, #00FF00)',
+    // Accent colors (muted blue/teal matching light mode family)
+    accent: '#5dade2',
+    accentSecondary: '#48c9b0',
+    accentGradient: 'linear-gradient(90deg, #5dade2, #48c9b0)',
     
     // UI elements
-    buttonBackground: 'rgba(0, 255, 255, 0.05)',
-    buttonBackgroundActive: 'rgba(0, 255, 255, 0.3)',
-    buttonBackgroundHover: 'rgba(0, 255, 255, 0.1)',
+    buttonBackground: 'rgba(93, 173, 226, 0.06)',
+    buttonBackgroundActive: 'rgba(93, 173, 226, 0.25)',
+    buttonBackgroundHover: 'rgba(93, 173, 226, 0.12)',
     
     // Scrollbar
-    scrollbarTrack: 'rgba(0, 255, 255, 0.1)',
-    scrollbarThumb: 'linear-gradient(180deg, #00FFFF, #00FF00)',
+    scrollbarTrack: 'rgba(93, 173, 226, 0.1)',
+    scrollbarThumb: 'linear-gradient(180deg, #5dade2, #48c9b0)',
     
     // Shadows
-    shadow: 'rgba(0, 255, 255, 0.3)',
-    shadowLight: 'rgba(0, 255, 255, 0.2)',
+    shadow: 'rgba(93, 173, 226, 0.2)',
+    shadowLight: 'rgba(93, 173, 226, 0.15)',
   },
   light: {
     name: 'light',

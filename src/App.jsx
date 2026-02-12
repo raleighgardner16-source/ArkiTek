@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore } from './store/useStore'
 import WelcomeScreen from './components/WelcomeScreen'
-import BackgroundScene from './components/BackgroundScene'
 import ResponseComparison from './components/ResponseComparison'
 import NavigationBar from './components/NavigationBar'
 import MainView from './components/MainView'
@@ -11,46 +10,38 @@ import LeaderboardView from './components/LeaderboardView'
 import StatisticsView from './components/StatisticsView'
 import SummaryWindow from './components/SummaryWindow'
 import AuthView from './components/AuthView'
+import SubscriptionGate from './components/SubscriptionGate'
 import AdminView from './components/AdminView'
+import SavedConversationsView from './components/SavedConversationsView'
 import FactsAndSourcesWindow from './components/FactsAndSourcesWindow'
-import TokenUsageWindow from './components/TokenUsageWindow'
-import CostBreakdownWindow from './components/CostBreakdownWindow'
-import CategoryDetectionWindow from './components/CategoryDetectionWindow'
 import PipelineDebugWindow from './components/PipelineDebugWindow'
 import { callLLM, getAllModels, searchWithSerper } from './services/llmProviders'
 import { detectCategory } from './utils/categoryDetector'
 import { getTheme } from './utils/theme'
 import axios from 'axios'
+import { API_URL } from './utils/config'
 
 function App() {
   const showWelcome = useStore((state) => state.showWelcome)
   const currentUser = useStore((state) => state.currentUser)
-  const setGpt4oMiniResponse = useStore((state) => state.setGpt4oMiniResponse)
+  const setGeminiDetectionResponse = useStore((state) => state.setGeminiDetectionResponse)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   // Check pathname synchronously on initialization
   const [isAdminRoute, setIsAdminRoute] = useState(() => {
     const path = window.location.pathname
     const hash = window.location.hash
-    const isAdmin = path === '/admin' || path === '/admin/' || hash === '#/admin'
-    console.log('[App] 🔍 Initial route check:', { 
-      path, 
-      hash, 
-      isAdmin,
-      fullUrl: window.location.href 
-    })
-    return isAdmin
+    return path === '/admin' || path === '/admin/' || hash === '#/admin'
   })
   const activeTab = useStore((state) => state.activeTab || 'home')
+  const setActiveTab = useStore((state) => state.setActiveTab)
   
   // Listen for navigation changes
   useEffect(() => {
     const checkAdminRoute = () => {
       const path = window.location.pathname
       const hash = window.location.hash
-      const isAdmin = path === '/admin' || path === '/admin/' || hash === '#/admin'
-      console.log('[App] 🔍 Route changed:', { path, hash, isAdmin, fullUrl: window.location.href })
-      setIsAdminRoute(isAdmin)
+      setIsAdminRoute(path === '/admin' || path === '/admin/' || hash === '#/admin')
     }
     
     // Check immediately in case pathname changed after initial render
@@ -78,9 +69,6 @@ function App() {
   const clearAllWindows = () => {
     try {
       clearResponses()
-      setShowTokenUsageWindow(false)
-      setShowCostBreakdownWindow(false)
-      setShowCategoryDetectionWindow(false)
       setShowFactsWindow(false) // Close facts/sources window
       setQueryCount(0)
       // Minimize summary window (summary is already cleared by clearResponses)
@@ -90,7 +78,7 @@ function App() {
       }
       // Clear judge conversation context
       if (currentUser?.id) {
-        axios.post('http://localhost:3001/api/judge/clear-context', {
+        axios.post(`${API_URL}/api/judge/clear-context`, {
           userId: currentUser.id
         }).catch(err => console.error('[Clear Context] Error:', err))
       }
@@ -100,8 +88,6 @@ function App() {
     }
   }
   const updateStats = useStore((state) => state.updateStats)
-  const setVrMode = useStore((state) => state.setVrMode)
-  const vrMode = useStore((state) => state.vrMode)
   const ratings = useStore((state) => state.ratings)
   const setCategory = useStore((state) => state.setCategory)
   const shouldSubmit = useStore((state) => state.shouldSubmit)
@@ -111,7 +97,7 @@ function App() {
   const ragDebugData = useStore((state) => state.ragDebugData)
   const setRAGDebugData = useStore((state) => state.setRAGDebugData)
   const clearRAGDebugData = useStore((state) => state.clearRAGDebugData)
-  const gpt4oMiniResponse = useStore((state) => state.gpt4oMiniResponse)
+  const geminiDetectionResponse = useStore((state) => state.geminiDetectionResponse)
   const setIsSearchingWeb = useStore((state) => state.setIsSearchingWeb)
   const showPipelineDebugWindow = useStore((state) => state.showPipelineDebugWindow)
   const setShowPipelineDebugWindow = useStore((state) => state.setShowPipelineDebugWindow)
@@ -120,13 +106,21 @@ function App() {
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const [currentCategory, setCurrentCategory] = useState('general')
   const [tokenUsageData, setTokenUsageData] = useState([])
-  const [showTokenUsageWindow, setShowTokenUsageWindow] = useState(false)
-  const [showCostBreakdownWindow, setShowCostBreakdownWindow] = useState(false)
   const [queryCount, setQueryCount] = useState(0)
-  const [categoryDetectionData, setCategoryDetectionData] = useState(null)
-  const [showCategoryDetectionWindow, setShowCategoryDetectionWindow] = useState(false)
+  const [isUserAdmin, setIsUserAdmin] = useState(false)
   const showFactsWindow = useStore((state) => state.showFactsWindow)
   const setShowFactsWindow = useStore((state) => state.setShowFactsWindow)
+
+  // Check if current user is an admin (admins bypass subscription gate)
+  useEffect(() => {
+    if (currentUser?.id) {
+      axios.get(`${API_URL}/api/admin/check`, { params: { userId: currentUser.id } })
+        .then(res => setIsUserAdmin(res.data.isAdmin === true))
+        .catch(() => setIsUserAdmin(false))
+    } else {
+      setIsUserAdmin(false)
+    }
+  }, [currentUser?.id])
 
   // Clear selected models when navigating to home page from another tab
   const prevActiveTab = React.useRef(activeTab)
@@ -138,25 +132,9 @@ function App() {
     prevActiveTab.current = activeTab
   }, [activeTab, currentUser, clearSelectedModels])
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyPress = (e) => {
-      // Toggle VR mode with 'V' key
-      if (e.key && typeof e.key === 'string' && e.key.toLowerCase() === 'v' && !e.ctrlKey && !e.metaKey) {
-        setVrMode(!vrMode)
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyPress)
-    return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [vrMode, setVrMode])
-
   // Handle prompt submission
   const handlePromptSubmit = async () => {
-    if (!currentPrompt.trim() || selectedModels.length === 0) {
-      console.log('[handlePromptSubmit] Skipping - no prompt or no models selected')
-      return
-    }
+    if (!currentPrompt.trim() || selectedModels.length === 0) return
     
     // Save the prompt BEFORE clearing responses (for voting button)
     const savedPrompt = currentPrompt.trim()
@@ -180,7 +158,7 @@ function App() {
     
     // Clear judge conversation context when starting a new prompt from main page
     if (currentUser?.id) {
-      axios.post('http://localhost:3001/api/judge/clear-context', {
+      axios.post(`${API_URL}/api/judge/clear-context`, {
         userId: currentUser.id
       }).catch(err => console.error('[Clear Context] Error:', err))
     }
@@ -197,27 +175,12 @@ function App() {
       detectionResult = await detectCategory(currentPrompt)
       category = detectionResult.category || 'General Knowledge/Other'
       needsSearch = detectionResult.needsSearch || false
-      categoryDetectionTokens = detectionResult.tokens || null // Store tokens from category detection
-      console.log('[Category Detection] Tokens received:', categoryDetectionTokens)
+      categoryDetectionTokens = detectionResult.tokens || null
       
-      // Store full detection data for display in the category detection window
-      if (detectionResult) {
-        setCategoryDetectionData({
-          prompt: detectionResult.prompt || '',
-          response: detectionResult.rawResponse || '',
-          category: detectionResult.category || category,
-          needsSearch: detectionResult.needsSearch !== undefined ? detectionResult.needsSearch : needsSearch,
-          recommendedModelType: detectionResult.recommendedModelType || 'versatile'
-        })
-      }
-      
-      // Store raw response for display in the temporary window (backward compatibility)
+      // Store raw response for display
       if (detectionResult?.rawResponse) {
-        setGpt4oMiniResponse(detectionResult.rawResponse)
+        setGeminiDetectionResponse(detectionResult.rawResponse)
       }
-      
-      console.log('[Category Detection] Gemini 2.5 Flash Lite determined:', { category, needsSearch })
-      console.log('[Category Detection] Query needed:', needsSearch ? 'YES - Will use RAG pipeline with Serper' : 'NO - Will use direct LLM calls')
     } catch (error) {
       console.error('[Category Detection] Error:', error)
       category = 'General Knowledge/Other'
@@ -235,12 +198,10 @@ function App() {
     // If web search is needed (needsSearch === true), use RAG pipeline
     // The RAG pipeline will perform Serper query → Refiner → Council → Judge
     if (needsSearch) {
-      console.log('[RAG Pipeline] needsSearch=true, using RAG pipeline with Serper query')
-      setIsSearchingWeb(true) // Show "Searching the web..." indicator
+      setIsSearchingWeb(true)
       try {
         const userId = currentUser?.id || null
-        console.log('[handlePromptSubmit] RAG Pipeline - Models to use:', modelsToUse)
-        const ragResponse = await axios.post('http://localhost:3001/api/rag', {
+        const ragResponse = await axios.post(`${API_URL}/api/rag`, {
           query: currentPrompt,
           selectedModels: modelsToUse,
           userId: userId
@@ -250,24 +211,9 @@ function App() {
 
         // Track query count (1 query per RAG pipeline call)
         setQueryCount(1)
-
-        // Log search results for debugging
-        console.log('[RAG Pipeline] Search results received:', ragData.search_results?.length || 0)
-        console.log('[RAG Pipeline] Refined data points:', ragData.refined_data?.data_points?.length || 0)
-        console.log('[RAG Pipeline] Facts with citations:', ragData.refined_data?.facts_with_citations?.length || 0)
-        console.log('[RAG Pipeline] Debug data present:', !!ragData.debug_data)
-        console.log('[RAG Pipeline] Debug data keys:', ragData.debug_data ? Object.keys(ragData.debug_data) : 'none')
-        
-        // Log refiner tokens from backend
-        console.log('[RAG Pipeline] Refiner tokens from backend:', {
-          hasRefinerTokens: !!ragData.refiner_tokens,
-          refinerTokens: ragData.refiner_tokens,
-          hasJudgeFinalizationTokens: !!ragData.judge_finalization_tokens,
-          judgeFinalizationTokens: ragData.judge_finalization_tokens
-        })
         
         if (!ragData.search_results || ragData.search_results.length === 0) {
-          console.warn('[RAG Pipeline] WARNING: No search results returned from Serper!')
+          console.warn('[RAG Pipeline] No search results returned from Serper')
         }
 
         // Fetch conversation context for debug data
@@ -275,7 +221,7 @@ function App() {
         if (currentUser?.id) {
           try {
             // Use query parameter to handle special characters (colons, etc.) better
-            const contextResponse = await axios.get('http://localhost:3001/api/judge/context', {
+            const contextResponse = await axios.get(`${API_URL}/api/judge/context`, {
               params: { userId: currentUser.id }
             })
             conversationContext = contextResponse.data.context || []
@@ -301,42 +247,14 @@ function App() {
           ...ragData.debug_data
         }
         
-        console.log('[RAG Pipeline] Storing debug data:', {
-          hasSearch: !!debugDataToStore.search,
-          hasRefiner: !!debugDataToStore.refiner,
-          hasCouncil: !!debugDataToStore.council,
-          hasJudge: !!debugDataToStore.judgeFinalization,
-          searchResultsCount: debugDataToStore.search?.results?.length || 0,
-          refinerFactsCount: debugDataToStore.refiner?.primary?.facts_with_citations?.length || 0,
-          councilCount: debugDataToStore.council?.length || 0
-        })
-        
-        console.log('[RAG Pipeline] Full debug data structure:', JSON.stringify(debugDataToStore, null, 2).substring(0, 1000))
-        
         setRAGDebugData(debugDataToStore)
-        setShowPipelineDebugWindow(true) // Ensure debug window is visible
-        console.log('[RAG Pipeline] Debug data stored in state')
+        setShowPipelineDebugWindow(true)
 
         // Add council responses
-        console.log(`[RAG Pipeline] Processing ${ragData.council_responses?.length || 0} council responses`)
         ragData.council_responses.forEach((councilResponse, index) => {
-          console.log(`[RAG Pipeline] Council response ${index + 1}:`, {
-            model_name: councilResponse.model_name,
-            hasError: !!councilResponse.error,
-            error: councilResponse.error,
-            hasResponse: !!councilResponse.response,
-            responseType: typeof councilResponse.response,
-            responseLength: councilResponse.response?.length || 0
-          })
-          
           if (!councilResponse.error && councilResponse.response) {
             const actualModel = councilResponse.actual_model_name || councilResponse.model_name
             const originalModel = councilResponse.original_model_name || councilResponse.model_name
-            
-            console.log(`[RAG Pipeline] Model verification for ${councilResponse.model_name}:`)
-            console.log(`  - User Selected: ${originalModel}`)
-            console.log(`  - API Called: ${actualModel}`)
-            console.log(`  - Mapping: ${originalModel === actualModel ? 'NONE (passed through as-is)' : `${originalModel} → ${actualModel}`}`)
             
             // Ensure response is a string - handle objects and arrays
             let responseText = ''
@@ -364,17 +282,10 @@ function App() {
               error: false,
               tokens: councilResponse.tokens || null, // Token information from RAG pipeline
             })
-            console.log(`[RAG Pipeline] Added response for ${councilResponse.model_name}, total responses: ${responses.length}`)
           } else {
-            console.warn(`[RAG Pipeline] Skipping response for ${councilResponse.model_name}:`, {
-              hasError: !!councilResponse.error,
-              error: councilResponse.error,
-              hasResponse: !!councilResponse.response
-            })
+            console.warn(`[RAG Pipeline] Skipping response for ${councilResponse.model_name}: ${councilResponse.error || 'no response'}`)
           }
         })
-        console.log(`[RAG Pipeline] Total responses after processing: ${responses.length}`)
-
         // Set judge analysis as summary (format as text for SummaryWindow)
         // Only set summary if judge_analysis exists AND we have 2+ models
         if (ragData.judge_analysis && modelsToUse.length >= 2) {
@@ -421,28 +332,13 @@ function App() {
           summary = null
         }
 
-        console.log(`[RAG Pipeline] Received ${responses.length} council responses`)
-        setIsSearchingWeb(false) // Clear searching indicator when RAG completes successfully
+        setIsSearchingWeb(false)
       } catch (ragError) {
-        console.error('[RAG Pipeline] Error:', ragError)
-        const errorDetails = {
-          message: ragError.message,
-          response: ragError.response?.data,
-          status: ragError.response?.status,
-          statusText: ragError.response?.statusText,
-          config: {
-            url: ragError.config?.url,
-            method: ragError.config?.method,
-            data: ragError.config?.data
-          }
-        }
-        console.error('[RAG Pipeline] Error details:', JSON.stringify(errorDetails, null, 2))
-        console.error('[RAG Pipeline] Full error object:', ragError)
+        console.error('[RAG Pipeline] Error:', ragError.message, ragError.response?.status)
         
         // If it's a subscription error (403), don't fall back to direct LLM calls
         // They will also fail with the same error
         if (ragError.response?.status === 403 || ragError.response?.data?.subscriptionRequired) {
-          console.log('[RAG Pipeline] Subscription required - not falling back to direct LLM calls')
           // Clear any partial responses from failed RAG attempt
           responses = []
           summary = null
@@ -455,8 +351,7 @@ function App() {
         responses = []
         summary = null
         // Fallback to direct LLM calls if RAG fails (only for non-subscription errors)
-        console.log('[RAG Pipeline] Falling back to direct LLM calls')
-        needsSearch = false // Set to false so we use direct LLM calls
+        needsSearch = false
         setIsSearchingWeb(false) // Clear searching indicator when RAG fails
       }
     }
@@ -464,10 +359,7 @@ function App() {
     // If no search needed (needsSearch === false) OR RAG pipeline failed (responses.length === 0), use direct LLM calls
     // No Serper query will be made - models use their training data only
     if (!needsSearch || (needsSearch && responses.length === 0)) {
-      // Reset query count if no search was performed
       setQueryCount(0)
-      console.log('[Direct LLM] needsSearch=false or RAG failed, using direct LLM calls (no Serper query)')
-      console.log('[Direct LLM] Selected models:', modelsToUse)
       
       const responsePromises = modelsToUse.map(async (modelId) => {
         const firstDashIndex = modelId.indexOf('-')
@@ -492,11 +384,6 @@ function App() {
           const responseText = typeof llmResponse === 'string' ? llmResponse : llmResponse.text
           const actualModel = typeof llmResponse === 'object' ? llmResponse.model : modelId
           const originalModel = typeof llmResponse === 'object' ? llmResponse.originalModel : modelId
-          
-          console.log(`[Direct LLM] Model verification for ${modelId}:`)
-          console.log(`  - User Selected: ${originalModel}`)
-          console.log(`  - API Called: ${actualModel}`)
-          console.log(`  - Mapping: ${originalModel === actualModel ? 'NONE (passed through as-is)' : `${originalModel} → ${actualModel}`}`)
           
           return {
             id: `${modelId}-${Date.now()}`,
@@ -525,10 +412,7 @@ function App() {
     }
 
     // Add all responses to the store
-    responses.forEach((response) => {
-      console.log(`[Response] Adding response from ${response.modelName}, error: ${response.error}`)
-      addResponse(response)
-    })
+    responses.forEach((response) => addResponse(response))
 
     // Helper function to collect all token data
     const collectTokenData = (directJudgeTokens = null) => {
@@ -536,7 +420,6 @@ function App() {
       
       // Add category detection tokens (Gemini 2.5 Flash Lite - always called first)
       if (categoryDetectionTokens) {
-        console.log('[Token Collection] Adding category detection tokens:', categoryDetectionTokens)
         tokenData.push({
           modelName: 'gemini-2.5-flash-lite (Category Detection)',
           tokens: categoryDetectionTokens
@@ -555,54 +438,33 @@ function App() {
       
       // Add refiner and judge tokens from RAG pipeline (if RAG was used)
       if (ragData) {
-        console.log('[Token Collection] RAG data present, checking refiner tokens:', {
-          hasRefinerTokens: !!ragData.refiner_tokens,
-          refinerTokensKeys: ragData.refiner_tokens ? Object.keys(ragData.refiner_tokens) : [],
-          primary: ragData.refiner_tokens?.primary,
-          backup: ragData.refiner_tokens?.backup,
-          judge_selection: ragData.refiner_tokens?.judge_selection,
-          judge_finalization: ragData.judge_finalization_tokens
-        })
-        
-        // Primary refiner (Gemini)
         if (ragData.refiner_tokens?.primary) {
-          console.log('[Token Collection] Adding primary refiner tokens:', ragData.refiner_tokens.primary)
           tokenData.push({
             modelName: 'gemini-2.5-flash-lite (Refiner)',
             tokens: ragData.refiner_tokens.primary
           })
-        } else {
-          console.warn('[Token Collection] ⚠️ Primary refiner tokens missing from ragData.refiner_tokens')
         }
         
-        // Backup refiner (GPT-4o-mini)
         if (ragData.refiner_tokens?.backup) {
-          console.log('[Token Collection] Adding backup refiner tokens:', ragData.refiner_tokens.backup)
           tokenData.push({
             modelName: 'gpt-4o-mini (Refiner)',
             tokens: ragData.refiner_tokens.backup
           })
         }
         
-        // Judge refiner selection (xAI/Grok)
         if (ragData.refiner_tokens?.judge_selection) {
-          console.log('[Token Collection] Adding judge refiner selection tokens:', ragData.refiner_tokens.judge_selection)
           tokenData.push({
             modelName: 'grok-4-1-fast-reasoning (Judge - Refiner Selection)',
             tokens: ragData.refiner_tokens.judge_selection
           })
         }
         
-        // Judge finalization (xAI/Grok) from RAG pipeline
         if (ragData.judge_finalization_tokens) {
-          console.log('[Token Collection] Adding judge finalization tokens:', ragData.judge_finalization_tokens)
           tokenData.push({
             modelName: 'grok-4-1-fast-reasoning (Judge - Finalization)',
             tokens: ragData.judge_finalization_tokens
           })
         }
-      } else {
-        console.log('[Token Collection] No RAG data present, skipping refiner/judge tokens')
       }
       
       // Add judge tokens from direct LLM path (when RAG wasn't used but summary was generated)
@@ -639,8 +501,6 @@ function App() {
     // Track prompt submission (one per submission, regardless of models)
     if (currentUser?.id) {
       try {
-        console.log('[Prompt Tracking] Tracking prompt for user:', currentUser.id)
-        
         // Prepare facts and sources from RAG data
         let facts = null
         let sources = null
@@ -664,7 +524,7 @@ function App() {
           }
         }
         
-        const response = await axios.post('http://localhost:3001/api/stats/prompt', {
+        const response = await axios.post(`${API_URL}/api/stats/prompt`, {
           userId: currentUser.id,
           promptText: currentPrompt,
           category: category,
@@ -673,15 +533,11 @@ function App() {
           facts: facts,
           sources: sources,
         })
-        console.log('[Prompt Tracking] Prompt tracked successfully:', response.data)
         // Trigger stats refresh after tracking prompt
         useStore.getState().triggerStatsRefresh()
       } catch (error) {
-        console.error('[Prompt Tracking] Error tracking prompt:', error)
-        console.error('[Prompt Tracking] Error details:', error.response?.data || error.message)
+        console.error('[Prompt Tracking] Error:', error.message)
       }
-    } else {
-      console.warn('[Prompt Tracking] No user ID available, skipping prompt tracking')
     }
 
     // Update stats
@@ -698,12 +554,10 @@ function App() {
     // Skip if RAG pipeline already provided a summary
     // Only generate summary if 2+ models were used (no point summarizing a single response)
     const validResponses = responses.filter((r) => !r.error && r.text)
-    console.log('[Summary] Valid responses:', validResponses.length)
     
     // If only 1 model was used, don't create a summary - just show the response in ResponseComparison
     // Skip summary creation for single model responses
     if (validResponses.length >= 2 && !summary) {
-      console.log('[Summary] Starting Grok summarization (2+ models detected)...')
       setIsGeneratingSummary(true)
       try {
         // Build the summary prompt (matches judge finalization prompt)
@@ -736,14 +590,12 @@ function App() {
         Important: Only include the section label followed by a colon, then the content. Do NOT repeat section headers within the content. Do NOT use markdown formatting like ** for section headers.`
 
               // Use Grok's best summarizing model (grok-4-1-fast-reasoning for reasoning/summarization)
-              const grokModel = 'grok-4-1-fast-reasoning' // Best for summarization and reasoning tasks
-              console.log('[Summary] Calling Grok with model:', grokModel)
+              const grokModel = 'grok-4-1-fast-reasoning'
               const userId = currentUser?.id || null
               // Pass isSummary=true to indicate this is a summary call, not a user prompt
               const summaryResponse = await callLLM('xai', grokModel, summaryPrompt, userId, true)
               const rawSummaryText = typeof summaryResponse === 'string' ? summaryResponse : summaryResponse.text
               const summaryTokens = typeof summaryResponse === 'object' ? summaryResponse.tokens : null
-        console.log('[Summary] Grok response received, length:', rawSummaryText?.length)
         
         // Parse the response to extract sections (Consensus, Summary, Agreements, Disagreements)
         // More flexible consensus matching - handles various formats like "Consensus: 85", "**Consensus**: 85%", "[85]", etc.
@@ -761,18 +613,11 @@ function App() {
         const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:DISAGREEMENTS|Disagreements)[:\-]|$)/i)
         const disagreementsMatch = normalizedText.match(/(?:DISAGREEMENTS|Disagreements)[:\-]?\s*([\s\S]+?)$/i)
         
-        // Debug logging
-        console.log('[Summary] Parsing sections:')
-        console.log('[Summary] - Summary match found:', !!summaryMatch)
-        console.log('[Summary] - Agreements match found:', !!agreementsMatch, agreementsMatch ? `(${agreementsMatch[1].substring(0, 100)}...)` : '')
-        console.log('[Summary] - Disagreements match found:', !!disagreementsMatch)
-        
         // Extract consensus score (0-100)
         let consensus = null
         if (consensusMatch) {
           const score = parseInt(consensusMatch[1], 10)
-          consensus = Math.max(0, Math.min(100, score)) // Clamp between 0-100
-          console.log(`[Summary] Extracted consensus score: ${consensus}%`)
+          consensus = Math.max(0, Math.min(100, score))
         } else {
           // Try more flexible patterns
           const patterns = [
@@ -788,13 +633,12 @@ function App() {
             if (match) {
               const score = parseInt(match[1], 10)
               consensus = Math.max(0, Math.min(100, score))
-              console.log(`[Summary] Extracted consensus score (fallback pattern): ${consensus}%`)
               break
             }
           }
           
           if (!consensus) {
-            console.log(`[Summary] Warning: Could not extract consensus score from response. Content preview: ${rawSummaryText.substring(0, 500)}`)
+            console.warn('[Summary] Could not extract consensus score from response')
           }
         }
         
@@ -916,7 +760,7 @@ function App() {
         // Store initial summary in conversation context
         // The backend will automatically summarize the raw Grok response and store it
         if (currentUser?.id && rawSummaryText) {
-          axios.post('http://localhost:3001/api/judge/store-initial-summary', {
+          axios.post(`${API_URL}/api/judge/store-initial-summary`, {
             userId: currentUser.id,
             summaryText: rawSummaryText, // Raw Grok response (not formatted)
             originalPrompt: summaryPrompt
@@ -930,10 +774,8 @@ function App() {
         if (setSummaryMinimized) {
           setSummaryMinimized(false) // Show summary window
         }
-        console.log('[Summary] Summary set in store')
       } catch (error) {
-        console.error('[Summary] Error generating summary with Grok:', error)
-        console.error('[Summary] Error details:', error.message, error.response?.data)
+        console.error('[Summary] Error generating summary:', error.message)
         // Show a user-friendly error message
         setSummary({
           text: `Error generating summary: ${error.message}. Please check your Grok API key and try again.`,
@@ -1022,27 +864,39 @@ function App() {
   // This early return prevents the normal app from rendering
   // AdminView will handle login if user is not logged in
   if (isAdminRoute) {
-    console.log('[App] ✅ Admin route detected!', { 
-      path: window.location.pathname, 
-      currentUser: currentUser?.id,
-      isAdminRoute 
-    })
-    
-    // Show admin view - it will handle login modal if not logged in, and check admin status
-    console.log('[App] ✅ Rendering AdminView')
     return (
       <div style={{ width: '100vw', height: '100vh', background: 'rgba(0, 0, 0, 0.95)' }}>
         <AdminView />
       </div>
     )
   }
-  
-  console.log('[App] ❌ Not admin route, path:', window.location.pathname, 'isAdminRoute:', isAdminRoute)
 
   // Show auth view if not logged in (regular routes)
   if (!currentUser) {
     return <AuthView />
   }
+
+  // Subscription logic:
+  // - 'inactive' / 'incomplete' / 'past_due' → SubscriptionGate (must subscribe/fix payment)
+  // - 'canceled' / 'paused' within paid period (before renewalDate) → full access with warning banner
+  // - 'canceled' / 'paused' past paid period → restricted mode (can view stats/saved/own profile, no prompts)
+  // - 'active' / 'trialing' → full access
+  // Admins always bypass
+  const subStatus = currentUser.subscriptionStatus
+  const isWithinPaidPeriod = currentUser.subscriptionRenewalDate && new Date(currentUser.subscriptionRenewalDate) > new Date()
+  const isCanceledOrPaused = subStatus === 'canceled' || subStatus === 'paused'
+  
+  // Users who never subscribed, have incomplete signup, or failed payment → SubscriptionGate
+  const needsSubscriptionGate = !isCanceledOrPaused && subStatus !== 'active' && subStatus !== 'trialing'
+  
+  if (needsSubscriptionGate && !isUserAdmin) {
+    return <SubscriptionGate currentUser={currentUser} />
+  }
+  
+  // Canceled/paused users PAST their paid period → restricted mode
+  const subscriptionRestricted = isCanceledOrPaused && !isWithinPaidPeriod && !isUserAdmin
+  // Canceled/paused users WITHIN their paid period → full access but show a warning
+  const subscriptionExpiring = isCanceledOrPaused && isWithinPaidPeriod && !isUserAdmin
 
   return (
     <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: currentTheme.background }}>
@@ -1053,7 +907,58 @@ function App() {
       {!showWelcome && (
         <>
           <NavigationBar />
-          <BackgroundScene />
+
+          {/* Subscription Warning/Restricted Banner */}
+          {(subscriptionRestricted || subscriptionExpiring) && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{
+                position: 'fixed',
+                top: '70px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 300,
+                padding: '12px 24px',
+                borderRadius: '12px',
+                background: subscriptionRestricted
+                  ? 'linear-gradient(135deg, rgba(255, 59, 48, 0.15), rgba(255, 59, 48, 0.08))'
+                  : 'linear-gradient(135deg, rgba(255, 170, 0, 0.15), rgba(255, 170, 0, 0.08))',
+                border: `1px solid ${subscriptionRestricted ? 'rgba(255, 59, 48, 0.4)' : 'rgba(255, 170, 0, 0.4)'}`,
+                backdropFilter: 'blur(12px)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                maxWidth: '600px',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+              }}
+            >
+              <span style={{ fontSize: '0.9rem', color: subscriptionRestricted ? '#ff6b6b' : '#ffaa00', lineHeight: '1.4' }}>
+                {subscriptionRestricted
+                  ? `Your subscription has ${subStatus === 'paused' ? 'been paused' : 'expired'}. You can view your stats, saved conversations, and profile, but prompts and the full leaderboard are unavailable.`
+                  : `Your subscription ${subStatus === 'paused' ? 'is paused' : 'has been canceled'}. You have full access until ${new Date(currentUser.subscriptionRenewalDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`
+                }
+              </span>
+              <motion.button
+                onClick={() => setActiveTab('settings')}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                style={{
+                  padding: '6px 16px',
+                  background: subscriptionRestricted ? currentTheme.accentGradient : 'rgba(255, 255, 255, 0.15)',
+                  border: subscriptionRestricted ? 'none' : '1px solid rgba(255, 170, 0, 0.5)',
+                  borderRadius: '8px',
+                  color: subscriptionRestricted ? '#fff' : '#ffaa00',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Resubscribe
+              </motion.button>
+            </motion.div>
+          )}
 
           {/* Loading Indicator */}
           {(isLoading || isGeneratingSummary) && (
@@ -1105,8 +1010,9 @@ function App() {
 
                 {/* Main Content Area - Show based on active tab */}
                 {/* Note: AdminView is handled in early return above, so this should never render AdminView */}
-                {activeTab === 'home' && <MainView onClearAll={clearAllWindows} />}
-                {activeTab === 'leaderboard' && <LeaderboardView />}
+                {activeTab === 'home' && <MainView onClearAll={clearAllWindows} subscriptionRestricted={subscriptionRestricted} />}
+                {activeTab === 'leaderboard' && <LeaderboardView subscriptionRestricted={subscriptionRestricted} />}
+                {activeTab === 'saved' && <SavedConversationsView />}
                 {activeTab === 'settings' && <SettingsView />}
                 {activeTab === 'statistics' && <StatisticsView />}
 
@@ -1115,26 +1021,6 @@ function App() {
 
                 {/* Summary Window - Shows on all tabs except admin */}
                 {!isAdminRoute && <SummaryWindow />}
-              {!isAdminRoute && ragDebugData && (
-                <>
-                  {showFactsWindow && (
-                    <FactsAndSourcesWindow
-                      debugData={ragDebugData}
-                      onClose={() => setShowFactsWindow(false)}
-                    />
-                  )}
-                  {showPipelineDebugWindow && (
-                    <PipelineDebugWindow
-                      debugData={ragDebugData}
-                      onClose={() => setShowPipelineDebugWindow(false)}
-                      gpt4oMiniResponse={gpt4oMiniResponse}
-                      tokenData={tokenUsageData}
-                      queryCount={queryCount}
-                      categoryDetectionData={ragDebugData.categoryDetection}
-                    />
-                  )}
-                </>
-              )}
         </>
       )}
 

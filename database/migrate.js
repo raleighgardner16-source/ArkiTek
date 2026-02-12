@@ -244,7 +244,7 @@ async function migrateUser(db, userId, userData, userAuth) {
             upsert: true
           }
         }))
-        await db.collection('usage_monthly').bulkWrite(ops)
+        await db.collection('user_monthly_usage').bulkWrite(ops)
       }
       
       stats.monthlyRecords += monthlyDocs.length
@@ -340,7 +340,7 @@ async function verifyMigration(db, usageData, usersData) {
     }
     
     // Check monthly records
-    const monthlyCount = await db.collection('usage_monthly').countDocuments({ userId })
+    const monthlyCount = await db.collection('user_monthly_usage').countDocuments({ userId })
     const expectedMonthly = Object.keys(userData.monthlyUsage || {}).length
     if (monthlyCount !== expectedMonthly) {
       console.log(`  ⚠️  ${userId}: Monthly record count mismatch`)
@@ -362,7 +362,7 @@ async function verifyMigration(db, usageData, usersData) {
   
   // Global stats
   console.log('\n📈 Database Statistics:')
-  const collections = ['users', 'prompts', 'usage_daily', 'usage_monthly', 'purchases', 'judge_context']
+  const collections = ['users', 'prompts', 'usage_daily', 'user_monthly_usage', 'purchases', 'judge_context']
   for (const coll of collections) {
     const count = await db.collection(coll).countDocuments()
     console.log(`  ${coll}: ${count} documents`)

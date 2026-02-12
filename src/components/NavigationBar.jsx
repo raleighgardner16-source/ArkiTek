@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Home, Settings, BarChart3, LogOut, Clock, X, Trophy, Sun, Moon } from 'lucide-react'
+import { Home, Settings, BarChart3, LogOut, Clock, X, Trophy, Sun, Moon, BookmarkCheck } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
+import { API_URL } from '../utils/config'
 import ConfirmationModal from './ConfirmationModal'
 
 const NavigationBar = () => {
@@ -17,6 +18,7 @@ const NavigationBar = () => {
   const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
   const theme = useStore((state) => state.theme || 'dark')
   const toggleTheme = useStore((state) => state.toggleTheme)
+  const setNavExpanded = useStore((state) => state.setNavExpanded)
   const [isHovered, setIsHovered] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [promptHistory, setPromptHistory] = useState([])
@@ -25,9 +27,6 @@ const NavigationBar = () => {
   const currentTheme = getTheme(theme)
 
   // Debug: Log when tab changes
-  React.useEffect(() => {
-    console.log('Active tab:', activeTab)
-  }, [activeTab])
 
   // Fetch prompt history
   useEffect(() => {
@@ -38,7 +37,7 @@ const NavigationBar = () => {
 
   const fetchPromptHistory = async () => {
     try {
-      const response = await axios.get(`http://localhost:3001/api/stats/${currentUser.id}/history`)
+      const response = await axios.get(`${API_URL}/api/stats/${currentUser.id}/history`)
       setPromptHistory(response.data.prompts || [])
     } catch (error) {
       console.error('Error fetching prompt history:', error)
@@ -57,11 +56,8 @@ const NavigationBar = () => {
     }
     
     try {
-      console.log(`[Clear History] Clearing history for user: ${currentUser.id}`)
-      const response = await axios.delete(`http://localhost:3001/api/stats/${currentUser.id}/history`)
-      console.log('[Clear History] Response:', response.data)
+      await axios.delete(`${API_URL}/api/stats/${currentUser.id}/history`)
       setPromptHistory([])
-      console.log('[Clear History] Prompt history cleared successfully')
     } catch (error) {
       console.error('[Clear History] Error clearing prompt history:', error)
       console.error('[Clear History] Error details:', {
@@ -86,6 +82,11 @@ const NavigationBar = () => {
       label: 'Leaderboard',
     },
     {
+      id: 'saved',
+      icon: BookmarkCheck,
+      label: 'Saved',
+    },
+    {
       id: 'statistics',
       icon: BarChart3,
       label: 'Statistics',
@@ -102,9 +103,11 @@ const NavigationBar = () => {
       onMouseEnter={() => {
         setIsHovered(true)
         setIsExpanded(true)
+        setNavExpanded(true)
       }}
       onMouseLeave={() => {
         setIsHovered(false)
+        setNavExpanded(false)
         setTimeout(() => setIsExpanded(false), 300)
       }}
       style={{
@@ -288,7 +291,7 @@ const NavigationBar = () => {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {promptHistory.length > 0 ? (
-              promptHistory.slice(0, 12).map((prompt, index) => (
+              promptHistory.slice(0, 10).map((prompt, index) => (
                 <div
                   key={index}
                   style={{
@@ -311,7 +314,7 @@ const NavigationBar = () => {
                     e.currentTarget.style.zIndex = '1000'
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(0, 255, 255, 0.05)'
+                    e.currentTarget.style.background = 'rgba(93, 173, 226, 0.05)'
                     e.currentTarget.style.whiteSpace = 'nowrap'
                     e.currentTarget.style.overflow = 'hidden'
                     e.currentTarget.style.zIndex = 'auto'
