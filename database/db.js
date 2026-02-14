@@ -344,6 +344,31 @@ const users = {
       db.collection('leaderboard_posts').deleteMany({ userId }),
     ])
     
+    // Also scrub user's likes, comments, and replies from OTHER users' leaderboard posts
+    const lbCollection = db.collection('leaderboard_posts')
+    await Promise.all([
+      // Remove userId from likes arrays on all remaining posts
+      lbCollection.updateMany(
+        { likes: userId },
+        { $pull: { likes: userId }, $inc: { likeCount: -1 } }
+      ),
+      // Remove user's comments from all remaining posts
+      lbCollection.updateMany(
+        { 'comments.userId': userId },
+        { $pull: { comments: { userId: userId } } }
+      ),
+      // Remove user's likes from comments on all remaining posts
+      lbCollection.updateMany(
+        { 'comments.likes': userId },
+        { $pull: { 'comments.$[].likes': userId } }
+      ),
+      // Remove user's replies from comments on all remaining posts
+      lbCollection.updateMany(
+        { 'comments.replies.userId': userId },
+        { $pull: { 'comments.$[].replies': { userId: userId } } }
+      ),
+    ])
+    
     console.log(`[DB] Deleted user and ALL associated data: ${userId}`)
   },
   
@@ -989,226 +1014,6 @@ const leaderboardPosts = {
 // tracking to usage_daily or user_monthly_usage is needed.
 
 // ============================================================================
-// METADATA COLLECTION (App-wide stats and admin tracking)
-// ============================================================================
-
-const metadata = {
-  /**
-   * Get metadata document by key
-   * @param {string} key - Document key (e.g., "admin_stats")
-   */
-  async get(key) {
-    const db = getDb()
-    return db.collection('metadata').findOne({ _id: key })
-  },
-  
-  /**
-   * Update or create metadata document
-   * @param {string} key - Document key
-   * @param {object} data - Data to set/update
-   */
-  async set(key, data) {
-    const db = getDb()
-    return db.collection('metadata').updateOne(
-      { _id: key },
-      { 
-        $set: { ...data, lastUpdated: new Date() }
-      },
-      { upsert: true }
-    )
-  },
-  
-  /**
-   * Increment a counter in metadata
-   * @param {string} key - Document key
-   * @param {string} field - Field to increment
-   * @param {number} amount - Amount to increment by (default 1)
-   */
-  async increment(key, field, amount = 1) {
-    const db = getDb()
-    return db.collection('metadata').updateOne(
-      { _id: key },
-      { 
-        $inc: { [field]: amount },
-        $set: { lastUpdated: new Date() }
-      },
-      { upsert: true }
-    )
-  },
-  
-  /**
-   * Get admin stats (deleted users, totals, etc.)
-   */
-  async getAdminStats() {
-    return this.get('admin_stats')
-  },
-  
-  /**
-   * Update admin stats
-   */
-  async updateAdminStats(stats) {
-    return this.set('admin_stats', stats)
-  },
-  
-  /**
-   * Increment deleted users count
-   */
-  async incrementDeletedUsers() {
-    return this.increment('admin_stats', 'deletedUsersCount', 1)
-  },
-  
-  /**
-   * Recalculate and cache user counts from users collection
-   */
-  async recalculateUserCounts() {
-    const db = getDb()
-    const now = new Date()
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-    
-    const [activeCount, canceledCount, inactiveCount, totalCount] = await Promise.all([
-      db.collection('users').countDocuments({ subscriptionStatus: 'active' }),
-      db.collection('users').countDocuments({ subscriptionStatus: 'canceled' }),
-      db.collection('users').countDocuments({ 
-        subscriptionStatus: { $ne: 'canceled' },
-        lastActiveAt: { $lt: thirtyDaysAgo }
-      }),
-      db.collection('users').countDocuments({})
-    ])
-    
-    await this.set('admin_stats', {
-      activeUsersCount: activeCount,
-      canceledUsersCount: canceledCount,
-      inactiveUsersCount: inactiveCount,
-      totalUsersEver: totalCount
-    })
-    
-    return { activeCount, canceledCount, inactiveCount, totalCount }
-  }
-}
-
-// ============================================================================
-// ADMINS COLLECTION (Admin user list)
-// ============================================================================
-
-const admins = {
-  /**
-   * Get list of admin userIds
-   */
-  async getList() {
-    const db = getDb()
-    const doc = await db.collection('admins').findOne({ _id: 'admin_list' })
-    return doc?.admins || []
-  },
-  
-  /**
-   * Check if user is an admin
-   * @param {string} userId
-   */
-  async isAdmin(userId) {
-    const adminList = await this.getList()
-    return adminList.includes(userId)
-  },
-  
-  /**
-   * Add user to admin list
-   * @param {string} userId
-   */
-  async add(userId) {
-    const db = getDb()
-    return db.collection('admins').updateOne(
-      { _id: 'admin_list' },
-      { $addToSet: { admins: userId } },
-      { upsert: true }
-    )
-  },
-  
-  /**
-   * Remove user from admin list
-   * @param {string} userId
-   */
-  async remove(userId) {
-    const db = getDb()
-    return db.collection('admins').updateOne(
-      { _id: 'admin_list' },
-      { $pull: { admins: userId } }
-    )
-  },
-  
-  /**
-   * Set the entire admin list (for migration)
-   * @param {string[]} adminList
-   */
-  async setList(adminList) {
-    const db = getDb()
-    return db.collection('admins').replaceOne(
-      { _id: 'admin_list' },
-      { _id: 'admin_list', admins: adminList },
-      { upsert: true }
-    )
-  }
-}
-
-// ============================================================================
-// USER SAVED POSTS (Bookmarked leaderboard posts)
-// ============================================================================
-
-const savedPosts = {
-  /**
-   * Get user's saved posts
-   * @param {string} userId
-   */
-  async getByUser(userId) {
-    const db = getDb()
-    const user = await db.collection('users').findOne(
-      { _id: userId },
-      { projection: { savedPosts: 1 } }
-    )
-    return user?.savedPosts || []
-  },
-  
-  /**
-   * Save a post for a user
-   * @param {string} userId
-   * @param {string} postId
-   */
-  async save(userId, postId) {
-    const db = getDb()
-    return db.collection('users').updateOne(
-      { _id: userId },
-      { $addToSet: { savedPosts: postId } }
-    )
-  },
-  
-  /**
-   * Unsave a post for a user
-   * @param {string} userId
-   * @param {string} postId
-   */
-  async unsave(userId, postId) {
-    const db = getDb()
-    return db.collection('users').updateOne(
-      { _id: userId },
-      { $pull: { savedPosts: postId } }
-    )
-  },
-  
-  /**
-   * Get full post details for user's saved posts
-   * @param {string} userId
-   */
-  async getFullPosts(userId) {
-    const db = getDb()
-    const savedIds = await this.getByUser(userId)
-    if (savedIds.length === 0) return []
-    
-    return db.collection('leaderboard_posts')
-      .find({ _id: { $in: savedIds } })
-      .sort({ createdAt: -1 })
-      .toArray()
-  }
-}
-
-// ============================================================================
 // EXPORT
 // ============================================================================
 
@@ -1224,9 +1029,6 @@ export default {
   judgeContext,
   leaderboard,
   leaderboardPosts,
-  metadata,
-  admins,
-  savedPosts,
 }
 
 // Named exports for convenience
@@ -1239,8 +1041,5 @@ export {
   judgeContext,
   leaderboard,
   leaderboardPosts,
-  metadata,
-  admins,
-  savedPosts,
 }
 

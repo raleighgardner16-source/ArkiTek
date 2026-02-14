@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, FolderOpen, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield } from 'lucide-react'
+import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, FolderOpen, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield, Trash2 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -233,6 +233,8 @@ const StatisticsView = () => {
   const [showBuyUsageModal, setShowBuyUsageModal] = useState(false)
   const [profilePrompts, setProfilePrompts] = useState([])
   const [loadingProfile, setLoadingProfile] = useState(false)
+  const [deletingPostId, setDeletingPostId] = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [expandedBadgeCategory, setExpandedBadgeCategory] = useState(null)
   const [hoveredBadge, setHoveredBadge] = useState(null)
 
@@ -240,10 +242,8 @@ const StatisticsView = () => {
   const handleUsagePurchaseSuccess = (data) => {
     // Refresh stats to show new balance
     fetchStats()
-    // Close modal after a delay to show success state
-    setTimeout(() => {
-      setShowBuyUsageModal(false)
-    }, 2000)
+    // Close modal immediately — success checkmark was already shown in the modal
+    setShowBuyUsageModal(false)
   }
 
   // Helper function to handle tab switching and reset expanded states
@@ -295,6 +295,23 @@ const StatisticsView = () => {
       setProfilePrompts([])
     } finally {
       setLoadingProfile(false)
+    }
+  }
+
+  const handleDeletePost = async (promptId) => {
+    if (!currentUser?.id || !promptId) return
+    try {
+      setDeletingPostId(promptId)
+      await axios.delete(`${API_URL}/api/leaderboard/delete/${promptId}`, {
+        data: { userId: currentUser.id }
+      })
+      // Remove from local state immediately
+      setProfilePrompts(prev => prev.filter(p => p.id !== promptId))
+      setConfirmDeleteId(null)
+    } catch (error) {
+      console.error('Error deleting post:', error)
+    } finally {
+      setDeletingPostId(null)
     }
   }
 
@@ -2701,6 +2718,7 @@ const StatisticsView = () => {
                             fontSize: '1rem',
                             margin: '0 0 8px 0',
                             lineHeight: '1.5',
+                            paddingRight: '36px',
                           }}>
                             {prompt.promptText}
                           </p>
@@ -2728,6 +2746,69 @@ const StatisticsView = () => {
                               })}
                             </span>
                           </div>
+                        </div>
+                        {/* Delete button */}
+                        <div style={{ position: 'relative', flexShrink: 0 }}>
+                          {confirmDeleteId === prompt.id ? (
+                            <div style={{
+                              display: 'flex',
+                              gap: '6px',
+                              alignItems: 'center',
+                            }}>
+                              <button
+                                onClick={() => handleDeletePost(prompt.id)}
+                                disabled={deletingPostId === prompt.id}
+                                style={{
+                                  background: 'rgba(255, 107, 107, 0.15)',
+                                  border: '1px solid rgba(255, 107, 107, 0.4)',
+                                  borderRadius: '8px',
+                                  padding: '6px 12px',
+                                  color: '#ff6b6b',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '600',
+                                  cursor: deletingPostId === prompt.id ? 'default' : 'pointer',
+                                  opacity: deletingPostId === prompt.id ? 0.5 : 1,
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                {deletingPostId === prompt.id ? 'Deleting...' : 'Delete'}
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteId(null)}
+                                style={{
+                                  background: currentTheme.buttonBackground,
+                                  border: `1px solid ${currentTheme.borderLight}`,
+                                  borderRadius: '8px',
+                                  padding: '6px 12px',
+                                  color: currentTheme.textSecondary,
+                                  fontSize: '0.75rem',
+                                  fontWeight: '500',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDeleteId(prompt.id)}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                padding: '6px',
+                                cursor: 'pointer',
+                                borderRadius: '6px',
+                                transition: 'all 0.15s ease',
+                                opacity: 0.5,
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(255, 107, 107, 0.1)' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = 'transparent' }}
+                              title="Delete this post"
+                            >
+                              <Trash2 size={16} color="#ff6b6b" />
+                            </button>
+                          )}
                         </div>
                       </div>
 

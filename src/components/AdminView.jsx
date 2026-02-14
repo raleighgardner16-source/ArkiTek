@@ -28,6 +28,98 @@ const AdminView = () => {
   const [userStatsData, setUserStatsData] = useState({}) // Store stats for each user
   const [loadingUserStats, setLoadingUserStats] = useState({}) // Track loading state per user
   const [userFilter, setUserFilter] = useState('all') // 'all', 'active', 'notActive', 'canceled'
+  const [expenses, setExpenses] = useState({
+    stripeFees: '',
+    openaiCost: '',
+    anthropicCost: '',
+    googleCost: '',
+    metaCost: '',
+    deepseekCost: '',
+    mistralCost: '',
+    xaiCost: '',
+    serperCost: '',
+    resendCost: '',
+    mongoDbCost: '',
+    railwayCost: '',
+    vercelCost: '',
+    domainCost: '',
+  })
+  const [expenseMonth, setExpenseMonth] = useState(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [expensesLoaded, setExpensesLoaded] = useState(false)
+  const [expensesSaving, setExpensesSaving] = useState(false)
+  const [expenseSaveTimer, setExpenseSaveTimer] = useState(null)
+
+  // Calculate total API cost (sum of all provider costs)
+  const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'metaCost', 'deepseekCost', 'mistralCost', 'xaiCost']
+    .reduce((sum, key) => sum + (parseFloat(expenses[key]) || 0), 0)
+
+  // Calculate grand total (all expenses)
+  const grandTotal = Object.values(expenses)
+    .reduce((sum, val) => sum + (parseFloat(val) || 0), 0)
+
+  // Load expenses from ADMIN database for the selected month
+  const loadExpenses = async (month) => {
+    try {
+      const adminParams = { requestingUserId: currentUser?.id, month }
+      const response = await axios.get(`${API_URL}/api/admin/expenses`, { params: adminParams })
+      if (response.data.success && response.data.expenses) {
+        const data = response.data.expenses
+        setExpenses({
+          stripeFees: data.stripeFees ? String(data.stripeFees) : '',
+          openaiCost: data.openaiCost ? String(data.openaiCost) : '',
+          anthropicCost: data.anthropicCost ? String(data.anthropicCost) : '',
+          googleCost: data.googleCost ? String(data.googleCost) : '',
+          metaCost: data.metaCost ? String(data.metaCost) : '',
+          deepseekCost: data.deepseekCost ? String(data.deepseekCost) : '',
+          mistralCost: data.mistralCost ? String(data.mistralCost) : '',
+          xaiCost: data.xaiCost ? String(data.xaiCost) : '',
+          serperCost: data.serperCost ? String(data.serperCost) : '',
+          resendCost: data.resendCost ? String(data.resendCost) : '',
+          mongoDbCost: data.mongoDbCost ? String(data.mongoDbCost) : '',
+          railwayCost: data.railwayCost ? String(data.railwayCost) : '',
+          vercelCost: data.vercelCost ? String(data.vercelCost) : '',
+          domainCost: data.domainCost ? String(data.domainCost) : '',
+        })
+      }
+      setExpensesLoaded(true)
+    } catch (error) {
+      console.error('Error loading expenses:', error)
+      setExpensesLoaded(true)
+    }
+  }
+
+  // Save expenses to ADMIN database (debounced)
+  const saveExpenses = async (expenseData) => {
+    try {
+      setExpensesSaving(true)
+      await axios.post(`${API_URL}/api/admin/expenses`, {
+        requestingUserId: currentUser?.id,
+        month: expenseMonth,
+        expenses: expenseData,
+      })
+    } catch (error) {
+      console.error('Error saving expenses:', error)
+    } finally {
+      setExpensesSaving(false)
+    }
+  }
+
+  const handleExpenseChange = (field, value) => {
+    // Allow empty string, numbers, and decimal points
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+      setExpenses(prev => {
+        const updated = { ...prev, [field]: value }
+        // Debounced auto-save: wait 1.5s after last change
+        if (expenseSaveTimer) clearTimeout(expenseSaveTimer)
+        const timer = setTimeout(() => saveExpenses(updated), 1500)
+        setExpenseSaveTimer(timer)
+        return updated
+      })
+    }
+  }
 
   useEffect(() => {
     if (!currentUser?.id) {
@@ -128,6 +220,10 @@ const AdminView = () => {
       setUsersData(usersResponse.data)
       setPricingData(pricingResponse.data)
       setCostsData(costsResponse.data)
+      // Also load expenses for the selected month
+      if (!expensesLoaded) {
+        await loadExpenses(expenseMonth)
+      }
     } catch (error) {
       console.error('Error fetching admin data:', error)
       // If access denied, show appropriate message
@@ -596,6 +692,7 @@ const AdminView = () => {
           onClick={() => {
             setActiveSection('expenses')
             fetchAdminData()
+            loadExpenses(expenseMonth)
           }}
           style={{
             background: 'rgba(255, 0, 0, 0.1)',
@@ -1850,22 +1947,244 @@ const AdminView = () => {
             )}
 
             {/* Expenses Section */}
-            {activeSection === 'expenses' && costsData && (
-              <div
-                style={{
-                  background: 'rgba(255, 165, 0, 0.1)',
-                  border: '1px solid rgba(255, 165, 0, 0.3)',
-                  borderRadius: '16px',
-                  padding: '30px',
-                }}
-              >
-                <h2 style={{ fontSize: '1.8rem', color: '#ffffff', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <TrendingUp size={28} color="#FFA500" />
-                  Expenses
-                </h2>
-                <p style={{ color: '#aaaaaa', fontSize: '1rem' }}>
-                  Expense tracking and cost analysis will be available here.
-                </p>
+            {activeSection === 'expenses' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+                {/* Month Selector + Save Indicator */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <label style={{ color: '#aaaaaa', fontSize: '1rem' }}>Month:</label>
+                    <input
+                      type="month"
+                      value={expenseMonth}
+                      onChange={(e) => {
+                        setExpenseMonth(e.target.value)
+                        setExpensesLoaded(false)
+                        loadExpenses(e.target.value)
+                      }}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.06)',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        borderRadius: '10px',
+                        padding: '10px 16px',
+                        color: '#ffffff',
+                        fontSize: '1rem',
+                        outline: 'none',
+                        cursor: 'pointer',
+                        colorScheme: 'dark',
+                      }}
+                    />
+                  </div>
+                  <span style={{
+                    color: expensesSaving ? '#f59e0b' : '#48c9b0',
+                    fontSize: '0.85rem',
+                    opacity: 0.8,
+                    transition: 'all 0.3s ease',
+                  }}>
+                    {expensesSaving ? '⏳ Saving...' : expensesLoaded ? '✅ Auto-saved' : ''}
+                  </span>
+                </div>
+
+                {/* Stripe Fees */}
+                <div
+                  style={{
+                    background: 'rgba(99, 102, 241, 0.1)',
+                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                    borderRadius: '16px',
+                    padding: '28px',
+                  }}
+                >
+                  <h3 style={{ fontSize: '1.3rem', color: '#818cf8', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <CreditCard size={22} color="#818cf8" />
+                    Stripe Fees
+                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ color: '#aaaaaa', fontSize: '1.1rem' }}>$</span>
+                    <input
+                      type="text"
+                      value={expenses.stripeFees}
+                      onChange={(e) => handleExpenseChange('stripeFees', e.target.value)}
+                      placeholder="0.00"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.06)',
+                        border: '1px solid rgba(99, 102, 241, 0.4)',
+                        borderRadius: '10px',
+                        padding: '12px 16px',
+                        color: '#ffffff',
+                        fontSize: '1.1rem',
+                        width: '200px',
+                        outline: 'none',
+                        transition: 'border-color 0.2s ease',
+                      }}
+                      onFocus={(e) => e.target.style.borderColor = 'rgba(99, 102, 241, 0.8)'}
+                      onBlur={(e) => e.target.style.borderColor = 'rgba(99, 102, 241, 0.4)'}
+                    />
+                  </div>
+                </div>
+
+                {/* API Costs Per Provider */}
+                <div
+                  style={{
+                    background: 'rgba(255, 165, 0, 0.1)',
+                    border: '1px solid rgba(255, 165, 0, 0.3)',
+                    borderRadius: '16px',
+                    padding: '28px',
+                  }}
+                >
+                  <h3 style={{ fontSize: '1.3rem', color: '#FFA500', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <BarChart3 size={22} color="#FFA500" />
+                    API Costs Per Provider
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                    {[
+                      { key: 'openaiCost', label: 'OpenAI (ChatGPT)', color: '#10a37f' },
+                      { key: 'anthropicCost', label: 'Anthropic (Claude)', color: '#d4a574' },
+                      { key: 'googleCost', label: 'Google (Gemini)', color: '#4285f4' },
+                      { key: 'metaCost', label: 'Meta (Llama)', color: '#0668E1' },
+                      { key: 'deepseekCost', label: 'DeepSeek', color: '#6366f1' },
+                      { key: 'mistralCost', label: 'Mistral AI', color: '#ff7000' },
+                      { key: 'xaiCost', label: 'xAI (Grok)', color: '#ffffff' },
+                    ].map(({ key, label, color }) => (
+                      <div
+                        key={key}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          border: `1px solid ${color}33`,
+                          borderRadius: '12px',
+                          padding: '16px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px',
+                        }}
+                      >
+                        <label style={{ color: color, fontSize: '0.95rem', fontWeight: '500' }}>{label}</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ color: '#aaaaaa', fontSize: '1rem' }}>$</span>
+                          <input
+                            type="text"
+                            value={expenses[key]}
+                            onChange={(e) => handleExpenseChange(key, e.target.value)}
+                            placeholder="0.00"
+                            style={{
+                              background: 'rgba(255, 255, 255, 0.06)',
+                              border: `1px solid ${color}44`,
+                              borderRadius: '8px',
+                              padding: '10px 14px',
+                              color: '#ffffff',
+                              fontSize: '1rem',
+                              width: '100%',
+                              outline: 'none',
+                              transition: 'border-color 0.2s ease',
+                            }}
+                            onFocus={(e) => e.target.style.borderColor = `${color}99`}
+                            onBlur={(e) => e.target.style.borderColor = `${color}44`}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Total API Cost */}
+                  <div
+                    style={{
+                      marginTop: '20px',
+                      paddingTop: '20px',
+                      borderTop: '1px solid rgba(255, 165, 0, 0.2)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span style={{ color: '#FFA500', fontSize: '1.15rem', fontWeight: '600' }}>Total API Cost</span>
+                    <span style={{ color: '#ffffff', fontSize: '1.3rem', fontWeight: '700', fontFamily: 'monospace' }}>
+                      ${totalApiCost.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Other Services */}
+                <div
+                  style={{
+                    background: 'rgba(72, 201, 176, 0.1)',
+                    border: '1px solid rgba(72, 201, 176, 0.3)',
+                    borderRadius: '16px',
+                    padding: '28px',
+                  }}
+                >
+                  <h3 style={{ fontSize: '1.3rem', color: '#48c9b0', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Package size={22} color="#48c9b0" />
+                    Other Service Costs
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                    {[
+                      { key: 'serperCost', label: 'Serper API', color: '#f59e0b' },
+                      { key: 'resendCost', label: 'Resend Email', color: '#6ee7b7' },
+                      { key: 'mongoDbCost', label: 'MongoDB Database', color: '#00ed64' },
+                      { key: 'railwayCost', label: 'Railway Server', color: '#b537f2' },
+                      { key: 'vercelCost', label: 'Vercel Hosting', color: '#ffffff' },
+                      { key: 'domainCost', label: 'Domain Name', color: '#38bdf8' },
+                    ].map(({ key, label, color }) => (
+                      <div
+                        key={key}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          border: `1px solid ${color}33`,
+                          borderRadius: '12px',
+                          padding: '16px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px',
+                        }}
+                      >
+                        <label style={{ color: color, fontSize: '0.95rem', fontWeight: '500' }}>{label}</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ color: '#aaaaaa', fontSize: '1rem' }}>$</span>
+                          <input
+                            type="text"
+                            value={expenses[key]}
+                            onChange={(e) => handleExpenseChange(key, e.target.value)}
+                            placeholder="0.00"
+                            style={{
+                              background: 'rgba(255, 255, 255, 0.06)',
+                              border: `1px solid ${color}44`,
+                              borderRadius: '8px',
+                              padding: '10px 14px',
+                              color: '#ffffff',
+                              fontSize: '1rem',
+                              width: '100%',
+                              outline: 'none',
+                              transition: 'border-color 0.2s ease',
+                            }}
+                            onFocus={(e) => e.target.style.borderColor = `${color}99`}
+                            onBlur={(e) => e.target.style.borderColor = `${color}44`}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Grand Total */}
+                <div
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(255, 0, 0, 0.15), rgba(255, 100, 0, 0.1))',
+                    border: '1px solid rgba(255, 0, 0, 0.4)',
+                    borderRadius: '16px',
+                    padding: '28px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <Receipt size={28} color="#FF4444" />
+                    <span style={{ color: '#FF4444', fontSize: '1.4rem', fontWeight: '700' }}>Grand Total</span>
+                  </div>
+                  <span style={{ color: '#ffffff', fontSize: '1.8rem', fontWeight: '800', fontFamily: 'monospace' }}>
+                    ${grandTotal.toFixed(2)}
+                  </span>
+                </div>
+
               </div>
             )}
           </>

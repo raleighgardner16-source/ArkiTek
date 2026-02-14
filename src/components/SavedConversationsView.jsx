@@ -31,7 +31,8 @@ const SavedConversationsView = () => {
   const [loading, setLoading] = useState(true)
   const [selectedConvo, setSelectedConvo] = useState(null) // full detail of selected conversation
   const [loadingDetail, setLoadingDetail] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState(null) // { id, type, title } for modal
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null) // id of card showing inline confirm
+  const [deletingId, setDeletingId] = useState(null) // id currently being deleted
   const [filter, setFilter] = useState('individual') // 'individual', 'full'
   const [selectedProvider, setSelectedProvider] = useState(null) // provider key for individual tab
   const [expandedMonths, setExpandedMonths] = useState({}) // Track which month/year groups are expanded
@@ -67,6 +68,7 @@ const SavedConversationsView = () => {
 
   const handleDelete = async (convoId, convoType) => {
     try {
+      setDeletingId(convoId)
       await axios.delete(`${API_URL}/api/conversations/${convoId}`, {
         data: { userId: currentUser.id, type: convoType }
       })
@@ -74,10 +76,12 @@ const SavedConversationsView = () => {
       if (selectedConvo?.id === convoId) {
         setSelectedConvo(null)
       }
-      setDeleteTarget(null)
+      setConfirmDeleteId(null)
     } catch (error) {
       console.error('[Saved] Error deleting:', error)
       alert('Failed to delete conversation.')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -214,26 +218,76 @@ const SavedConversationsView = () => {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setDeleteTarget({ id: convo.id, type: convo.type, title: convo.title })
-            }}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '6px',
-              color: currentTheme.textMuted,
-              opacity: 0.6,
-              transition: 'opacity 0.2s',
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-            onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
-          >
-            <Trash2 size={16} />
-          </button>
-          <ChevronRight size={16} color={currentTheme.textMuted} />
+          {confirmDeleteId === convo.id ? (
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDelete(convo.id, convo.type)
+                }}
+                disabled={deletingId === convo.id}
+                style={{
+                  background: 'rgba(255, 107, 107, 0.15)',
+                  border: '1px solid rgba(255, 107, 107, 0.4)',
+                  borderRadius: '8px',
+                  padding: '5px 10px',
+                  color: '#ff6b6b',
+                  fontSize: '0.72rem',
+                  fontWeight: '600',
+                  cursor: deletingId === convo.id ? 'default' : 'pointer',
+                  opacity: deletingId === convo.id ? 0.5 : 1,
+                  transition: 'all 0.15s ease',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {deletingId === convo.id ? 'Deleting...' : 'Delete'}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setConfirmDeleteId(null)
+                }}
+                style={{
+                  background: currentTheme.buttonBackground,
+                  border: `1px solid ${currentTheme.borderLight}`,
+                  borderRadius: '8px',
+                  padding: '5px 10px',
+                  color: currentTheme.textSecondary,
+                  fontSize: '0.72rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setConfirmDeleteId(convo.id)
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '6px',
+                  borderRadius: '6px',
+                  transition: 'all 0.15s ease',
+                  opacity: 0.5,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(255, 107, 107, 0.1)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = 'transparent' }}
+                title="Delete this conversation"
+              >
+                <Trash2 size={16} color="#ff6b6b" />
+              </button>
+              <ChevronRight size={16} color={currentTheme.textMuted} />
+            </>
+          )}
         </div>
       </div>
     </motion.div>
@@ -749,109 +803,6 @@ const SavedConversationsView = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      <AnimatePresence>
-        {deleteTarget && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setDeleteTarget(null)}
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: 'rgba(0, 0, 0, 0.6)',
-              backdropFilter: 'blur(4px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 9999,
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                background: currentTheme.backgroundOverlay,
-                border: `1px solid ${currentTheme.borderLight}`,
-                borderRadius: '16px',
-                padding: '32px',
-                maxWidth: '420px',
-                width: '90%',
-                textAlign: 'center',
-                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.4)',
-              }}
-            >
-              <Trash2 size={40} color="#ff6b6b" style={{ marginBottom: '16px' }} />
-              <h3 style={{
-                color: currentTheme.text,
-                fontSize: '1.3rem',
-                fontWeight: '600',
-                margin: '0 0 12px 0',
-              }}>
-                Are you sure?
-              </h3>
-              <p style={{
-                color: currentTheme.textSecondary,
-                fontSize: '0.95rem',
-                lineHeight: '1.5',
-                margin: '0 0 8px 0',
-              }}>
-                This will permanently delete this saved conversation. This action cannot be undone.
-              </p>
-              <p style={{
-                color: currentTheme.textMuted,
-                fontSize: '0.85rem',
-                margin: '0 0 28px 0',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}>
-                "{deleteTarget.title}"
-              </p>
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                <button
-                  onClick={() => setDeleteTarget(null)}
-                  style={{
-                    padding: '10px 28px',
-                    background: '#fff',
-                    border: '1px solid #ddd',
-                    borderRadius: '10px',
-                    color: '#333',
-                    fontSize: '0.95rem',
-                    fontWeight: '500',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                  }}
-                >
-                  No
-                </button>
-                <button
-                  onClick={() => handleDelete(deleteTarget.id, deleteTarget.type)}
-                  style={{
-                    padding: '10px 28px',
-                    background: 'rgba(255, 59, 48, 0.9)',
-                    border: '1px solid rgba(255, 59, 48, 0.7)',
-                    borderRadius: '10px',
-                    color: '#fff',
-                    fontSize: '0.95rem',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                  }}
-                >
-                  Yes
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
       </div>
     </div>
   )

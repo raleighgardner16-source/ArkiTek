@@ -13,15 +13,21 @@ import AuthView from './components/AuthView'
 import SubscriptionGate from './components/SubscriptionGate'
 import AdminView from './components/AdminView'
 import SavedConversationsView from './components/SavedConversationsView'
-import FactsAndSourcesWindow from './components/FactsAndSourcesWindow'
-import PipelineDebugWindow from './components/PipelineDebugWindow'
-import { callLLM, getAllModels, searchWithSerper } from './services/llmProviders'
+import { callLLM, callLLMStream, getAllModels, searchWithSerper } from './services/llmProviders'
+import { streamFetch } from './utils/streamFetch'
 import { detectCategory } from './utils/categoryDetector'
 import { getTheme } from './utils/theme'
 import axios from 'axios'
 import { API_URL } from './utils/config'
 
 function App() {
+  // Track store hydration from localStorage — prevents flash of wrong page on load
+  const [hasHydrated, setHasHydrated] = useState(useStore.persist.hasHydrated())
+  useEffect(() => {
+    const unsub = useStore.persist.onFinishHydration(() => setHasHydrated(true))
+    return unsub
+  }, [])
+
   const showWelcome = useStore((state) => state.showWelcome)
   const currentUser = useStore((state) => state.currentUser)
   const setGeminiDetectionResponse = useStore((state) => state.setGeminiDetectionResponse)
@@ -63,13 +69,13 @@ function App() {
   const setLastSubmittedPrompt = useStore((state) => state.setLastSubmittedPrompt)
   const setLastSubmittedCategory = useStore((state) => state.setLastSubmittedCategory)
   const addResponse = useStore((state) => state.addResponse)
+  const updateResponse = useStore((state) => state.updateResponse)
   const clearResponses = useStore((state) => state.clearResponses)
   
   // Clear all responses and windows
   const clearAllWindows = () => {
     try {
       clearResponses()
-      setShowFactsWindow(false) // Close facts/sources window
       setQueryCount(0)
       // Minimize summary window (summary is already cleared by clearResponses)
       const setSummaryMinimized = useStore.getState().setSummaryMinimized
@@ -94,13 +100,8 @@ function App() {
   const clearSubmit = useStore((state) => state.clearSubmit)
   const setSummary = useStore((state) => state.setSummary)
   const clearSelectedModels = useStore((state) => state.clearSelectedModels)
-  const ragDebugData = useStore((state) => state.ragDebugData)
-  const setRAGDebugData = useStore((state) => state.setRAGDebugData)
-  const clearRAGDebugData = useStore((state) => state.clearRAGDebugData)
-  const geminiDetectionResponse = useStore((state) => state.geminiDetectionResponse)
   const setIsSearchingWeb = useStore((state) => state.setIsSearchingWeb)
-  const showPipelineDebugWindow = useStore((state) => state.showPipelineDebugWindow)
-  const setShowPipelineDebugWindow = useStore((state) => state.setShowPipelineDebugWindow)
+  const setSearchSources = useStore((state) => state.setSearchSources)
 
   const [isLoading, setIsLoading] = useState(false)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
@@ -108,8 +109,6 @@ function App() {
   const [tokenUsageData, setTokenUsageData] = useState([])
   const [queryCount, setQueryCount] = useState(0)
   const [isUserAdmin, setIsUserAdmin] = useState(false)
-  const showFactsWindow = useStore((state) => state.showFactsWindow)
-  const setShowFactsWindow = useStore((state) => state.setShowFactsWindow)
 
   // Check if current user is an admin (admins bypass subscription gate)
   useEffect(() => {
@@ -154,7 +153,6 @@ function App() {
 
     setIsLoading(true)
     clearResponses()
-    clearRAGDebugData() // Clear previous debug data
     
     // Clear judge conversation context when starting a new prompt from main page
     if (currentUser?.id) {
@@ -212,43 +210,13 @@ function App() {
         // Track query count (1 query per RAG pipeline call)
         setQueryCount(1)
         
-        if (!ragData.search_results || ragData.search_results.length === 0) {
+        // Store sources for display in ResponseComparison
+        if (ragData.search_results && Array.isArray(ragData.search_results) && ragData.search_results.length > 0) {
+          setSearchSources(ragData.search_results)
+        } else {
           console.warn('[RAG Pipeline] No search results returned from Serper')
+          setSearchSources(null)
         }
-
-        // Fetch conversation context for debug data
-        let conversationContext = []
-        if (currentUser?.id) {
-          try {
-            // Use query parameter to handle special characters (colons, etc.) better
-            const contextResponse = await axios.get(`${API_URL}/api/judge/context`, {
-              params: { userId: currentUser.id }
-            })
-            conversationContext = contextResponse.data.context || []
-          } catch (error) {
-            console.error('[RAG Pipeline] Error fetching conversation context:', error)
-          }
-        }
-
-        // Store comprehensive debug data for display
-        const debugDataToStore = {
-          categoryDetection: detectionResult ? {
-            prompt: detectionResult.prompt || '[Category Detection Prompt]',
-            response: detectionResult.rawResponse || 'No response',
-            category: detectionResult.category || category,
-            needsSearch: detectionResult.needsSearch !== undefined ? detectionResult.needsSearch : needsSearch
-          } : {
-            prompt: '[Category Detection Prompt]',
-            response: 'No response - detection failed',
-            category: category,
-            needsSearch: needsSearch
-          },
-          conversationContext: conversationContext, // Add conversation context summaries
-          ...ragData.debug_data
-        }
-        
-        setRAGDebugData(debugDataToStore)
-        setShowPipelineDebugWindow(true)
 
         // Add council responses
         ragData.council_responses.forEach((councilResponse, index) => {
@@ -286,51 +254,8 @@ function App() {
             console.warn(`[RAG Pipeline] Skipping response for ${councilResponse.model_name}: ${councilResponse.error || 'no response'}`)
           }
         })
-        // Set judge analysis as summary (format as text for SummaryWindow)
-        // Only set summary if judge_analysis exists AND we have 2+ models
-        if (ragData.judge_analysis && modelsToUse.length >= 2) {
-          const judge = ragData.judge_analysis
-          let summaryText = ''
-          
-          // Consensus score at the top
-          if (judge.consensus !== null && judge.consensus !== undefined) {
-            summaryText += `CONSENSUS: ${judge.consensus}%\n\n`
-          }
-          
-          // Summary section
-          if (judge.summary) {
-            summaryText += `SUMMARY:\n${judge.summary}\n\n`
-          }
-          
-          // Agreements section
-          if (judge.agreements && judge.agreements.length > 0) {
-            summaryText += `AGREEMENTS:\n${judge.agreements.map(a => `• ${a}`).join('\n')}\n\n`
-          } else {
-            summaryText += `AGREEMENTS:\nNone identified.\n\n`
-          }
-          
-          // Disagreements section
-          if (judge.disagreements && judge.disagreements.length > 0) {
-            summaryText += `DISAGREEMENTS:\n${judge.disagreements.map(d => `• ${d}`).join('\n')}`
-          } else {
-            summaryText += `DISAGREEMENTS:\nNone identified.`
-          }
-          
-        summary = {
-          text: summaryText || judge.summary || 'No summary available',
-          summary: judge.summary,
-          consensus: judge.consensus,
-          agreements: judge.agreements || [],
-          disagreements: judge.disagreements || [],
-          prompt: judge.prompt || null // Include the prompt sent to Grok
-        }
-        
-        // Note: The backend RAG pipeline automatically stores the initial summary
-        // by summarizing the raw judge response with Gemini and storing it
-        } else if (modelsToUse.length === 1) {
-          // Don't create a summary when only 1 model is used - no summary window needed
-          summary = null
-        }
+        // Summary will be generated via streaming endpoint after council responses are collected
+        // (handled below in the streaming summary generation section)
 
         setIsSearchingWeb(false)
       } catch (ragError) {
@@ -361,58 +286,111 @@ function App() {
     if (!needsSearch || (needsSearch && responses.length === 0)) {
       setQueryCount(0)
       
+      // Phase 2 Streaming: Add placeholder responses immediately, then stream tokens into them
+      const responseIds = {}
+      modelsToUse.forEach((modelId) => {
+        const id = `${modelId}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+        responseIds[modelId] = id
+        // Add placeholder response to store immediately so cards appear
+        addResponse({
+          id,
+          modelName: modelId,
+          actualModelName: modelId,
+          originalModelName: modelId,
+          text: '',
+          error: false,
+          tokens: null,
+          isStreaming: true,
+        })
+      })
+
+      // Council panel stays hidden until user clicks "Show Council" button
+
+      // Stream all models in parallel
       const responsePromises = modelsToUse.map(async (modelId) => {
         const firstDashIndex = modelId.indexOf('-')
         if (firstDashIndex === -1) {
-          console.error(`[Direct LLM] Invalid modelId format: ${modelId}`)
-        return {
-          id: `${modelId}-${Date.now()}`,
-          modelName: modelId,
-            text: `Error: Invalid model ID format`,
+          console.error(`[Direct LLM Stream] Invalid modelId format: ${modelId}`)
+          updateResponse(responseIds[modelId], {
+            text: 'Error: Invalid model ID format',
+            error: true,
+            isStreaming: false,
+          })
+          return {
+            id: responseIds[modelId],
+            modelName: modelId,
+            text: 'Error: Invalid model ID format',
             error: true,
           }
         }
         
         const providerKey = modelId.substring(0, firstDashIndex)
         const model = modelId.substring(firstDashIndex + 1)
+        const responseId = responseIds[modelId]
         
         try {
           const userId = currentUser?.id || null
-          const llmResponse = await callLLM(providerKey, model, currentPrompt, userId)
+          const llmResponse = await callLLMStream(providerKey, model, currentPrompt, userId, false, (token) => {
+            // Update the response text incrementally as tokens arrive
+            updateResponse(responseId, {
+              text: (useStore.getState().responses.find(r => r.id === responseId)?.text || '') + token,
+            })
+          })
           
-          // Handle both old format (string) and new format (object with model info)
-          const responseText = typeof llmResponse === 'string' ? llmResponse : llmResponse.text
-          const actualModel = typeof llmResponse === 'object' ? llmResponse.model : modelId
-          const originalModel = typeof llmResponse === 'object' ? llmResponse.originalModel : modelId
+          const responseText = llmResponse.text
+          const actualModel = llmResponse.model || modelId
+          const originalModel = llmResponse.originalModel || modelId
+          
+          // Finalize the response with metadata
+          updateResponse(responseId, {
+            text: responseText,
+            actualModelName: actualModel,
+            originalModelName: originalModel,
+            tokens: llmResponse.tokens || null,
+            isStreaming: false,
+          })
           
           return {
-            id: `${modelId}-${Date.now()}`,
-            modelName: modelId, // Keep user-friendly name for display
-            actualModelName: actualModel, // Store actual API model name
-            originalModelName: originalModel, // Store original user selection
+            id: responseId,
+            modelName: modelId,
+            actualModelName: actualModel,
+            originalModelName: originalModel,
             text: responseText,
             error: false,
-            tokens: typeof llmResponse === 'object' ? llmResponse.tokens : null, // Token information
+            tokens: llmResponse.tokens || null,
           }
-      } catch (error) {
-          console.error(`[Direct LLM] Error calling ${modelId}:`, error)
-        return {
-          id: `${modelId}-${Date.now()}`,
-          modelName: modelId,
+        } catch (error) {
+          console.error(`[Direct LLM Stream] Error calling ${modelId}:`, error)
+          updateResponse(responseId, {
+            text: `Error: ${error.message}`,
+            error: true,
+            isStreaming: false,
+          })
+          return {
+            id: responseId,
+            modelName: modelId,
             actualModelName: modelId,
             originalModelName: modelId,
-          text: `Error: ${error.message}`,
-          error: true,
+            text: `Error: ${error.message}`,
+            error: true,
+          }
         }
-      }
-    })
+      })
 
       const directResponses = await Promise.all(responsePromises)
       responses = directResponses
+    } else {
+      // RAG pipeline responses were already collected — add them to the store
+      responses.forEach((response) => addResponse(response))
+      // Council panel stays hidden until user clicks "Show Council" button
     }
 
-    // Add all responses to the store
-    responses.forEach((response) => addResponse(response))
+    // All model responses have been retrieved — stop showing "Loading Council of LLMs responses..."
+    // Summary generation below will set isGeneratingSummary to true for the next phase
+    setIsLoading(false)
+
+    // For RAG path, responses are already added above
+    // For direct path, responses are already in the store via addResponse + updateResponse
 
     // Helper function to collect all token data
     const collectTokenData = (directJudgeTokens = null) => {
@@ -458,13 +436,6 @@ function App() {
             tokens: ragData.refiner_tokens.judge_selection
           })
         }
-        
-        if (ragData.judge_finalization_tokens) {
-          tokenData.push({
-            modelName: 'grok-4-1-fast-reasoning (Judge - Finalization)',
-            tokens: ragData.judge_finalization_tokens
-          })
-        }
       }
       
       // Add judge tokens from direct LLM path (when RAG wasn't used but summary was generated)
@@ -478,21 +449,9 @@ function App() {
     // Collect initial token data (before summary generation)
     let tokenData = collectTokenData()
     
-    // Store token usage data (now used in PipelineDebugWindow)
+    // Store token usage data
     if (tokenData.length > 0) {
       setTokenUsageData(tokenData)
-    }
-    
-    // Set summary if available (from RAG pipeline)
-    // When summary appears, ensure it's visible (not minimized) so user sees it first
-    // Skip setting summary for single model responses - they'll be shown in ResponseComparison instead
-    if (summary && !summary.singleModel) {
-      setSummary(summary)
-      // Make sure summary window is visible
-      const setSummaryMinimized = useStore.getState().setSummaryMinimized
-      if (setSummaryMinimized) {
-        setSummaryMinimized(false) // Show summary window
-      }
     }
 
     // Stop showing "fetching responses" loading, will show "working on summary" if needed
@@ -550,8 +509,7 @@ function App() {
     })
     updateStats(currentPrompt, modelNames, category, ratings)
 
-    // Generate summary using Grok if we have valid responses (API key is in backend)
-    // Skip if RAG pipeline already provided a summary
+    // Generate summary using Grok via streaming (user sees tokens appear in real-time)
     // Only generate summary if 2+ models were used (no point summarizing a single response)
     const validResponses = responses.filter((r) => !r.error && r.text)
     
@@ -570,7 +528,7 @@ function App() {
         1. Calculate a consensus score (0-100%) based on how much the models agree
         2. Provide a summary of the council's responses
         3. Identify where the models agree
-        4. Identify where the models disagree or contradict each other
+        4. Identify where the models DIFFER — this includes outright contradictions, but also differences in emphasis, tone, specificity, scope, framing, examples used, details included by one but omitted by another, or different perspectives on the same topic
         
         Original User Query: "${currentPrompt}"
         
@@ -585,17 +543,46 @@ function App() {
         
         Agreements: [List specific points where models agree, one per line, each starting with a dash or bullet]
         
-        Disagreements: [List specific points where models disagree or contradict, one per line, each starting with a dash or bullet. If there are no disagreements, write "None identified."]
+        Disagreements: [List specific points where models differ, one per line, each starting with a dash or bullet. Look for: contradictions, different emphasis or focus areas, different levels of detail, different examples or evidence cited, different tone (optimistic vs pessimistic), topics covered by one model but omitted by another, or different framing of the same issue. You MUST find at least 2-3 differences — even when models broadly agree, they almost always differ in emphasis, specificity, or framing.]
         
         Important: Only include the section label followed by a colon, then the content. Do NOT repeat section headers within the content. Do NOT use markdown formatting like ** for section headers.`
 
-              // Use Grok's best summarizing model (grok-4-1-fast-reasoning for reasoning/summarization)
-              const grokModel = 'grok-4-1-fast-reasoning'
+              // Use Grok via streaming summary endpoint
               const userId = currentUser?.id || null
-              // Pass isSummary=true to indicate this is a summary call, not a user prompt
-              const summaryResponse = await callLLM('xai', grokModel, summaryPrompt, userId, true)
-              const rawSummaryText = typeof summaryResponse === 'string' ? summaryResponse : summaryResponse.text
-              const summaryTokens = typeof summaryResponse === 'object' ? summaryResponse.tokens : null
+              
+              // Set an initial empty summary so the window appears and starts showing text
+              setSummary({
+                text: '',
+                summary: '',
+                consensus: null,
+                agreements: [],
+                disagreements: [],
+                timestamp: Date.now(),
+                singleModel: false,
+                prompt: summaryPrompt,
+                originalPrompt: currentPrompt,
+                isStreaming: true,
+              })
+              // Make sure summary window is visible immediately
+              const setSummaryMinimizedEarly = useStore.getState().setSummaryMinimized
+              if (setSummaryMinimizedEarly) setSummaryMinimizedEarly(false)
+              
+              const summaryFinalData = await streamFetch(`${API_URL}/api/summary/stream`, {
+                prompt: summaryPrompt,
+                userId,
+              }, {
+                onToken: (token) => {
+                  // Stream tokens directly into the summary text
+                  useStore.getState().appendSummaryText(token)
+                },
+                onStatus: () => {},
+                onError: (message) => {
+                  console.error('[Summary Stream] Error:', message)
+                }
+              })
+
+              const rawSummaryText = summaryFinalData?.text || useStore.getState().summary?.text || ''
+              const summaryTokens = summaryFinalData?.tokens || null
         
         // Parse the response to extract sections (Consensus, Summary, Agreements, Disagreements)
         // More flexible consensus matching - handles various formats like "Consensus: 85", "**Consensus**: 85%", "[85]", etc.
@@ -611,7 +598,7 @@ function App() {
         // Use [\s\S] instead of . to match across newlines
         const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:AGREEMENTS|Agreements)[:\-]|\n\s*(?:DISAGREEMENTS|Disagreements)[:\-]|$)/i)
         const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:DISAGREEMENTS|Disagreements)[:\-]|$)/i)
-        const disagreementsMatch = normalizedText.match(/(?:DISAGREEMENTS|Disagreements)[:\-]?\s*([\s\S]+?)$/i)
+        const disagreementsMatch = normalizedText.match(/(?:DISAGREEMENTS|Disagreements)[:\-]?\s*([\s\S]+)$/i)
         
         // Extract consensus score (0-100)
         let consensus = null
@@ -689,19 +676,23 @@ function App() {
         const disagreements = disagreementsText
           ? disagreementsText.split('\n').filter(l => {
               const trimmed = l.trim()
-              // Filter out empty lines, section headers, standalone bullets, and "none identified"
+              // Filter out empty lines, section headers, standalone bullets, "none identified", and instruction text
               return trimmed && 
                      !trimmed.match(/^[-•*•]\s*$/) && 
                      !trimmed.match(/^(?:\*\*)?(?:DISAGREEMENTS|Disagreements)[:\-]?\s*\*?\*?$/i) &&
-                     !trimmed.match(/^:\s*$/) && // Filter out lines that are just ":"
-                     !trimmed.toLowerCase().includes('none identified')
+                     !trimmed.match(/^:\s*$/) &&
+                     !trimmed.match(/^\(.*\)$/) && // Filter parenthesized instruction text
+                     !(trimmed.toLowerCase() === 'none identified' || trimmed.toLowerCase() === 'none identified.') &&
+                     !trimmed.toLowerCase().includes('this section is mandatory') &&
+                     !trimmed.toLowerCase().includes('you must') &&
+                     !trimmed.toLowerCase().includes('look for:')
             }).map(l => {
               // Clean up nested bullets (e.g., "• - • text" becomes "text")
               let cleaned = l.replace(/^[-•*•]\s*[-•*•]\s*/, '').replace(/^[-•*•]\s*/, '').trim()
               // Remove any remaining markdown formatting
               cleaned = cleaned.replace(/\*\*/g, '').replace(/\*/g, '')
               return cleaned
-            }).filter(l => l) // Remove any empty strings after cleaning
+            }).filter(l => l && l.length >= 5) // Remove any empty or too-short strings after cleaning
           : []
         
         // Format the summary text
@@ -860,6 +851,31 @@ function App() {
     document.body.style.color = currentTheme.text
   }, [theme, currentTheme])
 
+  // Wait for store hydration from localStorage before rendering anything
+  // This prevents the flash of AuthView/SubscriptionGate on page load for logged-in users
+  if (!hasHydrated) {
+    return (
+      <div style={{
+        width: '100vw',
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)',
+      }}>
+        <div style={{
+          width: '40px',
+          height: '40px',
+          border: '3px solid rgba(255, 255, 255, 0.1)',
+          borderTopColor: 'rgba(255, 255, 255, 0.6)',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
+
   // Handle admin route separately - must be checked before other renders
   // This early return prevents the normal app from rendering
   // AdminView will handle login if user is not logged in
@@ -897,6 +913,8 @@ function App() {
   const subscriptionRestricted = isCanceledOrPaused && !isWithinPaidPeriod && !isUserAdmin
   // Canceled/paused users WITHIN their paid period → full access but show a warning
   const subscriptionExpiring = isCanceledOrPaused && isWithinPaidPeriod && !isUserAdmin
+  // Paused users → lock the prompt box immediately (pausing = voluntarily stopping usage)
+  const subscriptionPaused = subStatus === 'paused' && !isUserAdmin
 
   return (
     <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: currentTheme.background }}>
@@ -960,57 +978,9 @@ function App() {
             </motion.div>
           )}
 
-          {/* Loading Indicator */}
-          {(isLoading || isGeneratingSummary) && (
-            <div
-              style={{
-                position: 'fixed',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                zIndex: 200,
-                textAlign: 'center',
-              }}
-            >
-              <div
-                style={{
-                  background: currentTheme.backgroundOverlay,
-                  border: `1px solid ${currentTheme.borderLight}`,
-                  borderRadius: '12px',
-                  padding: '30px 50px',
-                }}
-              >
-                <div
-                  style={{
-                    width: '50px',
-                    height: '50px',
-                    border: `3px solid ${currentTheme.borderLight}`,
-                    borderTop: `3px solid ${currentTheme.accent}`,
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite',
-                    margin: '0 auto 20px',
-                  }}
-                />
-                <p
-                  style={{
-                    color: currentTheme.text,
-                    fontSize: '1.1rem',
-                    background: currentTheme.accentGradient,
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}
-                >
-                  {isGeneratingSummary 
-                    ? 'Working on summary...' 
-                    : `Fetching responses from ${selectedModels.length} model(s)...`}
-                </p>
-              </div>
-            </div>
-          )}
-
                 {/* Main Content Area - Show based on active tab */}
                 {/* Note: AdminView is handled in early return above, so this should never render AdminView */}
-                {activeTab === 'home' && <MainView onClearAll={clearAllWindows} subscriptionRestricted={subscriptionRestricted} />}
+                {activeTab === 'home' && <MainView onClearAll={clearAllWindows} subscriptionRestricted={subscriptionRestricted} subscriptionPaused={subscriptionPaused} isLoading={isLoading} isGeneratingSummary={isGeneratingSummary} />}
                 {activeTab === 'leaderboard' && <LeaderboardView subscriptionRestricted={subscriptionRestricted} />}
                 {activeTab === 'saved' && <SavedConversationsView />}
                 {activeTab === 'settings' && <SettingsView />}
@@ -1021,6 +991,7 @@ function App() {
 
                 {/* Summary Window - Shows on all tabs except admin */}
                 {!isAdminRoute && <SummaryWindow />}
+
         </>
       )}
 

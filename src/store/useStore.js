@@ -38,16 +38,23 @@ export const useStore = create(
         set((state) => ({
           responses: [...state.responses, response],
         })),
+      updateResponse: (responseId, updates) =>
+        set((state) => ({
+          responses: state.responses.map((res) =>
+            res.id === responseId ? { ...res, ...updates } : res
+          ),
+        })),
       removeResponse: (responseId) =>
         set((state) => ({
           responses: state.responses.filter((res) => res.id !== responseId),
         })),
       clearResponses: () => {
         set({ responses: [] })
-        // Also clear summary, GPT-4o-mini response, debug data, and reset window states when clearing responses
+        // Also clear summary, GPT-4o-mini response, debug data, sources, and reset window states when clearing responses
         set({ summary: null })
         set({ geminiDetectionResponse: null })
         set({ ragDebugData: null })
+        set({ searchSources: null })
         set({ showFactsWindow: true }) // Reset to default state
         set({ showPipelineDebugWindow: true }) // Reset to default state
         // Note: lastSubmittedPrompt is NOT cleared here - it's managed by handlePromptSubmit
@@ -116,13 +123,28 @@ export const useStore = create(
 
       // Summary
       summary: null,
-      setSummary: (summary) => set({ summary }),
+      setSummary: (summaryOrFn) => {
+        if (typeof summaryOrFn === 'function') {
+          set((state) => ({ summary: summaryOrFn(state.summary) }))
+        } else {
+          set({ summary: summaryOrFn })
+        }
+      },
+      appendSummaryText: (token) => set((state) => {
+        if (!state.summary) return {}
+        return { summary: { ...state.summary, text: (state.summary.text || '') + token } }
+      }),
       clearSummary: () => set({ summary: null }),
       
       // RAG Debug data (temporary)
       ragDebugData: null,
       setRAGDebugData: (data) => set({ ragDebugData: data }),
       clearRAGDebugData: () => set({ ragDebugData: null }),
+      
+      // Search sources (from RAG pipeline)
+      searchSources: null,
+      setSearchSources: (sources) => set({ searchSources: sources }),
+      clearSearchSources: () => set({ searchSources: null }),
       
       // Pipeline debug window visibility (separate from data so closing it doesn't affect facts window)
       showPipelineDebugWindow: true,

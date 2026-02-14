@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Save, Info, FileText } from 'lucide-react'
+import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Save, Info, FileText, RotateCcw, Search } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
+import { streamFetch } from '../utils/streamFetch'
 
 const ResponseComparison = () => {
   const getProviderName = (modelName) => {
@@ -33,6 +34,7 @@ const ResponseComparison = () => {
   const setShowCouncilPanel = useStore((state) => state.setShowCouncilPanel)
   const isNavExpanded = useStore((state) => state.isNavExpanded)
   const ragDebugData = useStore((state) => state.ragDebugData)
+  const searchSources = useStore((state) => state.searchSources)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const [expandedCards, setExpandedCards] = useState({})
@@ -41,6 +43,7 @@ const ResponseComparison = () => {
   const [maximizedCard, setMaximizedCard] = useState(null)
   const [isMinimized, setIsMinimized] = useState(true) // Start minimized by default
   const [minimizedCards, setMinimizedCards] = useState({}) // Track which individual cards are minimized - all start minimized
+  const [hiddenCards, setHiddenCards] = useState({}) // Track which cards the user has closed (hidden but not removed)
   const [cardPositions, setCardPositions] = useState({})
   const [draggedCard, setDraggedCard] = useState(null)
   const [borderHovered, setBorderHovered] = useState(null)
@@ -56,6 +59,7 @@ const ResponseComparison = () => {
   const [conversationInputs, setConversationInputs] = useState({}) // { responseId: 'input text' }
   const [conversationHistories, setConversationHistories] = useState({}) // { responseId: [{ user, assistant, timestamp }] }
   const [sendingMessages, setSendingMessages] = useState({}) // { responseId: true/false }
+  const [searchingInConvo, setSearchingInConvo] = useState({}) // { responseId: true/false }
   const [savingStates, setSavingStates] = useState({}) // { responseId: 'idle'|'saving'|'saved' }
   const [showSaveTooltip, setShowSaveTooltip] = useState({}) // { responseId: true/false }
   const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
@@ -254,55 +258,67 @@ const ResponseComparison = () => {
   }
 
   // Handle sending a conversation message to a specific model
+  // Context is managed server-side (rolling window of 5 summaries, same as judge conversation)
+  // Now uses SSE streaming for real-time token display
   const handleSendConversationMessage = async (responseId, modelName, originalResponse) => {
     const input = conversationInputs[responseId]?.trim()
     if (!input || !currentUser?.id || sendingMessages[responseId]) return
     
     setSendingMessages(prev => ({ ...prev, [responseId]: true }))
+    setSearchingInConvo(prev => ({ ...prev, [responseId]: false }))
+    setConversationInputs(prev => ({ ...prev, [responseId]: '' }))
+    
+    // Add user message with empty assistant placeholder immediately
+    setConversationHistories(prev => ({
+      ...prev,
+      [responseId]: [
+        ...(prev[responseId] || []),
+        { user: input, assistant: '', timestamp: Date.now() }
+      ]
+    }))
     
     try {
-      // Get conversation history for context (last 5)
-      const history = conversationHistories[responseId] || []
-      const contextHistory = history.slice(-5)
-      
-      // Build context string from history
-      const contextString = contextHistory.length > 0
-        ? contextHistory.map((h, idx) => 
-            `Exchange ${idx + 1}:\nUser: ${h.user}\nAssistant: ${h.assistant}`
-          ).join('\n\n')
-        : ''
-      
-      const response = await axios.post(`${API_URL}/api/model/conversation`, {
+      await streamFetch(`${API_URL}/api/model/conversation/stream`, {
         userId: currentUser.id,
         modelName: modelName,
         userMessage: input,
-        originalResponse: originalResponse,
-        conversationContext: contextString,
         responseId: responseId
-      })
-      
-      if (response.data.response) {
-        // Add to conversation history
-        setConversationHistories(prev => ({
-          ...prev,
-          [responseId]: [
-            ...(prev[responseId] || []),
-            {
-              user: input,
-              assistant: response.data.response,
-              timestamp: Date.now()
+      }, {
+        onToken: (token) => {
+          setSearchingInConvo(prev => ({ ...prev, [responseId]: false }))
+          setConversationHistories(prev => {
+            const history = [...(prev[responseId] || [])]
+            if (history.length > 0) {
+              history[history.length - 1] = {
+                ...history[history.length - 1],
+                assistant: (history[history.length - 1].assistant || '') + token
+              }
             }
-          ]
-        }))
-        
-        // Clear input
-        setConversationInputs(prev => ({ ...prev, [responseId]: '' }))
-      }
+            return { ...prev, [responseId]: history }
+          })
+        },
+        onStatus: (message) => {
+          if (message.toLowerCase().includes('search')) {
+            setSearchingInConvo(prev => ({ ...prev, [responseId]: true }))
+          }
+        },
+        onError: (message) => {
+          console.error('[ResponseComparison] Stream error:', message)
+        }
+      })
     } catch (error) {
       console.error('[ResponseComparison] Error sending conversation message:', error)
+      // Remove the placeholder on error
+      setConversationHistories(prev => {
+        const history = [...(prev[responseId] || [])]
+        history.pop()
+        return { ...prev, [responseId]: history }
+      })
+      setConversationInputs(prev => ({ ...prev, [responseId]: input }))
       alert('Failed to send message. Please try again.')
     } finally {
       setSendingMessages(prev => ({ ...prev, [responseId]: false }))
+      setSearchingInConvo(prev => ({ ...prev, [responseId]: false }))
     }
   }
   
@@ -753,42 +769,112 @@ const ResponseComparison = () => {
                 }}>
                   Conversation
                 </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '300px', overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   {conversationHistories[response.id].map((exchange, idx) => (
-                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {/* User message */}
-                      <div style={{ 
-                        alignSelf: 'flex-end',
-                        maxWidth: '80%',
-                        padding: '10px 14px',
-                        background: '#000000',
-                        border: '1px solid #ffffff',
-                        borderRadius: '12px 12px 4px 12px',
-                        color: '#ffffff',
-                        fontSize: '0.9rem',
-                        lineHeight: '1.5',
-                      }}>
-                        {exchange.user}
+                    <React.Fragment key={idx}>
+                      {/* User follow-up — in a container */}
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <div style={{
+                          maxWidth: '75%',
+                          background: currentTheme.buttonBackground,
+                          border: `1px solid ${currentTheme.borderLight}`,
+                          borderRadius: '16px 16px 4px 16px',
+                          padding: '12px 18px',
+                        }}>
+                          <div style={{
+                            fontSize: '0.7rem',
+                            fontWeight: '600',
+                            color: currentTheme.text,
+                            marginBottom: '4px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                          }}>
+                            You
+                          </div>
+                          <p style={{
+                            color: currentTheme.text,
+                            lineHeight: '1.6',
+                            fontSize: '0.9rem',
+                            whiteSpace: 'pre-wrap',
+                            margin: 0,
+                          }}>
+                            {exchange.user}
+                          </p>
+                        </div>
                       </div>
-                      {/* Assistant response */}
-                      <div style={{
-                        alignSelf: 'flex-start',
-                        maxWidth: '80%',
-                        padding: '10px 14px',
-                        background: currentTheme.buttonBackground,
-                        border: `1px solid ${currentTheme.borderLight}`,
-                        borderRadius: '12px 12px 12px 4px',
-                        color: currentTheme.textSecondary,
-                        fontSize: '0.9rem',
-                        lineHeight: '1.5',
-                        whiteSpace: 'pre-wrap',
-                      }}>
-                        {exchange.assistant}
+
+                      {/* Assistant response — free flowing, no container */}
+                      <div style={{ padding: '4px 0 0 4px' }}>
+                        <div style={{
+                          marginBottom: '6px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}>
+                          <span style={{
+                            color: currentTheme.accent,
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                          }}>
+                            {formatModelName(response.modelName)}
+                          </span>
+                        </div>
+                        <div style={{
+                          color: currentTheme.textSecondary,
+                          lineHeight: '1.8',
+                          fontSize: '0.9rem',
+                          whiteSpace: 'pre-wrap',
+                          margin: 0,
+                        }}>
+                          {exchange.assistant}
+                        </div>
                       </div>
-                    </div>
+                    </React.Fragment>
                   ))}
                 </div>
               </div>
+            )}
+
+            {/* Web Search Indicator */}
+            {searchingInConvo[response.id] && (
+              <motion.div
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  marginTop: '8px',
+                  background: currentTheme.buttonBackground,
+                  borderRadius: '20px',
+                  width: 'fit-content',
+                }}
+              >
+                <Search size={14} color={currentTheme.accent} />
+                <span style={{
+                  fontSize: '0.85rem',
+                  color: currentTheme.text,
+                  background: currentTheme.accentGradient,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}>
+                  Searching the web
+                </span>
+                <motion.span
+                  animate={{ opacity: [1, 0.3, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                  style={{
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  }}
+                >
+                  ...
+                </motion.span>
+              </motion.div>
             )}
 
             {/* Fetching Response Indicator */}
@@ -821,7 +907,7 @@ const ResponseComparison = () => {
                   color: currentTheme.textMuted,
                   fontStyle: 'italic',
                 }}>
-                  Fetching response from {formatModelName(response.modelName)}...
+                  Loading {formatModelName(response.modelName)}'s response...
                 </span>
               </motion.div>
             )}
@@ -1288,42 +1374,112 @@ const ResponseComparison = () => {
               }}>
                 Conversation
               </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '300px', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {conversationHistories[response.id].map((exchange, idx) => (
-                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {/* User message */}
-                    <div style={{ 
-                      alignSelf: 'flex-end',
-                      maxWidth: '80%',
-                      padding: '10px 14px',
-                      background: '#000000',
-                      border: '1px solid #ffffff',
-                      borderRadius: '12px 12px 4px 12px',
-                      color: '#ffffff',
-                      fontSize: '0.9rem',
-                      lineHeight: '1.5',
-                    }}>
-                      {exchange.user}
+                  <React.Fragment key={idx}>
+                    {/* User follow-up — in a container */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <div style={{
+                        maxWidth: '75%',
+                        background: currentTheme.buttonBackground,
+                        border: `1px solid ${currentTheme.borderLight}`,
+                        borderRadius: '16px 16px 4px 16px',
+                        padding: '12px 18px',
+                      }}>
+                        <div style={{
+                          fontSize: '0.7rem',
+                          fontWeight: '600',
+                          color: currentTheme.text,
+                          marginBottom: '4px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                        }}>
+                          You
+                        </div>
+                        <p style={{
+                          color: currentTheme.text,
+                          lineHeight: '1.6',
+                          fontSize: '1rem',
+                          whiteSpace: 'pre-wrap',
+                          margin: 0,
+                        }}>
+                          {exchange.user}
+                        </p>
+                      </div>
                     </div>
-                    {/* Assistant response */}
-                    <div style={{
-                      alignSelf: 'flex-start',
-                      maxWidth: '80%',
-                      padding: '10px 14px',
-                      background: currentTheme.buttonBackground,
-                      border: `1px solid ${currentTheme.borderLight}`,
-                      borderRadius: '12px 12px 12px 4px',
-                      color: currentTheme.textSecondary,
-                      fontSize: '0.9rem',
-                      lineHeight: '1.5',
-                      whiteSpace: 'pre-wrap',
-                    }}>
-                      {exchange.assistant}
+
+                    {/* Assistant response — free flowing, no container */}
+                    <div style={{ padding: '4px 0 0 4px' }}>
+                      <div style={{
+                        marginBottom: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}>
+                        <span style={{
+                          color: currentTheme.accent,
+                          fontSize: '0.8rem',
+                          fontWeight: '600',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                        }}>
+                          {formatModelName(response.modelName)}
+                        </span>
+                      </div>
+                      <div style={{
+                        color: currentTheme.textSecondary,
+                        lineHeight: '1.85',
+                        fontSize: '1.05rem',
+                        whiteSpace: 'pre-wrap',
+                        margin: 0,
+                      }}>
+                        {exchange.assistant}
+                      </div>
                     </div>
-                  </div>
+                  </React.Fragment>
                 ))}
               </div>
             </div>
+          )}
+
+          {/* Web Search Indicator */}
+          {searchingInConvo[response.id] && (
+            <motion.div
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                marginTop: '8px',
+                background: currentTheme.buttonBackground,
+                borderRadius: '20px',
+                width: 'fit-content',
+              }}
+            >
+              <Search size={14} color={currentTheme.accent} />
+              <span style={{
+                fontSize: '0.85rem',
+                color: currentTheme.text,
+                background: currentTheme.accentGradient,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                Searching the web
+              </span>
+              <motion.span
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                style={{
+                  background: currentTheme.accentGradient,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}
+              >
+                ...
+              </motion.span>
+            </motion.div>
           )}
 
           {/* Fetching Response Indicator */}
@@ -1356,7 +1512,7 @@ const ResponseComparison = () => {
                 color: currentTheme.textMuted,
                 fontStyle: 'italic',
               }}>
-                Fetching response from {formatModelName(response.modelName)}...
+                Loading {formatModelName(response.modelName)}'s response...
               </span>
             </motion.div>
           )}
@@ -1563,6 +1719,9 @@ const ResponseComparison = () => {
         }}
       >
         {responses.map((response, index) => {
+          // Skip hidden cards (closed by user but conversation preserved)
+          if (hiddenCards[response.id]) return null
+          
           const isExpanded = expandedCards[response.id]
           const isCardMinimized = minimizedCards[response.id]
           const previewLength = 150
@@ -1604,28 +1763,27 @@ const ResponseComparison = () => {
                   overflow: 'visible', // Allow badge to extend outside
                 }}
               >
-                {/* X Badge - positioned outside container, overlapping top-right corner, fully visible */}
+                {/* X Badge - hides card (preserves conversation history) */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    clearConversationForResponse(response.id)
-                    removeResponse(response.id)
+                    setHiddenCards(prev => ({ ...prev, [response.id]: true }))
                   }}
                   style={{
                     position: 'absolute',
-                    top: '-6px', // Position so full badge is visible, overlapping corner
-                    right: '-6px', // Position so full badge is visible, overlapping corner
+                    top: '-6px',
+                    right: '-6px',
                     width: '24px',
                     height: '24px',
                     borderRadius: '50%',
-                    border: 'none', // No border
+                    border: 'none',
                     background: theme === 'light' ? '#ffffff' : 'rgba(0, 0, 0, 0.9)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
                     padding: 0,
-                    zIndex: 1001, // Above the container
+                    zIndex: 1001,
                     pointerEvents: 'auto',
                     boxShadow: theme === 'light' ? '0 0 10px rgba(0, 0, 0, 0.2)' : '0 0 10px rgba(255, 255, 255, 0.4)',
                   }}
@@ -1637,7 +1795,7 @@ const ResponseComparison = () => {
                     e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(0, 0, 0, 0.9)'
                     e.currentTarget.style.boxShadow = theme === 'light' ? '0 0 10px rgba(0, 0, 0, 0.2)' : '0 0 10px rgba(255, 255, 255, 0.4)'
                   }}
-                  title="Remove response"
+                  title="Hide response"
                 >
                   <X size={16} color={currentTheme.text} />
                 </button>
@@ -2050,18 +2208,19 @@ const ResponseComparison = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      clearConversationForResponse(response.id)
-                      removeResponse(response.id)
+                      // Hide the card (preserve conversation history)
+                      setHiddenCards(prev => ({ ...prev, [response.id]: true }))
+                      setMaximizedCard(null)
                     }}
                     style={{
                       background: 'rgba(255, 0, 0, 0.1)',
                       border: '1px solid rgba(255, 0, 0, 0.3)',
                       borderRadius: '4px',
                       padding: '4px',
-                      color: '#FF0000', // Keep red for delete
+                      color: '#FF0000',
                       cursor: 'pointer',
                     }}
-                    title="Delete response"
+                    title="Hide response"
                   >
                     <X size={14} />
                   </button>
@@ -2133,10 +2292,22 @@ const ResponseComparison = () => {
                     cursor: 'text',
                   }}
                 >
-                  {displayText}
+                  {displayText || (response.isStreaming ? '' : displayText)}
+                  {response.isStreaming && (
+                    <span style={{
+                      display: 'inline-block',
+                      width: '6px',
+                      height: '14px',
+                      background: currentTheme.accent,
+                      marginLeft: '2px',
+                      animation: 'blink 1s step-end infinite',
+                      verticalAlign: 'text-bottom',
+                    }} />
+                  )}
                 </p>
               </div>
 
+              {!response.isStreaming && (
               <div
                 style={{
                   display: 'flex',
@@ -2168,6 +2339,7 @@ const ResponseComparison = () => {
                   </button>
                 ))}
               </div>
+              )}
               </div>
             </motion.div>
             </React.Fragment>
@@ -2175,7 +2347,7 @@ const ResponseComparison = () => {
         })}
         
         {/* Sources Card */}
-        {ragDebugData && ragDebugData.search && ragDebugData.search.results && ragDebugData.search.results.length > 0 && (
+        {searchSources && Array.isArray(searchSources) && searchSources.length > 0 && (
           <div
             style={{
               position: 'relative',
@@ -2245,7 +2417,7 @@ const ResponseComparison = () => {
                       fontWeight: '500',
                     }}
                   >
-                    Sources ({ragDebugData.search.results.length})
+                    Sources ({searchSources.length})
                   </h3>
                 </div>
                 <ChevronRight size={16} color={currentTheme.accent} />
@@ -2255,7 +2427,7 @@ const ResponseComparison = () => {
         )}
 
         {/* Sources Maximized View */}
-        {sourcesMaximized && ragDebugData && ragDebugData.search && ragDebugData.search.results && (
+        {sourcesMaximized && searchSources && searchSources.length > 0 && (
           <div
             onClick={() => {
               setSourcesMaximized(false)
@@ -2335,13 +2507,13 @@ const ResponseComparison = () => {
                 </div>
               </div>
 
-              {ragDebugData.search.results.length > 0 ? (
+              {searchSources.length > 0 ? (
                 <div>
                   <div style={{ color: currentTheme.accentSecondary, fontSize: '16px', fontWeight: 'bold', marginBottom: '16px' }}>
-                    Search Results ({ragDebugData.search.results.length})
+                    Search Results ({searchSources.length})
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {ragDebugData.search.results.map((result, index) => (
+                    {searchSources.map((result, index) => (
                       <div
                         key={index}
                         style={{
@@ -2395,6 +2567,60 @@ const ResponseComparison = () => {
           </div>
         )}
 
+        {/* Restore Hidden Cards Button */}
+        {Object.values(hiddenCards).some(Boolean) && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            onClick={() => setHiddenCards({})}
+            style={{
+              width: '100%',
+              minWidth: cardWidth,
+              maxWidth: cardWidth,
+              background: theme === 'light' ? '#ffffff' : currentTheme.buttonBackground,
+              border: `1px solid ${currentTheme.borderLight}`,
+              borderRadius: '12px',
+              padding: '0',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = currentTheme.borderActive
+              e.currentTarget.style.boxShadow = `0 0 15px ${currentTheme.shadow}`
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = currentTheme.borderLight
+              e.currentTarget.style.boxShadow = 'none'
+            }}
+          >
+            <div
+              style={{
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RotateCcw size={16} color={currentTheme.accent} />
+                <h3
+                  style={{
+                    fontSize: '0.9rem',
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    margin: 0,
+                    fontWeight: '500',
+                  }}
+                >
+                  Restore Hidden ({Object.values(hiddenCards).filter(Boolean).length})
+                </h3>
+              </div>
+              <ChevronRight size={16} color={currentTheme.accent} />
+            </div>
+          </motion.div>
+        )}
+
         {/* Clear All Response Windows Button - Underneath minimized windows */}
         {responses.length > 0 && (
           <motion.div
@@ -2420,6 +2646,8 @@ const ResponseComparison = () => {
                 // Clear all responses and related data (summary, debug data, etc.)
                 clearResponses()
                 clearLastSubmittedPrompt()
+                // Reset hidden cards
+                setHiddenCards({})
                 // Close facts/sources window
                 setShowFactsWindow(false)
                 // Minimize summary window

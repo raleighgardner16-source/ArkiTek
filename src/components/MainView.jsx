@@ -1,16 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Save, Lock, FileText, LayoutGrid, Trash2 } from 'lucide-react'
+import { Send, ChevronDown, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Save, Lock, FileText, LayoutGrid, Trash2, PauseCircle } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 import { detectCategory } from '../utils/categoryDetector'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
-// ProviderIcon import kept available for future use
-// import { ProviderIcon } from './ProviderIcons'
+import { streamFetch } from '../utils/streamFetch'
 
-const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
+const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaused = false, isLoading = false, isGeneratingSummary = false }) => {
   const selectedModels = useStore((state) => state.selectedModels)
   const setSelectedModels = useStore((state) => state.setSelectedModels)
   const currentPrompt = useStore((state) => state.currentPrompt)
@@ -31,7 +30,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
   const showCouncilPanel = useStore((state) => state.showCouncilPanel)
   const setShowCouncilPanel = useStore((state) => state.setShowCouncilPanel)
   const toggleCouncilPanel = useStore((state) => state.toggleCouncilPanel)
+  const setActiveTab = useStore((state) => state.setActiveTab)
   const currentTheme = getTheme(theme)
+  // Combined lock: either fully restricted (expired) or paused (voluntary)
+  const isPromptLocked = subscriptionRestricted || subscriptionPaused
   const navWidth = isNavExpanded ? '260px' : '60px'
   const [streakDays, setStreakDays] = useState(0)
   const setGeminiDetectionResponse = useStore((state) => state.setGeminiDetectionResponse)
@@ -50,12 +52,25 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
   const [conversationContext, setConversationContext] = useState([])
   const [convoSavingState, setConvoSavingState] = useState('idle')
   const [showConvoSaveTooltip, setShowConvoSaveTooltip] = useState(false)
+  const [showClearSummaryTooltip, setShowClearSummaryTooltip] = useState(false)
+  const [showPostPromptTooltip, setShowPostPromptTooltip] = useState(false)
+  const [showClearTooltip, setShowClearTooltip] = useState(false)
+  const [showPostPromptSingleTooltip, setShowPostPromptSingleTooltip] = useState(false)
+  const [showSaveConvoSingleTooltip, setShowSaveConvoSingleTooltip] = useState(false)
+  const [showSendTooltip, setShowSendTooltip] = useState(false)
+
+  // Single-model conversation state
+  const [singleModelConvoInput, setSingleModelConvoInput] = useState('')
+  const [isSendingSingleConvo, setIsSendingSingleConvo] = useState(false)
+  const [isSearchingInSingleConvo, setIsSearchingInSingleConvo] = useState(false)
+  const [singleModelConvoHistory, setSingleModelConvoHistory] = useState([])
 
   // Refs for chat layout
   const textareaRef = useRef(null)
   const chatAreaRef = useRef(null)
   const chatEndRef = useRef(null)
   const convoTextareaRef = useRef(null)
+  const singleConvoTextareaRef = useRef(null)
 
   // Fetch streak data
   useEffect(() => {
@@ -136,11 +151,18 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
     const buttonRef = providerButtonRefs.current[providerKey]
     if (buttonRef && !isCurrentlyExpanded) {
       const rect = buttonRef.getBoundingClientRect()
+      // Estimate dropdown height based on number of models (each ~60px + Auto Smart ~50px + padding ~24px)
+      const providerData = sortedProviders.find(([key]) => key === providerKey)?.[1]
+      const estimatedHeight = providerData ? (providerData.models.length * 60) + 50 + 24 : 300
       // Position above the button by default (since buttons are at bottom of screen)
+      let top = rect.top - estimatedHeight - 8
+      if (top < 10) {
+        top = rect.bottom + 8
+      }
       setDropdownPositions((prev) => ({
         ...prev,
         [providerKey]: {
-          top: rect.top - 8, // will be adjusted by height in useEffect
+          top,
           left: rect.left,
           width: Math.max(rect.width, 220),
           positionAbove: true,
@@ -154,7 +176,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
       if (wasExpanded) {
         return {}
       } else {
-        return { [providerKey]: true }
+      return { [providerKey]: true }
       }
     })
   }
@@ -419,6 +441,21 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
     }
   }, [availableModels, selectedModels, setSelectedModels])
 
+  // On sign-in (or first visit), select ALL models so every provider is active by default
+  useEffect(() => {
+    const hasInitialized = localStorage.getItem('arktek-models-initialized')
+    if (!hasInitialized && selectedModels.length === 0 && Object.keys(modelsByProvider).length > 0) {
+      const allModelIds = []
+      Object.entries(modelsByProvider).forEach(([, providerData]) => {
+        providerData.models.forEach(m => allModelIds.push(m.id))
+      })
+      if (allModelIds.length > 0) {
+        setSelectedModels(allModelIds)
+      }
+      localStorage.setItem('arktek-models-initialized', 'true')
+    }
+  }, [modelsByProvider, selectedModels, setSelectedModels])
+
   // Global Enter key listener - allows submitting prompt even when input isn't focused
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
@@ -483,7 +520,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
   }
 
   const handleSubmit = async () => {
-    if (subscriptionRestricted) return
+    if (isPromptLocked) return
     if (!currentPrompt.trim()) return
 
     const providersWithAutoSmart = Object.entries(autoSmartProviders).filter(([_, isEnabled]) => isEnabled)
@@ -502,6 +539,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
     setConvoSavingState('idle')
     setSaveAllState('idle')
     setShowCouncilPanel(false)
+    setSingleModelConvoInput('')
+    setSingleModelConvoHistory([])
     
     if (providersWithAutoSmart.length > 0) {
       const selectedProvidersData = providersWithAutoSmart.map(([providerKey]) => {
@@ -707,11 +746,14 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
   
   // Scroll to top when initial response/summary loads, scroll to bottom only for follow-up messages
   const prevConvoLengthRef = useRef(0)
+  const prevSingleConvoLengthRef = useRef(0)
   const lastScrolledPromptRef = useRef(null) // Track which prompt we already scrolled to top for
   useEffect(() => {
     const convoLength = summary?.conversationHistory?.length || 0
+    const singleConvoLength = singleModelConvoHistory.length
     
-    if (convoLength > prevConvoLengthRef.current && convoLength > 0) {
+    if ((convoLength > prevConvoLengthRef.current && convoLength > 0) ||
+        (singleConvoLength > prevSingleConvoLengthRef.current && singleConvoLength > 0)) {
       // Follow-up conversation message added — scroll to bottom to see the new reply
       setTimeout(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -723,12 +765,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
         lastScrolledPromptRef.current = currentPromptKey
         setTimeout(() => {
           chatAreaRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-        }, 150)
-      }
+      }, 150)
+    }
     }
     
     prevConvoLengthRef.current = convoLength
-  }, [summary?.text, summary?.conversationHistory?.length, responses.length, lastSubmittedPrompt])
+    prevSingleConvoLengthRef.current = singleConvoLength
+  }, [summary?.text, summary?.conversationHistory?.length, responses.length, lastSubmittedPrompt, singleModelConvoHistory.length])
 
   // Fetch conversation context when summary appears
   useEffect(() => {
@@ -755,79 +798,103 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
     
     setIsSendingConvo(true)
     setIsSearchingInConvo(false)
+    const userMsg = conversationInput.trim()
+    setConversationInput('')
+    
+    const initialSummary = summary.initialSummary || summary.text
+    
+    // Add user message with empty assistant placeholder immediately
+    setSummary(prev => ({
+      ...prev,
+      text: '',
+      summary: '',
+      initialSummary: initialSummary,
+      prompt: `${prev.prompt || ''}\n\nUser: ${userMsg}`,
+      conversationHistory: [...(prev.conversationHistory || []), {
+        user: userMsg,
+        assistant: '',
+        timestamp: Date.now()
+      }]
+    }))
     
     try {
-      // Check if web search is needed
-      const detectResponse = await axios.post(`${API_URL}/api/detect-search-needed`, {
-        query: conversationInput.trim(),
-        userId: currentUser.id
-      })
-      
-      if (detectResponse.data.needsSearch) {
-        setIsSearchingInConvo(true)
-      }
-      
-      const response = await axios.post(`${API_URL}/api/judge/conversation`, {
+      const finalData = await streamFetch(`${API_URL}/api/judge/conversation/stream`, {
         userId: currentUser.id,
-        userMessage: conversationInput.trim(),
+        userMessage: userMsg,
         conversationContext: conversationContext
-      })
-      
-      const initialSummary = summary.initialSummary || summary.text
-      
-      setSummary({
-        ...summary,
-        text: response.data.response,
-        summary: response.data.response,
-        initialSummary: initialSummary,
-        prompt: `${summary.prompt || ''}\n\nUser: ${conversationInput.trim()}`,
-        conversationHistory: [...(summary.conversationHistory || []), {
-          user: conversationInput.trim(),
-          assistant: response.data.response,
-          timestamp: Date.now()
-        }]
-      })
-      
-      setConversationInput('')
-      
-      // Handle RAG debug data updates
-      const store = useStore.getState()
-      if (response.data.debugData && response.data.usedSearch) {
-        const existingDebugData = store.ragDebugData || {}
-        store.setRAGDebugData({
-          ...existingDebugData,
-          search: response.data.debugData.search,
-          refiner: response.data.debugData.refiner,
-          categoryDetection: response.data.debugData.categoryDetection,
-          conversationContext: existingDebugData.conversationContext || []
-        })
-        
-        if (response.data.searchResults && response.data.searchResults.length > 0) {
-          store.setShowFactsWindow(true)
+      }, {
+        onToken: (token) => {
+          setIsSearchingInConvo(false)
+          setSummary(prev => {
+            const updatedHistory = [...(prev.conversationHistory || [])]
+            if (updatedHistory.length > 0) {
+              updatedHistory[updatedHistory.length - 1] = {
+                ...updatedHistory[updatedHistory.length - 1],
+                assistant: (updatedHistory[updatedHistory.length - 1].assistant || '') + token
+              }
+            }
+            return {
+              ...prev,
+              text: (prev.text || '') + token,
+              summary: (prev.text || '') + token,
+              conversationHistory: updatedHistory
+            }
+          })
+        },
+        onStatus: (message) => {
+          if (message.toLowerCase().includes('search')) {
+            setIsSearchingInConvo(true)
+          }
+        },
+        onError: (message) => {
+          console.error('[MainView] Stream error:', message)
         }
-      }
+      })
       
-      // Refresh context
-      setTimeout(async () => {
-        await fetchConversationContext()
-        const ragDebugData = store.ragDebugData
-        if (ragDebugData && currentUser?.id) {
-          try {
-            const contextResponse = await axios.get(`${API_URL}/api/judge/context`, {
-              params: { userId: currentUser.id }
-            })
-            const updatedContext = contextResponse.data.context || []
-            store.setRAGDebugData({
-              ...ragDebugData,
-              conversationContext: updatedContext
-            })
-          } catch (error) {
-            console.error('[MainView] Error updating debug pipeline context:', error)
+      // Handle final metadata
+      if (finalData) {
+        const store = useStore.getState()
+        if (finalData.debugData && finalData.usedSearch) {
+          const existingDebugData = store.ragDebugData || {}
+          store.setRAGDebugData({
+            ...existingDebugData,
+            search: finalData.debugData.search,
+            refiner: finalData.debugData.refiner,
+            categoryDetection: finalData.debugData.categoryDetection,
+            conversationContext: existingDebugData.conversationContext || []
+          })
+          if (finalData.searchResults && finalData.searchResults.length > 0) {
+            store.setShowFactsWindow(true)
           }
         }
-      }, 500)
+        
+        setTimeout(async () => {
+          await fetchConversationContext()
+          const ragDebugData = store.ragDebugData
+          if (ragDebugData && currentUser?.id) {
+            try {
+              const contextResponse = await axios.get(`${API_URL}/api/judge/context`, {
+                params: { userId: currentUser.id }
+              })
+              store.setRAGDebugData({
+                ...ragDebugData,
+                conversationContext: contextResponse.data.context || []
+              })
+            } catch (error) {
+              console.error('[MainView] Error updating debug pipeline context:', error)
+            }
+          }
+        }, 500)
+      }
     } catch (error) {
       console.error('[MainView] Error sending conversation:', error)
+      setConversationInput(userMsg)
+      setSummary(prev => ({
+        ...prev,
+        text: initialSummary,
+        summary: initialSummary,
+        conversationHistory: (prev.conversationHistory || []).slice(0, -1)
+      }))
       alert('Failed to send message. Please try again.')
     } finally {
       setIsSendingConvo(false)
@@ -865,9 +932,79 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
     }
   }
 
+  // Single-model conversation handler — context is managed server-side (rolling window of 5 summaries)
+  // Now uses SSE streaming for real-time token display
+  const handleSendSingleModelConvo = async () => {
+    if (!singleModelConvoInput.trim() || !currentUser?.id || isSendingSingleConvo) return
+    if (responses.length !== 1) return
+
+    const singleResponse = responses[0]
+    const modelName = singleResponse.modelName || singleResponse.actualModelName
+    const userMsg = singleModelConvoInput.trim()
+    setSingleModelConvoInput('')
+
+    setIsSendingSingleConvo(true)
+    setIsSearchingInSingleConvo(false)
+    
+    // Add user message with empty assistant placeholder immediately
+    setSingleModelConvoHistory(prev => [
+      ...prev,
+      { user: userMsg, assistant: '', timestamp: Date.now() }
+    ])
+    
+    try {
+      await streamFetch(`${API_URL}/api/model/conversation/stream`, {
+        userId: currentUser.id,
+        modelName: modelName,
+        userMessage: userMsg,
+        responseId: singleResponse.id,
+      }, {
+        onToken: (token) => {
+          setIsSearchingInSingleConvo(false)
+          setSingleModelConvoHistory(prev => {
+            const updated = [...prev]
+            if (updated.length > 0) {
+              updated[updated.length - 1] = {
+                ...updated[updated.length - 1],
+                assistant: (updated[updated.length - 1].assistant || '') + token
+              }
+            }
+            return updated
+          })
+        },
+        onStatus: (message) => {
+          if (message.toLowerCase().includes('search')) {
+            setIsSearchingInSingleConvo(true)
+          }
+        },
+        onError: (message) => {
+          console.error('[SingleModelConvo] Stream error:', message)
+        }
+      })
+    } catch (error) {
+      console.error('[SingleModelConvo] Error sending message:', error)
+      // Remove the placeholder on error
+      setSingleModelConvoHistory(prev => prev.slice(0, -1))
+      setSingleModelConvoInput(userMsg)
+      alert('Failed to send message. Please try again.')
+    } finally {
+      setIsSendingSingleConvo(false)
+      setIsSearchingInSingleConvo(false)
+    }
+  }
+
   // Auto-grow conversation textarea
   const adjustConvoTextarea = () => {
     const textarea = convoTextareaRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+      textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px'
+    }
+  }
+
+  // Auto-grow single-model conversation textarea
+  const adjustSingleConvoTextarea = () => {
+    const textarea = singleConvoTextareaRef.current
     if (textarea) {
       textarea.style.height = 'auto'
       textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px'
@@ -883,6 +1020,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
     ? (summary.singleModel ? (summary.modelName || 'Model') : 'Summary')
     : (responses.length === 1 ? (responses[0].modelName || 'Model') : null)
   const showConversationInput = summary && !summary.singleModel
+  const showSingleModelConvoInput = !summary && responses.length === 1 && !responses[0].error && lastSubmittedPrompt
   const bottomBarStyle = {
     flexShrink: 0,
     padding: '12px 40px 20px',
@@ -1150,7 +1288,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                       color: currentTheme.textMuted,
                       fontStyle: 'italic',
                     }}>
-                      Fetching response...
+                      Loading summary model's response...
                     </span>
                   </motion.div>
                 )}
@@ -1200,6 +1338,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                     {(responses.length > 0 && lastSubmittedPrompt) && (
                       <div style={{ display: 'flex', justifyContent: 'stretch', gap: '6px', marginBottom: '8px', width: '100%' }}>
                         {/* Clear Summary Button */}
+                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
                         <motion.button
                           onClick={() => {
                             clearResponses()
@@ -1236,12 +1375,38 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                             background: theme === 'light' ? 'rgba(255, 40, 30, 0.95)' : 'rgba(255, 59, 48, 0.25)',
                           }}
                           whileTap={{ scale: 0.96 }}
-                          title="Clear summary and all council responses"
                         >
                           <Trash2 size={12} />
                           Clear Summary
                         </motion.button>
+                          <div
+                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
+                            onMouseEnter={() => setShowClearSummaryTooltip(true)}
+                            onMouseLeave={() => setShowClearSummaryTooltip(false)}
+                          >
+                            <Info size={10} color={currentTheme.textMuted} />
+                            {showClearSummaryTooltip && (
+                              <div style={{
+                                position: 'absolute',
+                                bottom: '16px',
+                                right: 0,
+                                background: currentTheme.backgroundOverlay,
+                                border: `1px solid ${currentTheme.borderLight}`,
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                fontSize: '0.7rem',
+                                color: currentTheme.textSecondary,
+                                width: '180px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                zIndex: 100,
+                              }}>
+                                Clear the summary and all council responses for this prompt.
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
+                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
                         <motion.button
                           onClick={() => {
                             if (!currentUser?.id) {
@@ -1276,6 +1441,32 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                           <Trophy size={12} />
                           Post Prompt
                         </motion.button>
+                          <div
+                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
+                            onMouseEnter={() => setShowPostPromptTooltip(true)}
+                            onMouseLeave={() => setShowPostPromptTooltip(false)}
+                          >
+                            <Info size={10} color={currentTheme.textMuted} />
+                            {showPostPromptTooltip && (
+                              <div style={{
+                                position: 'absolute',
+                                bottom: '16px',
+                                right: 0,
+                                background: currentTheme.backgroundOverlay,
+                                border: `1px solid ${currentTheme.borderLight}`,
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                fontSize: '0.7rem',
+                                color: currentTheme.textSecondary,
+                                width: '180px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                zIndex: 100,
+                              }}>
+                                Submit your prompt and the council's response to the community leaderboard.
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
                         <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
                           <motion.button
@@ -1521,114 +1712,405 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                   </div>
                 )}
 
-                {/* Buttons for single model response (no conversation input) */}
-                {!showConversationInput && inlineResponseText && lastSubmittedPrompt && (
-                  <div style={{ display: 'flex', justifyContent: 'stretch', gap: '6px', marginTop: '16px', width: '100%' }}>
-                    {/* Clear Button */}
-                    <motion.button
-                      onClick={() => {
-                        clearResponses()
-                        clearLastSubmittedPrompt()
-                        if (currentUser?.id) {
-                          axios.post(`${API_URL}/api/judge/clear-context`, {
-                            userId: currentUser.id
-                          }).catch(err => console.error('[Clear Context] Error:', err))
-                        }
-                        setConversationInput('')
-                        setConversationContext([])
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: '4px 6px',
-                        background: theme === 'light' ? 'rgba(255, 59, 48, 0.85)' : 'rgba(255, 59, 48, 0.15)',
-                        border: theme === 'light' ? '1px solid rgba(200, 40, 30, 0.8)' : '1px solid rgba(255, 59, 48, 0.4)',
-                        borderRadius: '12px',
-                        color: theme === 'light' ? '#fff' : '#ff6b6b',
-                        fontSize: '0.7rem',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px',
-                        transition: 'all 0.2s ease',
-                        whiteSpace: 'nowrap',
-                        height: '28px',
-                      }}
-                      whileHover={{ 
-                        background: theme === 'light' ? 'rgba(255, 40, 30, 0.95)' : 'rgba(255, 59, 48, 0.25)',
-                      }}
-                      whileTap={{ scale: 0.96 }}
-                      title="Clear response"
-                    >
-                      <Trash2 size={12} />
-                      Clear
-                    </motion.button>
+                {/* Single-model conversation history */}
+                {showSingleModelConvoInput && singleModelConvoHistory.length > 0 && (
+                  singleModelConvoHistory.map((exchange, idx) => (
+                    <React.Fragment key={`single-convo-${idx}`}>
+                      {/* User follow-up bubble */}
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <div style={{
+                          maxWidth: '75%',
+                          background: currentTheme.buttonBackground,
+                          border: `1px solid ${currentTheme.borderLight}`,
+                          borderRadius: '16px 16px 4px 16px',
+                          padding: '12px 18px',
+                        }}>
+                          <div style={{
+                            fontSize: '0.7rem',
+                            fontWeight: '600',
+                            color: currentTheme.text,
+                            marginBottom: '4px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                          }}>
+                            You
+              </div>
+                          <p style={{
+                            color: currentTheme.text,
+                            lineHeight: '1.6',
+                            fontSize: '1rem',
+                            whiteSpace: 'pre-wrap',
+                            margin: 0,
+                          }}>
+                            {exchange.user}
+                          </p>
+                        </div>
+                      </div>
 
-                    {/* Post Prompt Button */}
-                    <motion.button
-                      onClick={() => {
-                        if (!currentUser?.id) {
-                          alert('Please sign in to submit prompts to the leaderboard')
-                          return
-                        }
-                        setShowVotingConfirm(true)
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: '4px 6px',
-                        background: theme === 'light' ? 'rgba(255, 140, 0, 0.85)' : 'rgba(255, 170, 0, 0.15)',
-                        border: theme === 'light' ? '1px solid rgba(200, 100, 0, 0.8)' : '1px solid rgba(255, 170, 0, 0.4)',
-                        borderRadius: '12px',
-                        color: theme === 'light' ? '#fff' : '#ffaa00',
-                        fontSize: '0.7rem',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px',
-                        transition: 'all 0.2s ease',
-                        whiteSpace: 'nowrap',
-                        height: '28px',
-                      }}
-                      whileHover={{ 
-                        background: theme === 'light' ? 'rgba(255, 120, 0, 0.95)' : 'rgba(255, 170, 0, 0.25)',
-                      }}
-                      whileTap={{ scale: 0.96 }}
-                    >
-                      <Trophy size={12} />
-                      Post Prompt
-                    </motion.button>
+                      {/* Model response - free flowing */}
+                      <div style={{ padding: '4px 0 0 4px' }}>
+                        <div style={{
+                          marginBottom: '10px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}>
+                          <span style={{
+                            color: currentTheme.accent,
+                            fontSize: '0.8rem',
+                            fontWeight: '600',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                          }}>
+                            {inlineResponseLabel || 'Response'}
+                          </span>
+          </div>
+                        <div style={{
+                          color: currentTheme.textSecondary,
+                          lineHeight: '1.85',
+                          fontSize: '1rem',
+                          whiteSpace: 'pre-wrap',
+                          margin: 0,
+                        }}>
+                          {exchange.assistant}
+        </div>
+                      </div>
+                    </React.Fragment>
+                  ))
+                )}
 
-                    {/* Save Convo Button */}
-                    <motion.button
-                      onClick={handleSaveConversation}
-                      disabled={convoSavingState === 'saving' || convoSavingState === 'saved'}
+                {/* Web Search Indicator for single-model convo */}
+                {isSearchingInSingleConvo && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 12px',
+                      background: currentTheme.buttonBackground,
+                      borderRadius: '20px',
+                      width: 'fit-content',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    <Search size={14} color={currentTheme.accent} />
+                    <span style={{
+                      fontSize: '0.85rem',
+                      color: currentTheme.text,
+                      background: currentTheme.accentGradient,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                    }}>
+                      Searching the web
+                    </span>
+                    <motion.span
+                      animate={{ opacity: [1, 0.3, 1] }}
+                      transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
                       style={{
-                        flex: 1,
-                        padding: '4px 6px',
-                        background: convoSavingState === 'saved' ? 'rgba(0, 200, 100, 0.18)' : currentTheme.buttonBackground,
-                        border: `1px solid ${convoSavingState === 'saved' ? 'rgba(0, 200, 100, 0.45)' : currentTheme.borderLight}`,
-                        borderRadius: '12px',
-                        color: convoSavingState === 'saved' ? '#00c864' : currentTheme.accent,
-                        fontSize: '0.7rem',
-                        fontWeight: '500',
-                        cursor: (convoSavingState === 'saving' || convoSavingState === 'saved') ? 'not-allowed' : 'pointer',
-                        opacity: convoSavingState === 'saving' ? 0.6 : 1,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px',
-                        whiteSpace: 'nowrap',
-                        height: '28px',
+                        background: currentTheme.accentGradient,
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
                       }}
-                      whileHover={(convoSavingState !== 'saving' && convoSavingState !== 'saved') ? { scale: 1.02 } : {}}
-                      title={convoSavingState === 'saved' ? 'Already saved' : 'Save this conversation'}
                     >
-                      <Save size={12} />
-                      {convoSavingState === 'saving' ? 'Saving...' : convoSavingState === 'saved' ? 'Saved!' : 'Save Convo'}
-                    </motion.button>
+                      ...
+                    </motion.span>
+                  </motion.div>
+                )}
+
+                {/* Fetching single-model response indicator */}
+                {isSendingSingleConvo && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '12px 16px',
+                      maxWidth: '85%',
+                    }}
+                  >
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        border: `2px solid ${currentTheme.borderLight}`,
+                        borderTop: `2px solid ${currentTheme.accent}`,
+                        borderRadius: '50%',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{
+                      fontSize: '0.85rem',
+                      color: currentTheme.textMuted,
+                      fontStyle: 'italic',
+                    }}>
+                      {responses.length === 1
+                        ? `Loading ${allModels.find(m => m.id === responses[0]?.modelName)?.providerName || 'model'}'s response...`
+                        : 'Loading response...'}
+                    </span>
+                  </motion.div>
+                )}
+
+                {/* Single-model conversation input + action buttons */}
+                {showSingleModelConvoInput && (
+                  <div style={{ padding: '8px 0 0 0' }}>
+                    {/* Action buttons row */}
+                    {(responses.length > 0 && lastSubmittedPrompt) && (
+                      <div style={{ display: 'flex', justifyContent: 'stretch', gap: '6px', marginBottom: '8px', width: '100%' }}>
+                        {/* Clear Button */}
+                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
+                        <motion.button
+                          onClick={() => {
+                            clearResponses()
+                            clearLastSubmittedPrompt()
+                            if (currentUser?.id) {
+                              axios.post(`${API_URL}/api/judge/clear-context`, {
+                                userId: currentUser.id
+                              }).catch(err => console.error('[Clear Context] Error:', err))
+                            }
+                            setConversationInput('')
+                            setConversationContext([])
+                            setSingleModelConvoInput('')
+                            setSingleModelConvoHistory([])
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '4px 6px',
+                            background: theme === 'light' ? 'rgba(255, 59, 48, 0.85)' : 'rgba(255, 59, 48, 0.15)',
+                            border: theme === 'light' ? '1px solid rgba(200, 40, 30, 0.8)' : '1px solid rgba(255, 59, 48, 0.4)',
+                            borderRadius: '12px',
+                            color: theme === 'light' ? '#fff' : '#ff6b6b',
+                            fontSize: '0.7rem',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            transition: 'all 0.2s ease',
+                            whiteSpace: 'nowrap',
+                            height: '28px',
+                          }}
+                          whileHover={{ 
+                            background: theme === 'light' ? 'rgba(255, 40, 30, 0.95)' : 'rgba(255, 59, 48, 0.25)',
+                          }}
+                          whileTap={{ scale: 0.96 }}
+                        >
+                          <Trash2 size={12} />
+                          Clear
+                        </motion.button>
+                          <div
+                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
+                            onMouseEnter={() => setShowClearTooltip(true)}
+                            onMouseLeave={() => setShowClearTooltip(false)}
+                          >
+                            <Info size={10} color={currentTheme.textMuted} />
+                            {showClearTooltip && (
+                              <div style={{
+                                position: 'absolute',
+                                bottom: '16px',
+                                right: 0,
+                                background: currentTheme.backgroundOverlay,
+                                border: `1px solid ${currentTheme.borderLight}`,
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                fontSize: '0.7rem',
+                                color: currentTheme.textSecondary,
+                                width: '180px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                zIndex: 100,
+                              }}>
+                                Clear the model response and conversation history.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Post Prompt Button */}
+                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
+                        <motion.button
+                          onClick={() => {
+                            if (!currentUser?.id) {
+                              alert('Please sign in to submit prompts to the leaderboard')
+                              return
+                            }
+                            setShowVotingConfirm(true)
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '4px 6px',
+                            background: theme === 'light' ? 'rgba(255, 140, 0, 0.85)' : 'rgba(255, 170, 0, 0.15)',
+                            border: theme === 'light' ? '1px solid rgba(200, 100, 0, 0.8)' : '1px solid rgba(255, 170, 0, 0.4)',
+                            borderRadius: '12px',
+                            color: theme === 'light' ? '#fff' : '#ffaa00',
+                            fontSize: '0.7rem',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            transition: 'all 0.2s ease',
+                            whiteSpace: 'nowrap',
+                            height: '28px',
+                          }}
+                          whileHover={{ 
+                            background: theme === 'light' ? 'rgba(255, 120, 0, 0.95)' : 'rgba(255, 170, 0, 0.25)',
+                          }}
+                          whileTap={{ scale: 0.96 }}
+                        >
+                          <Trophy size={12} />
+                          Post Prompt
+                        </motion.button>
+                          <div
+                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
+                            onMouseEnter={() => setShowPostPromptSingleTooltip(true)}
+                            onMouseLeave={() => setShowPostPromptSingleTooltip(false)}
+                          >
+                            <Info size={10} color={currentTheme.textMuted} />
+                            {showPostPromptSingleTooltip && (
+                              <div style={{
+                                position: 'absolute',
+                                bottom: '16px',
+                                right: 0,
+                                background: currentTheme.backgroundOverlay,
+                                border: `1px solid ${currentTheme.borderLight}`,
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                fontSize: '0.7rem',
+                                color: currentTheme.textSecondary,
+                                width: '180px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                zIndex: 100,
+                              }}>
+                                Submit your prompt and response to the community leaderboard.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Save Convo Button */}
+                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
+                        <motion.button
+                          onClick={handleSaveConversation}
+                          disabled={convoSavingState === 'saving' || convoSavingState === 'saved'}
+                          style={{
+                            flex: 1,
+                            padding: '4px 6px',
+                            background: convoSavingState === 'saved' ? 'rgba(0, 200, 100, 0.18)' : currentTheme.buttonBackground,
+                            border: `1px solid ${convoSavingState === 'saved' ? 'rgba(0, 200, 100, 0.45)' : currentTheme.borderLight}`,
+                            borderRadius: '12px',
+                            color: convoSavingState === 'saved' ? '#00c864' : currentTheme.accent,
+                            fontSize: '0.7rem',
+                            fontWeight: '500',
+                            cursor: (convoSavingState === 'saving' || convoSavingState === 'saved') ? 'not-allowed' : 'pointer',
+                            opacity: convoSavingState === 'saving' ? 0.6 : 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            whiteSpace: 'nowrap',
+                            height: '28px',
+                          }}
+                          whileHover={(convoSavingState !== 'saving' && convoSavingState !== 'saved') ? { scale: 1.02 } : {}}
+                        >
+                          <Save size={12} />
+                          {convoSavingState === 'saving' ? 'Saving...' : convoSavingState === 'saved' ? 'Saved!' : 'Save Convo'}
+                        </motion.button>
+                          <div
+                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
+                            onMouseEnter={() => setShowSaveConvoSingleTooltip(true)}
+                            onMouseLeave={() => setShowSaveConvoSingleTooltip(false)}
+                          >
+                            <Info size={10} color={currentTheme.textMuted} />
+                            {showSaveConvoSingleTooltip && (
+                              <div style={{
+                                position: 'absolute',
+                                bottom: '16px',
+                                right: 0,
+                                background: currentTheme.backgroundOverlay,
+                                border: `1px solid ${currentTheme.borderLight}`,
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                fontSize: '0.7rem',
+                                color: currentTheme.textSecondary,
+                                width: '180px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                zIndex: 100,
+                              }}>
+                                Save this conversation and its history for later viewing.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Conversation text input */}
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                      <div style={{ flex: 1, position: 'relative' }}>
+                        <textarea
+                          ref={singleConvoTextareaRef}
+                          value={singleModelConvoInput}
+                          onChange={(e) => {
+                            setSingleModelConvoInput(e.target.value)
+                            adjustSingleConvoTextarea()
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault()
+                              handleSendSingleModelConvo()
+                            }
+                          }}
+                          placeholder="Continue the conversation..."
+                          disabled={isSendingSingleConvo}
+                          style={{
+                            width: '100%',
+                            minHeight: '48px',
+                            maxHeight: '150px',
+                            padding: '12px 48px 12px 18px',
+                            background: currentTheme.buttonBackground,
+                            border: `1px solid ${currentTheme.borderLight}`,
+                            borderRadius: '24px',
+                            color: currentTheme.text,
+                            fontSize: '0.95rem',
+                            resize: 'none',
+                            fontFamily: 'inherit',
+                            outline: 'none',
+                            lineHeight: '1.5',
+                            overflow: 'hidden',
+                          }}
+                        />
+                        <motion.button
+                          onClick={handleSendSingleModelConvo}
+                          disabled={!singleModelConvoInput.trim() || isSendingSingleConvo}
+                        style={{
+                          position: 'absolute',
+                            right: '8px',
+                            bottom: '8px',
+                            background: 'transparent',
+                            border: 'none',
+                            color: (!singleModelConvoInput.trim() || isSendingSingleConvo) ? currentTheme.textMuted : currentTheme.accent,
+                            cursor: (!singleModelConvoInput.trim() || isSendingSingleConvo) ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '6px',
+                            borderRadius: '50%',
+                            opacity: (!singleModelConvoInput.trim() || isSendingSingleConvo) ? 0.4 : 1,
+                          }}
+                          whileHover={singleModelConvoInput.trim() && !isSendingSingleConvo ? { scale: 1.1 } : {}}
+                          whileTap={singleModelConvoInput.trim() && !isSendingSingleConvo ? { scale: 0.95 } : {}}
+                        >
+                          <Send size={16} />
+                        </motion.button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1657,11 +2139,11 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
                     <Search size={14} color={currentTheme.accent} />
                     <span style={{ color: currentTheme.accent, fontSize: '0.75rem', fontWeight: 'bold' }}>Searching the web</span>
                     <motion.span
@@ -1675,18 +2157,18 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                 )}
                 {streakDays > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Flame size={14} color="#FF6B00" />
-                    <span style={{ color: '#FF6B00', fontSize: '0.75rem', fontWeight: 'bold' }}>
-                      {streakDays} day streak
-                    </span>
+                        <Flame size={14} color="#FF6B00" />
+                        <span style={{ color: '#FF6B00', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                          {streakDays} day streak
+                        </span>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
             )}
             {/* Welcome Title */}
             <h2
               key={`welcome-title-${theme}`}
-              style={{
+                    style={{
                 textAlign: 'center',
                 fontSize: '1.3rem',
                 fontWeight: '600',
@@ -1700,6 +2182,52 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
               Welcome to the Council of the LLMs
             </h2>
 
+            {/* Fetching Response Indicator - above prompt box */}
+            <AnimatePresence>
+              {(isLoading || isGeneratingSummary) && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  transition={{ duration: 0.25 }}
+                    style={{
+                      display: 'flex',
+                    alignItems: 'center',
+                      justifyContent: 'center',
+                    gap: '12px',
+                    marginBottom: '14px',
+                    padding: '12px 24px',
+                  }}
+                >
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      border: `2.5px solid ${currentTheme.borderLight}`,
+                      borderTop: `2.5px solid ${currentTheme.accent}`,
+                      borderRadius: '50%',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span style={{
+                    fontSize: '0.95rem',
+                    fontWeight: '500',
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  }}>
+                    {isGeneratingSummary 
+                      ? 'Working on summary...' 
+                      : selectedModels.length === 1
+                        ? `Loading ${allModels.find(m => m.id === selectedModels[0])?.providerName || 'model'}'s response...`
+                        : 'Loading Council of LLMs responses...'}
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Unified Prompt Box with embedded provider buttons */}
             <div style={{
               position: 'relative',
@@ -1709,8 +2237,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
               overflow: 'visible',
               boxShadow: `0 2px 12px ${currentTheme.shadow}`,
             }}>
-              {/* Subscription Restricted Overlay */}
-              {subscriptionRestricted && (
+              {/* Subscription Lock Overlay — shown when paused or expired */}
+              {isPromptLocked && (
                 <div
                   style={{
                     position: 'absolute',
@@ -1723,17 +2251,79 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    background: 'rgba(0, 0, 0, 0.7)',
-                    backdropFilter: 'blur(4px)',
+                    background: subscriptionPaused && !subscriptionRestricted
+                      ? 'linear-gradient(135deg, rgba(0, 0, 0, 0.75) 0%, rgba(30, 30, 50, 0.85) 100%)'
+                      : 'rgba(0, 0, 0, 0.75)',
+                    backdropFilter: 'blur(6px)',
                     borderRadius: '20px',
-                    gap: '8px',
-                    padding: '12px',
+                    gap: '10px',
+                    padding: '24px 20px',
                   }}
                 >
-                  <Lock size={24} color="#ff6b6b" />
-                  <p style={{ color: '#ff6b6b', fontSize: '0.85rem', fontWeight: '600', textAlign: 'center', margin: 0 }}>
-                    Resubscribe to send prompts
+                  <div style={{
+                    width: '52px',
+                    height: '52px',
+                    borderRadius: '50%',
+                    background: subscriptionPaused && !subscriptionRestricted
+                      ? 'linear-gradient(135deg, rgba(255, 170, 0, 0.2), rgba(255, 170, 0, 0.08))'
+                      : 'linear-gradient(135deg, rgba(255, 59, 48, 0.2), rgba(255, 59, 48, 0.08))',
+                    border: `1.5px solid ${subscriptionPaused && !subscriptionRestricted ? 'rgba(255, 170, 0, 0.4)' : 'rgba(255, 59, 48, 0.4)'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    {subscriptionPaused && !subscriptionRestricted
+                      ? <PauseCircle size={26} color="#ffaa00" />
+                      : <Lock size={24} color="#ff6b6b" />
+                    }
+                  </div>
+                  <p style={{
+                    color: subscriptionPaused && !subscriptionRestricted ? '#ffaa00' : '#ff6b6b',
+                    fontSize: '0.95rem',
+                    fontWeight: '600',
+                    textAlign: 'center',
+                    margin: 0,
+                    lineHeight: '1.4',
+                  }}>
+                    {subscriptionPaused && !subscriptionRestricted
+                      ? 'Your account is paused'
+                      : 'Subscription expired'
+                    }
                   </p>
+                  <p style={{
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    fontSize: '0.8rem',
+                    textAlign: 'center',
+                    margin: 0,
+                    maxWidth: '280px',
+                    lineHeight: '1.4',
+                  }}>
+                    {subscriptionPaused && !subscriptionRestricted
+                      ? 'Resume your subscription to start prompting again.'
+                      : 'Resubscribe to send prompts.'
+                    }
+                  </p>
+                  <motion.button
+                    onClick={() => setActiveTab('settings')}
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.96 }}
+                    style={{
+                      marginTop: '4px',
+                      padding: '8px 20px',
+                      background: subscriptionPaused && !subscriptionRestricted
+                        ? 'linear-gradient(135deg, #ffaa00, #ff8800)'
+                        : 'linear-gradient(135deg, #ff6b6b, #ee5a5a)',
+                      border: 'none',
+                      borderRadius: '10px',
+                      color: '#fff',
+                      fontSize: '0.8rem',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      letterSpacing: '0.3px',
+                    }}
+                  >
+                    {subscriptionPaused && !subscriptionRestricted ? 'Resume in Settings' : 'Resubscribe in Settings'}
+                  </motion.button>
                 </div>
               )}
 
@@ -1743,15 +2333,15 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                 className="main-prompt-input"
                 value={currentPrompt}
                 onChange={(e) => {
-                  if (!subscriptionRestricted) {
+                  if (!isPromptLocked) {
                     setCurrentPrompt(e.target.value)
                     const textarea = e.target
                     textarea.style.height = 'auto'
                     textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px'
                   }
                 }}
-                disabled={subscriptionRestricted}
-                placeholder={subscriptionRestricted ? "Resubscribe to send prompts..." : "Enter a new prompt here to receive responses from the Council of LLMs..."}
+                disabled={isPromptLocked}
+                placeholder={isPromptLocked ? (subscriptionPaused ? "Account paused..." : "Resubscribe to send prompts...") : "Enter a prompt here to get a response from the council of LLMs or individual models..."}
                 style={{
                   width: '100%',
                   minHeight: '70px',
@@ -1800,52 +2390,59 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                 {/* Right side: provider buttons + send */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   {availableModels.length > 0 && sortedProviders.map(([providerKey, providerData]) => {
-                    const isPlaceholder = providerData.isPlaceholder || false
+                  const isPlaceholder = providerData.isPlaceholder || false
                     if (isPlaceholder) return null
-                    const hasSelectedModels = providerData.models.some(m => selectedModels.includes(m.id))
-                    const hasAutoSmart = autoSmartProviders[providerKey] || false
+                      const hasSelectedModels = providerData.models.some(m => selectedModels.includes(m.id))
+                  const hasAutoSmart = autoSmartProviders[providerKey] || false
                     const isActive = hasSelectedModels || hasAutoSmart
                     const isExpanded = expandedProviders[providerKey]
-
-                    return (
+                  
+                  return (
                       <div key={providerKey} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                        <button
-                          ref={(el) => {
-                            if (el) providerButtonRefs.current[providerKey] = el
-                          }}
-                          onClick={(e) => {
+                      <button
+                        ref={(el) => {
+                              if (el) providerButtonRefs.current[providerKey] = el
+                        }}
+                        onClick={(e) => {
                             handleProviderTabClick(providerKey, e)
                             e.currentTarget.blur()
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') e.preventDefault()
-                          }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
+                        }}
+                        onKeyDown={(e) => {
+                              if (e.key === 'Enter') e.preventDefault()
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
                             gap: '4px',
                             padding: '5px 8px',
                             height: '30px',
                             background: isActive
-                              ? `${currentTheme.accent}18`
+                              ? (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(93, 133, 186, 0.18)')
                               : 'transparent',
-                            border: `1px solid ${isActive ? currentTheme.accent + '50' : currentTheme.borderLight}`,
+                            border: `1px solid ${isActive ? (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(93, 133, 186, 0.5)') : currentTheme.borderLight}`,
                             borderRadius: '8px',
-                            color: isActive ? currentTheme.accent : currentTheme.textSecondary,
+                            color: isActive ? (currentTheme.name === 'dark' ? '#111' : '#2c5282') : currentTheme.textSecondary,
                             cursor: 'pointer',
                             fontSize: '0.8rem',
-                            fontWeight: isActive ? '600' : '500',
+                            fontWeight: isActive ? '700' : '500',
                             whiteSpace: 'nowrap',
-                            transition: 'all 0.2s ease',
-                            outline: 'none',
-                            WebkitTapHighlightColor: 'transparent',
+                          transition: 'all 0.2s ease',
+                              outline: 'none',
+                              WebkitTapHighlightColor: 'transparent',
+                            boxShadow: isActive ? '0 1px 6px rgba(0,0,0,0.15)' : 'none',
                           }}
                         >
+                          {isActive && (
+                            <Check
+                              size={13}
+                              style={{ flexShrink: 0, color: '#22c55e', strokeWidth: 3 }}
+                            />
+                          )}
                           <span>{providerData.providerName}</span>
                           {isActive && (
                             <XCircle
                               size={13}
-                              style={{ flexShrink: 0, opacity: 0.7 }}
+                              style={{ flexShrink: 0, opacity: 0.5, color: isActive ? (currentTheme.name === 'dark' ? '#555' : '#ccc') : undefined }}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 // Deselect all models from this provider
@@ -1877,7 +2474,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                               flexShrink: 0,
                               padding: '0 1px',
                               marginLeft: '2px',
-                              borderLeft: `1px solid ${isActive ? currentTheme.accent + '30' : currentTheme.borderLight}`,
+                              borderLeft: `1px solid ${isActive ? (currentTheme.name === 'dark' ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.3)') : currentTheme.borderLight}`,
                               paddingLeft: '4px',
                             }}
                           >
@@ -1903,6 +2500,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                     const hasPromptOnly = currentPrompt.trim() && !hasModels
                     
                     return (
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                       <motion.button
                         onClick={() => {
                           if (canSubmit) {
@@ -1912,7 +2510,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                             setTimeout(() => setShowNoModelNotification(false), 4000)
                           }
                         }}
-                        style={{
+                          style={{ 
                           padding: '5px 16px',
                           height: '30px',
                           background: canSubmit ? currentTheme.accent : hasPromptOnly ? '#ffaa00' : currentTheme.borderLight,
@@ -1920,9 +2518,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                           borderRadius: '8px',
                           color: canSubmit || hasPromptOnly ? '#fff' : currentTheme.textMuted,
                           cursor: (canSubmit || hasPromptOnly) ? 'pointer' : 'not-allowed',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
                           gap: '6px',
                           fontSize: '0.8rem',
                           fontWeight: '600',
@@ -1934,10 +2532,36 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                       >
                         Send
                       </motion.button>
+                        <div
+                          style={{ position: 'absolute', top: '-8px', right: '-8px', cursor: 'help', zIndex: 10 }}
+                          onMouseEnter={() => setShowSendTooltip(true)}
+                          onMouseLeave={() => setShowSendTooltip(false)}
+                        >
+                          <Info size={10} color={currentTheme.textMuted} />
+                          {showSendTooltip && (
+                            <div style={{
+                              position: 'absolute',
+                              bottom: '16px',
+                              right: 0,
+                              background: currentTheme.backgroundOverlay,
+                              border: `1px solid ${currentTheme.borderLight}`,
+                              borderRadius: '8px',
+                              padding: '6px 10px',
+                              fontSize: '0.7rem',
+                              color: currentTheme.textSecondary,
+                              width: '200px',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                              zIndex: 100,
+                            }}>
+                              Send your prompt to the selected models. Select at least one provider and model first.
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     )
                   })()}
-                </div>
-              </div>
+                          </div>
+                    </div>
             </div>
           </div>
         </div>
@@ -1960,10 +2584,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                               if (el) dropdownRefs.current[providerKey] = el
                           }}
                         onClick={(e) => e.stopPropagation()}
-                          initial={{ opacity: 0, y: 10 }}
+                          initial={{ opacity: 0, y: -6 }}
                           animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 10 }}
-                          transition={{ duration: 0.2 }}
+                          exit={{ opacity: 0, y: -6 }}
+                          transition={{ duration: 0.15 }}
                           className="model-dropdown"
                           style={{
                           position: 'fixed',
@@ -2028,7 +2652,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                             />
                             <Sparkles size={16} color={autoSmartProviders[providerKey] ? currentTheme.accentSecondary : currentTheme.accent} />
                             <div style={{ flex: 1, color: currentTheme.textSecondary, fontSize: '0.9rem', fontWeight: '500' }}>
-                              Auto Smart
+                              Auto Select
                             </div>
                             {autoSmartProviders[providerKey] && (
                               <Check size={16} color={currentTheme.accentSecondary} style={{ flexShrink: 0 }} />
@@ -2356,7 +2980,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false }) => {
                 Select a Model First
               </div>
               <div style={{ color: currentTheme.textSecondary }}>
-                Please select at least one provider model or enable Auto Smart before submitting your prompt.
+                Please select at least one provider model or enable Auto Select before submitting your prompt.
               </div>
               <button
                 onClick={() => setShowNoModelNotification(false)}

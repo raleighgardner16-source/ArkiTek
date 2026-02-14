@@ -52,8 +52,6 @@ const stats = {
   usersProcessed: 0,
   usersFailed: 0,
   promptsMigrated: 0,
-  dailyRecords: 0,
-  monthlyRecords: 0,
   purchaseRecords: 0,
   leaderboardPosts: 0,
   adminsMigrated: false,
@@ -171,85 +169,8 @@ async function migrateUser(db, userId, userData, userAuth) {
       console.log(`  ✓ ${promptDocs.length} prompts`)
     }
     
-    // 3. Migrate daily usage
-    if (userData.dailyUsage) {
-      const dailyDocs = []
-      
-      for (const [month, days] of Object.entries(userData.dailyUsage)) {
-        for (const [date, dayData] of Object.entries(days)) {
-          dailyDocs.push({
-            userId: userId,
-            date: date,
-            inputTokens: dayData.inputTokens || 0,
-            outputTokens: dayData.outputTokens || 0,
-            queries: dayData.queries || 0,
-            prompts: dayData.prompts || 0,
-            models: dayData.models || {}
-          })
-        }
-      }
-      
-      if (!DRY_RUN && dailyDocs.length > 0) {
-        // Use bulkWrite for upsert behavior
-        const ops = dailyDocs.map(doc => ({
-          replaceOne: {
-            filter: { userId: doc.userId, date: doc.date },
-            replacement: doc,
-            upsert: true
-          }
-        }))
-        await db.collection('usage_daily').bulkWrite(ops)
-      }
-      
-      stats.dailyRecords += dailyDocs.length
-      console.log(`  ✓ ${dailyDocs.length} daily records`)
-    }
-    
-    // 4. Migrate monthly usage
-    if (userData.monthlyUsage) {
-      const monthlyDocs = []
-      
-      for (const [month, monthData] of Object.entries(userData.monthlyUsage)) {
-        // Build provider breakdown from provider data
-        const providerBreakdown = {}
-        if (userData.providers) {
-          for (const [provider, provData] of Object.entries(userData.providers)) {
-            if (provData.monthlyTokens?.[month]) {
-              providerBreakdown[provider] = {
-                tokens: provData.monthlyTokens[month] || 0,
-                inputTokens: provData.monthlyInputTokens?.[month] || 0,
-                outputTokens: provData.monthlyOutputTokens?.[month] || 0
-              }
-            }
-          }
-        }
-        
-        monthlyDocs.push({
-          userId: userId,
-          month: month,
-          tokens: monthData.tokens || 0,
-          inputTokens: monthData.inputTokens || 0,
-          outputTokens: monthData.outputTokens || 0,
-          queries: monthData.queries || 0,
-          prompts: monthData.prompts || 0,
-          providers: providerBreakdown
-        })
-      }
-      
-      if (!DRY_RUN && monthlyDocs.length > 0) {
-        const ops = monthlyDocs.map(doc => ({
-          replaceOne: {
-            filter: { userId: doc.userId, month: doc.month },
-            replacement: doc,
-            upsert: true
-          }
-        }))
-        await db.collection('user_monthly_usage').bulkWrite(ops)
-      }
-      
-      stats.monthlyRecords += monthlyDocs.length
-      console.log(`  ✓ ${monthlyDocs.length} monthly records`)
-    }
+    // 3. Daily usage — REMOVED (now stored in usage_data.dailyUsage)
+    // 4. Monthly usage — REMOVED (now stored in usage_data.monthlyUsage)
     
     // 5. Migrate purchases
     if (userData.purchasedCredits?.purchases && userData.purchasedCredits.purchases.length > 0) {
@@ -339,14 +260,6 @@ async function verifyMigration(db, usageData, usersData) {
       issues++
     }
     
-    // Check monthly records
-    const monthlyCount = await db.collection('user_monthly_usage').countDocuments({ userId })
-    const expectedMonthly = Object.keys(userData.monthlyUsage || {}).length
-    if (monthlyCount !== expectedMonthly) {
-      console.log(`  ⚠️  ${userId}: Monthly record count mismatch`)
-      issues++
-    }
-    
     // Check purchases
     const purchaseCount = await db.collection('purchases').countDocuments({ userId })
     const expectedPurchases = userData.purchasedCredits?.purchases?.length || 0
@@ -362,7 +275,7 @@ async function verifyMigration(db, usageData, usersData) {
   
   // Global stats
   console.log('\n📈 Database Statistics:')
-  const collections = ['users', 'prompts', 'usage_daily', 'user_monthly_usage', 'purchases', 'judge_context']
+  const collections = ['users', 'prompts', 'purchases', 'judge_context', 'usage_data', 'user_stats']
   for (const coll of collections) {
     const count = await db.collection(coll).countDocuments()
     console.log(`  ${coll}: ${count} documents`)
@@ -565,8 +478,6 @@ async function migrate() {
     console.log(`  Users processed:     ${stats.usersProcessed}`)
     console.log(`  Users failed:        ${stats.usersFailed}`)
     console.log(`  Prompts migrated:    ${stats.promptsMigrated}`)
-    console.log(`  Daily records:       ${stats.dailyRecords}`)
-    console.log(`  Monthly records:     ${stats.monthlyRecords}`)
     console.log(`  Purchases:           ${stats.purchaseRecords}`)
     console.log(`  Leaderboard posts:   ${stats.leaderboardPosts}`)
     console.log(`  Admins migrated:     ${stats.adminsMigrated ? '✓' : '✗'}`)

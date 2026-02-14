@@ -528,7 +528,7 @@ const SubscriptionManager = () => {
           }}
         >
           <div style={{ color: currentTheme.accent, fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '4px' }}>
-            $15/month
+            $19.95/month
           </div>
           <div style={{ color: currentTheme.textSecondary, fontSize: '0.9rem' }}>Full access to all features</div>
         </div>
@@ -756,7 +756,7 @@ const SubscriptionManager = () => {
               ) : (
                 <>
                   <CreditCard size={18} />
-                  Subscribe Now - $15/month
+                  Subscribe Now - $19.95/month
                 </>
               )}
             </button>

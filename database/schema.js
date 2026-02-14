@@ -2,19 +2,26 @@
  * MongoDB Schema Definitions for Arktek
  * 
  * This file defines the schema structure for all collections.
- * We're splitting the monolithic usage.json into separate collections
- * to enable efficient queries and avoid the 16MB document limit.
  * 
- * Collections:
+ * ═══════════════════════════════════════════════════════════
+ * ARKITEK DATABASE (primary user data)
+ * ═══════════════════════════════════════════════════════════
  * - users: Core user profile, auth, subscription, and purchased credits
  * - user_stats: Aggregated stats, monthly costs, and overage billing (one per user)
  * - usage_data: Full usage cache per user (single source of truth for all usage)
  * - prompts: Individual prompt documents with responses (one per prompt)
  * - purchases: Individual purchase records
  * - judge_context: Judge conversation context (max 5 per user)
+ * - model_conversation_context: Stored in usage_data.modelConversationContext (max 5 per model per user)
  * - leaderboard_posts: Public posts for voting/leaderboard
- * - metadata: App-wide statistics and admin tracking
+ * - password_resets: Temporary password reset tokens (auto-expire via TTL)
+ * 
+ * ═══════════════════════════════════════════════════════════
+ * ADMIN DATABASE (admin-only operational data)
+ * ═══════════════════════════════════════════════════════════
  * - admins: Admin user list
+ * - metadata: App-wide statistics and admin tracking (deleted users, user counts)
+ * - expenses: Monthly expense tracking (API costs, hosting, services)
  * 
  * REMOVED (data now lives in usage_data):
  * - usage_daily (removed — daily data stored in usage_data.dailyUsage)
@@ -278,8 +285,12 @@ export const leaderboardPostsSchema = {
   }]
 }
 
+// ═══════════════════════════════════════════════════════════
+// ADMIN DATABASE SCHEMAS (stored in separate "ADMIN" database)
+// ═══════════════════════════════════════════════════════════
+
 /**
- * METADATA COLLECTION
+ * METADATA COLLECTION (ADMIN DB)
  * 
  * App-wide statistics and admin tracking data.
  * Single document store for various metrics.
@@ -306,7 +317,7 @@ export const metadataSchema = {
 }
 
 /**
- * ADMINS COLLECTION
+ * ADMINS COLLECTION (ADMIN DB)
  * 
  * List of admin user IDs.
  * Single document with array of admin userIds.
@@ -316,6 +327,60 @@ export const metadataSchema = {
 export const adminsSchema = {
   _id: 'string',              // "admin_list"
   admins: ['string']          // Array of userIds who are admins
+}
+
+/**
+ * EXPENSES COLLECTION (ADMIN DB)
+ * 
+ * Monthly expense tracking for all services.
+ * One document per month, keyed by "YYYY-MM".
+ * 
+ * No indexes needed (small collection, direct _id lookup)
+ */
+export const expensesSchema = {
+  _id: 'string',              // Month key (e.g., "2026-02")
+  
+  // Stripe transaction fees
+  stripeFees: 'number',
+  
+  // LLM API provider costs
+  openaiCost: 'number',
+  anthropicCost: 'number',
+  googleCost: 'number',
+  metaCost: 'number',
+  deepseekCost: 'number',
+  mistralCost: 'number',
+  xaiCost: 'number',
+  
+  // Other service costs
+  serperCost: 'number',       // Serper search API
+  resendCost: 'number',       // Resend email service
+  mongoDbCost: 'number',      // MongoDB Atlas
+  railwayCost: 'number',      // Railway server hosting
+  vercelCost: 'number',       // Vercel frontend hosting
+  domainCost: 'number',       // Custom domain
+  
+  lastUpdated: 'Date'
+}
+
+/**
+ * PASSWORD_RESETS COLLECTION
+ * 
+ * Stores temporary password reset tokens. Tokens expire after 1 hour.
+ * MongoDB TTL index auto-deletes expired documents.
+ * 
+ * Index: { token: 1 } (unique, for token lookup)
+ * Index: { userId: 1 } (for user's pending resets)
+ * Index: { expiresAt: 1 } (TTL, auto-delete expired)
+ */
+export const passwordResetsSchema = {
+  _id: 'ObjectId',
+  token: 'string',            // Secure random 64-char hex token
+  userId: 'string',           // Foreign key to users._id
+  email: 'string',            // Email the reset was sent to
+  expiresAt: 'Date',          // When this token expires (1 hour from creation)
+  createdAt: 'Date',          // When this token was created
+  used: 'boolean',            // Whether this token has been used
 }
 
 /**
@@ -362,12 +427,21 @@ export const indexes = {
     // _id = userId, so no extra indexes needed for user lookup
   ],
   
-  metadata: [
-    // No indexes needed - direct _id lookup
-  ],
-  
-  admins: [
-    // No indexes needed - direct _id lookup
+  password_resets: [
+    { key: { token: 1 }, options: { unique: true } },
+    { key: { userId: 1 } },
+    { key: { expiresAt: 1 }, options: { expireAfterSeconds: 0 } } // TTL index — auto-deletes expired tokens
   ]
+}
+
+/**
+ * ADMIN DATABASE indexes
+ * These collections live in the separate "ADMIN" database.
+ * No indexes needed — all are small collections with direct _id lookups.
+ */
+export const adminIndexes = {
+  admins: [],
+  metadata: [],
+  expenses: [],
 }
 

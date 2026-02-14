@@ -196,7 +196,7 @@ const WelcomeScreen = () => {
           Subscription Pricing
         </h2>
         <p style={{ fontSize: '1rem', color: '#cccccc' }}>
-          Base subscription: <strong style={{ color: '#48c9b0' }}>$15/month</strong>
+          Base subscription: <strong style={{ color: '#48c9b0' }}>$19.95/month</strong>
         </p>
         <p style={{ fontSize: '0.9rem', color: '#aaaaaa', marginTop: '8px' }}>
           Additional charges apply based on token usage when using our API keys.

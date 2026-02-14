@@ -10,6 +10,7 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 import db from './database/db.js'
+import adminDb from './database/adminDb.js'
 
 async function addAdmin() {
   const username = process.argv[2]
@@ -24,8 +25,9 @@ async function addAdmin() {
   
   try {
     await db.connect()
+    await adminDb.connect()
     
-    // Check if user exists
+    // Check if user exists (in Arkitek DB)
     const user = await db.users.get(username)
     if (!user) {
       console.error(`❌ User "${username}" not found in database.`)
@@ -33,11 +35,11 @@ async function addAdmin() {
       process.exit(1)
     }
     
-    // Add to admin list
-    await db.admins.add(username)
+    // Add to admin list (in ADMIN DB)
+    await adminDb.admins.add(username)
     
     // Verify
-    const isAdmin = await db.admins.isAdmin(username)
+    const isAdmin = await adminDb.admins.isAdmin(username)
     if (isAdmin) {
       console.log(`✅ "${username}" is now an admin!`)
       console.log('\n   You can now access the admin dashboard at /admin')
@@ -49,6 +51,7 @@ async function addAdmin() {
     console.error('❌ Error:', error.message)
   } finally {
     await db.close()
+    await adminDb.close()
     process.exit(0)
   }
 }

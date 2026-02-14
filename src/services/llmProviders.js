@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { streamFetch } from '../utils/streamFetch'
 
 // LLM Provider configurations
 export const LLM_PROVIDERS = {
@@ -190,6 +191,52 @@ export const callLLM = async (providerKey, model, prompt, userId = null, isSumma
     }
     
     throw new Error(errorMessage)
+  }
+}
+
+// Streaming version of callLLM — uses SSE to stream tokens
+// onToken is called for each token, returns final metadata on completion
+export const callLLMStream = async (providerKey, model, prompt, userId = null, isSummary = false, onToken = () => {}) => {
+  // Track accumulated text from streamed tokens as a fallback
+  let accumulatedText = ''
+  const wrappedOnToken = (token) => {
+    accumulatedText += token
+    onToken(token)
+  }
+
+  const finalData = await streamFetch(`${BACKEND_URL}/api/llm/stream`, {
+    provider: providerKey,
+    model,
+    prompt,
+    userId,
+    isSummary,
+  }, {
+    onToken: wrappedOnToken,
+    onStatus: () => {},
+    onError: (message) => {
+      throw new Error(message)
+    }
+  })
+
+  // If we received tokens but didn't get the 'done' event, use accumulated text as fallback
+  if (!finalData) {
+    if (accumulatedText) {
+      console.warn(`[LLM Stream] No 'done' event received for ${providerKey}/${model}, using ${accumulatedText.length} chars of streamed text as fallback`)
+      return {
+        text: accumulatedText,
+        model: model,
+        originalModel: model,
+        tokens: null
+      }
+    }
+    throw new Error('Stream ended without final data')
+  }
+
+  return {
+    text: finalData.text,
+    model: finalData.model,
+    originalModel: finalData.originalModel || model,
+    tokens: finalData.tokens || null
   }
 }
 

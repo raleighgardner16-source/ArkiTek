@@ -8,6 +8,8 @@
     "dev:server": "node server.js",
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "build": "vite build",
+    "build:server": "npm run build && node server.js",
+    "start": "node server.js",
     "preview": "vite preview",
     "db:migrate": "node database/migrate.js",
     "db:migrate:dry": "node database/migrate.js --dry-run",
@@ -26,6 +28,7 @@
     "mongodb": "^6.21.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "resend": "^6.9.2",
     "stripe": "^14.10.0",
     "tiktoken": "^1.0.22",
     "zustand": "^4.4.7"

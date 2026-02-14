@@ -1,17 +1,73 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Search, FileText, ChevronDown, ChevronUp, Brain, Users, Gavel, Code } from 'lucide-react'
+import { X, Search, FileText, ChevronDown, ChevronUp, Brain, Users, Gavel, Code, MessageSquare } from 'lucide-react'
 import TokenUsageWindow from './TokenUsageWindow'
 import CostBreakdownWindow from './CostBreakdownWindow'
 import CategoryDetectionWindow from './CategoryDetectionWindow'
+import { useStore } from '../store/useStore'
+import axios from 'axios'
+import { API_URL } from '../utils/config'
 
 const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, tokenData, queryCount, categoryDetectionData }) => {
   const [isMinimized, setIsMinimized] = useState(false) // Start expanded by default
   const [expandedSection, setExpandedSection] = useState('refiner') // Start with refiner expanded
+  const [modelContexts, setModelContexts] = useState({}) // { modelName: [contextEntries] }
+  const [loadingModelContexts, setLoadingModelContexts] = useState(false)
+  const [liveJudgeContext, setLiveJudgeContext] = useState(null) // live-polled judge context
+  const [loadingJudgeContext, setLoadingJudgeContext] = useState(false)
+  const currentUser = useStore((state) => state.currentUser)
+  const responses = useStore((state) => state.responses || [])
 
   if (!debugData) {
     return null
   }
+
+  // Fetch both judge + model conversation contexts with live polling
+  useEffect(() => {
+    if (!currentUser?.id) return
+    
+    const fetchAllContexts = async () => {
+      // Fetch judge context
+      setLoadingJudgeContext(true)
+      try {
+        const judgeRes = await axios.get(`${API_URL}/api/judge/context`, {
+          params: { userId: currentUser.id }
+        })
+        setLiveJudgeContext(judgeRes.data.context || [])
+      } catch (err) {
+        console.error('[PipelineDebug] Error fetching judge context:', err)
+      }
+      setLoadingJudgeContext(false)
+      
+      // Fetch per-model contexts
+      if (responses.length > 0) {
+        setLoadingModelContexts(true)
+        const contexts = {}
+        
+        for (const resp of responses) {
+          const modelName = resp.modelName || resp.actualModelName
+          if (!modelName) continue
+          try {
+            const res = await axios.get(`${API_URL}/api/model/context`, {
+              params: { userId: currentUser.id, modelName }
+            })
+            contexts[modelName] = res.data.context || []
+          } catch (err) {
+            console.error(`[PipelineDebug] Error fetching context for ${modelName}:`, err)
+            contexts[modelName] = []
+          }
+        }
+        
+        setModelContexts(contexts)
+        setLoadingModelContexts(false)
+      }
+    }
+    
+    fetchAllContexts()
+    // Poll every 5 seconds so context updates are visible in real time
+    const interval = setInterval(fetchAllContexts, 5000)
+    return () => clearInterval(interval)
+  }, [currentUser?.id, responses.length])
 
   const sections = [
     { key: 'categoryDetection', label: 'Category Detection', icon: Code, color: '#00aaff' },
@@ -19,7 +75,8 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
     { key: 'refiner', label: 'Refiner Models', icon: FileText, color: '#ffaa00' },
     { key: 'council', label: 'Council Models', icon: Users, color: '#aa00ff' },
     { key: 'judgeFinalization', label: 'Judge Finalization', icon: Gavel, color: '#ff0088' },
-    { key: 'conversationContext', label: 'Conversation Context (5 Summaries)', icon: Brain, color: '#5dade2' }
+    { key: 'conversationContext', label: 'Judge Conversation Context (5 Summaries)', icon: Brain, color: '#5dade2' },
+    { key: 'modelConversationContext', label: 'Model Conversation Context (per model)', icon: MessageSquare, color: '#48c9b0' }
   ]
 
   const renderCategoryDetection = () => {
@@ -353,22 +410,23 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
   }
 
   const renderConversationContext = () => {
-    if (!debugData.conversationContext || !Array.isArray(debugData.conversationContext)) return null
+    // Prefer live-polled context, fall back to debugData snapshot
+    const context = liveJudgeContext || debugData.conversationContext || []
     
-    const context = debugData.conversationContext
-    
-    if (context.length === 0) {
+    if (!Array.isArray(context) || context.length === 0) {
       return (
         <div style={{ color: '#888', fontSize: '12px', fontStyle: 'italic' }}>
-          No conversation context available (no previous judge conversations)
+          No judge conversation context available (no previous judge conversations)
+          {loadingJudgeContext && <span style={{ marginLeft: '8px' }}>(loading...)</span>}
         </div>
       )
     }
     
     return (
       <div style={{ marginBottom: '16px' }}>
-        <div style={{ color: '#5dade2', fontWeight: 'bold', marginBottom: '8px' }}>
-          Last {context.length} Summary{context.length !== 1 ? 'ies' : ''} (Max 5):
+        <div style={{ color: '#5dade2', fontWeight: 'bold', marginBottom: '8px', fontSize: '12px' }}>
+          Judge rolling window — {context.length} / 5 entries. Position 0 = full response, 1-4 = summarized.
+          {loadingJudgeContext && <span style={{ color: '#888', marginLeft: '8px', fontWeight: 'normal' }}>(refreshing...)</span>}
         </div>
         {context.map((ctx, index) => (
           <div key={index} style={{ 
@@ -376,7 +434,9 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
             padding: '12px', 
             backgroundColor: '#0a0a0a', 
             borderRadius: '6px',
-            border: '1px solid rgba(93, 173, 226, 0.2)'
+            border: ctx.isFull 
+              ? '1px solid rgba(93, 173, 226, 0.5)' 
+              : '1px solid rgba(93, 173, 226, 0.2)'
           }}>
             <div style={{ 
               display: 'flex', 
@@ -384,26 +444,193 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
               alignItems: 'center',
               marginBottom: '6px'
             }}>
-              <div style={{ color: '#5dade2', fontSize: '11px', fontWeight: 'bold' }}>
-                Summary #{index + 1} ({ctx.tokens || 'N/A'} tokens)
+              <div style={{ 
+                color: ctx.isFull ? '#5dade2' : '#48c9b0', 
+                fontSize: '11px', 
+                fontWeight: 'bold' 
+              }}>
+                #{index} — {ctx.isFull ? '🟢 FULL RESPONSE' : `📝 SUMMARIZED (${ctx.tokens || 'N/A'} tokens)`}
               </div>
               {ctx.timestamp && (
-                <div style={{ color: '#888', fontSize: '10px' }}>
-                  {new Date(ctx.timestamp).toLocaleString()}
+                <div style={{ color: '#666', fontSize: '10px' }}>
+                  {new Date(ctx.timestamp).toLocaleTimeString()}
                 </div>
               )}
             </div>
-            <div style={{ 
-              color: '#ccc', 
-              fontSize: '11px',
-              lineHeight: '1.5',
-              whiteSpace: 'pre-wrap',
-              fontFamily: 'monospace'
-            }}>
-              {ctx.summary || 'No summary available'}
+            
+            {ctx.originalPrompt && (
+              <div style={{ marginBottom: '6px' }}>
+                <div style={{ color: '#ffaa00', fontSize: '10px', fontWeight: 'bold', marginBottom: '2px' }}>
+                  User prompt:
+                </div>
+                <div style={{ 
+                  color: '#ccc', 
+                  fontSize: '10px', 
+                  fontFamily: 'monospace',
+                  whiteSpace: 'pre-wrap',
+                  maxHeight: '60px',
+                  overflowY: 'auto'
+                }}>
+                  {(ctx.originalPrompt || '').substring(0, 300)}{(ctx.originalPrompt || '').length > 300 ? '...' : ''}
+                </div>
+              </div>
+            )}
+            
+            <div>
+              <div style={{ color: '#00ff88', fontSize: '10px', fontWeight: 'bold', marginBottom: '2px' }}>
+                {ctx.isFull ? 'Full response:' : 'Summary:'}
+              </div>
+              <div style={{ 
+                color: '#ccc', 
+                fontSize: '11px',
+                lineHeight: '1.5',
+                whiteSpace: 'pre-wrap',
+                fontFamily: 'monospace',
+                maxHeight: ctx.isFull ? '150px' : '80px',
+                overflowY: 'auto'
+              }}>
+                {ctx.isFull 
+                  ? (ctx.response || 'N/A').substring(0, 500) + ((ctx.response || '').length > 500 ? '...' : '')
+                  : (ctx.summary || 'No summary available')
+                }
+              </div>
             </div>
           </div>
         ))}
+      </div>
+    )
+  }
+
+  const renderModelConversationContext = () => {
+    const modelNames = Object.keys(modelContexts)
+    
+    if (loadingModelContexts && modelNames.length === 0) {
+      return (
+        <div style={{ color: '#888', fontSize: '12px', fontStyle: 'italic' }}>
+          Loading model conversation contexts...
+        </div>
+      )
+    }
+    
+    if (modelNames.length === 0) {
+      return (
+        <div style={{ color: '#888', fontSize: '12px', fontStyle: 'italic' }}>
+          No model conversation contexts available yet. Send a prompt to see context being stored.
+        </div>
+      )
+    }
+    
+    return (
+      <div style={{ marginBottom: '16px' }}>
+        <div style={{ color: '#48c9b0', fontWeight: 'bold', marginBottom: '12px', fontSize: '12px' }}>
+          Context is stored per-model, server-side. Position 0 = full response, 1-4 = summarized.
+          {loadingModelContexts && <span style={{ color: '#888', marginLeft: '8px' }}>(refreshing...)</span>}
+        </div>
+        
+        {modelNames.map(modelName => {
+          const context = modelContexts[modelName] || []
+          
+          return (
+            <div key={modelName} style={{ 
+              marginBottom: '16px', 
+              padding: '12px', 
+              backgroundColor: '#111', 
+              borderRadius: '8px',
+              border: '1px solid rgba(72, 201, 176, 0.3)'
+            }}>
+              <div style={{ 
+                color: '#48c9b0', 
+                fontWeight: 'bold', 
+                marginBottom: '8px',
+                fontSize: '13px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <span>{modelName}</span>
+                <span style={{ fontSize: '11px', color: '#888', fontWeight: 'normal' }}>
+                  {context.length} / 5 entries
+                </span>
+              </div>
+              
+              {context.length === 0 ? (
+                <div style={{ color: '#888', fontSize: '11px', fontStyle: 'italic' }}>
+                  No context entries yet
+                </div>
+              ) : (
+                context.map((ctx, idx) => (
+                  <div key={idx} style={{ 
+                    marginBottom: '8px', 
+                    padding: '10px', 
+                    backgroundColor: '#0a0a0a', 
+                    borderRadius: '6px',
+                    border: ctx.isFull 
+                      ? '1px solid rgba(72, 201, 176, 0.5)' 
+                      : '1px solid rgba(72, 201, 176, 0.15)'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      marginBottom: '6px'
+                    }}>
+                      <div style={{ 
+                        color: ctx.isFull ? '#48c9b0' : '#5dade2', 
+                        fontSize: '11px', 
+                        fontWeight: 'bold' 
+                      }}>
+                        #{idx} — {ctx.isFull ? '🟢 FULL RESPONSE' : `📝 SUMMARIZED (${ctx.tokens || 'N/A'} tokens)`}
+                      </div>
+                      {ctx.timestamp && (
+                        <div style={{ color: '#666', fontSize: '10px' }}>
+                          {new Date(ctx.timestamp).toLocaleTimeString()}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {ctx.originalPrompt && (
+                      <div style={{ marginBottom: '6px' }}>
+                        <div style={{ color: '#ffaa00', fontSize: '10px', fontWeight: 'bold', marginBottom: '2px' }}>
+                          User prompt:
+                        </div>
+                        <div style={{ 
+                          color: '#ccc', 
+                          fontSize: '10px', 
+                          fontFamily: 'monospace',
+                          whiteSpace: 'pre-wrap',
+                          maxHeight: '60px',
+                          overflowY: 'auto'
+                        }}>
+                          {ctx.originalPrompt.substring(0, 300)}{ctx.originalPrompt.length > 300 ? '...' : ''}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div>
+                      <div style={{ color: '#00ff88', fontSize: '10px', fontWeight: 'bold', marginBottom: '2px' }}>
+                        {ctx.isFull ? 'Full response:' : 'Summary:'}
+                      </div>
+                      <div style={{ 
+                        color: '#ccc', 
+                        fontSize: '10px',
+                        lineHeight: '1.5',
+                        whiteSpace: 'pre-wrap',
+                        fontFamily: 'monospace',
+                        maxHeight: ctx.isFull ? '150px' : '80px',
+                        overflowY: 'auto'
+                      }}>
+                        {ctx.isFull 
+                          ? (ctx.response || 'N/A').substring(0, 500) + ((ctx.response || '').length > 500 ? '...' : '')
+                          : (ctx.summary || 'No summary available')
+                        }
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )
+        })}
       </div>
     )
   }
@@ -422,6 +649,8 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
         return renderJudgeFinalization()
       case 'conversationContext':
         return renderConversationContext()
+      case 'modelConversationContext':
+        return renderModelConversationContext()
       default:
         return null
     }
@@ -571,7 +800,9 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
             {sections.map((section) => {
               const Icon = section.icon
               const isExpanded = expandedSection === section.key
-              const hasData = debugData[section.key]
+              // These sections are always shown (data comes from separate live-polled APIs, not debugData)
+              const alwaysShow = section.key === 'modelConversationContext' || section.key === 'conversationContext'
+              const hasData = alwaysShow ? true : debugData[section.key]
               
               if (!hasData) return null
               

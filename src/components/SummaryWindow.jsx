@@ -5,6 +5,7 @@ import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
+import { streamFetch } from '../utils/streamFetch'
 
 const SummaryWindow = () => {
   const getProviderName = (modelName) => {
@@ -135,96 +136,114 @@ const SummaryWindow = () => {
     if (!conversationInput.trim() || !currentUser?.id || isSendingMessage) return
     
     setIsSendingMessage(true)
-    setIsSearchingInConvo(false) // Reset search indicator
+    setIsSearchingInConvo(false)
+    const userMsg = conversationInput.trim()
+    setConversationInput('') // Clear input immediately for responsiveness
+    
+    // Preserve initial summary
+    const initialSummary = summary.initialSummary || summary.text
+    
+    // Add user message to history immediately and set empty assistant placeholder
+    setSummary(prev => ({
+      ...prev,
+      text: '', // Will be filled by streaming tokens
+      summary: '',
+      initialSummary: initialSummary,
+      prompt: `${prev.prompt || ''}\n\nUser: ${userMsg}`,
+      conversationHistory: [...(prev.conversationHistory || []), {
+        user: userMsg,
+        assistant: '', // Placeholder — will be updated as tokens stream in
+        timestamp: Date.now()
+      }]
+    }))
     
     try {
-      // First, check if this query needs web search
-      const detectResponse = await axios.post(`${API_URL}/api/detect-search-needed`, {
-        query: conversationInput.trim(),
-        userId: currentUser.id
-      })
-      
-      // If search is needed, show the indicator
-      if (detectResponse.data.needsSearch) {
-        setIsSearchingInConvo(true)
-      }
-      
-      const response = await axios.post(`${API_URL}/api/judge/conversation`, {
+      const finalData = await streamFetch(`${API_URL}/api/judge/conversation/stream`, {
         userId: currentUser.id,
-        userMessage: conversationInput.trim(),
+        userMessage: userMsg,
         conversationContext: conversationContext
-      })
-      
-      // Update summary with new response (now talking to Grok directly, not judge mode)
-      // Preserve the initial summary text if this is the first follow-up message
-      const initialSummary = summary.initialSummary || summary.text
-      
-      setSummary({
-        ...summary,
-        text: response.data.response,
-        summary: response.data.response,
-        initialSummary: initialSummary, // Keep the original judge summary
-        prompt: `${summary.prompt || ''}\n\nUser: ${conversationInput.trim()}`, // Update prompt to show conversation
-        conversationHistory: [...(summary.conversationHistory || []), {
-          user: conversationInput.trim(),
-          assistant: response.data.response, // Changed from 'judge' to 'assistant' since it's now Grok
-          timestamp: Date.now()
-        }]
-      })
-      
-      setConversationInput('')
-      
-      // If the conversation used search, update the RAG debug data and show Facts window
-      const store = useStore.getState()
-      if (response.data.debugData && response.data.usedSearch) {
-        
-        // Update RAG debug data with new search results and refined data
-        const existingDebugData = store.ragDebugData || {}
-        store.setRAGDebugData({
-          ...existingDebugData,
-          // Update search results
-          search: response.data.debugData.search,
-          // Update refiner data
-          refiner: response.data.debugData.refiner,
-          // Update category detection
-          categoryDetection: response.data.debugData.categoryDetection,
-          // Keep conversation context
-          conversationContext: existingDebugData.conversationContext || []
-        })
-        
-        // Show Facts & Sources window if we got search results
-        if (response.data.searchResults && response.data.searchResults.length > 0) {
-          store.setShowFactsWindow(true)
+      }, {
+        onToken: (token) => {
+          setIsSearchingInConvo(false)
+          setSummary(prev => {
+            const updatedHistory = [...(prev.conversationHistory || [])]
+            if (updatedHistory.length > 0) {
+              updatedHistory[updatedHistory.length - 1] = {
+                ...updatedHistory[updatedHistory.length - 1],
+                assistant: (updatedHistory[updatedHistory.length - 1].assistant || '') + token
+              }
+            }
+            return {
+              ...prev,
+              text: (prev.text || '') + token,
+              summary: (prev.text || '') + token,
+              conversationHistory: updatedHistory
+            }
+          })
+        },
+        onStatus: (message) => {
+          if (message.toLowerCase().includes('search')) {
+            setIsSearchingInConvo(true)
+          }
+        },
+        onError: (message) => {
+          console.error('[SummaryWindow] Stream error:', message)
         }
-      }
+      })
       
-      // Refresh context after a short delay to allow backend to store it
-      setTimeout(async () => {
-        await fetchConversationContext()
-        // Update debug pipeline with new conversation context
-        const ragDebugData = store.ragDebugData
-        if (ragDebugData && currentUser?.id) {
-          try {
-            // Use query parameter to handle special characters (colons, etc.) better
-            const contextResponse = await axios.get(`${API_URL}/api/judge/context`, {
-              params: { userId: currentUser.id }
-            })
-            const updatedContext = contextResponse.data.context || []
-            store.setRAGDebugData({
-              ...ragDebugData,
-              conversationContext: updatedContext
-            })
-          } catch (error) {
-            console.error('[SummaryWindow] Error updating debug pipeline context:', error)
+      // Handle final metadata from 'done' event
+      if (finalData) {
+        const store = useStore.getState()
+        if (finalData.debugData && finalData.usedSearch) {
+          const existingDebugData = store.ragDebugData || {}
+          store.setRAGDebugData({
+            ...existingDebugData,
+            search: finalData.debugData.search,
+            refiner: finalData.debugData.refiner,
+            categoryDetection: finalData.debugData.categoryDetection,
+            conversationContext: existingDebugData.conversationContext || []
+          })
+          
+          if (finalData.searchResults && finalData.searchResults.length > 0) {
+            store.setShowFactsWindow(true)
           }
         }
-      }, 500)
+        
+        // Refresh context
+        setTimeout(async () => {
+          await fetchConversationContext()
+          const ragDebugData = store.ragDebugData
+          if (ragDebugData && currentUser?.id) {
+            try {
+              const contextResponse = await axios.get(`${API_URL}/api/judge/context`, {
+                params: { userId: currentUser.id }
+              })
+              const updatedContext = contextResponse.data.context || []
+              store.setRAGDebugData({
+                ...ragDebugData,
+                conversationContext: updatedContext
+              })
+            } catch (error) {
+              console.error('[SummaryWindow] Error updating debug pipeline context:', error)
+            }
+          }
+        }, 500)
+      }
     } catch (error) {
       console.error('[SummaryWindow] Error sending message:', error)
+      // Restore the conversation input on error
+      setConversationInput(userMsg)
+      // Remove the placeholder history entry on error
+      setSummary(prev => ({
+        ...prev,
+        text: initialSummary,
+        summary: initialSummary,
+        conversationHistory: (prev.conversationHistory || []).slice(0, -1)
+      }))
       alert('Failed to send message. Please try again.')
     } finally {
       setIsSendingMessage(false)
-      setIsSearchingInConvo(false) // Reset search indicator
+      setIsSearchingInConvo(false)
     }
   }
 
@@ -443,7 +462,7 @@ const SummaryWindow = () => {
     return null
   }
 
-  if (!summary.text || summary.text.trim() === '') {
+  if ((!summary.text || summary.text.trim() === '') && !summary.isStreaming) {
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
@@ -752,7 +771,7 @@ const SummaryWindow = () => {
                   color: currentTheme.textMuted,
                   fontStyle: 'italic',
                 }}>
-                  Fetching response...
+                  Loading summary model's response...
                 </span>
               </motion.div>
             )}
@@ -1176,7 +1195,7 @@ const SummaryWindow = () => {
               color: currentTheme.textMuted,
               fontStyle: 'italic',
             }}>
-              Fetching response...
+              Loading summary model's response...
             </span>
           </motion.div>
         )}

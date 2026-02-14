@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { CreditCard, LogOut, CheckCircle, AlertCircle, Shield, Loader } from 'lucide-react'
 import { loadStripe } from '@stripe/stripe-js'
@@ -150,7 +150,7 @@ const InlineCheckoutForm = ({ onSuccess, onError }) => {
         ) : (
           <>
             <CreditCard size={18} />
-            Subscribe Now — $15/month
+            Subscribe Now — $19.95/month
           </>
         )}
       </motion.button>
@@ -182,6 +182,7 @@ const SubscriptionGate = ({ currentUser }) => {
   const setCurrentUser = useStore((state) => state.setCurrentUser)
   const clearCurrentUser = useStore((state) => state.clearCurrentUser)
   const currentTheme = getTheme('dark')
+  const initCalledRef = useRef(false) // Guard against double-call from React Strict Mode
 
   // Check subscription status
   const checkSubscriptionStatus = useCallback(async () => {
@@ -216,6 +217,9 @@ const SubscriptionGate = ({ currentUser }) => {
 
   useEffect(() => {
     if (!currentUser?.id) return
+    // Prevent double-call from React 18 Strict Mode (which double-fires effects in dev)
+    if (initCalledRef.current) return
+    initCalledRef.current = true
 
     const initPayment = async () => {
       setLoadingPayment(true)
@@ -408,7 +412,7 @@ const SubscriptionGate = ({ currentUser }) => {
           borderRadius: '12px',
         }}>
           <h3 style={{ color: '#ffffff', fontSize: '1.05rem', marginBottom: '10px', marginTop: 0 }}>
-            ArkiTek Pro — $15/month
+            ArkiTek Plus — $19.95/month
           </h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {[

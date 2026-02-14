@@ -4,11 +4,40 @@ import axios from 'axios'
 import dotenv from 'dotenv'
 import crypto from 'crypto'
 import * as cheerio from 'cheerio'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { countTokens, extractTokensFromResponse, estimateTokensFallback } from './utils/tokenCounters.js'
 import Stripe from 'stripe'
+import { Resend } from 'resend'
 import db from './database/db.js'
+import adminDb from './database/adminDb.js'
 
 dotenv.config()
+
+// Get __dirname equivalent for ES modules
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+// Global crash prevention — log but don't kill the server
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception — server NOT crashing:', err.message, err.stack)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled Rejection — server NOT crashing:', reason)
+})
+
+// ============================================================================
+// DATE HELPERS — dynamic current date for prompts & search queries
+// ============================================================================
+const getCurrentDateString = () => {
+  const now = new Date()
+  const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }
+  return now.toLocaleDateString('en-US', options) // e.g. "Wednesday, February 12, 2026"
+}
+const getCurrentMonthYear = () => {
+  const now = new Date()
+  return `${now.toLocaleString('en-US', { month: 'long' })} ${now.getFullYear()}` // e.g. "February 2026"
+}
 
 // ============================================================================
 // DATABASE CONNECTION (MongoDB Only - No JSON Files)
@@ -16,7 +45,11 @@ dotenv.config()
 const initDatabase = async () => {
   try {
     await db.connect()
-    console.log('[Server] ✅ MongoDB connected successfully')
+    console.log('[Server] ✅ Arkitek DB connected successfully')
+    
+    await adminDb.connect()
+    console.log('[Server] ✅ ADMIN DB connected successfully')
+    
     console.log('[Server] 🗄️  Using MongoDB as primary data store')
   } catch (error) {
     console.error('[Server] ❌ MongoDB connection failed:', error.message)
@@ -31,6 +64,7 @@ process.on('SIGINT', async () => {
   if (usageSyncTimer) clearTimeout(usageSyncTimer)
   await flushUsageToMongo()
   await db.close()
+  await adminDb.close()
   process.exit(0)
 })
 
@@ -39,6 +73,7 @@ process.on('SIGTERM', async () => {
   if (usageSyncTimer) clearTimeout(usageSyncTimer)
   await flushUsageToMongo()
   await db.close()
+  await adminDb.close()
   process.exit(0)
 })
 
@@ -53,6 +88,17 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 // Stripe configuration
 const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || ''
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || ''
+
+// Initialize Resend (email service for password resets)
+// Only initialize if API key is configured — server still works without it (password reset emails won't send)
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
+const APP_NAME = 'ArkiTek'
+const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@arkitek.app' // Must be a verified domain in Resend
+const APP_URL = process.env.APP_URL || 'http://localhost:3000' // Frontend URL for reset links
+
+// In-memory store for password reset tokens (also persisted to MongoDB for durability)
+// Format: { token: { userId, email, expiresAt } }
+const passwordResetTokens = new Map()
 
 // ============================================================================
 // ADMIN LIST (MongoDB only)
@@ -290,16 +336,16 @@ const loadCacheFromMongoDB = async () => {
           dailyUsage: {},
           providers: {},
           models: {},
-          promptHistory: [],
-          categories: {},
-          categoryPrompts: {},
-          ratings: {},
+        promptHistory: [],
+        categories: {},
+        categoryPrompts: {},
+        ratings: {},
           lastActiveAt: null,
-          streakDays: 0,
-          judgeConversationContext: [],
+        streakDays: 0,
+        judgeConversationContext: [],
           purchasedCredits: { total: 0, remaining: 0 },
         }
-        usageDirtyUsers.add(userId) // Mark dirty so it gets flushed to usage_data
+          usageDirtyUsers.add(userId) // Mark dirty so it gets flushed to usage_data
       }
     }
     
@@ -324,11 +370,9 @@ const loadCacheFromMongoDB = async () => {
       comments: p.comments || [],
     }))
     
-    // 4. Load admins list
-    const adminsDoc = await dbInstance.collection('admins').findOne({ _id: 'admin_list' })
-    if (adminsDoc && adminsDoc.admins) {
-      adminsCache.admins = adminsDoc.admins
-    }
+    // 4. Load admins list (from ADMIN database)
+    const adminsList = await adminDb.admins.getList()
+    adminsCache.admins = adminsList
     
     cacheLoaded = true
     console.log(`[Cache] Loaded ${Object.keys(usersCache).length} users, ${Object.keys(usageCache).length} usage records, ${leaderboardCache.prompts.length} leaderboard posts, ${adminsCache.admins.length} admins`)
@@ -418,27 +462,93 @@ const writeLeaderboard = async (leaderboard) => {
   }
 }
 
-// Track deleted users count in MongoDB
+// Purge ALL traces of a deleted user from the leaderboard cache + MongoDB
+// Removes their posts, their likes on others' posts, their comments, and their replies
+const purgeUserFromLeaderboard = async (userId) => {
+  const leaderboard = readLeaderboard()
+  const postsToUpdateInDb = []
+
+  // 1. Remove the user's own posts from cache
+  const beforeCount = leaderboard.prompts.length
+  leaderboard.prompts = leaderboard.prompts.filter(p => p.userId !== userId)
+  const removedPosts = beforeCount - leaderboard.prompts.length
+
+  // 2. Scrub the user's likes, comments, and replies from OTHER users' posts
+  for (const prompt of leaderboard.prompts) {
+    let modified = false
+
+    // Remove user's likes
+    if (prompt.likes && prompt.likes.includes(userId)) {
+      prompt.likes = prompt.likes.filter(id => id !== userId)
+      prompt.likeCount = prompt.likes.length
+      modified = true
+    }
+
+    // Remove user's comments (and their replies on other comments)
+    if (prompt.comments && prompt.comments.length > 0) {
+      const beforeComments = prompt.comments.length
+      prompt.comments = prompt.comments.filter(c => c.userId !== userId)
+      if (prompt.comments.length !== beforeComments) modified = true
+
+      // Remove user's replies from remaining comments + user's likes on comments
+      for (const comment of prompt.comments) {
+        if (comment.replies && comment.replies.length > 0) {
+          const beforeReplies = comment.replies.length
+          comment.replies = comment.replies.filter(r => r.userId !== userId)
+          if (comment.replies.length !== beforeReplies) modified = true
+        }
+        if (comment.likes && comment.likes.includes(userId)) {
+          comment.likes = comment.likes.filter(id => id !== userId)
+          comment.likeCount = comment.likes.length
+          modified = true
+        }
+      }
+    }
+
+    if (modified) postsToUpdateInDb.push(prompt)
+  }
+
+  // 3. Update the in-memory cache
+  leaderboardCache = leaderboard
+
+  // 4. Sync modified posts back to MongoDB (likes/comments changes on other users' posts)
+  if (postsToUpdateInDb.length > 0) {
+    try {
+      const dbInstance = await db.getDb()
+      await Promise.all(postsToUpdateInDb.map(post =>
+        dbInstance.collection('leaderboard_posts').updateOne(
+          { _id: post.id },
+          { $set: {
+            likes: post.likes || [],
+            likeCount: post.likeCount || 0,
+            comments: post.comments || [],
+          }}
+        )
+      ))
+    } catch (err) {
+      console.error('[Leaderboard Purge] MongoDB sync error:', err.message)
+    }
+  }
+
+  console.log(`[Leaderboard Purge] User ${userId}: removed ${removedPosts} posts, updated ${postsToUpdateInDb.length} other posts`)
+}
+
+// Track deleted users count in ADMIN database
 const incrementDeletedUsers = async () => {
   try {
-    const dbInstance = await db.getDb()
-    const result = await dbInstance.collection('metadata').findOneAndUpdate(
-      { _id: 'admin_stats' },
-      { $inc: { deletedUsersCount: 1 } },
-      { upsert: true, returnDocument: 'after' }
-    )
-    return result.deletedUsersCount || 1
+    await adminDb.metadata.incrementDeletedUsers()
+    const stats = await adminDb.metadata.getAdminStats()
+    return stats?.deletedUsersCount || 1
   } catch (error) {
     console.error('[DeletedUsers] Failed to increment:', error.message)
     return 0
   }
 }
 
-// Read deleted users count from MongoDB
+// Read deleted users count from ADMIN database
 const readDeletedUsers = async () => {
   try {
-    const dbInstance = await db.getDb()
-    const stats = await dbInstance.collection('metadata').findOne({ _id: 'admin_stats' })
+    const stats = await adminDb.metadata.getAdminStats()
     return { count: stats?.deletedUsersCount || 0 }
   } catch (error) {
     console.error('[DeletedUsers] Failed to read:', error.message)
@@ -446,11 +556,10 @@ const readDeletedUsers = async () => {
   }
 }
 
-// Read admin stats from MongoDB
+// Read admin stats from ADMIN database
 const getAdminStats = async () => {
   try {
-    const dbInstance = await db.getDb()
-    return await dbInstance.collection('metadata').findOne({ _id: 'admin_stats' })
+    return await adminDb.metadata.getAdminStats()
   } catch (error) {
     console.error('[AdminStats] Failed to read:', error.message)
     return null
@@ -551,6 +660,11 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
   userUsage.totalPrompts = (userUsage.totalPrompts || 0) + 1
   console.log(`[Prompt Tracking] User ${userId}: Prompts ${oldTotal} -> ${userUsage.totalPrompts}`)
 
+  // Ensure monthlyUsage exists before accessing it
+  if (!userUsage.monthlyUsage) {
+    userUsage.monthlyUsage = {}
+  }
+  
   // Update monthly prompt usage
   if (!userUsage.monthlyUsage[currentMonth]) {
     userUsage.monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
@@ -743,48 +857,62 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
   const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
   const tokensUsed = inputTokens + outputTokens
   const modelKey = `${provider}-${model}`
-
-  // Update totals
-  userUsage.totalTokens += tokensUsed
-  userUsage.totalInputTokens = (userUsage.totalInputTokens || 0) + inputTokens
-  userUsage.totalOutputTokens = (userUsage.totalOutputTokens || 0) + outputTokens
-
-  // Update monthly usage
-  if (!userUsage.monthlyUsage[currentMonth]) {
-    userUsage.monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
+  
+  // Ensure monthlyUsage exists
+  if (!userUsage.monthlyUsage) {
+    userUsage.monthlyUsage = {}
   }
-  userUsage.monthlyUsage[currentMonth].tokens += tokensUsed
-  userUsage.monthlyUsage[currentMonth].inputTokens = (userUsage.monthlyUsage[currentMonth].inputTokens || 0) + inputTokens
-  userUsage.monthlyUsage[currentMonth].outputTokens = (userUsage.monthlyUsage[currentMonth].outputTokens || 0) + outputTokens
+  
+  // Update user-visible stats (totals, monthly, provider) only for user-initiated calls
+  // Pipeline calls (judge, refiner, category detection, summary) still count towards cost via dailyUsage below
+  if (!isPipeline) {
+    // Update totals
+    userUsage.totalTokens += tokensUsed
+    userUsage.totalInputTokens = (userUsage.totalInputTokens || 0) + inputTokens
+    userUsage.totalOutputTokens = (userUsage.totalOutputTokens || 0) + outputTokens
 
-  // Update provider stats
-  if (!userUsage.providers[provider]) {
-    userUsage.providers[provider] = {
-      totalTokens: 0,
-      totalInputTokens: 0,
-      totalOutputTokens: 0,
-      totalQueries: 0,
-      monthlyTokens: {},
-      monthlyInputTokens: {},
-      monthlyOutputTokens: {},
-      monthlyQueries: {},
+    // Update monthly usage
+    if (!userUsage.monthlyUsage[currentMonth]) {
+      userUsage.monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
+    }
+    userUsage.monthlyUsage[currentMonth].tokens += tokensUsed
+    userUsage.monthlyUsage[currentMonth].inputTokens = (userUsage.monthlyUsage[currentMonth].inputTokens || 0) + inputTokens
+    userUsage.monthlyUsage[currentMonth].outputTokens = (userUsage.monthlyUsage[currentMonth].outputTokens || 0) + outputTokens
+
+    // Update provider stats
+    if (!userUsage.providers[provider]) {
+      userUsage.providers[provider] = {
+        totalTokens: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalQueries: 0,
+        monthlyTokens: {},
+        monthlyInputTokens: {},
+        monthlyOutputTokens: {},
+        monthlyQueries: {},
+      }
+    }
+    userUsage.providers[provider].totalTokens += tokensUsed
+    userUsage.providers[provider].totalInputTokens = (userUsage.providers[provider].totalInputTokens || 0) + inputTokens
+    userUsage.providers[provider].totalOutputTokens = (userUsage.providers[provider].totalOutputTokens || 0) + outputTokens
+
+    if (!userUsage.providers[provider].monthlyTokens[currentMonth]) {
+      userUsage.providers[provider].monthlyTokens[currentMonth] = 0
+      userUsage.providers[provider].monthlyInputTokens = userUsage.providers[provider].monthlyInputTokens || {}
+      userUsage.providers[provider].monthlyOutputTokens = userUsage.providers[provider].monthlyOutputTokens || {}
+      userUsage.providers[provider].monthlyInputTokens[currentMonth] = 0
+      userUsage.providers[provider].monthlyOutputTokens[currentMonth] = 0
+      userUsage.providers[provider].monthlyQueries[currentMonth] = 0
+    }
+    userUsage.providers[provider].monthlyTokens[currentMonth] += tokensUsed
+    userUsage.providers[provider].monthlyInputTokens[currentMonth] = (userUsage.providers[provider].monthlyInputTokens[currentMonth] || 0) + inputTokens
+    userUsage.providers[provider].monthlyOutputTokens[currentMonth] = (userUsage.providers[provider].monthlyOutputTokens[currentMonth] || 0) + outputTokens
+  } else {
+    // Still ensure monthlyUsage exists for pipeline calls (needed for prompts counter)
+    if (!userUsage.monthlyUsage[currentMonth]) {
+      userUsage.monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
     }
   }
-  userUsage.providers[provider].totalTokens += tokensUsed
-  userUsage.providers[provider].totalInputTokens = (userUsage.providers[provider].totalInputTokens || 0) + inputTokens
-  userUsage.providers[provider].totalOutputTokens = (userUsage.providers[provider].totalOutputTokens || 0) + outputTokens
-
-  if (!userUsage.providers[provider].monthlyTokens[currentMonth]) {
-    userUsage.providers[provider].monthlyTokens[currentMonth] = 0
-    userUsage.providers[provider].monthlyInputTokens = userUsage.providers[provider].monthlyInputTokens || {}
-    userUsage.providers[provider].monthlyOutputTokens = userUsage.providers[provider].monthlyOutputTokens || {}
-    userUsage.providers[provider].monthlyInputTokens[currentMonth] = 0
-    userUsage.providers[provider].monthlyOutputTokens[currentMonth] = 0
-    userUsage.providers[provider].monthlyQueries[currentMonth] = 0
-  }
-  userUsage.providers[provider].monthlyTokens[currentMonth] += tokensUsed
-  userUsage.providers[provider].monthlyInputTokens[currentMonth] = (userUsage.providers[provider].monthlyInputTokens[currentMonth] || 0) + inputTokens
-  userUsage.providers[provider].monthlyOutputTokens[currentMonth] = (userUsage.providers[provider].monthlyOutputTokens[currentMonth] || 0) + outputTokens
 
   // Update model stats
   // Update per-model stats only for user-initiated calls (not pipeline internals)
@@ -817,10 +945,13 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
   if (!userUsage.dailyUsage[currentMonth][today]) {
     userUsage.dailyUsage[currentMonth][today] = { inputTokens: 0, outputTokens: 0, queries: 0, models: {} }
   }
-  userUsage.dailyUsage[currentMonth][today].inputTokens = (userUsage.dailyUsage[currentMonth][today].inputTokens || 0) + inputTokens
-  userUsage.dailyUsage[currentMonth][today].outputTokens = (userUsage.dailyUsage[currentMonth][today].outputTokens || 0) + outputTokens
+  // Only count user-visible tokens in the daily aggregate (shown in the chart)
+  if (!isPipeline) {
+    userUsage.dailyUsage[currentMonth][today].inputTokens = (userUsage.dailyUsage[currentMonth][today].inputTokens || 0) + inputTokens
+    userUsage.dailyUsage[currentMonth][today].outputTokens = (userUsage.dailyUsage[currentMonth][today].outputTokens || 0) + outputTokens
+  }
   
-  // Track which models were used on this day (for cost calculation)
+  // Always track per-model tokens on this day (drives cost calculation for ALL calls including pipeline)
   if (!userUsage.dailyUsage[currentMonth][today].models[modelKey]) {
     userUsage.dailyUsage[currentMonth][today].models[modelKey] = { inputTokens: 0, outputTokens: 0 }
   }
@@ -869,8 +1000,22 @@ const API_KEYS = {
   serper: process.env.SERPER_API_KEY || '',
 }
 
-// Middleware
-app.use(cors())
+// Middleware — allow frontend origin in production, everything in dev
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : null // null = allow all (dev mode)
+
+app.use(cors(ALLOWED_ORIGINS ? {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (server-to-server, curl, etc.)
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true)
+    } else {
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
+  credentials: true,
+} : undefined))
 
 // Stripe webhook endpoint needs raw body for signature verification
 // This must be BEFORE express.json() middleware
@@ -1044,6 +1189,283 @@ app.post('/api/auth/signin', async (req, res) => {
   }
 })
 
+// ============================================================================
+// FORGOT USERNAME / FORGOT PASSWORD
+// ============================================================================
+
+// Forgot Username — looks up username by email, sends it via email
+app.post('/api/auth/forgot-username', async (req, res) => {
+  try {
+    const { email } = req.body
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' })
+    }
+
+    console.log('[Auth] Forgot username request for email:', email)
+
+    // Look up user by email
+    const dbUser = await db.users.getByEmail(email.toLowerCase().trim())
+
+    // Always return success (don't reveal whether the email exists)
+    if (!dbUser) {
+      console.log('[Auth] No user found for email:', email)
+      return res.json({ success: true, message: 'If an account exists with that email, your username has been sent.' })
+    }
+
+    // Send email with username
+    try {
+      if (!resend) {
+        console.error('[Auth] Resend not configured — cannot send email')
+        return res.status(500).json({ error: 'Email service not configured' })
+      }
+      await resend.emails.send({
+        from: FROM_EMAIL,
+        to: dbUser.email,
+        subject: `${APP_NAME} — Your Username`,
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 500px; margin: 0 auto; padding: 40px 20px;">
+            <h2 style="color: #333; margin-bottom: 24px;">Username Reminder</h2>
+            <p style="color: #555; font-size: 16px; line-height: 1.6;">
+              Hi ${dbUser.firstName || 'there'},
+            </p>
+            <p style="color: #555; font-size: 16px; line-height: 1.6;">
+              You requested your username for your ${APP_NAME} account. Here it is:
+            </p>
+            <div style="background: #f0f4f8; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
+              <p style="font-size: 24px; font-weight: bold; color: #1a1a2e; margin: 0;">${dbUser.username}</p>
+            </div>
+            <p style="color: #555; font-size: 16px; line-height: 1.6;">
+              If you didn't request this, you can safely ignore this email.
+            </p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 32px 0;" />
+            <p style="color: #999; font-size: 13px;">
+              This email was sent by ${APP_NAME}. Please do not reply to this email.
+            </p>
+          </div>
+        `,
+      })
+      console.log('[Auth] Username reminder email sent to:', dbUser.email)
+    } catch (emailErr) {
+      console.error('[Auth] Failed to send username email:', emailErr)
+      return res.status(500).json({ error: 'Failed to send email. Please try again later.' })
+    }
+
+    res.json({ success: true, message: 'If an account exists with that email, your username has been sent.' })
+  } catch (error) {
+    console.error('[Auth] Forgot username error:', error)
+    res.status(500).json({ error: 'An error occurred. Please try again.' })
+  }
+})
+
+// Forgot Password — generates a reset token, sends reset link via email
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' })
+    }
+
+    console.log('[Auth] Forgot password request for email:', email)
+
+    const dbUser = await db.users.getByEmail(email.toLowerCase().trim())
+
+    // Always return success (don't reveal whether the email exists)
+    if (!dbUser) {
+      console.log('[Auth] No user found for email:', email)
+      return res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' })
+    }
+
+    // Generate a secure random token (64 hex chars)
+    const resetToken = crypto.randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour from now
+
+    // Store token in memory and MongoDB
+    passwordResetTokens.set(resetToken, {
+      userId: dbUser._id,
+      email: dbUser.email,
+      expiresAt,
+    })
+
+    // Also persist to MongoDB (in case server restarts)
+    try {
+      const dbInstance = await db.getDb()
+      await dbInstance.collection('password_resets').insertOne({
+        token: resetToken,
+        userId: dbUser._id,
+        email: dbUser.email,
+        expiresAt,
+        createdAt: new Date(),
+        used: false,
+      })
+    } catch (dbErr) {
+      console.error('[Auth] Error persisting reset token to DB:', dbErr)
+      // Continue anyway — in-memory token still works
+    }
+
+    // Build the reset link (frontend will handle the #reset-password route)
+    const resetLink = `${APP_URL}/#reset-password?token=${resetToken}`
+
+    // Send email with reset link
+    try {
+      if (!resend) {
+        console.error('[Auth] Resend not configured — cannot send email')
+        return res.status(500).json({ error: 'Email service not configured' })
+      }
+      await resend.emails.send({
+        from: FROM_EMAIL,
+        to: dbUser.email,
+        subject: `${APP_NAME} — Reset Your Password`,
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 500px; margin: 0 auto; padding: 40px 20px;">
+            <h2 style="color: #333; margin-bottom: 24px;">Reset Your Password</h2>
+            <p style="color: #555; font-size: 16px; line-height: 1.6;">
+              Hi ${dbUser.firstName || 'there'},
+            </p>
+            <p style="color: #555; font-size: 16px; line-height: 1.6;">
+              We received a request to reset the password for your ${APP_NAME} account (<strong>${dbUser.username}</strong>).
+            </p>
+            <p style="color: #555; font-size: 16px; line-height: 1.6;">
+              Click the button below to set a new password. This link expires in <strong>1 hour</strong>.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+              <a href="${resetLink}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #5dade2, #48c9b0); color: #000; font-weight: bold; font-size: 16px; text-decoration: none; border-radius: 8px;">
+                Reset Password
+              </a>
+            </div>
+            <p style="color: #888; font-size: 14px; line-height: 1.6;">
+              If the button doesn't work, copy and paste this link into your browser:
+            </p>
+            <p style="color: #5dade2; font-size: 13px; word-break: break-all;">
+              ${resetLink}
+            </p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 32px 0;" />
+            <p style="color: #999; font-size: 13px;">
+              If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.
+            </p>
+            <p style="color: #999; font-size: 13px;">
+              This email was sent by ${APP_NAME}. Please do not reply to this email.
+            </p>
+          </div>
+        `,
+      })
+      console.log('[Auth] Password reset email sent to:', dbUser.email)
+    } catch (emailErr) {
+      console.error('[Auth] Failed to send reset email:', emailErr)
+      return res.status(500).json({ error: 'Failed to send email. Please try again later.' })
+    }
+
+    res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent.' })
+  } catch (error) {
+    console.error('[Auth] Forgot password error:', error)
+    res.status(500).json({ error: 'An error occurred. Please try again.' })
+  }
+})
+
+// Reset Password — verify token and set new password
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Token and new password are required' })
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' })
+    }
+
+    console.log('[Auth] Password reset attempt with token:', token.substring(0, 8) + '...')
+
+    // Check in-memory first
+    let tokenData = passwordResetTokens.get(token)
+
+    // If not in memory, check MongoDB (server may have restarted)
+    if (!tokenData) {
+      try {
+        const dbInstance = await db.getDb()
+        const dbToken = await dbInstance.collection('password_resets').findOne({ token, used: false })
+        if (dbToken) {
+          tokenData = {
+            userId: dbToken.userId,
+            email: dbToken.email,
+            expiresAt: dbToken.expiresAt,
+          }
+        }
+      } catch (dbErr) {
+        console.error('[Auth] Error checking reset token in DB:', dbErr)
+      }
+    }
+
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Invalid or expired reset link. Please request a new one.' })
+    }
+
+    // Check if token has expired
+    if (new Date() > new Date(tokenData.expiresAt)) {
+      // Clean up expired token
+      passwordResetTokens.delete(token)
+      try {
+        const dbInstance = await db.getDb()
+        await dbInstance.collection('password_resets').deleteOne({ token })
+      } catch (dbErr) { /* ignore cleanup errors */ }
+      return res.status(400).json({ error: 'This reset link has expired. Please request a new one.' })
+    }
+
+    // Update the password
+    const hashedPassword = hashPassword(newPassword)
+    const userId = tokenData.userId
+
+    // Update in MongoDB
+    await db.users.update(userId, { password: hashedPassword })
+
+    // Update in cache
+    const users = readUsers()
+    if (users[userId]) {
+      users[userId].password = hashedPassword
+      usersCache = users
+    }
+
+    // Invalidate the token (single-use)
+    passwordResetTokens.delete(token)
+    try {
+      const dbInstance = await db.getDb()
+      await dbInstance.collection('password_resets').updateOne({ token }, { $set: { used: true } })
+    } catch (dbErr) {
+      console.error('[Auth] Error marking token as used:', dbErr)
+    }
+
+    console.log('[Auth] Password successfully reset for user:', userId)
+    res.json({ success: true, message: 'Your password has been reset. You can now sign in with your new password.' })
+  } catch (error) {
+    console.error('[Auth] Reset password error:', error)
+    res.status(500).json({ error: 'An error occurred. Please try again.' })
+  }
+})
+
+// Cleanup expired reset tokens (runs every hour)
+setInterval(async () => {
+  const now = new Date()
+  let cleaned = 0
+  for (const [token, data] of passwordResetTokens.entries()) {
+    if (now > new Date(data.expiresAt)) {
+      passwordResetTokens.delete(token)
+      cleaned++
+    }
+  }
+  // Also clean MongoDB
+  try {
+    const dbInstance = await db.getDb()
+    const result = await dbInstance.collection('password_resets').deleteMany({
+      $or: [
+        { expiresAt: { $lt: now } },
+        { used: true },
+      ]
+    })
+    cleaned += result.deletedCount || 0
+  } catch (err) { /* ignore cleanup errors */ }
+  if (cleaned > 0) console.log(`[Auth] Cleaned up ${cleaned} expired/used reset tokens`)
+}, 60 * 60 * 1000) // Every hour
+
 // Track a prompt submission
 app.post('/api/stats/prompt', (req, res) => {
   try {
@@ -1134,6 +1556,10 @@ app.delete('/api/auth/account', async (req, res) => {
     delete usersCache[userId]
     delete usageCache[userId]
 
+    // Purge all user traces from leaderboard (posts, likes, comments, replies)
+    await purgeUserFromLeaderboard(userId)
+    console.log('[Account Deletion] User purged from leaderboard cache and MongoDB')
+
     // Increment deleted users count
     await incrementDeletedUsers()
     console.log('[Account Deletion] Deleted users count incremented')
@@ -1164,7 +1590,7 @@ app.get('/api/stats/:userId', (req, res) => {
     writeUsage(usage)
   }
   
-  const userUsage = usage[userId] || {
+  const userUsage = {
     totalTokens: 0,
     totalInputTokens: 0,
     totalOutputTokens: 0,
@@ -1173,10 +1599,12 @@ app.get('/api/stats/:userId', (req, res) => {
     monthlyUsage: {},
     providers: {},
     models: {},
+    dailyUsage: {},
+    ...(usage[userId] || {}),
   }
 
   const currentMonth = getCurrentMonth()
-  const monthlyStats = userUsage.monthlyUsage[currentMonth] || { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
+  const monthlyStats = (userUsage.monthlyUsage || {})[currentMonth] || { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
 
   // Calculate provider stats with monthly breakdown
   const providerStats = {}
@@ -1458,13 +1886,11 @@ app.get('/api/judge/context/:userId', (req, res) => {
     
     // Decode the userId in case it was URL encoded (handles colons and special characters)
     const decodedUserId = decodeURIComponent(userId)
-    console.log('[Judge Context] Fetching context for userId:', decodedUserId)
     
     const usage = readUsage()
     const userUsage = usage[decodedUserId] || {}
     const context = (userUsage.judgeConversationContext || []).slice(0, 5)
     
-    console.log('[Judge Context] Found context entries:', context.length)
     res.json({ context })
   } catch (error) {
     console.error('[Judge Context] Error fetching context:', error)
@@ -1482,14 +1908,12 @@ app.get('/api/judge/context', (req, res) => {
     }
     
     const decodedUserId = decodeURIComponent(userId)
-    console.log('[Judge Context] Fetching context for userId (query):', decodedUserId)
     
     // Read from in-memory cache (fully synced with MongoDB)
-      const usage = readUsage()
-      const userUsage = usage[decodedUserId] || {}
+    const usage = readUsage()
+    const userUsage = usage[decodedUserId] || {}
     const context = (userUsage.judgeConversationContext || []).slice(0, 5)
     
-    console.log('[Judge Context] Found context entries:', context.length)
     res.json({ context })
   } catch (error) {
     console.error('[Judge Context] Error fetching context:', error)
@@ -1520,15 +1944,76 @@ app.post('/api/judge/clear-context', (req, res) => {
   }
 })
 
+// Get model conversation context (per model, per user)
+app.get('/api/model/context', (req, res) => {
+  try {
+    const { userId, modelName } = req.query
+    
+    if (!userId || !modelName) {
+      return res.status(400).json({ error: 'userId and modelName query parameters are required' })
+    }
+    
+    const decodedUserId = decodeURIComponent(userId)
+    const decodedModelName = decodeURIComponent(modelName)
+    console.log(`[Model Context] Fetching context for userId: ${decodedUserId}, model: ${decodedModelName}`)
+    
+    const usage = readUsage()
+    const userUsage = usage[decodedUserId] || {}
+    const allModelContexts = userUsage.modelConversationContext || {}
+    const context = (allModelContexts[decodedModelName] || []).slice(0, 5)
+    
+    console.log(`[Model Context] Found ${context.length} context entries for ${decodedModelName}`)
+    res.json({ context })
+  } catch (error) {
+    console.error('[Model Context] Error fetching context:', error)
+    res.status(500).json({ error: 'Failed to fetch model conversation context: ' + error.message })
+  }
+})
+
+// Clear model conversation context (for a specific model or all models for a user)
+app.post('/api/model/clear-context', (req, res) => {
+  try {
+    const { userId, modelName } = req.body
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+    
+    const usage = readUsage()
+    if (usage[userId] && usage[userId].modelConversationContext) {
+      if (modelName) {
+        // Clear context for a specific model
+        delete usage[userId].modelConversationContext[modelName]
+        console.log(`[Model Context] Cleared context for model ${modelName}, user ${userId}`)
+      } else {
+        // Clear all model contexts for this user
+        usage[userId].modelConversationContext = {}
+        console.log(`[Model Context] Cleared all model contexts for user ${userId}`)
+      }
+      writeUsage(usage, userId)
+    }
+    
+    res.json({ success: true, message: 'Model context cleared' })
+  } catch (error) {
+    console.error('[Model Context] Error clearing context:', error)
+    res.status(500).json({ error: 'Failed to clear model conversation context: ' + error.message })
+  }
+})
+
 // Helper function to detect category and determine if search is needed
 const detectCategoryForJudge = async (prompt, userId = null) => {
-  const categoryPrompt = `Classify the user prompt into EXACTLY ONE category from the list below.
+  const todayDate = getCurrentDateString()
+  const categoryPrompt = `Today's date is ${todayDate}.
+
+Classify the user prompt into EXACTLY ONE category from the list below.
 Determine if a web search would genuinely help answer the query.
 
 needsSearch = true when:
 - The query asks about current events, recent news, or real-time information
+- The query references "today", "this year", "this week", "recently", or any time-relative language
 - The query needs factual verification (specific facts, statistics, dates)
 - The query asks about specific people, companies, or events that may have recent updates
+- The query asks about weather, prices, scores, or anything that changes frequently
 
 needsSearch = false when:
 - The query is about general concepts, explanations, or "how does X work"
@@ -1730,16 +2215,17 @@ app.post('/api/judge/conversation', async (req, res) => {
     
     // Step 3: Build prompt for Grok (conversational, not judge mode)
     // After the initial judge summary, the user is just talking to Grok naturally
+    const todayDate = getCurrentDateString()
     if (refinedData && refinedData.facts_with_citations && refinedData.facts_with_citations.length > 0) {
       // Include refined facts in the prompt
       const factsText = refinedData.facts_with_citations
         .map((fact, idx) => `${idx + 1}. ${fact.fact}${fact.source_quote ? `\n   Source: "${fact.source_quote}"` : ''}`)
         .join('\n\n')
       
-      judgePrompt = `${contextString}Here is verified information from a recent web search that may help:\n\n${factsText}\n\nUser's question: ${userMessage}`
+      judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search — the results below are current and already retrieved for you. Use them directly to answer. Do NOT tell the user you cannot search the web.\n\n${contextString}Here is verified information from a recent web search that may help:\n\n${factsText}\n\nUser's question: ${userMessage}`
     } else {
       // No search or no facts found, use direct conversational prompt
-      judgePrompt = `${contextString}User: ${userMessage}`
+      judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search. If search results are provided, use them directly. Do NOT tell the user you cannot search the web.\n\n${contextString}User: ${userMessage}`
     }
     
     // Step 4: Call Grok
@@ -1778,7 +2264,7 @@ app.post('/api/judge/conversation', async (req, res) => {
       outputTokens = await countTokens(responseText, 'xai', 'grok-4-1-fast-reasoning')
     }
     
-    trackUsage(userId, 'xai', 'grok-4-1-fast-reasoning', inputTokens, outputTokens)
+    trackUsage(userId, 'xai', 'grok-4-1-fast-reasoning', inputTokens, outputTokens, true)
     
     // Summarize the response and store it (async, don't wait) - pass just the user message as originalPrompt
     storeJudgeContext(userId, responseText, userMessage).catch(err => {
@@ -1829,10 +2315,586 @@ app.post('/api/judge/conversation', async (req, res) => {
   }
 })
 
-// Continue conversation with a specific model (for individual response windows)
+// ==================== STREAMING JUDGE CONVERSATION ====================
+// SSE streaming version of /api/judge/conversation
+app.post('/api/judge/conversation/stream', async (req, res) => {
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders()
+
+  const sendSSE = (type, data) => {
+    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+  }
+
+  try {
+    const { userId, userMessage, conversationContext } = req.body
+
+    if (!userId || !userMessage) {
+      sendSSE('error', { message: 'userId and userMessage are required' })
+      return res.end()
+    }
+
+    // Check subscription
+    const subscriptionCheck = await checkSubscriptionStatusAsync(userId)
+    if (!subscriptionCheck.hasAccess) {
+      sendSSE('error', { message: 'Active subscription required.', subscriptionRequired: true })
+      return res.end()
+    }
+
+    console.log('[Judge Conversation Stream] Processing message with Grok')
+
+    // Step 1: Category detection
+    sendSSE('status', { message: 'Analyzing query...' })
+    const { category, needsSearch } = await detectCategoryForJudge(userMessage, userId)
+    console.log(`[Judge Conversation Stream] Category: ${category}, Needs Search: ${needsSearch}`)
+
+    // Get context summaries
+    const usage = readUsage()
+    const contextSummaries = conversationContext || (usage[userId]?.judgeConversationContext || []).slice(0, 5)
+    const contextString = contextSummaries.length > 0
+      ? `Here is context from your recent conversation with this user:\n\n${contextSummaries.map((ctx, idx) => {
+          const promptPart = ctx.originalPrompt ? `User asked: ${ctx.originalPrompt}\n` : ''
+          const responsePart = ctx.isFull && ctx.response
+            ? `Your response: ${ctx.response}`
+            : `Your response (summary): ${ctx.summary}`
+          return `${idx + 1}. ${promptPart}${responsePart}`
+        }).join('\n\n')}\n\n`
+      : ''
+
+    let judgePrompt = ''
+    let refinedData = null
+    let searchResults = []
+
+    // Step 2: Search + refiner if needed
+    if (needsSearch) {
+      sendSSE('status', { message: 'Searching the web...' })
+      const serperApiKey = API_KEYS.serper
+      if (serperApiKey) {
+        try {
+          const serperData = await performSerperSearch(userMessage, 5)
+          searchResults = (serperData?.organic || []).map(r => ({
+            title: r.title, link: r.link, snippet: r.snippet
+          }))
+          console.log(`[Judge Conversation Stream] Search completed, found ${searchResults.length} results`)
+
+          if (searchResults.length > 0) {
+            sendSSE('status', { message: 'Analyzing sources...' })
+            refinedData = await refinerStep(userMessage, searchResults, false, userId)
+            console.log(`[Judge Conversation Stream] Refiner completed, extracted ${refinedData.facts_with_citations?.length || 0} facts`)
+          }
+        } catch (searchError) {
+          console.error('[Judge Conversation Stream] Search/refiner error:', searchError)
+        }
+      }
+    }
+
+    // Step 3: Build prompt
+    const todayDate = getCurrentDateString()
+    if (refinedData && refinedData.facts_with_citations && refinedData.facts_with_citations.length > 0) {
+      const factsText = refinedData.facts_with_citations
+        .map((fact, idx) => `${idx + 1}. ${fact.fact}${fact.source_quote ? `\n   Source: "${fact.source_quote}"` : ''}`)
+        .join('\n\n')
+      judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search — the results below are current and already retrieved for you. Use them directly to answer. Do NOT tell the user you cannot search the web.\n\n${contextString}Here is verified information from a recent web search that may help:\n\n${factsText}\n\nUser's question: ${userMessage}`
+    } else {
+      judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search. If search results are provided, use them directly. Do NOT tell the user you cannot search the web.\n\n${contextString}User: ${userMessage}`
+    }
+
+    // Step 4: Stream from Grok
+    const apiKey = API_KEYS.xai
+    if (!apiKey) {
+      sendSSE('error', { message: 'xAI API key not configured' })
+      return res.end()
+    }
+
+    sendSSE('status', { message: 'Generating response...' })
+
+    const streamResponse = await axios.post(
+      'https://api.x.ai/v1/chat/completions',
+      {
+        model: 'grok-4-1-fast-reasoning',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful conversational AI assistant. Respond directly and naturally to the user\'s follow-up questions. Do NOT format your response as a council summary — no CONSENSUS, SUMMARY, AGREEMENTS, or DISAGREEMENTS sections. Just answer conversationally as a single assistant. Use the conversation context provided to maintain continuity.'
+          },
+          { role: 'user', content: judgePrompt }
+        ],
+        temperature: 0.7,
+        stream: true
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        responseType: 'stream'
+      }
+    )
+
+    let fullResponse = ''
+    let inputTokens = 0
+    let outputTokens = 0
+
+    streamResponse.data.on('data', (chunk) => {
+      const lines = chunk.toString().split('\n').filter(l => l.trim().startsWith('data:'))
+      for (const line of lines) {
+        const jsonStr = line.replace(/^data:\s*/, '').trim()
+        if (jsonStr === '[DONE]') continue
+        try {
+          const parsed = JSON.parse(jsonStr)
+          const token = parsed.choices?.[0]?.delta?.content || ''
+          if (token) {
+            fullResponse += token
+            sendSSE('token', { content: token })
+          }
+          // Capture usage from the final chunk
+          if (parsed.usage) {
+            inputTokens = parsed.usage.prompt_tokens || 0
+            outputTokens = parsed.usage.completion_tokens || 0
+          }
+        } catch (e) {
+          // Skip unparseable chunks
+        }
+      }
+    })
+
+    streamResponse.data.on('end', async () => {
+      // If tokens weren't in stream, estimate them
+      if (inputTokens === 0 && outputTokens === 0) {
+        try {
+          inputTokens = await countTokens(judgePrompt, 'xai', 'grok-4-1-fast-reasoning')
+          outputTokens = await countTokens(fullResponse, 'xai', 'grok-4-1-fast-reasoning')
+        } catch (e) {
+          console.error('[Judge Stream] Token counting error:', e)
+        }
+      }
+
+      trackUsage(userId, 'xai', 'grok-4-1-fast-reasoning', inputTokens, outputTokens, true)
+
+      // Store context async
+      storeJudgeContext(userId, fullResponse, userMessage).catch(err => {
+        console.error('[Judge Conversation Stream] Error storing context:', err)
+      })
+
+      // Build debug data
+      const debugData = needsSearch ? {
+        search: { query: userMessage, results: searchResults },
+        refiner: refinedData ? {
+          primary: {
+            facts_with_citations: refinedData.facts_with_citations || [],
+            data_points: refinedData.data_points || [],
+            tokens: refinedData.tokens || null
+          }
+        } : null,
+        categoryDetection: { category, needsSearch }
+      } : null
+
+      // Send final metadata
+      sendSSE('done', {
+        response: fullResponse,
+        tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens },
+        category, needsSearch,
+        usedSearch: needsSearch && refinedData !== null,
+        debugData,
+        searchResults,
+        refinedData: refinedData ? {
+          facts_with_citations: refinedData.facts_with_citations || [],
+          data_points: refinedData.data_points || [],
+          tokens: refinedData.tokens || null
+        } : null
+      })
+
+      res.end()
+    })
+
+    streamResponse.data.on('error', (err) => {
+      console.error('[Judge Stream] Stream error:', err)
+      sendSSE('error', { message: 'Stream error: ' + err.message })
+      res.end()
+    })
+
+  } catch (error) {
+    console.error('[Judge Conversation Stream] Error:', error.message)
+    sendSSE('error', { message: 'Failed to get judge response: ' + error.message })
+    res.end()
+  }
+})
+
+// ==================== STREAMING MODEL CONVERSATION ====================
+// SSE streaming version of /api/model/conversation
+app.post('/api/model/conversation/stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders()
+
+  const sendSSE = (type, data) => {
+    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+  }
+
+  // Keep-alive heartbeat for model conversation stream
+  const heartbeat = setInterval(() => {
+    try { res.write(': heartbeat\n\n') } catch (e) { clearInterval(heartbeat) }
+  }, 15000)
+
+  try {
+    const { userId, modelName, userMessage, originalResponse, responseId } = req.body
+
+    if (!userId || !modelName || !userMessage) {
+      sendSSE('error', { message: 'userId, modelName, and userMessage are required' })
+      clearInterval(heartbeat)
+      return res.end()
+    }
+
+    const subscriptionCheck = await checkSubscriptionStatusAsync(userId)
+    if (!subscriptionCheck.hasAccess) {
+      sendSSE('error', { message: 'Active subscription required.', subscriptionRequired: true })
+      clearInterval(heartbeat)
+      return res.end()
+    }
+
+    console.log(`[Model Conversation Stream] Processing message for model: ${modelName}`)
+
+    const parts = modelName.split('-')
+    const provider = parts[0]
+    const model = parts.slice(1).join('-')
+
+    // Step 1: Category detection
+    sendSSE('status', { message: 'Analyzing query...' })
+    const { category, needsSearch } = await detectCategoryForJudge(userMessage, userId)
+    console.log(`[Model Conversation Stream] Category: ${category}, Needs Search: ${needsSearch}`)
+
+    // Step 2: Search + refiner
+    let refinedData = null
+    let searchResults = []
+
+    if (needsSearch) {
+      sendSSE('status', { message: 'Searching the web...' })
+      const serperApiKey = API_KEYS.serper
+      if (serperApiKey) {
+        try {
+          const serperData = await performSerperSearch(userMessage, 5)
+          searchResults = (serperData?.organic || []).map(r => ({
+            title: r.title, link: r.link, snippet: r.snippet
+          }))
+          if (searchResults.length > 0) {
+            sendSSE('status', { message: 'Analyzing sources...' })
+            refinedData = await refinerStep(userMessage, searchResults, false, userId)
+          }
+        } catch (searchError) {
+          console.error('[Model Conversation Stream] Search/refiner error:', searchError)
+        }
+      }
+    }
+
+    // Step 3: Build prompt (same as non-streaming)
+    const usageData = readUsage()
+    const userUsage = usageData[userId] || {}
+    const allModelContexts = userUsage.modelConversationContext || {}
+    const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
+
+    let prompt = `Today's date is ${getCurrentDateString()}. You have access to real-time web search — when search results are provided below, use them directly to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the results are included in this prompt. Answer confidently using the provided data.\n\n`
+
+    if (contextSummaries.length > 0) {
+      const contextString = contextSummaries.map((ctx, idx) => {
+        const promptPart = ctx.originalPrompt ? `User asked: ${ctx.originalPrompt}\n` : ''
+        const responsePart = ctx.isFull && ctx.response
+          ? `Your response: ${ctx.response}`
+          : `Your response (summary): ${ctx.summary}`
+        return `${idx + 1}. ${promptPart}${responsePart}`
+      }).join('\n\n')
+      prompt += `Here is context from your recent conversation with this user:\n\n${contextString}\n\n`
+    } else if (originalResponse && originalResponse.trim()) {
+      prompt += `Your previous response that the user wants to continue discussing:\n${originalResponse.substring(0, 2000)}${originalResponse.length > 2000 ? '...' : ''}\n\n`
+    }
+
+    if (refinedData && refinedData.facts_with_citations && refinedData.facts_with_citations.length > 0) {
+      const factsText = refinedData.facts_with_citations
+        .map((fact, idx) => `${idx + 1}. ${fact.fact}${fact.source_quote ? `\n   Source: "${fact.source_quote}"` : ''}`)
+        .join('\n\n')
+      prompt += `Here is verified information from a recent web search that may help answer the user's question:\n\n${factsText}\n\n`
+    }
+
+    prompt += `User: ${userMessage}`
+
+    // Step 4: Model mapping
+    const modelMappings = {
+      'claude-4.5-opus': 'claude-opus-4-5-20251101',
+      'claude-4.5-sonnet': 'claude-sonnet-4-5-20250929',
+      'claude-4.5-haiku': 'claude-haiku-4-5-20251001',
+      'gemini-3-pro': 'gemini-3-pro-preview',
+      'gemini-3-flash': 'gemini-3-flash-preview',
+      'magistral-medium': 'magistral-medium-latest',
+      'mistral-medium-3.1': 'mistral-medium-latest',
+      'mistral-small-3.2': 'mistral-small-latest',
+    }
+    const mappedModel = modelMappings[model] || model
+
+    sendSSE('status', { message: 'Generating response...' })
+
+    let fullResponse = ''
+    let inputTokens = 0
+    let outputTokens = 0
+
+    // Step 5: Stream from the appropriate provider
+    if (['openai', 'xai', 'meta', 'deepseek', 'mistral'].includes(provider)) {
+      // OpenAI-compatible streaming
+      const baseUrls = {
+        openai: 'https://api.openai.com/v1',
+        xai: 'https://api.x.ai/v1',
+        meta: 'https://api.groq.com/openai/v1',
+        deepseek: 'https://api.deepseek.com/v1',
+        mistral: 'https://api.mistral.ai/v1',
+      }
+      const apiKey = API_KEYS[provider]
+      if (!apiKey) {
+        sendSSE('error', { message: `${provider} API key not configured` })
+        return res.end()
+      }
+
+      const modelsWithFixedTemperature = ['gpt-5-mini']
+      const shouldUseDefaultTemperature = modelsWithFixedTemperature.includes(mappedModel) || modelsWithFixedTemperature.includes(model)
+
+      const streamResponse = await axios.post(
+        `${baseUrls[provider]}/chat/completions`,
+        {
+          model: mappedModel,
+          messages: [{ role: 'user', content: prompt }],
+          ...(shouldUseDefaultTemperature ? {} : { temperature: 0.7 }),
+          stream: true
+        },
+        {
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          responseType: 'stream'
+        }
+      )
+
+      await new Promise((resolve, reject) => {
+        streamResponse.data.on('data', (chunk) => {
+          const lines = chunk.toString().split('\n').filter(l => l.trim().startsWith('data:'))
+          for (const line of lines) {
+            const jsonStr = line.replace(/^data:\s*/, '').trim()
+            if (jsonStr === '[DONE]') continue
+            try {
+              const parsed = JSON.parse(jsonStr)
+              const token = parsed.choices?.[0]?.delta?.content || ''
+              if (token) {
+                fullResponse += token
+                sendSSE('token', { content: token })
+              }
+              if (parsed.usage) {
+                inputTokens = parsed.usage.prompt_tokens || 0
+                outputTokens = parsed.usage.completion_tokens || 0
+              }
+            } catch (e) { /* skip */ }
+          }
+        })
+        streamResponse.data.on('end', resolve)
+        streamResponse.data.on('error', reject)
+      })
+
+    } else if (provider === 'anthropic') {
+      // Anthropic streaming (different SSE format)
+      const apiKey = API_KEYS.anthropic
+      if (!apiKey) {
+        sendSSE('error', { message: 'Anthropic API key not configured' })
+        return res.end()
+      }
+
+      const streamResponse = await axios.post(
+        'https://api.anthropic.com/v1/messages',
+        {
+          model: mappedModel,
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: prompt }],
+          stream: true
+        },
+        {
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Type': 'application/json'
+          },
+          responseType: 'stream',
+          timeout: 120000
+        }
+      )
+
+      await new Promise((resolve, reject) => {
+        let buffer = ''
+        let streamError = null
+        const processAnthropicConvoLine = (line) => {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.replace('data: ', '').trim()
+            if (!jsonStr) return
+            try {
+              const parsed = JSON.parse(jsonStr)
+              if (parsed.type === 'content_block_delta') {
+                const text = parsed.delta?.text || ''
+                if (text) {
+                  fullResponse += text
+                  sendSSE('token', { content: text })
+                }
+              }
+              if (parsed.type === 'message_delta' && parsed.usage) {
+                outputTokens = parsed.usage.output_tokens || 0
+              }
+              if (parsed.type === 'message_start' && parsed.message?.usage) {
+                inputTokens = parsed.message.usage.input_tokens || 0
+              }
+              if (parsed.type === 'error') {
+                console.error(`[Model Conversation Stream] Anthropic stream error event:`, parsed.error || parsed)
+                streamError = parsed.error?.message || 'Anthropic stream error'
+              }
+            } catch (e) { /* skip */ }
+          }
+        }
+        streamResponse.data.on('data', (chunk) => {
+          buffer += chunk.toString()
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          for (const line of lines) {
+            processAnthropicConvoLine(line)
+          }
+        })
+        streamResponse.data.on('end', () => {
+          if (buffer.trim()) {
+            const remaining = buffer.split('\n')
+            for (const line of remaining) {
+              processAnthropicConvoLine(line)
+            }
+          }
+          if (streamError && !fullResponse) {
+            reject(new Error(streamError))
+          } else {
+            resolve()
+          }
+        })
+        streamResponse.data.on('error', (err) => {
+          console.error(`[Model Conversation Stream] Anthropic stream connection error:`, err.message)
+          reject(err)
+        })
+      })
+
+    } else if (provider === 'google') {
+      // Google Gemini streaming
+      const apiKey = API_KEYS.google
+      if (!apiKey) {
+        sendSSE('error', { message: 'Google API key not configured' })
+        return res.end()
+      }
+
+      const streamResponse = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/${mappedModel}:streamGenerateContent?key=${apiKey}&alt=sse`,
+        {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 4096 }
+        },
+        { responseType: 'stream' }
+      )
+
+      await new Promise((resolve, reject) => {
+        let buffer = ''
+        const processGoogleConvoLine = (line) => {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.replace('data: ', '').trim()
+            if (!jsonStr) return
+            try {
+              const parsed = JSON.parse(jsonStr)
+              const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
+              if (text) {
+                fullResponse += text
+                sendSSE('token', { content: text })
+              }
+              if (parsed.usageMetadata) {
+                inputTokens = parsed.usageMetadata.promptTokenCount || inputTokens
+                outputTokens = parsed.usageMetadata.candidatesTokenCount || outputTokens
+              }
+            } catch (e) { /* skip */ }
+          }
+        }
+        streamResponse.data.on('data', (chunk) => {
+          buffer += chunk.toString()
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          for (const line of lines) {
+            processGoogleConvoLine(line)
+          }
+        })
+        streamResponse.data.on('end', () => {
+          if (buffer.trim()) {
+            const remaining = buffer.split('\n')
+            for (const line of remaining) {
+              processGoogleConvoLine(line)
+            }
+          }
+          resolve()
+        })
+        streamResponse.data.on('error', reject)
+      })
+
+    } else {
+      sendSSE('error', { message: `Unsupported provider: ${provider}` })
+      clearInterval(heartbeat)
+      return res.end()
+    }
+
+    // If tokens weren't captured from stream, estimate
+    if (inputTokens === 0 && outputTokens === 0) {
+      try {
+        inputTokens = await countTokens(prompt, provider, mappedModel)
+        outputTokens = await countTokens(fullResponse, provider, mappedModel)
+      } catch (e) { /* skip */ }
+    }
+
+    // Track usage
+    trackUsage(userId, provider, model, inputTokens, outputTokens)
+
+    // Store context async
+    storeModelContext(userId, modelName, fullResponse, userMessage).catch(err => {
+      console.error(`[Model Conversation Stream] Error storing context for ${modelName}:`, err)
+    })
+
+    console.log(`[Model Conversation Stream] Response generated for ${modelName}, tokens: ${inputTokens}/${outputTokens}`)
+
+    // Send final metadata
+    sendSSE('done', {
+      response: fullResponse,
+      tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens },
+      category, needsSearch,
+      usedSearch: needsSearch && refinedData !== null,
+      searchResults,
+      refinedData: refinedData ? {
+        facts_with_citations: refinedData.facts_with_citations || [],
+        data_points: refinedData.data_points || [],
+        tokens: refinedData.tokens || null
+      } : null
+    })
+
+    clearInterval(heartbeat)
+    res.end()
+
+  } catch (error) {
+    clearInterval(heartbeat)
+    if (error.response?.data) {
+      try { console.error('[Model Conversation Stream] API Error:', JSON.stringify(error.response.data)) } catch (e) { console.error('[Model Conversation Stream] API Error (non-serializable):', error.response.status, error.response.statusText) }
+    } else {
+      console.error('[Model Conversation Stream] Error:', error.message)
+    }
+    sendSSE('error', { message: 'Failed to get model response: ' + (error.response?.data?.error?.message || error.message) })
+    res.end()
+  }
+})
+
+// Continue conversation with a specific model (for individual response windows AND single-model main view)
+// Uses server-side context storage (same rolling-window pattern as judge context)
 app.post('/api/model/conversation', async (req, res) => {
   try {
-    const { userId, modelName, userMessage, originalResponse, conversationContext, responseId } = req.body
+    const { userId, modelName, userMessage, originalResponse, responseId } = req.body
     
     if (!userId || !modelName || !userMessage) {
       return res.status(400).json({ error: 'userId, modelName, and userMessage are required' })
@@ -1855,36 +2917,122 @@ app.post('/api/model/conversation', async (req, res) => {
     const provider = parts[0]
     const model = parts.slice(1).join('-')
     
-    // Build prompt with context
-    let prompt = ''
-    if (conversationContext && conversationContext.trim()) {
-      prompt = `Previous conversation context:\n${conversationContext}\n\n`
+    // Step 1: Detect category and determine if web search is needed (same as judge conversation)
+    const { category, needsSearch } = await detectCategoryForJudge(userMessage, userId)
+    console.log(`[Model Conversation] Category: ${category}, Needs Search: ${needsSearch}`)
+    
+    // Step 2: If search is needed, run search + refiner pipeline
+    let refinedData = null
+    let searchResults = []
+    
+    if (needsSearch) {
+      console.log(`[Model Conversation] Search needed for ${modelName}, running RAG pipeline...`)
+      
+      const serperApiKey = API_KEYS.serper
+      if (serperApiKey) {
+        try {
+          const serperData = await performSerperSearch(userMessage, 5)
+          searchResults = (serperData?.organic || []).map(r => ({
+            title: r.title,
+            link: r.link,
+            snippet: r.snippet
+          }))
+          
+          console.log(`[Model Conversation] Search completed, found ${searchResults.length} results`)
+          
+          // Run refiner step
+          if (searchResults.length > 0) {
+            refinedData = await refinerStep(userMessage, searchResults, false, userId)
+            console.log(`[Model Conversation] Refiner completed, extracted ${refinedData.facts_with_citations?.length || 0} facts`)
+          }
+        } catch (searchError) {
+          console.error('[Model Conversation] Search/refiner error:', searchError)
+          // Continue without refined data
+        }
+      } else {
+        console.warn('[Model Conversation] Serper API key not configured, skipping search')
+      }
     }
-    if (originalResponse && originalResponse.trim()) {
+    
+    // Step 3: Get conversation context from server-side storage
+    const usage = readUsage()
+    const userUsage = usage[userId] || {}
+    const allModelContexts = userUsage.modelConversationContext || {}
+    const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
+    
+    // Build context string from server-stored context (position 0 = full, 1-4 = summarized)
+    let prompt = `Today's date is ${getCurrentDateString()}. You have access to real-time web search — when search results are provided below, use them directly to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the results are included in this prompt. Answer confidently using the provided data.\n\n`
+    if (contextSummaries.length > 0) {
+      const contextString = contextSummaries.map((ctx, idx) => {
+        const promptPart = ctx.originalPrompt ? `User asked: ${ctx.originalPrompt}\n` : ''
+        const responsePart = ctx.isFull && ctx.response 
+          ? `Your response: ${ctx.response}`
+          : `Your response (summary): ${ctx.summary}`
+        return `${idx + 1}. ${promptPart}${responsePart}`
+      }).join('\n\n')
+      prompt += `Here is context from your recent conversation with this user:\n\n${contextString}\n\n`
+    } else if (originalResponse && originalResponse.trim()) {
+      // First follow-up: use the original response as initial context
       prompt += `Your previous response that the user wants to continue discussing:\n${originalResponse.substring(0, 2000)}${originalResponse.length > 2000 ? '...' : ''}\n\n`
     }
+    
+    // Step 4: Add refined search facts to prompt if available
+    if (refinedData && refinedData.facts_with_citations && refinedData.facts_with_citations.length > 0) {
+      const factsText = refinedData.facts_with_citations
+        .map((fact, idx) => `${idx + 1}. ${fact.fact}${fact.source_quote ? `\n   Source: "${fact.source_quote}"` : ''}`)
+        .join('\n\n')
+      
+      prompt += `Here is verified information from a recent web search that may help answer the user's question:\n\n${factsText}\n\n`
+    }
+    
     prompt += `User: ${userMessage}`
     
     let responseText = ''
     let inputTokens = 0
     let outputTokens = 0
     
-    // Call the appropriate API based on provider
-    if (provider === 'openai') {
-      const apiKey = API_KEYS.openai
+    // Use the same model mapping table as the main /api/llm endpoint
+    const modelMappings = {
+      'claude-4.5-opus': 'claude-opus-4-5-20251101',
+      'claude-4.5-sonnet': 'claude-sonnet-4-5-20250929',
+      'claude-4.5-haiku': 'claude-haiku-4-5-20251001',
+      'gemini-3-pro': 'gemini-3-pro-preview',
+      'gemini-3-flash': 'gemini-3-flash-preview',
+      'magistral-medium': 'magistral-medium-latest',
+      'mistral-medium-3.1': 'mistral-medium-latest',
+      'mistral-small-3.2': 'mistral-small-latest',
+    }
+    const mappedModel = modelMappings[model] || model
+    if (modelMappings[model]) {
+      console.log(`[Model Conversation] Model mapping: "${model}" -> "${mappedModel}"`)
+    }
+    
+    // Step 5: Call the appropriate API based on provider
+    if (['openai', 'xai', 'meta', 'deepseek', 'mistral'].includes(provider)) {
+      const baseUrls = {
+        openai: 'https://api.openai.com/v1',
+        xai: 'https://api.x.ai/v1',
+        meta: 'https://api.groq.com/openai/v1',
+        deepseek: 'https://api.deepseek.com/v1',
+        mistral: 'https://api.mistral.ai/v1',
+      }
+      const apiKey = API_KEYS[provider]
       if (!apiKey) {
-        return res.status(400).json({ error: 'OpenAI API key not configured' })
+        return res.status(400).json({ error: `${provider} API key not configured` })
       }
       
-      const actualModel = model.includes('gpt-5') ? 'gpt-5.2' : (model.includes('gpt-4') ? 'gpt-4o' : model)
+      // Some models only support default temperature
+      const modelsWithFixedTemperature = ['gpt-5-mini']
+      const shouldUseDefaultTemperature = modelsWithFixedTemperature.includes(mappedModel) || modelsWithFixedTemperature.includes(model)
+      
       const response = await axios.post(
-        'https://api.openai.com/v1/chat/completions',
+        `${baseUrls[provider]}/chat/completions`,
         {
-          model: actualModel,
+          model: mappedModel,
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 2048,
+          ...(shouldUseDefaultTemperature ? {} : { temperature: 0.7 }),
         },
-        { headers: { 'Authorization': `Bearer ${apiKey}` } }
+        { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }
       )
       
       responseText = response.data.choices[0].message.content
@@ -1897,18 +3045,17 @@ app.post('/api/model/conversation', async (req, res) => {
         return res.status(400).json({ error: 'Anthropic API key not configured' })
       }
       
-      const actualModel = model.includes('claude-4') ? 'claude-4.5-opus' : model
       const response = await axios.post(
         'https://api.anthropic.com/v1/messages',
         {
-          model: actualModel,
+          model: mappedModel,
           max_tokens: 2048,
           messages: [{ role: 'user', content: prompt }],
         },
         { 
           headers: { 
             'x-api-key': apiKey,
-            'anthropic-version': '2024-01-01',
+            'anthropic-version': '2023-06-01',
             'Content-Type': 'application/json'
           } 
         }
@@ -1924,9 +3071,8 @@ app.post('/api/model/conversation', async (req, res) => {
         return res.status(400).json({ error: 'Google API key not configured' })
       }
       
-      const actualModel = model.includes('gemini-3') ? `${model}-preview` : model
       const response = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/${actualModel}:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${mappedModel}:generateContent?key=${apiKey}`,
         {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { maxOutputTokens: 2048 }
@@ -1938,26 +3084,6 @@ app.post('/api/model/conversation', async (req, res) => {
       inputTokens = usageMetadata.promptTokenCount || 0
       outputTokens = usageMetadata.candidatesTokenCount || 0
       
-    } else if (provider === 'xai') {
-      const apiKey = API_KEYS.xai
-      if (!apiKey) {
-        return res.status(400).json({ error: 'xAI API key not configured' })
-      }
-      
-      const response = await axios.post(
-        'https://api.x.ai/v1/chat/completions',
-        {
-          model: model,
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 2048,
-        },
-        { headers: { 'Authorization': `Bearer ${apiKey}` } }
-      )
-      
-      responseText = response.data.choices[0].message.content
-      inputTokens = response.data.usage?.prompt_tokens || 0
-      outputTokens = response.data.usage?.completion_tokens || 0
-      
     } else {
       return res.status(400).json({ error: `Unsupported provider: ${provider}` })
     }
@@ -1965,7 +3091,12 @@ app.post('/api/model/conversation', async (req, res) => {
     // Track usage
     trackUsage(userId, provider, model, inputTokens, outputTokens)
     
-    console.log(`[Model Conversation] Response generated for ${modelName}, tokens: ${inputTokens}/${outputTokens}`)
+    // Store response in server-side context (async, don't wait — same as judge)
+    storeModelContext(userId, modelName, responseText, userMessage).catch(err => {
+      console.error(`[Model Conversation] Error storing context for ${modelName}:`, err)
+    })
+    
+    console.log(`[Model Conversation] Response generated for ${modelName}, tokens: ${inputTokens}/${outputTokens}, usedSearch: ${needsSearch && refinedData !== null}`)
     
     res.json({
       response: responseText,
@@ -1973,12 +3104,27 @@ app.post('/api/model/conversation', async (req, res) => {
         input: inputTokens,
         output: outputTokens,
         total: inputTokens + outputTokens
-      }
+      },
+      category: category,
+      needsSearch: needsSearch,
+      usedSearch: needsSearch && refinedData !== null,
+      searchResults: searchResults,
+      refinedData: refinedData ? {
+        facts_with_citations: refinedData.facts_with_citations || [],
+        data_points: refinedData.data_points || [],
+        tokens: refinedData.tokens || null
+      } : null
     })
     
   } catch (error) {
-    console.error('[Model Conversation] Error:', error)
-    res.status(500).json({ error: 'Failed to get model response: ' + error.message })
+    // Log the actual API error response if available (not the full axios dump)
+    if (error.response?.data) {
+      try { console.error('[Model Conversation] API Error Response:', JSON.stringify(error.response.data)) } catch (e) { console.error('[Model Conversation] API Error (non-serializable):', error.response.status, error.response.statusText) }
+      console.error('[Model Conversation] Status:', error.response.status)
+    } else {
+      console.error('[Model Conversation] Error:', error.message)
+    }
+    res.status(500).json({ error: 'Failed to get model response: ' + (error.response?.data?.error?.message || error.message) })
   }
 })
 
@@ -2883,6 +4029,422 @@ app.post('/api/llm', async (req, res) => {
   }
 })
 
+// ==================== STREAMING LLM ENDPOINT ====================
+// SSE streaming version of /api/llm for individual model responses
+app.post('/api/llm/stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders()
+
+  const sendSSE = (type, data) => {
+    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+  }
+
+  // Keep-alive heartbeat — prevents browser/proxy from closing idle SSE connections
+  // SSE comment lines (starting with :) are ignored by the client parser
+  const heartbeat = setInterval(() => {
+    try { res.write(': heartbeat\n\n') } catch (e) { clearInterval(heartbeat) }
+  }, 15000)
+
+  const { provider, model, prompt, userId, isSummary } = req.body || {}
+
+  try {
+    if (!provider || !model || !prompt) {
+      sendSSE('error', { message: 'Missing required fields: provider, model, or prompt' })
+      clearInterval(heartbeat)
+      return res.end()
+    }
+
+    if (!isSummary && userId) {
+      const subscriptionCheck = await checkSubscriptionStatusAsync(userId)
+      if (!subscriptionCheck.hasAccess) {
+        sendSSE('error', { message: 'Active subscription required.', subscriptionRequired: true })
+        clearInterval(heartbeat)
+        return res.end()
+      }
+    }
+
+    const apiKey = API_KEYS[provider]
+    if (!apiKey || apiKey.trim() === '') {
+      sendSSE('error', { message: `No API key configured for provider: ${provider}` })
+      clearInterval(heartbeat)
+      return res.end()
+    }
+
+    const modelMappings = {
+      'claude-4.5-opus': 'claude-opus-4-5-20251101',
+      'claude-4.5-sonnet': 'claude-sonnet-4-5-20250929',
+      'claude-4.5-haiku': 'claude-haiku-4-5-20251001',
+      'gemini-3-pro': 'gemini-3-pro-preview',
+      'gemini-3-flash': 'gemini-3-flash-preview',
+      'magistral-medium': 'magistral-medium-latest',
+      'mistral-medium-3.1': 'mistral-medium-latest',
+      'mistral-small-3.2': 'mistral-small-latest',
+    }
+    const mappedModel = modelMappings[model] || model
+
+    let fullResponse = ''
+    let inputTokens = 0
+    let outputTokens = 0
+
+    // OpenAI-compatible providers
+    if (['openai', 'xai', 'meta', 'deepseek', 'mistral'].includes(provider)) {
+      const baseUrls = {
+        openai: 'https://api.openai.com/v1',
+        xai: 'https://api.x.ai/v1',
+        meta: 'https://api.groq.com/openai/v1',
+        deepseek: 'https://api.deepseek.com/v1',
+        mistral: 'https://api.mistral.ai/v1',
+      }
+
+      const modelsWithFixedTemperature = ['gpt-5-mini']
+      const shouldUseDefaultTemperature = modelsWithFixedTemperature.includes(mappedModel) || modelsWithFixedTemperature.includes(model)
+
+      const streamResponse = await axios.post(
+        `${baseUrls[provider]}/chat/completions`,
+        {
+          model: mappedModel,
+          messages: [{ role: 'user', content: prompt }],
+          ...(shouldUseDefaultTemperature ? {} : { temperature: 0.7 }),
+          stream: true,
+          stream_options: { include_usage: true }
+        },
+        {
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          responseType: 'stream'
+        }
+      )
+
+      await new Promise((resolve, reject) => {
+        streamResponse.data.on('data', (chunk) => {
+          const lines = chunk.toString().split('\n').filter(l => l.trim().startsWith('data:'))
+          for (const line of lines) {
+            const jsonStr = line.replace(/^data:\s*/, '').trim()
+            if (jsonStr === '[DONE]') continue
+            try {
+              const parsed = JSON.parse(jsonStr)
+              const token = parsed.choices?.[0]?.delta?.content || ''
+              if (token) {
+                fullResponse += token
+                sendSSE('token', { content: token })
+              }
+              if (parsed.usage) {
+                inputTokens = parsed.usage.prompt_tokens || 0
+                outputTokens = parsed.usage.completion_tokens || 0
+              }
+            } catch (e) { /* skip */ }
+          }
+        })
+        streamResponse.data.on('end', resolve)
+        streamResponse.data.on('error', reject)
+      })
+
+      // Clean Mistral responses
+      if (provider === 'mistral') {
+        fullResponse = cleanMistralResponse(fullResponse)
+      }
+
+    } else if (provider === 'anthropic') {
+      const streamResponse = await axios.post(
+        'https://api.anthropic.com/v1/messages',
+        {
+          model: mappedModel,
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: prompt }],
+          stream: true
+        },
+        {
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Type': 'application/json'
+          },
+          responseType: 'stream',
+          timeout: 120000 // 2 minute timeout for slow models like Opus
+        }
+      )
+
+      await new Promise((resolve, reject) => {
+        let buffer = ''
+        let streamError = null
+        const processAnthropicLine = (line) => {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.replace('data: ', '').trim()
+            if (!jsonStr) return
+            try {
+              const parsed = JSON.parse(jsonStr)
+              if (parsed.type === 'content_block_delta') {
+                // Handle both text and thinking deltas
+                const text = parsed.delta?.text || ''
+                if (text) {
+                  fullResponse += text
+                  sendSSE('token', { content: text })
+                }
+              }
+              if (parsed.type === 'message_delta' && parsed.usage) {
+                outputTokens = parsed.usage.output_tokens || 0
+              }
+              if (parsed.type === 'message_start' && parsed.message?.usage) {
+                inputTokens = parsed.message.usage.input_tokens || 0
+              }
+              if (parsed.type === 'error') {
+                console.error(`[LLM Stream] Anthropic stream error event:`, parsed.error || parsed)
+                streamError = parsed.error?.message || 'Anthropic stream error'
+              }
+            } catch (e) { /* skip unparseable */ }
+          }
+        }
+        streamResponse.data.on('data', (chunk) => {
+          buffer += chunk.toString()
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          for (const line of lines) {
+            processAnthropicLine(line)
+          }
+        })
+        streamResponse.data.on('end', () => {
+          // Flush remaining buffer
+          if (buffer.trim()) {
+            const remaining = buffer.split('\n')
+            for (const line of remaining) {
+              processAnthropicLine(line)
+            }
+          }
+          if (streamError && !fullResponse) {
+            reject(new Error(streamError))
+          } else {
+            resolve()
+          }
+        })
+        streamResponse.data.on('error', (err) => {
+          console.error(`[LLM Stream] Anthropic stream connection error:`, err.message)
+          reject(err)
+        })
+      })
+
+      console.log(`[LLM Stream] Anthropic stream completed for ${mappedModel}, response length: ${fullResponse.length}`)
+
+    } else if (provider === 'google') {
+      const isPreviewModel = mappedModel.includes('-preview')
+      const apiVersion = isPreviewModel ? 'v1beta' : 'v1'
+      const baseUrl = `https://generativelanguage.googleapis.com/${apiVersion}`
+
+      const streamResponse = await axios.post(
+        `${baseUrl}/models/${mappedModel}:streamGenerateContent?key=${apiKey}&alt=sse`,
+        {
+          contents: [{ parts: [{ text: prompt }] }],
+        },
+        { responseType: 'stream' }
+      )
+
+      await new Promise((resolve, reject) => {
+        let buffer = ''
+        const processGoogleLine = (line) => {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.replace('data: ', '').trim()
+            if (!jsonStr) return
+            try {
+              const parsed = JSON.parse(jsonStr)
+              const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
+              if (text) {
+                fullResponse += text
+                sendSSE('token', { content: text })
+              }
+              if (parsed.usageMetadata) {
+                inputTokens = parsed.usageMetadata.promptTokenCount || inputTokens
+                outputTokens = parsed.usageMetadata.candidatesTokenCount || outputTokens
+              }
+            } catch (e) { /* skip */ }
+          }
+        }
+        streamResponse.data.on('data', (chunk) => {
+          buffer += chunk.toString()
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          for (const line of lines) {
+            processGoogleLine(line)
+          }
+        })
+        streamResponse.data.on('end', () => {
+          // Flush remaining buffer
+          if (buffer.trim()) {
+            const remaining = buffer.split('\n')
+            for (const line of remaining) {
+              processGoogleLine(line)
+            }
+          }
+          resolve()
+        })
+        streamResponse.data.on('error', reject)
+      })
+
+    } else {
+      sendSSE('error', { message: `Unknown provider: ${provider}` })
+      clearInterval(heartbeat)
+      return res.end()
+    }
+
+    // Estimate tokens if not captured from stream
+    if (inputTokens === 0 && outputTokens === 0) {
+      try {
+        inputTokens = await countTokens(prompt, provider, mappedModel)
+        outputTokens = await countTokens(fullResponse, provider, mappedModel)
+      } catch (e) { /* skip */ }
+    }
+
+    // Track usage
+    if (userId && fullResponse) {
+      trackUsage(userId, provider, model, inputTokens, outputTokens)
+    }
+
+    const totalTokens = inputTokens + outputTokens
+
+    // Send final metadata
+    sendSSE('done', {
+      text: fullResponse,
+      model: mappedModel,
+      originalModel: model,
+      tokens: {
+        input: inputTokens,
+        output: outputTokens,
+        total: totalTokens,
+        provider,
+        model,
+        source: 'stream'
+      }
+    })
+
+    clearInterval(heartbeat)
+    res.end()
+
+  } catch (error) {
+    clearInterval(heartbeat)
+    console.error(`[LLM Stream] Error for ${provider}/${model}:`, error.message)
+    if (error.response) {
+      console.error('[LLM Stream] API Error status:', error.response.status, error.response.statusText)
+      try {
+        if (typeof error.response.data === 'string') {
+          console.error('[LLM Stream] API Error body:', error.response.data.substring(0, 500))
+        } else if (error.response.data && typeof error.response.data === 'object' && !error.response.data.on) {
+          console.error('[LLM Stream] API Error body:', JSON.stringify(error.response.data).substring(0, 500))
+        }
+      } catch (e) { /* skip */ }
+    }
+    try {
+      sendSSE('error', { message: error.response?.data?.error?.message || error.message || 'Unknown error' })
+      res.end()
+    } catch (e) {
+      console.error('[LLM Stream] Failed to send error to client:', e.message)
+    }
+  }
+})
+
+// ==================== STREAMING SUMMARY ENDPOINT ====================
+// SSE streaming version for judge/summary generation (always Grok)
+app.post('/api/summary/stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders()
+
+  const sendSSE = (type, data) => {
+    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+  }
+
+  try {
+    const { prompt, userId } = req.body
+    if (!prompt) {
+      sendSSE('error', { message: 'Missing prompt' })
+      return res.end()
+    }
+
+    const apiKey = API_KEYS.xai
+    if (!apiKey) {
+      sendSSE('error', { message: 'xAI API key not configured' })
+      return res.end()
+    }
+
+    const grokModel = 'grok-4-1-fast-reasoning'
+    let fullResponse = ''
+    let inputTokens = 0
+    let outputTokens = 0
+
+    const streamResponse = await axios.post(
+      'https://api.x.ai/v1/chat/completions',
+      {
+        model: grokModel,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        stream: true,
+        stream_options: { include_usage: true }
+      },
+      {
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        responseType: 'stream'
+      }
+    )
+
+    await new Promise((resolve, reject) => {
+      streamResponse.data.on('data', (chunk) => {
+        const lines = chunk.toString().split('\n').filter(l => l.trim().startsWith('data:'))
+        for (const line of lines) {
+          const jsonStr = line.replace(/^data:\s*/, '').trim()
+          if (jsonStr === '[DONE]') continue
+          try {
+            const parsed = JSON.parse(jsonStr)
+            const token = parsed.choices?.[0]?.delta?.content || ''
+            if (token) {
+              fullResponse += token
+              sendSSE('token', { content: token })
+            }
+            if (parsed.usage) {
+              inputTokens = parsed.usage.prompt_tokens || 0
+              outputTokens = parsed.usage.completion_tokens || 0
+            }
+          } catch (e) { /* skip */ }
+        }
+      })
+      streamResponse.data.on('end', resolve)
+      streamResponse.data.on('error', reject)
+    })
+
+    // Estimate tokens if not captured
+    if (inputTokens === 0 && outputTokens === 0) {
+      try {
+        inputTokens = await countTokens(prompt, 'xai', grokModel)
+        outputTokens = await countTokens(fullResponse, 'xai', grokModel)
+      } catch (e) { /* skip */ }
+    }
+
+    // Track usage as summary/judge call (pipeline — not shown in user stats, only cost)
+    if (userId) {
+      trackUsage(userId, 'xai', grokModel, inputTokens, outputTokens, true)
+    }
+
+    sendSSE('done', {
+      text: fullResponse,
+      model: grokModel,
+      tokens: {
+        input: inputTokens,
+        output: outputTokens,
+        total: inputTokens + outputTokens,
+        provider: 'xai',
+        model: grokModel,
+        source: 'stream'
+      }
+    })
+
+    res.end()
+  } catch (error) {
+    console.error('[Summary Stream] Error:', error.message)
+    sendSSE('error', { message: error.message })
+    res.end()
+  }
+})
+
 // Helper function for Serper search (used by both /api/search and RAG pipeline)
 async function performSerperSearch(query, num = 10) {
   const apiKey = API_KEYS.serper
@@ -2890,12 +4452,16 @@ async function performSerperSearch(query, num = 10) {
     throw new Error('No Serper API key configured. Please add SERPER_API_KEY to the backend .env file.')
   }
 
-  console.log('[Serper] Search request:', { query, num })
+  // Append current month + year to the query so Google prioritizes recent results
+  const dateTag = getCurrentMonthYear() // e.g. "February 2026"
+  const datedQuery = `${query} ${dateTag}`
+
+  console.log('[Serper] Search request:', { original: query, datedQuery, num })
 
   const response = await axios.post(
     'https://google.serper.dev/search',
     {
-      q: query,
+      q: datedQuery,
       num: num,
     },
     {
@@ -2945,6 +4511,11 @@ app.post('/api/search', async (req, res) => {
       
       // Increment total queries
       userUsage.totalQueries = (userUsage.totalQueries || 0) + 1
+      
+      // Ensure monthlyUsage exists before accessing it
+      if (!userUsage.monthlyUsage) {
+        userUsage.monthlyUsage = {}
+      }
       
       // Increment monthly queries
       if (!userUsage.monthlyUsage[currentMonth]) {
@@ -3333,11 +4904,12 @@ const refinerStep = async (query, searchResults, useSecondary = false, userId = 
   
   const formattedResults = await formatSearchResults(searchResults)
   
-  const refinerPrompt = `You are a data extraction engine. Extract ONLY relevant, useful factual information that directly helps answer the user's query.
+  const refinerPrompt = `Today's date is ${getCurrentDateString()}. You are a data extraction engine. Extract ONLY relevant, useful factual information that directly helps answer the user's query.
 
 CRITICAL REQUIREMENTS:
 - Extract at least ONE fact from EACH of the first 5 parseable sources
 - ONLY extract facts that are DIRECTLY RELEVANT to answering the user's query
+- Prioritize the MOST RECENT and up-to-date facts — discard outdated information from previous years when newer data is available
 - Prioritize facts that provide specific, actionable, or informative answers to the user's question
 - Focus on facts that add value: specific details, statistics, dates, names, locations, explanations, or insights
 - If a source is a video or not parsable, skip it and move to the next source
@@ -3649,9 +5221,10 @@ const judgeRefinerSelection = async (query, primaryRefined, backupRefined, userI
   const primaryCitationCount = primaryRefined.facts_with_citations.length
   const backupCitationCount = backupRefined.facts_with_citations.length
   
-  const judgePrompt = `You are an expert judge analyzing two summaries of search results. Your task is to select the BEST summary based on:
+  const judgePrompt = `Today's date is ${getCurrentDateString()}. You are an expert judge analyzing two summaries of search results. Your task is to select the BEST summary based on:
 1. Better and more number of facts with valid source citations
 2. Relevance to the user's query
+3. Recency — prefer facts that are current and up-to-date
 
 Original User Query: "${query}"
 
@@ -3848,7 +5421,7 @@ const judgeFinalization = async (query, councilResponses, userId = null) => {
     .map((r, idx) => `\n--- Response ${idx + 1}: ${getFriendlyModelName(r.model_name)} ---\n${r.response}\n`)
     .join('')
   
-  const judgePrompt = `You are a judge analyzing responses from multiple AI models.
+  const judgePrompt = `Today's date is ${getCurrentDateString()}. You are a judge analyzing responses from multiple AI models.
 
 Original User Query: "${query}"
 
@@ -3869,8 +5442,9 @@ AGREEMENTS:
 (THIS SECTION IS MANDATORY! List at least 3-5 specific agreement points. NEVER write "None identified" unless models literally contradict each other on everything.)
 
 DISAGREEMENTS:
-- [Any points where models disagree - explain the difference]
-(If no disagreements exist, write "None identified.")`
+- [First difference between models - explain]
+- [Second difference between models - explain]
+(THIS SECTION IS MANDATORY! Look for: outright contradictions, different emphasis or focus areas, different levels of detail, different examples or evidence cited, different tone (optimistic vs pessimistic), topics covered by one model but omitted by another, or different framing of the same issue. You MUST list at least 2-3 differences — even when models broadly agree, they almost always differ in emphasis, specificity, or framing. Only write "None identified." if the responses are virtually identical word-for-word.)`
 
 
 
@@ -3937,7 +5511,7 @@ DISAGREEMENTS:
     // Handles: "SUMMARY:", "**SUMMARY**:", "Summary:", "2. SUMMARY:", "LIST AGREEMENTS", "AGREEMENTS:", etc.
     const summaryMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?SUMMARY(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\d+\.\s*)?(?:LIST\s+)?(?:\*\*)?AGREEMENTS|$)/im)
     const agreementsMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:LIST\s+)?(?:\*\*)?AGREEMENTS(?:\*\*)?[:\-]?(?:\s*-[^\n]*)?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?DISAGREEMENTS|$)/im)
-    const disagreementsMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?DISAGREEMENTS(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)$/im)
+    const disagreementsMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?DISAGREEMENTS(?:\*\*)?[:\-]?\s*\n?([\s\S]+)$/im)
     
     // Extract consensus score (0-100)
     let consensus = null
@@ -4049,10 +5623,14 @@ DISAGREEMENTS:
         .filter(l => {
           // Skip instruction-like text and empty/garbage entries
           const isInstructionText = l.toLowerCase().includes('if no disagreements') || 
-                                    l.toLowerCase().includes('write "none')
+                                    l.toLowerCase().includes('write "none') ||
+                                    l.toLowerCase().includes('this section is mandatory') ||
+                                    l.toLowerCase().includes('look for:') ||
+                                    l.toLowerCase().includes('you must list') ||
+                                    l.toLowerCase().includes('only write "none')
           const isEmpty = !l || l.length < 5
-          const isNone = l.toLowerCase().includes('none identified')
-          const isGarbage = l.match(/^\*+:?$/)
+          const isNone = l.toLowerCase() === 'none identified' || l.toLowerCase() === 'none identified.'
+          const isGarbage = l.match(/^\*+:?$/) || l.match(/^\(.*\)$/)
           return !isInstructionText && !isEmpty && !isNone && !isGarbage
         })
       console.log('[Judge] Extracted disagreements:', disagreements.length, disagreements)
@@ -4225,6 +5803,62 @@ const storeJudgeContext = async (userId, grokResponse, originalPrompt = null) =>
   }
 }
 
+// Store model conversation context (rolling window of 5 per model — same pattern as judge context)
+// Key: modelConversationContext[modelName] = [ { response, summary, tokens, originalPrompt, timestamp, isFull } ]
+const storeModelContext = async (userId, modelName, modelResponse, originalPrompt = null) => {
+  if (!userId || !modelName) return
+  
+  try {
+    const usage = readUsage()
+    if (!usage[userId]) {
+      usage[userId] = { modelConversationContext: {} }
+    }
+    
+    if (!usage[userId].modelConversationContext) {
+      usage[userId].modelConversationContext = {}
+    }
+    
+    if (!usage[userId].modelConversationContext[modelName]) {
+      usage[userId].modelConversationContext[modelName] = []
+    }
+    
+    const context = usage[userId].modelConversationContext[modelName]
+    
+    // If there's an existing item at position 0 (full response), summarize it before shifting
+    if (context.length > 0 && context[0].isFull) {
+      console.log(`[Model Context] Summarizing previous full response for ${modelName} before adding new one`)
+      const { summary, tokens } = await summarizeGrokResponse(context[0].response, userId)
+      context[0] = {
+        summary,
+        tokens,
+        originalPrompt: context[0].originalPrompt,
+        timestamp: context[0].timestamp,
+        isFull: false // Now it's summarized
+      }
+    }
+    
+    // Add new FULL response at position 0 (not summarized yet)
+    context.unshift({
+      response: modelResponse, // Store full response
+      summary: null, // Will be summarized when pushed to position 1
+      tokens: null,
+      originalPrompt: originalPrompt || null,
+      timestamp: new Date().toISOString(),
+      isFull: true
+    })
+    
+    // Keep only last 5
+    if (context.length > 5) {
+      usage[userId].modelConversationContext[modelName] = context.slice(0, 5)
+    }
+    
+    writeUsage(usage, userId)
+    console.log(`[Model Context] Stored full response for ${modelName}, user ${userId}, total context entries: ${usage[userId].modelConversationContext[modelName].length}`)
+  } catch (error) {
+    console.error(`[Model Context] Error storing context for ${modelName}:`, error)
+  }
+}
+
 // Store initial summary from summary window (when first created)
 app.post('/api/judge/store-initial-summary', async (req, res) => {
   try {
@@ -4306,18 +5940,6 @@ app.post('/api/rag', async (req, res) => {
         search_results: [],
         refined_data: null,
         council_responses: [],
-        judge_analysis: null,
-        debug_data: {
-          categoryDetection: null,
-          search: {
-            query: query,
-            results: [],
-            error: serperError.message
-          },
-          refiner: null,
-          council: [],
-          judgeFinalization: null
-        }
       })
     }
     
@@ -4352,6 +5974,11 @@ app.post('/api/rag', async (req, res) => {
       
       // Increment total queries
       userUsage.totalQueries = (userUsage.totalQueries || 0) + 1
+      
+      // Ensure monthlyUsage exists before accessing it
+      if (!userUsage.monthlyUsage) {
+        userUsage.monthlyUsage = {}
+      }
       
       // Increment monthly queries
       if (!userUsage.monthlyUsage[currentMonth]) {
@@ -4521,7 +6148,7 @@ app.post('/api/rag', async (req, res) => {
         factsWithSourcesText = 'No factual data points found (NOT FOUND)'
       }
       
-      const councilPrompt = `You are analyzing factual information that was extracted from recent web search results. This data is current and up-to-date from the internet.
+      const councilPrompt = `Today's date is ${getCurrentDateString()}. You are analyzing factual information that was extracted from recent web search results. This data is current and up-to-date from the internet.
 
 INSTRUCTIONS:
 1. TRUST the provided sources - they come from verified web sources, not your training data cutoff
@@ -4814,95 +6441,27 @@ ${factsWithSourcesText}`
     const councilResponses = await Promise.all(councilPromises)
     console.log(`[RAG Pipeline] Council completed, received ${councilResponses.length} responses`)
     
-    // Stage 4: Judge (final analysis) - only if 2 or more models were used
-    let judgeAnalysis = null
-    if (selectedModels.length >= 2) {
-      console.log('[RAG Pipeline] Stage 4: Judge finalization (2+ models detected)...')
-      judgeAnalysis = await judgeFinalization(query, councilResponses, userId)
-      
-      // Store the initial summary in conversation context (summarize with Gemini and store)
-      if (userId && judgeAnalysis?.response) {
-        storeJudgeContext(userId, judgeAnalysis.response, judgeAnalysis.prompt || null).catch(err => {
-          console.error('[RAG Pipeline] Error storing initial judge summary:', err)
-        })
+    // Judge finalization is now handled client-side via streaming endpoint
+    // (saves tokens and lets the user see the summary stream in real-time)
+    // Store each council model's initial response so council tab conversations have context
+    if (userId) {
+      for (const cr of councilResponses) {
+        if (cr.response && cr.model_name) {
+          storeModelContext(userId, cr.model_name, cr.response, query).catch(err => {
+            console.error(`[RAG Pipeline] Error storing initial model context for ${cr.model_name}:`, err)
+          })
+        }
       }
-    } else {
-      console.log('[RAG Pipeline] Skipping judge finalization (only 1 model selected)')
     }
     
     console.log('[RAG Pipeline] Pipeline complete!')
-    
-    // Build comprehensive debug data
-    console.log('[RAG Pipeline] Building debug data...')
-    console.log('[RAG Pipeline] Search results count:', searchResults.length)
-    console.log('[RAG Pipeline] Primary refiner facts count:', primaryRefined.facts_with_citations?.length || 0)
-    console.log('[RAG Pipeline] Refined data points count:', refinedData.data_points?.length || 0)
     console.log('[RAG Pipeline] Council responses count:', councilResponses.length)
     
-    const debugData = {
-      categoryDetection: null, // Will be set by frontend
-      search: {
-        query: query,
-        results: searchResults
-      },
-      refiner: {
-        primary: {
-          model: primaryRefined.model || 'gemini-2.5-flash-lite',
-          prompt: primaryRefined.prompt,
-          response: primaryRefined.response,
-          data_points: primaryRefined.data_points || [],
-          facts_with_citations: primaryRefined.facts_with_citations || [],
-          discard_rate: primaryRefined.discard_rate || 0
-        },
-        backup: backupRefined ? {
-          model: backupRefined.model || 'gpt-4o-mini',
-          prompt: backupRefined.prompt,
-          response: backupRefined.response,
-          data_points: backupRefined.data_points || [],
-          facts_with_citations: backupRefined.facts_with_citations || [],
-          discard_rate: backupRefined.discard_rate || 0
-        } : null,
-        judgeSelection: refinedData.judgePrompt ? {
-          prompt: refinedData.judgePrompt,
-          response: refinedData.judgeResponse,
-          reasoning: refinedData.judgeReasoning,
-          selected: refinedData.selected
-        } : null
-      },
-      council: councilResponses.map(r => ({
-        model: r.model_name,
-        actual_model: r.actual_model_name,
-        prompt: r.prompt,
-        response: r.response,
-        error: r.error
-      })),
-      judgeFinalization: judgeAnalysis ? {
-        prompt: judgeAnalysis.prompt,
-        response: judgeAnalysis.response,
-        consensus: judgeAnalysis.consensus,
-        summary: judgeAnalysis.summary,
-        agreements: judgeAnalysis.agreements,
-        disagreements: judgeAnalysis.disagreements
-      } : null
-    }
-    
-    console.log('[RAG Pipeline] Debug data structure:', {
-      hasSearch: !!debugData.search,
-      hasRefiner: !!debugData.refiner,
-      hasCouncil: !!debugData.council,
-      hasJudge: !!debugData.judgeFinalization,
-      searchResultsCount: debugData.search.results.length,
-      refinerFactsCount: debugData.refiner.primary.facts_with_citations.length,
-      councilCount: debugData.council.length
-    })
-    
-    // Log what we're sending in the response
     console.log('[RAG Pipeline] Preparing response with refiner_tokens:', {
       primaryRefinedHasTokens: !!primaryRefined?.tokens,
       backupRefinedHasTokens: !!backupRefined?.tokens,
       primaryRefinedTokens: primaryRefined?.tokens,
       backupRefinedTokens: backupRefined?.tokens,
-      judgeFinalizationTokens: judgeAnalysis?.tokens
     })
     
     return res.json({
@@ -4916,15 +6475,12 @@ ${factsWithSourcesText}`
         backup_used: backupRefined !== null
       },
       council_responses: councilResponses,
-      judge_analysis: judgeAnalysis,
-      debug_data: debugData,
-      // Include token info for refiner and judge models
+      // Include token info for refiner models
       refiner_tokens: {
         primary: primaryRefined?.tokens || null,
         backup: backupRefined?.tokens || null,
         judge_selection: refinedData?.judgeTokens || null
       },
-      judge_finalization_tokens: judgeAnalysis?.tokens || null
     })
   } catch (error) {
     console.error('[RAG Pipeline] Error:', error)
@@ -5255,8 +6811,8 @@ app.post('/api/admin/add', requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'User not found' })
     }
     
-    // Add to MongoDB admins collection
-    await db.admins.add(userId)
+    // Add to ADMIN database admins collection
+    await adminDb.admins.add(userId)
     
     // Update local cache
     if (!adminsCache.admins.includes(userId)) {
@@ -5278,8 +6834,8 @@ app.post('/api/admin/remove', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'userId is required' })
     }
     
-    // Remove from MongoDB admins collection
-    await db.admins.remove(userId)
+    // Remove from ADMIN database admins collection
+    await adminDb.admins.remove(userId)
     
     // Update local cache
     adminsCache.admins = adminsCache.admins.filter(id => id !== userId)
@@ -5289,6 +6845,46 @@ app.post('/api/admin/remove', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('[Admin] Error removing admin:', error)
     res.status(500).json({ error: 'Failed to remove admin' })
+  }
+})
+
+// ==================== ADMIN EXPENSES ENDPOINTS ====================
+
+// Get expenses for a month (PROTECTED - requires admin)
+app.get('/api/admin/expenses', requireAdmin, async (req, res) => {
+  try {
+    const { month } = req.query // Format: "YYYY-MM", defaults to current month
+    const expenses = await adminDb.expenses.get(month || null)
+    res.json({ success: true, expenses: expenses || {} })
+  } catch (error) {
+    console.error('[Admin] Error fetching expenses:', error)
+    res.status(500).json({ error: 'Failed to fetch expenses' })
+  }
+})
+
+// Save expenses for a month (PROTECTED - requires admin)
+app.post('/api/admin/expenses', requireAdmin, async (req, res) => {
+  try {
+    const { month, expenses: expenseData } = req.body
+    if (!expenseData) {
+      return res.status(400).json({ error: 'expenses data is required' })
+    }
+    const saved = await adminDb.expenses.save(month || null, expenseData)
+    res.json({ success: true, expenses: saved })
+  } catch (error) {
+    console.error('[Admin] Error saving expenses:', error)
+    res.status(500).json({ error: 'Failed to save expenses' })
+  }
+})
+
+// Get all months' expenses history (PROTECTED - requires admin)
+app.get('/api/admin/expenses/history', requireAdmin, async (req, res) => {
+  try {
+    const allExpenses = await adminDb.expenses.getAll()
+    res.json({ success: true, expenses: allExpenses })
+  } catch (error) {
+    console.error('[Admin] Error fetching expense history:', error)
+    res.status(500).json({ error: 'Failed to fetch expense history' })
   }
 })
 
@@ -5855,7 +7451,7 @@ app.get('/api/leaderboard/user-stats/:userId', (req, res) => {
         })
       })
     })
-
+    
     res.json({
       wins: wins.sort((a, b) => new Date(b.date) - new Date(a.date)),
       winCount: wins.length,
@@ -6559,6 +8155,7 @@ app.post('/api/stripe/confirm-usage-purchase', async (req, res) => {
 })
 
 // Sync subscription status from Stripe API (with retry for incomplete → active transitions)
+// Also searches by email to recover from duplicate-customer race conditions
 const syncSubscriptionFromStripe = async (userId, retries = 3) => {
   for (let attempt = 1; attempt <= retries; attempt++) {
   try {
@@ -6570,11 +8167,65 @@ const syncSubscriptionFromStripe = async (userId, retries = 3) => {
     }
 
     // Get all subscriptions for this customer from Stripe
-    const subscriptions = await stripe.subscriptions.list({
+    let subscriptions = await stripe.subscriptions.list({
       customer: user.stripeCustomerId,
       status: 'all',
       limit: 10,
     })
+
+    // If no active/trialing subscriptions on stored customer, search ALL customers by email
+    // This recovers from the duplicate-customer race condition where payment went to an orphaned customer
+    const hasActiveSub = subscriptions.data.some(s => s.status === 'active' || s.status === 'trialing')
+    if (!hasActiveSub && user.email) {
+      try {
+        const allCustomers = await stripe.customers.list({ email: user.email, limit: 20 })
+        for (const cust of allCustomers.data) {
+          if (cust.id === user.stripeCustomerId) continue // Already checked
+          const custSubs = await stripe.subscriptions.list({ customer: cust.id, status: 'all', limit: 10 })
+          const activeSub = custSubs.data.find(s => s.status === 'active' || s.status === 'trialing')
+          if (activeSub) {
+            console.log(`[Stripe] Found active subscription on alternate customer ${cust.id} (was using ${user.stripeCustomerId}) for user ${userId}`)
+            // Fix the stored customer ID to the one with the active subscription
+            user.stripeCustomerId = cust.id
+            user.stripeSubscriptionId = activeSub.id
+            user.subscriptionStatus = activeSub.status
+            user.subscriptionRenewalDate = new Date(activeSub.current_period_end * 1000).toISOString()
+            if (!user.subscriptionStartedDate) {
+              user.subscriptionStartedDate = new Date().toISOString()
+            }
+            writeUsers(users)
+            console.log(`[Stripe] Recovered subscription for user ${userId}: customer=${cust.id}, sub=${activeSub.id}, status=${activeSub.status}`)
+            return { synced: true, status: activeSub.status, subscriptionId: activeSub.id, endDate: user.subscriptionRenewalDate }
+          }
+          // Also check for incomplete subs with succeeded payment intents on alternate customers
+          for (const sub of custSubs.data) {
+            if (sub.status === 'incomplete') {
+              try {
+                const expandedSub = await stripe.subscriptions.retrieve(sub.id, { expand: ['latest_invoice.payment_intent'] })
+                const pi = expandedSub.latest_invoice?.payment_intent
+                if (pi && pi.status === 'succeeded') {
+                  console.log(`[Stripe] Found paid-but-incomplete subscription on alternate customer ${cust.id} for user ${userId}`)
+                  user.stripeCustomerId = cust.id
+                  user.stripeSubscriptionId = sub.id
+                  user.subscriptionStatus = 'active'
+                  user.subscriptionRenewalDate = new Date(expandedSub.current_period_end * 1000).toISOString()
+                  if (!user.subscriptionStartedDate) {
+                    user.subscriptionStartedDate = new Date().toISOString()
+                  }
+                  writeUsers(users)
+                  console.log(`[Stripe] Recovered (force-active) subscription for user ${userId}: customer=${cust.id}, sub=${sub.id}`)
+                  return { synced: true, status: 'active', subscriptionId: sub.id, endDate: user.subscriptionRenewalDate }
+                }
+              } catch (e) {
+                // Skip this sub if we can't expand it
+              }
+            }
+          }
+        }
+      } catch (emailSearchErr) {
+        console.warn(`[Stripe] Email-based customer search failed for ${userId}:`, emailSearchErr.message)
+      }
+    }
 
     if (subscriptions.data.length === 0) {
       if (user.subscriptionStatus !== 'inactive') {
@@ -6711,6 +8362,9 @@ app.get('/api/stripe/config', (req, res) => {
 })
 
 // Create subscription with incomplete payment (for inline card collection)
+// In-flight locks to prevent race conditions on concurrent subscription-intent calls
+const subscriptionIntentLocks = new Set()
+
 app.post('/api/stripe/create-subscription-intent', async (req, res) => {
   try {
     const { userId } = req.body
@@ -6718,7 +8372,15 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
       return res.status(400).json({ error: 'userId is required' })
     }
 
+    // Prevent concurrent calls for the same user (race condition from double useEffect etc.)
+    if (subscriptionIntentLocks.has(userId)) {
+      console.log(`[Stripe] Duplicate create-subscription-intent call blocked for user ${userId}`)
+      return res.status(409).json({ error: 'Subscription initialization already in progress. Please wait.' })
+    }
+    subscriptionIntentLocks.add(userId)
+
     if (!STRIPE_PRICE_ID) {
+      subscriptionIntentLocks.delete(userId)
       return res.status(500).json({ error: 'Stripe price ID not configured' })
     }
 
@@ -6726,6 +8388,7 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
     const user = users[userId]
 
     if (!user) {
+      subscriptionIntentLocks.delete(userId)
       return res.status(404).json({ error: 'User not found' })
     }
 
@@ -6742,9 +8405,19 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
       })
       customerId = customer.id
 
-      // Save customer ID to user
-      user.stripeCustomerId = customerId
-      writeUsers(users)
+      // Save customer ID to user — re-read cache to avoid overwriting concurrent updates
+      const freshUsers = readUsers()
+      if (freshUsers[userId] && !freshUsers[userId].stripeCustomerId) {
+        freshUsers[userId].stripeCustomerId = customerId
+        writeUsers(freshUsers)
+        // Also update the local reference
+        user.stripeCustomerId = customerId
+      } else if (freshUsers[userId]?.stripeCustomerId) {
+        // Another call already set a customer ID — use that one and clean up the duplicate
+        console.log(`[Stripe] Race condition detected: another call already set customer ${freshUsers[userId].stripeCustomerId}, discarding ${customerId}`)
+        customerId = freshUsers[userId].stripeCustomerId
+        user.stripeCustomerId = customerId
+      }
       console.log(`[Stripe] Created new customer ${customerId} for user ${userId}`)
     }
 
@@ -6767,6 +8440,7 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
         }
         writeUsers(users)
         console.log(`[Stripe] User ${userId} already has active subscription ${activeSub.id}`)
+        subscriptionIntentLocks.delete(userId)
         return res.json({ alreadyActive: true, subscriptionId: activeSub.id })
       }
 
@@ -6789,6 +8463,7 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
           }
           writeUsers(users)
           console.log(`[Stripe] User ${userId} incomplete sub ${incompleteSub.id} has succeeded PI — force activating`)
+          subscriptionIntentLocks.delete(userId)
           return res.json({ alreadyActive: true, subscriptionId: incompleteSub.id })
         }
 
@@ -6801,6 +8476,7 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
           user.subscriptionStatus = 'incomplete'
           writeUsers(users)
 
+          subscriptionIntentLocks.delete(userId)
           return res.json({
             subscriptionId: incompleteSub.id,
             clientSecret: pi.client_secret,
@@ -6854,11 +8530,15 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
 
     console.log(`[Stripe] Created subscription intent for user ${userId}, sub: ${subscription.id}, PI: ${paymentIntent.id}`)
 
+    subscriptionIntentLocks.delete(userId)
     res.json({
       subscriptionId: subscription.id,
       clientSecret: paymentIntent.client_secret,
     })
   } catch (error) {
+    // Release lock on error
+    const lockUserId = req.body?.userId
+    if (lockUserId) subscriptionIntentLocks.delete(lockUserId)
     console.error('[Stripe] Error creating subscription intent:', error)
     res.status(500).json({ error: 'Failed to create subscription. Please try again.' })
   }
@@ -7256,6 +8936,14 @@ app.post('/api/stripe/cancel-subscription-delete-account', async (req, res) => {
       console.log(`[Stripe] Deleted user ${userId} and all data from MongoDB`)
     } catch (dbErr) {
       console.error(`[Stripe] MongoDB cleanup error for ${userId}:`, dbErr.message)
+    }
+
+    // Purge all user traces from leaderboard (posts, likes, comments, replies)
+    try {
+      await purgeUserFromLeaderboard(userId)
+      console.log(`[Stripe] User ${userId} purged from leaderboard cache and MongoDB`)
+    } catch (lbErr) {
+      console.error(`[Stripe] Leaderboard purge error for ${userId}:`, lbErr.message)
     }
 
     // Increment deleted users count
@@ -7664,15 +9352,30 @@ const startServer = async () => {
   setInterval(cleanupOldDailyUsage, 24 * 60 * 60 * 1000) // Run every 24 hours
   console.log('[Server] 🗑️  Daily usage cleanup scheduled (runs every 24h)')
   
+  // Serve static files from the React app build (for Railway fullstack deployment)
+  app.use(express.static(path.join(__dirname, 'dist')))
+  
+  // Catch-all handler: send back React's index.html file for client-side routing
+  // This must be AFTER all API routes
+  app.get('*', (req, res) => {
+    // Don't serve index.html for API routes
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'API endpoint not found' })
+    }
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'))
+  })
+  
   // Start HTTP server
   app.listen(PORT, () => {
     console.log('')
     console.log('═══════════════════════════════════════════════════')
-    console.log(`🚀 ARKTEK Backend Server - http://localhost:${PORT}`)
+    console.log(`🚀 ARKTEK Fullstack Server - http://localhost:${PORT}`)
     console.log('═══════════════════════════════════════════════════')
+    console.log(`🌐 Frontend:           Serving from /dist`)
     console.log(`📡 LLM API Proxy:     Ready`)
     console.log(`🔍 Serper Search:     Ready`)
-    console.log(`🗄️  MongoDB:          Connected (Primary Store)`)
+    console.log(`🗄️  Arkitek DB:       Connected (Primary Store)`)
+    console.log(`🛡️  ADMIN DB:         Connected (Admin/Expenses)`)
     console.log(`👑 Admin Endpoints:   Ready`)
     console.log(`🏆 Leaderboard:       Ready`)
     console.log(`🗑️  Cleanup:          Scheduled (daily)`)

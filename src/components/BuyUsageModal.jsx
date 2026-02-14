@@ -198,6 +198,7 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
 
   const presetAmounts = [5, 10, 15, 20, 25, 50, 100]
   const TRANSACTION_FEE_PERCENT = 3.5
+  const TRANSACTION_FEE_FLAT = 0.30
 
   const getAmount = () => {
     if (isCustom && customAmount) {
@@ -208,7 +209,8 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
   }
 
   const amount = getAmount()
-  const fee = Math.round(amount * (TRANSACTION_FEE_PERCENT / 100) * 100) / 100
+  const percentageFee = Math.round(amount * (TRANSACTION_FEE_PERCENT / 100) * 100) / 100
+  const fee = amount > 0 ? Math.round((percentageFee + TRANSACTION_FEE_FLAT) * 100) / 100 : 0
   const total = amount + fee
 
   // Fetch saved cards on open
@@ -309,7 +311,7 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
       setSuccess(true)
       setTimeout(() => {
         if (onSuccess) onSuccess(response.data)
-      }, 1500)
+      }, 800)
     } catch (err) {
       console.error('Error charging saved card:', err)
       setError(err.response?.data?.error || 'Failed to charge card. Please try again.')
@@ -338,15 +340,16 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
         } catch {}
       }
 
+      // Brief delay to show success checkmark, then notify parent
       setTimeout(() => {
         if (onSuccess) onSuccess(response.data)
-      }, 1500)
+      }, 800)
     } catch (err) {
       console.error('Error confirming purchase:', err)
       setSuccess(true)
       setTimeout(() => {
         if (onSuccess) onSuccess({ creditsAdded: amount })
-      }, 1500)
+      }, 800)
     }
   }, [currentUser?.id, paymentIntentId, amount, onSuccess, saveCard])
 
@@ -597,7 +600,7 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
                     <span style={{ color: currentTheme.text }}>${amount.toFixed(2)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span style={{ color: currentTheme.textSecondary }}>Transaction Fee ({TRANSACTION_FEE_PERCENT}%)</span>
+                    <span style={{ color: currentTheme.textSecondary }}>Transaction Fee ({TRANSACTION_FEE_PERCENT}% + $0.30)</span>
                     <span style={{ color: currentTheme.textMuted }}>${fee.toFixed(2)}</span>
                   </div>
                   <div style={{ 
@@ -870,7 +873,7 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
                 marginTop: '16px',
                 marginBottom: 0,
               }}>
-                A {TRANSACTION_FEE_PERCENT}% transaction fee is applied to all usage purchases.
+                A {TRANSACTION_FEE_PERCENT}% + $0.30 transaction fee is applied to all usage purchases.
                 <br />
                 Credits are added immediately and never expire.
               </p>
