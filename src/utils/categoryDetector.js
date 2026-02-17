@@ -40,13 +40,20 @@ export const detectCategory = async (prompt, selectedProviders = []) => {
   jsonStructure += `
 }`
 
-  const categoryPrompt = `Classify the user prompt into EXACTLY ONE category from the list below.
+  // Include today's date so the model understands time-relative queries like "today", "this week", etc.
+  const todayDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+
+  const categoryPrompt = `Today's date is ${todayDate}.
+
+Classify the user prompt into EXACTLY ONE category from the list below.
 Determine if a web search would genuinely help answer the query. Recommend a SINGLE model type for ALL providers.
 
 needsSearch = true when:
 - The query asks about current events, recent news, or real-time information
+- The query references "today", "this year", "this week", "recently", or any time-relative language
 - The query needs factual verification (specific facts, statistics, dates)
 - The query asks about specific people, companies, or events that may have recent updates
+- The query asks about weather, prices, scores, or anything that changes frequently
 
 needsSearch = false when:
 - The query is about general concepts, explanations, or "how does X work"

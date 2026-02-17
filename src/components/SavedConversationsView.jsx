@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar } from 'lucide-react'
+import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -36,6 +36,7 @@ const SavedConversationsView = () => {
   const [filter, setFilter] = useState('individual') // 'individual', 'full'
   const [selectedProvider, setSelectedProvider] = useState(null) // provider key for individual tab
   const [expandedMonths, setExpandedMonths] = useState({}) // Track which month/year groups are expanded
+  const [expandedSources, setExpandedSources] = useState({}) // Track which source sections are expanded
 
   useEffect(() => {
     if (currentUser?.id) {
@@ -56,6 +57,7 @@ const SavedConversationsView = () => {
 
   const fetchDetail = async (convoId) => {
     setLoadingDetail(true)
+    setExpandedSources({}) // Reset source toggles for the new detail view
     try {
       const res = await axios.get(`${API_URL}/api/conversations/detail/${convoId}`)
       setSelectedConvo(res.data.conversation)
@@ -293,6 +295,55 @@ const SavedConversationsView = () => {
     </motion.div>
   )
 
+  // Helper to render a collapsible sources section
+  const renderSourcesSection = (sources, toggleKey, label = 'Sources') => {
+    if (!sources || !Array.isArray(sources) || sources.length === 0) return null
+    const isOpen = expandedSources[toggleKey]
+    return (
+      <div style={{ marginTop: '8px', marginBottom: '8px' }}>
+        <button
+          onClick={() => setExpandedSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px',
+            background: isOpen ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+            border: `1px solid ${isOpen ? currentTheme.accent : currentTheme.borderLight}`,
+            borderRadius: '8px', color: currentTheme.accent, fontSize: '0.78rem', fontWeight: '500',
+            cursor: 'pointer', transition: 'all 0.2s ease',
+          }}
+        >
+          <Globe size={13} />
+          {label} ({sources.length})
+          <ChevronDown size={13} style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+        </button>
+        {isOpen && (
+          <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '200px', overflowY: 'auto' }}>
+            {sources.map((source, sIdx) => (
+              <a key={sIdx} href={source.link || source.url || '#'} target="_blank" rel="noopener noreferrer"
+                style={{
+                  display: 'block', padding: '8px 12px',
+                  background: currentTheme.buttonBackground,
+                  border: `1px solid ${currentTheme.borderLight}`,
+                  borderRadius: '6px', textDecoration: 'none', transition: 'border-color 0.2s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+              >
+                <div style={{ color: currentTheme.accent, fontSize: '0.82rem', fontWeight: '500' }}>
+                  {source.title || source.link || source.url || `Source ${sIdx + 1}`}
+                </div>
+                {source.snippet && (
+                  <div style={{ color: currentTheme.textMuted, fontSize: '0.75rem', marginTop: '3px', lineHeight: '1.4' }}>
+                    {source.snippet.substring(0, 120)}{source.snippet.length > 120 ? '...' : ''}
+                  </div>
+                )}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // Detail view of a single conversation
   const renderDetail = () => {
     if (!selectedConvo) return null
@@ -404,6 +455,8 @@ const SavedConversationsView = () => {
               <p style={{ color: currentTheme.textSecondary, margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap', fontSize: '0.95rem' }}>
                 {selectedConvo.modelResponse}
               </p>
+              {/* Initial sources — from the first prompt */}
+              {renderSourcesSection(selectedConvo.sources, 'initial_sources', 'Sources')}
             </div>
 
             {/* Conversation history */}
@@ -412,34 +465,48 @@ const SavedConversationsView = () => {
                 <h3 style={{ fontSize: '1rem', color: currentTheme.text, marginBottom: '12px' }}>
                   Conversation History ({selectedConvo.conversation.length} messages)
                 </h3>
-                {selectedConvo.conversation.map((msg, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      display: 'flex',
-                      justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                      marginBottom: '10px',
-                    }}
-                  >
-                    <div style={{
-                      maxWidth: '80%',
-                      padding: '12px 16px',
-                      borderRadius: '12px',
-                      background: msg.role === 'user'
-                        ? currentTheme.accentGradient
-                        : currentTheme.buttonBackground,
-                      border: msg.role === 'user' ? 'none' : `1px solid ${currentTheme.borderLight}`,
-                      color: msg.role === 'user' ? '#000' : currentTheme.textSecondary,
-                    }}>
-                      <div style={{ fontSize: '0.7rem', fontWeight: '600', marginBottom: '4px', textTransform: 'uppercase', opacity: 0.7 }}>
-                        {msg.role === 'user' ? 'You' : selectedConvo.modelName || 'Assistant'}
+                {selectedConvo.conversation.map((msg, idx) => {
+                  // After each assistant message, check if there are per-turn sources
+                  // Conversation is stored as flat array: [user, assistant, user, assistant, ...]
+                  // Turn index = Math.floor(idx / 2) for assistant messages (idx is odd)
+                  const turnIndex = Math.floor(idx / 2)
+                  const isAssistant = msg.role === 'assistant'
+                  const turnSources = isAssistant && selectedConvo.conversationSources
+                    ? selectedConvo.conversationSources[turnIndex] || selectedConvo.conversationSources[String(turnIndex)]
+                    : null
+
+                  return (
+                    <React.Fragment key={idx}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                          marginBottom: '10px',
+                        }}
+                      >
+                        <div style={{
+                          maxWidth: '80%',
+                          padding: '12px 16px',
+                          borderRadius: '12px',
+                          background: msg.role === 'user'
+                            ? currentTheme.accentGradient
+                            : currentTheme.buttonBackground,
+                          border: msg.role === 'user' ? 'none' : `1px solid ${currentTheme.borderLight}`,
+                          color: msg.role === 'user' ? '#000' : currentTheme.textSecondary,
+                        }}>
+                          <div style={{ fontSize: '0.7rem', fontWeight: '600', marginBottom: '4px', textTransform: 'uppercase', opacity: 0.7 }}>
+                            {msg.role === 'user' ? 'You' : selectedConvo.modelName || 'Assistant'}
+                          </div>
+                          <p style={{ margin: 0, lineHeight: '1.5', whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>
+                            {msg.text}
+                          </p>
+                        </div>
                       </div>
-                      <p style={{ margin: 0, lineHeight: '1.5', whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>
-                        {msg.text}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                      {/* Per-turn sources for this follow-up exchange */}
+                      {turnSources && turnSources.length > 0 && renderSourcesSection(turnSources, `convo_sources_${turnIndex}`, 'Sources')}
+                    </React.Fragment>
+                  )
+                })}
               </div>
             )}
           </>
@@ -465,59 +532,16 @@ const SavedConversationsView = () => {
               </div>
             )}
 
-            {/* Summary / Judge */}
+            {/* Summary / Judge — collapsible tab */}
             {selectedConvo.summary && (
-              <div style={{
-                background: currentTheme.buttonBackground,
-                border: `1px solid ${currentTheme.borderLight}`,
-                borderRadius: '12px',
-                padding: '16px',
-                marginBottom: '16px',
-              }}>
-                <div style={{ fontSize: '0.75rem', color: currentTheme.accent, fontWeight: '600', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  {selectedConvo.summary.singleModel ? `${selectedConvo.summary.modelName || 'Model'} Response` : 'Judge Summary'}
-                </div>
-                <p style={{ color: currentTheme.textSecondary, margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap', fontSize: '0.95rem' }}>
-                  {selectedConvo.summary.text}
-                </p>
-              </div>
+              <ExpandableSummary
+                summary={selectedConvo.summary}
+                currentTheme={currentTheme}
+              />
             )}
 
             {/* Sources */}
-            {selectedConvo.sources && selectedConvo.sources.length > 0 && (
-              <div style={{
-                background: currentTheme.buttonBackground,
-                border: `1px solid ${currentTheme.borderLight}`,
-                borderRadius: '12px',
-                padding: '16px',
-                marginBottom: '16px',
-              }}>
-                <div style={{ fontSize: '0.75rem', color: currentTheme.accent, fontWeight: '600', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Sources ({selectedConvo.sources.length})
-                </div>
-                {selectedConvo.sources.map((source, idx) => (
-                  <div key={idx} style={{ marginBottom: '8px' }}>
-                    <a
-                      href={source.link || source.url || '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        color: currentTheme.accent,
-                        fontSize: '0.9rem',
-                        textDecoration: 'none',
-                      }}
-                    >
-                      {source.title || source.link || source.url || `Source ${idx + 1}`}
-                    </a>
-                    {source.snippet && (
-                      <p style={{ color: currentTheme.textMuted, fontSize: '0.8rem', margin: '4px 0 0 0', lineHeight: '1.4' }}>
-                        {source.snippet}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+            {renderSourcesSection(selectedConvo.sources, 'full_session_sources', 'Sources')}
 
             {/* Facts */}
             {selectedConvo.facts && selectedConvo.facts.length > 0 && (
@@ -808,9 +832,64 @@ const SavedConversationsView = () => {
   )
 }
 
+// Expandable summary/judge for full session view
+const ExpandableSummary = ({ summary, currentTheme }) => {
+  const [expanded, setExpanded] = useState(false)
+
+  const label = summary.singleModel
+    ? `${summary.modelName || 'Model'} Response`
+    : 'Judge Summary'
+
+  return (
+    <div style={{
+      background: currentTheme.buttonBackground,
+      border: `1px solid ${currentTheme.borderLight}`,
+      borderRadius: '12px',
+      marginBottom: '16px',
+      overflow: 'hidden',
+    }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '14px 16px',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: currentTheme.text,
+        }}
+      >
+        <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>
+          {label}
+        </span>
+        {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </button>
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div style={{ padding: '0 16px 16px 16px' }}>
+              <p style={{ color: currentTheme.textSecondary, margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>
+                {summary.text}
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 // Expandable model response for full session view
 const ExpandableResponse = ({ resp, idx, currentTheme }) => {
-  const [expanded, setExpanded] = useState(idx === 0)
+  const [expanded, setExpanded] = useState(false)
 
   return (
     <div style={{

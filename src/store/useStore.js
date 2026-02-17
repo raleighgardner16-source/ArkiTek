@@ -183,6 +183,11 @@ export const useStore = create(
       setShowCouncilPanel: (show) => set({ showCouncilPanel: show }),
       toggleCouncilPanel: () => set((state) => ({ showCouncilPanel: !state.showCouncilPanel })),
 
+      // Viewing another user's profile (null = own profile)
+      viewingProfile: null, // { userId, username }
+      setViewingProfile: (profile) => set({ viewingProfile: profile }),
+      clearViewingProfile: () => set({ viewingProfile: null }),
+
       // Theme: 'light' or 'dark'
       theme: 'dark',
       setTheme: (theme) => set({ theme }),
@@ -191,6 +196,14 @@ export const useStore = create(
     {
       name: 'arktek-storage',
       storage: createJSONStorage(() => localStorage),
+      // Only persist essential state — exclude large/transient data to prevent
+      // localStorage bloat (5MB limit) and stale data across sessions
+      partialize: (state) => ({
+        currentUser: state.currentUser,
+        theme: state.theme,
+        activeTab: state.activeTab,
+        apiKeys: state.apiKeys,
+      }),
     }
   )
 )

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { X, FileText, Move, Minimize2, Maximize2, ChevronRight, Send, Search, Save, Info } from 'lucide-react'
+import { X, FileText, Move, Minimize2, Maximize2, ChevronRight, ChevronDown, Send, Search, Save, Info, Globe } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -26,6 +26,7 @@ const SummaryWindow = () => {
   const activeTab = useStore((state) => state.activeTab)
   const currentUser = useStore((state) => state.currentUser)
   const setSummary = useStore((state) => state.setSummary)
+  const searchSources = useStore((state) => state.searchSources)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -39,18 +40,39 @@ const SummaryWindow = () => {
   const [isSearchingInConvo, setIsSearchingInConvo] = useState(false)
   const [savingState, setSavingState] = useState('idle') // 'idle'|'saving'|'saved'
   const [showSaveTooltip, setShowSaveTooltip] = useState(false)
+  const [convoSources, setConvoSources] = useState({}) // { turnIndex: [...sources] } — per-turn follow-up search results
+  const [showConvoSources, setShowConvoSources] = useState({}) // { turnIndex: true/false } — per-turn toggle
   const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
   const lastSubmittedCategory = useStore((state) => state.lastSubmittedCategory || '')
   const prevSummaryRef = React.useRef(null)
+  const convoEndRef = React.useRef(null) // Scroll anchor for auto-scrolling conversation
+  const summaryContainerRef = React.useRef(null) // Scrollable container ref for auto-scrolling
+  const prevConvoLengthRef = React.useRef(0) // Track previous conversation length
+
+  // Auto-scroll summary container when new conversation messages are added
+  React.useEffect(() => {
+    const convoLen = summary?.conversationHistory?.length || 0
+    if (convoLen > prevConvoLengthRef.current) {
+      setTimeout(() => {
+        if (summaryContainerRef.current) {
+          summaryContainerRef.current.scrollTo({ top: summaryContainerRef.current.scrollHeight, behavior: 'smooth' })
+        }
+      }, 150)
+    }
+    prevConvoLengthRef.current = convoLen
+  }, [summary?.conversationHistory?.length])
   
-  // Helper function to clear summary and also clear judge context
+  // Helper function to clear summary and also clear judge + model context
   const handleClearSummary = () => {
     clearSummary()
-    // Clear judge conversation context when closing summary window
+    // Clear judge and model conversation context when closing summary window
     if (currentUser?.id) {
       axios.post(`${API_URL}/api/judge/clear-context`, {
         userId: currentUser.id
       }).catch(err => console.error('[Clear Context] Error:', err))
+      axios.post(`${API_URL}/api/model/clear-context`, {
+        userId: currentUser.id
+      }).catch(err => console.error('[Clear Model Context] Error:', err))
     }
   }
   
@@ -72,6 +94,8 @@ const SummaryWindow = () => {
         modelName: summary.singleModel ? (summary.modelName || 'Single Model') : 'Judge Summary',
         modelResponse: summary.text || '',
         conversation,
+        sources: searchSources || [],
+        conversationSources: convoSources || {},
       })
       setSavingState('saved')
     } catch (error) {
@@ -161,7 +185,8 @@ const SummaryWindow = () => {
       const finalData = await streamFetch(`${API_URL}/api/judge/conversation/stream`, {
         userId: currentUser.id,
         userMessage: userMsg,
-        conversationContext: conversationContext
+        conversationContext: conversationContext,
+        originalSummaryText: summary.initialSummary || summary.text || ''
       }, {
         onToken: (token) => {
           setIsSearchingInConvo(false)
@@ -193,6 +218,14 @@ const SummaryWindow = () => {
       
       // Handle final metadata from 'done' event
       if (finalData) {
+        // Capture conversation sources keyed by turn index
+        // NOTE: summary.conversationHistory in closure still has the OLD length (before the new turn was added)
+        // so the new turn's index = oldLength (not oldLength - 1)
+        if (finalData.searchResults && finalData.searchResults.length > 0) {
+          const turnIndex = (summary.conversationHistory || []).length
+          setConvoSources(prev => ({ ...prev, [turnIndex]: finalData.searchResults }))
+        }
+        
         const store = useStore.getState()
         if (finalData.debugData && finalData.usedSearch) {
           const existingDebugData = store.ragDebugData || {}
@@ -203,10 +236,6 @@ const SummaryWindow = () => {
             categoryDetection: finalData.debugData.categoryDetection,
             conversationContext: existingDebugData.conversationContext || []
           })
-          
-          if (finalData.searchResults && finalData.searchResults.length > 0) {
-            store.setShowFactsWindow(true)
-          }
         }
         
         // Refresh context
@@ -508,6 +537,7 @@ const SummaryWindow = () => {
         }}
       >
         <motion.div
+          ref={summaryContainerRef}
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           onClick={(e) => e.stopPropagation()}
@@ -664,6 +694,48 @@ const SummaryWindow = () => {
                 {summary.singleModel && summary.summary ? summary.summary : (summary.initialSummary || summary.text || 'No summary content available.')}
               </p>
             </div>
+
+            {/* Initial Sources — shown with the first prompt+response pair */}
+            {(() => {
+              if (!searchSources || !Array.isArray(searchSources) || searchSources.length === 0) return null
+              const toggleKey = 'initial'
+              return (
+                <div style={{ marginTop: '12px', marginBottom: '12px' }}>
+                  <button
+                    onClick={() => setShowConvoSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px',
+                      background: showConvoSources[toggleKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                      border: `1px solid ${showConvoSources[toggleKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                      borderRadius: '8px', color: currentTheme.accent, fontSize: '0.8rem', fontWeight: '500',
+                      cursor: 'pointer', transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <Globe size={14} />
+                    Sources ({searchSources.length})
+                    <ChevronDown size={14} style={{ transform: showConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                  </button>
+                  {showConvoSources[toggleKey] && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                      style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}
+                    >
+                      {searchSources.map((source, sIdx) => (
+                        <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                          style={{ display: 'block', padding: '8px 12px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '8px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                        >
+                          <div style={{ fontSize: '0.8rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</div>
+                          <div style={{ fontSize: '0.7rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.link}</div>
+                          {source.snippet && (<div style={{ fontSize: '0.75rem', color: currentTheme.textSecondary, marginTop: '4px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{source.snippet}</div>)}
+                        </a>
+                      ))}
+                    </motion.div>
+                  )}
+                </div>
+              )
+            })()}
             
             {/* Conversation History */}
             {summary.conversationHistory && summary.conversationHistory.length > 0 && (
@@ -736,6 +808,47 @@ const SummaryWindow = () => {
                         </p>
                       </div>
                     </div>
+                    {/* Per-turn Sources Tab (maximized summary) */}
+                    {(() => {
+                      const turnSources = convoSources[index]
+                      if (!turnSources || turnSources.length === 0) return null
+                      return (
+                        <div style={{ marginTop: '8px', marginBottom: '4px' }}>
+                          <button
+                            onClick={() => setShowConvoSources(prev => ({ ...prev, [index]: !prev[index] }))}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px',
+                              background: showConvoSources[index] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                              border: `1px solid ${showConvoSources[index] ? currentTheme.accent : currentTheme.borderLight}`,
+                              borderRadius: '8px', color: currentTheme.accent, fontSize: '0.75rem', fontWeight: '500',
+                              cursor: 'pointer', transition: 'all 0.2s ease',
+                            }}
+                          >
+                            <Globe size={12} />
+                            Sources ({turnSources.length})
+                            <ChevronDown size={12} style={{ transform: showConvoSources[index] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                          </button>
+                          {showConvoSources[index] && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                              style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
+                            >
+                              {turnSources.map((source, sIdx) => (
+                                <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                                  style={{ display: 'block', padding: '6px 10px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '6px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                                >
+                                  <div style={{ fontSize: '0.75rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</div>
+                                  <div style={{ fontSize: '0.65rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.link}</div>
+                                  {source.snippet && (<div style={{ fontSize: '0.7rem', color: currentTheme.textSecondary, marginTop: '3px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{source.snippet}</div>)}
+                                </a>
+                              ))}
+                            </motion.div>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 ))}
               </div>
@@ -775,6 +888,9 @@ const SummaryWindow = () => {
                 </span>
               </motion.div>
             )}
+
+            {/* Scroll anchor for auto-scroll on new message */}
+            <div ref={convoEndRef} />
 
             {/* Conversation Input */}
             {!summary.singleModel && (
@@ -887,6 +1003,7 @@ const SummaryWindow = () => {
         scale: 1,
       }}
       exit={{ opacity: 0, scale: 0.9 }}
+      ref={summaryContainerRef}
       style={{
         position: 'fixed',
         left: `${position.x}px`,
@@ -1088,6 +1205,48 @@ const SummaryWindow = () => {
             {summary.singleModel && summary.summary ? summary.summary : (summary.initialSummary || summary.text || 'No summary content available.')}
           </p>
         </div>
+
+        {/* Initial Sources — shown with the first prompt+response pair (minimized) */}
+        {(() => {
+          if (!searchSources || !Array.isArray(searchSources) || searchSources.length === 0) return null
+          const toggleKey = 'initial'
+          return (
+            <div style={{ marginTop: '8px', marginBottom: '12px' }}>
+              <button
+                onClick={() => setShowConvoSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px',
+                  background: showConvoSources[toggleKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                  border: `1px solid ${showConvoSources[toggleKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                  borderRadius: '8px', color: currentTheme.accent, fontSize: '0.75rem', fontWeight: '500',
+                  cursor: 'pointer', transition: 'all 0.2s ease',
+                }}
+              >
+                <Globe size={12} />
+                Sources ({searchSources.length})
+                <ChevronDown size={12} style={{ transform: showConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+              </button>
+              {showConvoSources[toggleKey] && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                  style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
+                >
+                  {searchSources.map((source, sIdx) => (
+                    <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'block', padding: '6px 10px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '6px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                    >
+                      <div style={{ fontSize: '0.75rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</div>
+                      <div style={{ fontSize: '0.65rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.link}</div>
+                      {source.snippet && (<div style={{ fontSize: '0.7rem', color: currentTheme.textSecondary, marginTop: '3px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{source.snippet}</div>)}
+                    </a>
+                  ))}
+                </motion.div>
+              )}
+            </div>
+          )
+        })()}
         
         {/* Conversation History */}
         {summary.conversationHistory && summary.conversationHistory.length > 0 && (
@@ -1160,6 +1319,46 @@ const SummaryWindow = () => {
                     </p>
                   </div>
                 </div>
+                {/* Per-turn Sources Tab (minimized summary) */}
+                {(() => {
+                  const turnSources = convoSources[index]
+                  if (!turnSources || turnSources.length === 0) return null
+                  return (
+                    <div style={{ marginTop: '6px', marginBottom: '4px' }}>
+                      <button
+                        onClick={() => setShowConvoSources(prev => ({ ...prev, [index]: !prev[index] }))}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 8px',
+                          background: showConvoSources[index] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                          border: `1px solid ${showConvoSources[index] ? currentTheme.accent : currentTheme.borderLight}`,
+                          borderRadius: '6px', color: currentTheme.accent, fontSize: '0.7rem', fontWeight: '500',
+                          cursor: 'pointer', transition: 'all 0.2s ease',
+                        }}
+                      >
+                        <Globe size={11} />
+                        Sources ({turnSources.length})
+                        <ChevronDown size={11} style={{ transform: showConvoSources[index] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                      </button>
+                      {showConvoSources[index] && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                          style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '150px', overflowY: 'auto' }}
+                        >
+                          {turnSources.map((source, sIdx) => (
+                            <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                              style={{ display: 'block', padding: '5px 8px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '5px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                              onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                            >
+                              <div style={{ fontSize: '0.7rem', fontWeight: '600', color: currentTheme.accent, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</div>
+                              <div style={{ fontSize: '0.6rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.link}</div>
+                            </a>
+                          ))}
+                        </motion.div>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             ))}
           </div>
@@ -1199,6 +1398,9 @@ const SummaryWindow = () => {
             </span>
           </motion.div>
         )}
+
+        {/* Scroll anchor for auto-scroll on new message (minimized view) */}
+        <div ref={convoEndRef} />
 
         {/* Conversation Input */}
         {!summary.singleModel && (

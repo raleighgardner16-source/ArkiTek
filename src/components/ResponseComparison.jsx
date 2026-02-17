@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Save, Info, FileText, RotateCcw, Search } from 'lucide-react'
+import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Save, Info, FileText, RotateCcw, Search, Globe } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -38,8 +38,7 @@ const ResponseComparison = () => {
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const [expandedCards, setExpandedCards] = useState({})
-  const [sourcesMinimized, setSourcesMinimized] = useState(true)
-  const [sourcesMaximized, setSourcesMaximized] = useState(false)
+  // sourcesMinimized/sourcesMaximized removed — sources are now shown inside each model's conversation area
   const [maximizedCard, setMaximizedCard] = useState(null)
   const [isMinimized, setIsMinimized] = useState(true) // Start minimized by default
   const [minimizedCards, setMinimizedCards] = useState({}) // Track which individual cards are minimized - all start minimized
@@ -49,6 +48,9 @@ const ResponseComparison = () => {
   const [borderHovered, setBorderHovered] = useState(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 }) // Store mouse offset from card origin
   const hasAutoMinimized = React.useRef(false) // Track if we've already auto-minimized
+  const convoEndRefs = React.useRef({}) // Scroll anchors for auto-scrolling conversation windows
+  const convoContainerRefs = React.useRef({}) // Scrollable container refs for auto-scrolling
+  const prevConvoLengths = React.useRef({}) // Track previous conversation lengths for scroll detection
   const [singleResponseMinimized, setSingleResponseMinimized] = useState(false) // Track if single response popup is minimized
   const [singleResponseMaximized, setSingleResponseMaximized] = useState(true) // Start maximized by default
   const [singleResponsePosition, setSingleResponsePosition] = useState({ x: 0, y: 0 })
@@ -62,8 +64,27 @@ const ResponseComparison = () => {
   const [searchingInConvo, setSearchingInConvo] = useState({}) // { responseId: true/false }
   const [savingStates, setSavingStates] = useState({}) // { responseId: 'idle'|'saving'|'saved' }
   const [showSaveTooltip, setShowSaveTooltip] = useState({}) // { responseId: true/false }
+  const [convoSources, setConvoSources] = useState({}) // { responseId: { turnIndex: [...sources] } } — per-turn follow-up search results
+  const [showConvoSources, setShowConvoSources] = useState({}) // { "responseId_turnIndex": true/false } — per-turn toggle
   const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
   const lastSubmittedCategory = useStore((state) => state.lastSubmittedCategory || '')
+
+  // Auto-scroll conversation containers when new messages are added
+  React.useEffect(() => {
+    Object.entries(conversationHistories).forEach(([responseId, history]) => {
+      const prevLen = prevConvoLengths.current[responseId] || 0
+      if (history.length > prevLen) {
+        // New message added — scroll the container to bottom after render
+        setTimeout(() => {
+          const container = convoContainerRefs.current[responseId]
+          if (container) {
+            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+          }
+        }, 150)
+      }
+      prevConvoLengths.current[responseId] = history.length
+    })
+  }, [conversationHistories])
 
   // Calculate width based on available space (15px padding from nav bar and prompt window)
   // Nav bar is 60px, prompt window starts at 260px (paddingLeft: '260px')
@@ -278,10 +299,11 @@ const ResponseComparison = () => {
     }))
     
     try {
-      await streamFetch(`${API_URL}/api/model/conversation/stream`, {
+      const finalData = await streamFetch(`${API_URL}/api/model/conversation/stream`, {
         userId: currentUser.id,
         modelName: modelName,
         userMessage: input,
+        originalResponse: originalResponse,
         responseId: responseId
       }, {
         onToken: (token) => {
@@ -306,6 +328,17 @@ const ResponseComparison = () => {
           console.error('[ResponseComparison] Stream error:', message)
         }
       })
+      
+      // Capture search results from follow-up conversation, keyed by turn index
+      // NOTE: conversationHistories in closure still has the OLD length (before the new turn was added)
+      // so the new turn's index = oldLength (not oldLength - 1)
+      if (finalData?.searchResults && finalData.searchResults.length > 0) {
+        const turnIndex = (conversationHistories[responseId] || []).length
+        setConvoSources(prev => {
+          const existing = prev[responseId] || {}
+          return { ...prev, [responseId]: { ...existing, [turnIndex]: finalData.searchResults } }
+        })
+      }
     } catch (error) {
       console.error('[ResponseComparison] Error sending conversation message:', error)
       // Remove the placeholder on error
@@ -360,6 +393,8 @@ const ResponseComparison = () => {
         modelName,
         modelResponse: responseText,
         conversation,
+        sources: searchSources || [],
+        conversationSources: convoSources[responseId] || {},
       })
 
       setSavingStates(prev => ({ ...prev, [responseId]: 'saved' }))
@@ -582,11 +617,14 @@ const ResponseComparison = () => {
             onClick={() => {
               clearResponses()
               clearLastSubmittedPrompt()
-              // Clear judge conversation context
+              // Clear judge and model conversation context
               if (currentUser?.id) {
                 axios.post(`${API_URL}/api/judge/clear-context`, {
                   userId: currentUser.id
                 }).catch(err => console.error('[Clear Context] Error:', err))
+                axios.post(`${API_URL}/api/model/clear-context`, {
+                  userId: currentUser.id
+                }).catch(err => console.error('[Clear Model Context] Error:', err))
               }
             }}
           >
@@ -640,6 +678,7 @@ const ResponseComparison = () => {
           }}
         >
         <motion.div
+          ref={el => { if (el) convoContainerRefs.current[response.id] = el }}
           onClick={(e) => e.stopPropagation()}
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -719,6 +758,48 @@ const ResponseComparison = () => {
                 {responseText}
               </p>
             </div>
+
+            {/* Initial Sources — shown with the first prompt+response pair */}
+            {(() => {
+              if (!searchSources || !Array.isArray(searchSources) || searchSources.length === 0) return null
+              const toggleKey = `${response.id}_initial`
+              return (
+                <div style={{ marginTop: '12px' }}>
+                  <button
+                    onClick={() => setShowConvoSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px',
+                      background: showConvoSources[toggleKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                      border: `1px solid ${showConvoSources[toggleKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                      borderRadius: '8px', color: currentTheme.accent, fontSize: '0.8rem', fontWeight: '500',
+                      cursor: 'pointer', transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <Globe size={14} />
+                    Sources ({searchSources.length})
+                    <ChevronDown size={14} style={{ transform: showConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                  </button>
+                  {showConvoSources[toggleKey] && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                      style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}
+                    >
+                      {searchSources.map((source, sIdx) => (
+                        <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                          style={{ display: 'block', padding: '8px 12px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '8px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                        >
+                          <div style={{ fontSize: '0.8rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</div>
+                          <div style={{ fontSize: '0.7rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.link}</div>
+                          {source.snippet && (<div style={{ fontSize: '0.75rem', color: currentTheme.textSecondary, marginTop: '4px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{source.snippet}</div>)}
+                        </a>
+                      ))}
+                    </motion.div>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Rating */}
             <div
@@ -831,6 +912,48 @@ const ResponseComparison = () => {
                           {exchange.assistant}
                         </div>
                       </div>
+                      {/* Per-turn Sources Tab (maximized) */}
+                      {(() => {
+                        const turnSources = convoSources[response.id]?.[idx]
+                        if (!turnSources || turnSources.length === 0) return null
+                        const toggleKey = `${response.id}_${idx}`
+                        return (
+                          <div style={{ marginTop: '8px', marginBottom: '4px' }}>
+                            <button
+                              onClick={() => setShowConvoSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px',
+                                background: showConvoSources[toggleKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                                border: `1px solid ${showConvoSources[toggleKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                                borderRadius: '8px', color: currentTheme.accent, fontSize: '0.75rem', fontWeight: '500',
+                                cursor: 'pointer', transition: 'all 0.2s ease',
+                              }}
+                            >
+                              <Globe size={12} />
+                              Sources ({turnSources.length})
+                              <ChevronDown size={12} style={{ transform: showConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                            </button>
+                            {showConvoSources[toggleKey] && (
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                                style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
+                              >
+                                {turnSources.map((source, sIdx) => (
+                                  <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                                    style={{ display: 'block', padding: '6px 10px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '6px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                                  >
+                                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</div>
+                                    <div style={{ fontSize: '0.65rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.link}</div>
+                                    {source.snippet && (<div style={{ fontSize: '0.7rem', color: currentTheme.textSecondary, marginTop: '3px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{source.snippet}</div>)}
+                                  </a>
+                                ))}
+                              </motion.div>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </React.Fragment>
                   ))}
                 </div>
@@ -911,6 +1034,9 @@ const ResponseComparison = () => {
                 </span>
               </motion.div>
             )}
+
+            {/* Scroll anchor for auto-scroll on new message */}
+            <div ref={el => { convoEndRefs.current[response.id] = el }} />
 
             {/* Conversation Input */}
             <div
@@ -1127,11 +1253,14 @@ const ResponseComparison = () => {
                 e.stopPropagation()
                 clearResponses()
                 clearLastSubmittedPrompt()
-                // Clear judge conversation context
+                // Clear judge and model conversation context
                 if (currentUser?.id) {
                   axios.post(`${API_URL}/api/judge/clear-context`, {
                     userId: currentUser.id
                   }).catch(err => console.error('[Clear Context] Error:', err))
+                  axios.post(`${API_URL}/api/model/clear-context`, {
+                    userId: currentUser.id
+                  }).catch(err => console.error('[Clear Model Context] Error:', err))
                 }
               }}
               onMouseDown={(e) => e.stopPropagation()}
@@ -1258,6 +1387,7 @@ const ResponseComparison = () => {
         }}
       >
         <motion.div
+          ref={el => { if (el) convoContainerRefs.current[response.id] = el }}
           onClick={(e) => e.stopPropagation()}
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -1325,6 +1455,48 @@ const ResponseComparison = () => {
           >
             {responseText}
           </p>
+
+          {/* Initial Sources — shown with the first prompt+response pair */}
+          {(() => {
+            if (!searchSources || !Array.isArray(searchSources) || searchSources.length === 0) return null
+            const toggleKey = `${response.id}_initial`
+            return (
+              <div style={{ marginTop: '12px' }}>
+                <button
+                  onClick={() => setShowConvoSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px',
+                    background: showConvoSources[toggleKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                    border: `1px solid ${showConvoSources[toggleKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                    borderRadius: '8px', color: currentTheme.accent, fontSize: '0.8rem', fontWeight: '500',
+                    cursor: 'pointer', transition: 'all 0.2s ease',
+                  }}
+                >
+                  <Globe size={14} />
+                  Sources ({searchSources.length})
+                  <ChevronDown size={14} style={{ transform: showConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                </button>
+                {showConvoSources[toggleKey] && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                    style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}
+                  >
+                    {searchSources.map((source, sIdx) => (
+                      <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                        style={{ display: 'block', padding: '8px 12px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '8px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                      >
+                        <div style={{ fontSize: '0.8rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</div>
+                        <div style={{ fontSize: '0.7rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.link}</div>
+                        {source.snippet && (<div style={{ fontSize: '0.75rem', color: currentTheme.textSecondary, marginTop: '4px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{source.snippet}</div>)}
+                      </a>
+                    ))}
+                  </motion.div>
+                )}
+              </div>
+            )
+          })()}
 
           <div
             style={{
@@ -1436,6 +1608,48 @@ const ResponseComparison = () => {
                         {exchange.assistant}
                       </div>
                     </div>
+                    {/* Per-turn Sources Tab (non-maximized) */}
+                    {(() => {
+                      const turnSources = convoSources[response.id]?.[idx]
+                      if (!turnSources || turnSources.length === 0) return null
+                      const toggleKey = `${response.id}_${idx}`
+                      return (
+                        <div style={{ marginTop: '8px', marginBottom: '4px' }}>
+                          <button
+                            onClick={() => setShowConvoSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px',
+                              background: showConvoSources[toggleKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                              border: `1px solid ${showConvoSources[toggleKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                              borderRadius: '8px', color: currentTheme.accent, fontSize: '0.75rem', fontWeight: '500',
+                              cursor: 'pointer', transition: 'all 0.2s ease',
+                            }}
+                          >
+                            <Globe size={12} />
+                            Sources ({turnSources.length})
+                            <ChevronDown size={12} style={{ transform: showConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                          </button>
+                          {showConvoSources[toggleKey] && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                              style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
+                            >
+                              {turnSources.map((source, sIdx) => (
+                                <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                                  style={{ display: 'block', padding: '6px 10px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '6px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                                >
+                                  <div style={{ fontSize: '0.75rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</div>
+                                  <div style={{ fontSize: '0.65rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.link}</div>
+                                  {source.snippet && (<div style={{ fontSize: '0.7rem', color: currentTheme.textSecondary, marginTop: '3px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{source.snippet}</div>)}
+                                </a>
+                              ))}
+                            </motion.div>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </React.Fragment>
                 ))}
               </div>
@@ -1516,6 +1730,9 @@ const ResponseComparison = () => {
               </span>
             </motion.div>
           )}
+
+          {/* Scroll anchor for auto-scroll on new message */}
+          <div ref={el => { convoEndRefs.current[response.id] = el }} />
 
           {/* Conversation Input */}
           <div
@@ -2346,226 +2563,9 @@ const ResponseComparison = () => {
           )
         })}
         
-        {/* Sources Card */}
-        {searchSources && Array.isArray(searchSources) && searchSources.length > 0 && (
-          <div
-            style={{
-              position: 'relative',
-              width: '100%',
-              minWidth: cardWidth,
-              maxWidth: cardWidth,
-              overflow: 'visible',
-              pointerEvents: 'auto',
-            }}
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              style={{
-                width: '100%',
-                minWidth: cardWidth,
-                maxWidth: cardWidth,
-                background: theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)',
-                border: `1px solid ${currentTheme.borderLight}`,
-                borderRadius: '8px',
-                padding: '0',
-                boxShadow: 'none',
-                cursor: sourcesMinimized ? 'pointer' : 'default',
-                pointerEvents: 'auto',
-                position: 'relative',
-                zIndex: 1000,
-                transition: 'all 0.2s ease',
-              }}
-              onClick={(e) => {
-                if (sourcesMinimized) {
-                  e.stopPropagation()
-                  setSourcesMinimized(false)
-                  setSourcesMaximized(true)
-                }
-              }}
-              onMouseEnter={(e) => {
-                if (sourcesMinimized) {
-                  e.currentTarget.style.borderColor = currentTheme.borderActive
-                  e.currentTarget.style.boxShadow = `0 0 20px ${currentTheme.shadow}`
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (sourcesMinimized) {
-                  e.currentTarget.style.borderColor = currentTheme.borderLight
-                  e.currentTarget.style.boxShadow = 'none'
-                }
-              }}
-            >
-              <div
-                style={{
-                  padding: '10px 14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileText size={16} color={currentTheme.accent} />
-                  <h3
-                    key={`sources-card-title-${theme}`}
-                    style={{
-                      fontSize: '0.85rem',
-                      background: currentTheme.accentGradient,
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      margin: 0,
-                      fontWeight: '500',
-                    }}
-                  >
-                    Sources ({searchSources.length})
-                  </h3>
-                </div>
-                <ChevronRight size={16} color={currentTheme.accent} />
-              </div>
-            </motion.div>
-          </div>
-        )}
+        {/* Sources Card removed — sources are now shown inside each model's conversation area */}
 
-        {/* Sources Maximized View */}
-        {sourcesMaximized && searchSources && searchSources.length > 0 && (
-          <div
-            onClick={() => {
-              setSourcesMaximized(false)
-              setSourcesMinimized(true)
-            }}
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 300,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <motion.div
-              onClick={(e) => e.stopPropagation()}
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              style={{
-                background: theme === 'light' ? '#ffffff' : 'rgba(10, 10, 20, 0.98)',
-                border: `1px solid ${currentTheme.borderLight}`,
-                borderRadius: '16px',
-                padding: '30px',
-                width: '90%',
-                maxWidth: '900px',
-                maxHeight: '80vh',
-                overflowY: 'auto',
-                position: 'relative',
-                boxShadow: theme === 'light' 
-                  ? '0 8px 40px rgba(0, 0, 0, 0.2)' 
-                  : '0 8px 40px rgba(0, 0, 0, 0.6)',
-              }}
-            >
-              <button
-                onClick={() => {
-                  setSourcesMaximized(false)
-                  setSourcesMinimized(true)
-                }}
-                style={{
-                  position: 'absolute',
-                  top: '20px',
-                  right: '20px',
-                  background: currentTheme.buttonBackground,
-                  border: `1px solid ${currentTheme.borderLight}`,
-                  borderRadius: '8px',
-                  padding: '8px',
-                  color: currentTheme.accent,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  zIndex: 10,
-                }}
-                title="Minimize"
-              >
-                <Minimize2 size={20} />
-              </button>
-
-              <div style={{ marginBottom: '24px', paddingRight: '40px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <FileText size={28} color={currentTheme.accent} />
-                  <h2
-                    key={`sources-maximized-title-${theme}`}
-                    style={{
-                      fontSize: '1.8rem',
-                      margin: 0,
-                      background: currentTheme.accentGradient,
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                    }}
-                  >
-                    Sources
-                  </h2>
-                </div>
-              </div>
-
-              {searchSources.length > 0 ? (
-                <div>
-                  <div style={{ color: currentTheme.accentSecondary, fontSize: '16px', fontWeight: 'bold', marginBottom: '16px' }}>
-                    Search Results ({searchSources.length})
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {searchSources.map((result, index) => (
-                      <div
-                        key={index}
-                        style={{
-                          padding: '16px',
-                          backgroundColor: theme === 'light' ? currentTheme.backgroundSecondary : '#0a0a0a',
-                          borderRadius: '8px',
-                          border: `1px solid ${currentTheme.border}`,
-                        }}
-                      >
-                        <div style={{ color: currentTheme.text, marginBottom: '12px', fontWeight: '500', fontSize: '16px' }}>
-                          {result.title || 'No title'}
-                        </div>
-                        {result.snippet && (
-                          <div style={{ color: currentTheme.textSecondary, fontSize: '14px', marginBottom: '12px', lineHeight: '1.6' }}>
-                            {result.snippet}
-                          </div>
-                        )}
-                        {result.link && (
-                          <a
-                            href={result.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              color: currentTheme.accent,
-                              fontSize: '13px',
-                              textDecoration: 'underline',
-                              wordBreak: 'break-all',
-                            }}
-                          >
-                            🔗 {result.link}
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ 
-                  padding: '32px', 
-                  backgroundColor: theme === 'light' ? currentTheme.backgroundSecondary : '#1a0a0a', 
-                  borderRadius: '8px', 
-                  border: '1px solid rgba(255, 68, 68, 0.5)',
-                  textAlign: 'center'
-                }}>
-                  <div style={{ color: '#ff4444', fontSize: '16px', fontWeight: 'bold' }}>
-                    ⚠️ No sources found
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          </div>
-        )}
+        {/* Sources Maximized View removed — sources are now shown inside each model's conversation area */}
 
         {/* Restore Hidden Cards Button */}
         {Object.values(hiddenCards).some(Boolean) && (
@@ -2652,11 +2652,14 @@ const ResponseComparison = () => {
                 setShowFactsWindow(false)
                 // Minimize summary window
                 setSummaryMinimized(true)
-                // Clear judge conversation context
+                // Clear judge and model conversation context
                 if (currentUser?.id) {
                   axios.post(`${API_URL}/api/judge/clear-context`, {
                     userId: currentUser.id
                   }).catch(err => console.error('[Clear Context] Error:', err))
+                  axios.post(`${API_URL}/api/model/clear-context`, {
+                    userId: currentUser.id
+                  }).catch(err => console.error('[Clear Model Context] Error:', err))
                 }
               } catch (error) {
                 console.error('[ResponseComparison] Error clearing responses:', error)

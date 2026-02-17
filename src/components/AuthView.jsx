@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogIn, UserPlus, Mail, Lock, User, CreditCard, ArrowLeft, CheckCircle, KeyRound } from 'lucide-react'
+import { LogIn, UserPlus, Mail, Lock, User, CreditCard, ArrowLeft, CheckCircle, KeyRound, Eye, EyeOff } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -24,6 +24,9 @@ const AuthView = () => {
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   // Always use dark theme for the auth page
   const currentTheme = getTheme('dark')
   const setCurrentUser = useStore((state) => state.setCurrentUser)
@@ -75,7 +78,7 @@ const AuthView = () => {
       if (response.data.success) {
         const user = response.data.user
 
-        // Reset model initialization so MainView selects all models fresh
+        // Reset model initialization so MainView enables Auto Smart for all providers fresh
         clearSelectedModels()
         localStorage.removeItem('arktek-models-initialized')
         // Store user data in the store
@@ -604,19 +607,42 @@ const AuthView = () => {
                 <Lock size={16} />
                 Password
               </label>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                minLength={8}
-                autoComplete={isSignUp ? "new-password" : "current-password"}
-                placeholder={isSignUp ? "Create a password (min. 8 characters)" : "Enter your password"}
-                style={inputStyle}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  minLength={8}
+                  autoComplete={isSignUp ? "new-password" : "current-password"}
+                  placeholder={isSignUp ? "Create a password (min. 8 characters)" : "Enter your password"}
+                  style={{ ...inputStyle, paddingRight: '44px' }}
+                  onFocus={handleFocus}
+                  onBlur={handleBlur}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: currentTheme.textMuted,
+                  }}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
 
             {/* Forgot links (only on sign in) */}
@@ -985,19 +1011,42 @@ const AuthView = () => {
                 <Lock size={16} />
                 New Password
               </label>
-              <input
-                type="password"
-                name="newPassword"
-                value={newPassword}
-                onChange={(e) => { setNewPassword(e.target.value); setError(''); setSuccessMessage('') }}
-                required
-                minLength={8}
-                autoComplete="new-password"
-                placeholder="Enter new password (min. 8 characters)"
-                style={inputStyle}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showNewPassword ? "text" : "password"}
+                  name="newPassword"
+                  value={newPassword}
+                  onChange={(e) => { setNewPassword(e.target.value); setError(''); setSuccessMessage('') }}
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  placeholder="Enter new password (min. 8 characters)"
+                  style={{ ...inputStyle, paddingRight: '44px' }}
+                  onFocus={handleFocus}
+                  onBlur={handleBlur}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: currentTheme.textMuted,
+                  }}
+                  tabIndex={-1}
+                >
+                  {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
 
             <div style={{ marginBottom: '24px' }}>
@@ -1014,19 +1063,42 @@ const AuthView = () => {
                 <Lock size={16} />
                 Confirm Password
               </label>
-              <input
-                type="password"
-                name="confirmPassword"
-                value={confirmPassword}
-                onChange={(e) => { setConfirmPassword(e.target.value); setError(''); setSuccessMessage('') }}
-                required
-                minLength={8}
-                autoComplete="new-password"
-                placeholder="Confirm your new password"
-                style={inputStyle}
-                onFocus={handleFocus}
-                onBlur={handleBlur}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  name="confirmPassword"
+                  value={confirmPassword}
+                  onChange={(e) => { setConfirmPassword(e.target.value); setError(''); setSuccessMessage('') }}
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  placeholder="Confirm your new password"
+                  style={{ ...inputStyle, paddingRight: '44px' }}
+                  onFocus={handleFocus}
+                  onBlur={handleBlur}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: currentTheme.textMuted,
+                  }}
+                  tabIndex={-1}
+                >
+                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
               {/* Password match indicator */}
               {confirmPassword && (
                 <p style={{

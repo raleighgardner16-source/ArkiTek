@@ -2,12 +2,14 @@
  * Streaming fetch utility for SSE endpoints.
  * Calls onToken for each incoming token, onStatus for status updates,
  * and returns the final metadata from the 'done' event.
+ * Optionally accepts an AbortSignal to cancel the stream.
  */
-export async function streamFetch(url, body, { onToken, onStatus, onError }) {
+export async function streamFetch(url, body, { onToken, onStatus, onError, signal }) {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   })
 
   if (!response.ok) {

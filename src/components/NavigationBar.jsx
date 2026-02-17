@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Home, Settings, BarChart3, LogOut, Clock, X, Trophy, Sun, Moon, BookmarkCheck } from 'lucide-react'
+import { Home, Settings, User, LogOut, Clock, X, Trophy, Sun, Moon, BookmarkCheck } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -19,6 +19,7 @@ const NavigationBar = () => {
   const theme = useStore((state) => state.theme || 'dark')
   const toggleTheme = useStore((state) => state.toggleTheme)
   const setNavExpanded = useStore((state) => state.setNavExpanded)
+  const clearViewingProfile = useStore((state) => state.clearViewingProfile)
   const [isHovered, setIsHovered] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [promptHistory, setPromptHistory] = useState([])
@@ -88,8 +89,8 @@ const NavigationBar = () => {
     },
     {
       id: 'statistics',
-      icon: BarChart3,
-      label: 'Statistics',
+      icon: User,
+      label: 'Profile',
     },
     {
       id: 'settings',
@@ -175,7 +176,11 @@ const NavigationBar = () => {
           return (
             <motion.button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                // Clear any viewed profile when navigating away from statistics
+                if (tab.id !== 'statistics') clearViewingProfile()
+                setActiveTab(tab.id)
+              }}
               onMouseEnter={() => setIsTabHovered(true)}
               onMouseLeave={() => setIsTabHovered(false)}
               style={{
@@ -381,6 +386,15 @@ const NavigationBar = () => {
       {currentUser && (
         <motion.button
           onClick={() => {
+            // Clear server-side conversation context before signing out
+            if (currentUser?.id) {
+              axios.post(`${API_URL}/api/judge/clear-context`, {
+                userId: currentUser.id
+              }).catch(() => {})
+              axios.post(`${API_URL}/api/model/clear-context`, {
+                userId: currentUser.id
+              }).catch(() => {})
+            }
             clearCurrentUser()
             clearSelectedModels()
             clearResponses()

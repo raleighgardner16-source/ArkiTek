@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Save, Lock, FileText, LayoutGrid, Trash2, PauseCircle } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Save, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 import { detectCategory } from '../utils/categoryDetector'
@@ -9,7 +9,7 @@ import axios from 'axios'
 import { API_URL } from '../utils/config'
 import { streamFetch } from '../utils/streamFetch'
 
-const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaused = false, isLoading = false, isGeneratingSummary = false }) => {
+const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaused = false, subscriptionExpiring = false, subscriptionRenewalDate = null, isLoading = false, isGeneratingSummary = false, onCancelPrompt }) => {
   const selectedModels = useStore((state) => state.selectedModels)
   const setSelectedModels = useStore((state) => state.setSelectedModels)
   const currentPrompt = useStore((state) => state.currentPrompt)
@@ -24,6 +24,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const summary = useStore((state) => state.summary)
   const setSummary = useStore((state) => state.setSummary)
   const ragDebugData = useStore((state) => state.ragDebugData)
+  const searchSources = useStore((state) => state.searchSources)
   const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
   const theme = useStore((state) => state.theme || 'dark')
   const isNavExpanded = useStore((state) => state.isNavExpanded)
@@ -39,8 +40,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const setGeminiDetectionResponse = useStore((state) => state.setGeminiDetectionResponse)
   const isSearchingWeb = useStore((state) => state.isSearchingWeb)
   const [showNoModelNotification, setShowNoModelNotification] = useState(false)
-  const [showVotingConfirm, setShowVotingConfirm] = useState(false)
+  const [showPostWindow, setShowPostWindow] = useState(false)
   const [isSubmittingToVote, setIsSubmittingToVote] = useState(false)
+  const [promptPostedSuccess, setPromptPostedSuccess] = useState(false)
+  const [postDescription, setPostDescription] = useState('')
+  const [postPromptExpanded, setPostPromptExpanded] = useState(false)
+  const [postActiveTab, setPostActiveTab] = useState(null)
   const [saveAllState, setSaveAllState] = useState('idle') // 'idle'|'saving'|'saved'
   const [showSaveAllTooltip, setShowSaveAllTooltip] = useState(false)
   const [showCouncilTooltip, setShowCouncilTooltip] = useState(false)
@@ -52,6 +57,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [conversationContext, setConversationContext] = useState([])
   const [convoSavingState, setConvoSavingState] = useState('idle')
   const [showConvoSaveTooltip, setShowConvoSaveTooltip] = useState(false)
+  const [summaryConvoSources, setSummaryConvoSources] = useState({}) // { turnIndex: [...sources] } — per-turn summary follow-up search
+  const [showSummaryConvoSources, setShowSummaryConvoSources] = useState({}) // { turnIndex: true/false }
   const [showClearSummaryTooltip, setShowClearSummaryTooltip] = useState(false)
   const [showPostPromptTooltip, setShowPostPromptTooltip] = useState(false)
   const [showClearTooltip, setShowClearTooltip] = useState(false)
@@ -64,6 +71,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [isSendingSingleConvo, setIsSendingSingleConvo] = useState(false)
   const [isSearchingInSingleConvo, setIsSearchingInSingleConvo] = useState(false)
   const [singleModelConvoHistory, setSingleModelConvoHistory] = useState([])
+  const [singleConvoSources, setSingleConvoSources] = useState({}) // { turnIndex: [...sources] } — per-turn single-model follow-up search
+  const [showSingleConvoSources, setShowSingleConvoSources] = useState({}) // { turnIndex: true/false }
 
   // Refs for chat layout
   const textareaRef = useRef(null)
@@ -71,6 +80,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const chatEndRef = useRef(null)
   const convoTextareaRef = useRef(null)
   const singleConvoTextareaRef = useRef(null)
+  const responseAreaRef = useRef(null)
 
   // Fetch streak data
   useEffect(() => {
@@ -441,18 +451,47 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     }
   }, [availableModels, selectedModels, setSelectedModels])
 
-  // On sign-in (or first visit), select ALL models so every provider is active by default
+  // On sign-in (or first visit), enable Auto Smart for all providers so one model per provider
+  // is automatically selected based on prompt category when the user submits.
+  // Also migrates the old "all models selected" state to Auto Smart.
   useEffect(() => {
+    if (Object.keys(modelsByProvider).length === 0) return
+
     const hasInitialized = localStorage.getItem('arktek-models-initialized')
-    if (!hasInitialized && selectedModels.length === 0 && Object.keys(modelsByProvider).length > 0) {
-      const allModelIds = []
-      Object.entries(modelsByProvider).forEach(([, providerData]) => {
-        providerData.models.forEach(m => allModelIds.push(m.id))
+
+    // Fresh sign-in: no models selected and no init flag
+    if (!hasInitialized && selectedModels.length === 0) {
+      const autoSmartState = {}
+      Object.keys(modelsByProvider).forEach(providerKey => {
+        autoSmartState[providerKey] = true
       })
-      if (allModelIds.length > 0) {
-        setSelectedModels(allModelIds)
-      }
+      setAutoSmartProviders(autoSmartState)
       localStorage.setItem('arktek-models-initialized', 'true')
+      return
+    }
+
+    // Migration: if ALL models from every provider are selected (old buggy default),
+    // clear them and switch to Auto Smart instead.
+    const hasMigrated = localStorage.getItem('arktek-autosmart-migrated')
+    if (!hasMigrated && selectedModels.length > 0) {
+      const totalAvailableModels = Object.values(modelsByProvider).reduce(
+        (sum, p) => sum + p.models.length, 0
+      )
+      // Check if every single available model is selected (the old bug)
+      const allSelected = totalAvailableModels > 0 && selectedModels.length >= totalAvailableModels &&
+        Object.values(modelsByProvider).every(providerData =>
+          providerData.models.every(m => selectedModels.includes(m.id))
+        )
+      if (allSelected) {
+        // Clear all individual selections and enable Auto Smart for every provider
+        setSelectedModels([])
+        const autoSmartState = {}
+        Object.keys(modelsByProvider).forEach(providerKey => {
+          autoSmartState[providerKey] = true
+        })
+        setAutoSmartProviders(autoSmartState)
+      }
+      localStorage.setItem('arktek-autosmart-migrated', 'true')
     }
   }, [modelsByProvider, selectedModels, setSelectedModels])
 
@@ -541,6 +580,15 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     setShowCouncilPanel(false)
     setSingleModelConvoInput('')
     setSingleModelConvoHistory([])
+    // Reset textarea height back to normal after submitting
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
+    // Reset per-turn sources when starting a new prompt
+    setSummaryConvoSources({})
+    setShowSummaryConvoSources({})
+    setSingleConvoSources({})
+    setShowSingleConvoSources({})
     
     if (providersWithAutoSmart.length > 0) {
       const selectedProvidersData = providersWithAutoSmart.map(([providerKey]) => {
@@ -726,7 +774,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           singleModel: summaryData.singleModel || false,
           modelName: summaryData.modelName || null,
         } : null,
-        sources: ragData?.sources || ragData?.webResults || [],
+        sources: searchSources || [],
         facts: ragData?.facts || [],
       })
 
@@ -747,31 +795,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   // Scroll to top when initial response/summary loads, scroll to bottom only for follow-up messages
   const prevConvoLengthRef = useRef(0)
   const prevSingleConvoLengthRef = useRef(0)
-  const lastScrolledPromptRef = useRef(null) // Track which prompt we already scrolled to top for
-  useEffect(() => {
-    const convoLength = summary?.conversationHistory?.length || 0
-    const singleConvoLength = singleModelConvoHistory.length
-    
-    if ((convoLength > prevConvoLengthRef.current && convoLength > 0) ||
-        (singleConvoLength > prevSingleConvoLengthRef.current && singleConvoLength > 0)) {
-      // Follow-up conversation message added — scroll to bottom to see the new reply
-      setTimeout(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-      }, 150)
-    } else if (chatAreaRef.current && (summary || responses.length > 0)) {
-      // Only scroll to top ONCE per new prompt — don't re-scroll while the user is reading
-      const currentPromptKey = lastSubmittedPrompt + '|' + responses.length
-      if (lastScrolledPromptRef.current !== currentPromptKey) {
-        lastScrolledPromptRef.current = currentPromptKey
-        setTimeout(() => {
-          chatAreaRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-      }, 150)
-    }
-    }
-    
-    prevConvoLengthRef.current = convoLength
-    prevSingleConvoLengthRef.current = singleConvoLength
-  }, [summary?.text, summary?.conversationHistory?.length, responses.length, lastSubmittedPrompt, singleModelConvoHistory.length])
+  const lastScrolledPromptRef = useRef(null) // Track which prompt we already scrolled for
 
   // Fetch conversation context when summary appears
   useEffect(() => {
@@ -821,7 +845,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       const finalData = await streamFetch(`${API_URL}/api/judge/conversation/stream`, {
         userId: currentUser.id,
         userMessage: userMsg,
-        conversationContext: conversationContext
+        conversationContext: conversationContext,
+        originalSummaryText: summary.initialSummary || summary.text || ''
       }, {
         onToken: (token) => {
           setIsSearchingInConvo(false)
@@ -853,6 +878,14 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       
       // Handle final metadata
       if (finalData) {
+        // Capture conversation sources keyed by turn index
+        // NOTE: summary.conversationHistory in closure still has the OLD length (before the new turn was added)
+        // so the new turn's index = oldLength (not oldLength - 1)
+        if (finalData.searchResults && finalData.searchResults.length > 0) {
+          const turnIndex = (summary.conversationHistory || []).length
+          setSummaryConvoSources(prev => ({ ...prev, [turnIndex]: finalData.searchResults }))
+        }
+        
         const store = useStore.getState()
         if (finalData.debugData && finalData.usedSearch) {
           const existingDebugData = store.ragDebugData || {}
@@ -863,9 +896,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             categoryDetection: finalData.debugData.categoryDetection,
             conversationContext: existingDebugData.conversationContext || []
           })
-          if (finalData.searchResults && finalData.searchResults.length > 0) {
-            store.setShowFactsWindow(true)
-          }
         }
         
         setTimeout(async () => {
@@ -887,15 +917,25 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         }, 500)
       }
     } catch (error) {
-      console.error('[MainView] Error sending conversation:', error)
-      setConversationInput(userMsg)
-      setSummary(prev => ({
-        ...prev,
-        text: initialSummary,
-        summary: initialSummary,
-        conversationHistory: (prev.conversationHistory || []).slice(0, -1)
-      }))
-      alert('Failed to send message. Please try again.')
+      // If aborted, just remove the pending message silently
+      if (error.name === 'AbortError') {
+        setSummary(prev => ({
+          ...prev,
+          text: initialSummary,
+          summary: initialSummary,
+          conversationHistory: (prev.conversationHistory || []).slice(0, -1)
+        }))
+      } else {
+        console.error('[MainView] Error sending conversation:', error)
+        setConversationInput(userMsg)
+        setSummary(prev => ({
+          ...prev,
+          text: initialSummary,
+          summary: initialSummary,
+          conversationHistory: (prev.conversationHistory || []).slice(0, -1)
+        }))
+        alert('Failed to send message. Please try again.')
+      }
     } finally {
       setIsSendingConvo(false)
       setIsSearchingInConvo(false)
@@ -903,7 +943,44 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   }
 
   const handleSaveConversation = async () => {
-    if (!currentUser?.id || !summary) return
+    if (!currentUser?.id) return
+
+    // Single-model save (no summary exists)
+    if (!summary && responses.length === 1 && responses[0]) {
+      setConvoSavingState('saving')
+      try {
+        const singleResponse = responses[0]
+        const conversation = singleModelConvoHistory.map(ctx => ([
+          { role: 'user', text: ctx.user, timestamp: ctx.timestamp },
+          { role: 'assistant', text: ctx.assistant, timestamp: ctx.timestamp },
+        ])).flat()
+
+        await axios.post(`${API_URL}/api/conversations/save`, {
+          userId: currentUser.id,
+          type: 'individual',
+          originalPrompt: lastSubmittedPrompt || '',
+          category: lastSubmittedCategory || 'General',
+          modelName: singleResponse.modelName || 'Model',
+          modelResponse: singleResponse.text || '',
+          conversation,
+          sources: searchSources || [],
+          conversationSources: singleConvoSources || {},
+        })
+        setConvoSavingState('saved')
+      } catch (error) {
+        console.error('[Save] Error saving single model conversation:', error)
+        if (error.response?.data?.alreadySaved) {
+          setConvoSavingState('saved')
+        } else {
+          alert('Failed to save. Please try again.')
+          setConvoSavingState('idle')
+        }
+      }
+      return
+    }
+
+    // Multi-model summary save
+    if (!summary) return
     setConvoSavingState('saving')
     try {
       const conversation = conversationContext.map(ctx => ([
@@ -919,6 +996,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         modelName: summary.singleModel ? (summary.modelName || 'Single Model') : 'Judge Summary',
         modelResponse: summary.text || '',
         conversation,
+        sources: searchSources || [],
+        conversationSources: summaryConvoSources || {},
       })
       setConvoSavingState('saved')
     } catch (error) {
@@ -953,10 +1032,11 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     ])
     
     try {
-      await streamFetch(`${API_URL}/api/model/conversation/stream`, {
+      const finalData = await streamFetch(`${API_URL}/api/model/conversation/stream`, {
         userId: currentUser.id,
         modelName: modelName,
         userMessage: userMsg,
+        originalResponse: singleResponse.text || '',
         responseId: singleResponse.id,
       }, {
         onToken: (token) => {
@@ -981,12 +1061,25 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           console.error('[SingleModelConvo] Stream error:', message)
         }
       })
+      
+      // Capture search results keyed by turn index
+      // NOTE: singleModelConvoHistory in closure still has the OLD length (before the new turn was added)
+      // so the new turn's index = oldLength (not oldLength - 1)
+      if (finalData?.searchResults && finalData.searchResults.length > 0) {
+        const turnIndex = singleModelConvoHistory.length
+        setSingleConvoSources(prev => ({ ...prev, [turnIndex]: finalData.searchResults }))
+      }
     } catch (error) {
-      console.error('[SingleModelConvo] Error sending message:', error)
-      // Remove the placeholder on error
-      setSingleModelConvoHistory(prev => prev.slice(0, -1))
-      setSingleModelConvoInput(userMsg)
-      alert('Failed to send message. Please try again.')
+      // If aborted, just remove the pending message silently
+      if (error.name === 'AbortError') {
+        setSingleModelConvoHistory(prev => prev.slice(0, -1))
+      } else {
+        console.error('[SingleModelConvo] Error sending message:', error)
+        // Remove the placeholder on error
+        setSingleModelConvoHistory(prev => prev.slice(0, -1))
+        setSingleModelConvoInput(userMsg)
+        alert('Failed to send message. Please try again.')
+      }
     } finally {
       setIsSendingSingleConvo(false)
       setIsSearchingInSingleConvo(false)
@@ -1021,6 +1114,46 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     : (responses.length === 1 ? (responses[0].modelName || 'Model') : null)
   const showConversationInput = summary && !summary.singleModel
   const showSingleModelConvoInput = !summary && responses.length === 1 && !responses[0].error && lastSubmittedPrompt
+
+  // Scroll to show the response when it first appears (after a new prompt)
+  useEffect(() => {
+    if (!hasActiveConversation || !inlineResponseText || !chatAreaRef.current) return
+    // Only scroll once per prompt
+    if (lastScrolledPromptRef.current === lastSubmittedPrompt) return
+    lastScrolledPromptRef.current = lastSubmittedPrompt
+    // Wait for the response div to render, then scroll to it
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (responseAreaRef.current && chatAreaRef.current) {
+          const containerRect = chatAreaRef.current.getBoundingClientRect()
+          const responseRect = responseAreaRef.current.getBoundingClientRect()
+          const responseTopInContainer = responseRect.top - containerRect.top + chatAreaRef.current.scrollTop
+          // Scroll so the response starts ~120px from the top, showing a bit of prompt context
+          const scrollTarget = Math.max(0, responseTopInContainer - 120)
+          chatAreaRef.current.scrollTo({ top: scrollTarget, behavior: 'smooth' })
+        }
+      }, 100)
+    })
+  }, [hasActiveConversation, inlineResponseText, lastSubmittedPrompt])
+
+  // Scroll to bottom when a follow-up conversation message is added
+  useEffect(() => {
+    const convoLength = summary?.conversationHistory?.length || 0
+    const singleConvoLength = singleModelConvoHistory.length
+    
+    if ((convoLength > prevConvoLengthRef.current && convoLength > 0) ||
+        (singleConvoLength > prevSingleConvoLengthRef.current && singleConvoLength > 0)) {
+      setTimeout(() => {
+        if (chatAreaRef.current) {
+          chatAreaRef.current.scrollTo({ top: chatAreaRef.current.scrollHeight, behavior: 'smooth' })
+        }
+      }, 150)
+    }
+    
+    prevConvoLengthRef.current = convoLength
+    prevSingleConvoLengthRef.current = singleConvoLength
+  }, [summary?.conversationHistory?.length, singleModelConvoHistory.length])
+
   const bottomBarStyle = {
     flexShrink: 0,
     padding: '12px 40px 20px',
@@ -1121,7 +1254,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             {/* Welcome header removed - title now lives in provider tab */}
 
             {/* ===== CONVERSATION FLOW ===== */}
-            {hasActiveConversation && (
+            {/* Only show the prompt bubble + inline response once the response is actually ready */}
+            {/* This prevents the user's prompt from sitting alone while council models are still streaming */}
+            {hasActiveConversation && inlineResponseText && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', paddingTop: '20px', paddingBottom: '20px' }}>
                 
                 {/* User Prompt Bubble */}
@@ -1157,7 +1292,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
                 {/* Response - Free flowing text, NO container/border */}
                 {inlineResponseText && (
-                  <div style={{ padding: '4px 0 0 4px' }}>
+                  <div ref={responseAreaRef} style={{ padding: '4px 0 0 4px' }}>
                     <div style={{
                       marginBottom: '14px',
                       display: 'flex',
@@ -1190,6 +1325,90 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     </div>
                   </div>
                 )}
+
+                {/* Initial Sources — shown with the first prompt+response pair */}
+                {showConversationInput && (() => {
+                  if (!searchSources || !Array.isArray(searchSources) || searchSources.length === 0) return null
+                  const toggleKey = 'summary_initial'
+                  return (
+                    <div style={{ marginTop: '8px', marginBottom: '4px' }}>
+                      <button
+                        onClick={() => setShowSummaryConvoSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px',
+                          background: showSummaryConvoSources[toggleKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                          border: `1px solid ${showSummaryConvoSources[toggleKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                          borderRadius: '8px', color: currentTheme.accent, fontSize: '0.8rem', fontWeight: '500',
+                          cursor: 'pointer', transition: 'all 0.2s ease',
+                        }}
+                      >
+                        <Globe size={14} />
+                        Sources ({searchSources.length})
+                        <ChevronDown size={14} style={{ transform: showSummaryConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                      </button>
+                      {showSummaryConvoSources[toggleKey] && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                          style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}
+                        >
+                          {searchSources.map((source, sIdx) => (
+                            <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                              style={{ display: 'block', padding: '8px 12px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '8px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                              onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                            >
+                              <div style={{ fontSize: '0.8rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</div>
+                              <div style={{ fontSize: '0.7rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.link}</div>
+                              {source.snippet && (<div style={{ fontSize: '0.75rem', color: currentTheme.textSecondary, marginTop: '4px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{source.snippet}</div>)}
+                            </a>
+                          ))}
+                        </motion.div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* Single-model Initial Sources — shown with the first prompt+response pair */}
+                {showSingleModelConvoInput && (() => {
+                  if (!searchSources || !Array.isArray(searchSources) || searchSources.length === 0) return null
+                  const toggleKey = 'single_initial'
+                  return (
+                    <div style={{ marginTop: '8px', marginBottom: '4px' }}>
+                      <button
+                        onClick={() => setShowSingleConvoSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px',
+                          background: showSingleConvoSources[toggleKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                          border: `1px solid ${showSingleConvoSources[toggleKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                          borderRadius: '8px', color: currentTheme.accent, fontSize: '0.8rem', fontWeight: '500',
+                          cursor: 'pointer', transition: 'all 0.2s ease',
+                        }}
+                      >
+                        <Globe size={14} />
+                        Sources ({searchSources.length})
+                        <ChevronDown size={14} style={{ transform: showSingleConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                      </button>
+                      {showSingleConvoSources[toggleKey] && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                          style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}
+                        >
+                          {searchSources.map((source, sIdx) => (
+                            <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                              style={{ display: 'block', padding: '8px 12px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '8px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                              onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                            >
+                              <div style={{ fontSize: '0.8rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</div>
+                              <div style={{ fontSize: '0.7rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.link}</div>
+                              {source.snippet && (<div style={{ fontSize: '0.75rem', color: currentTheme.textSecondary, marginTop: '4px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{source.snippet}</div>)}
+                            </a>
+                          ))}
+                        </motion.div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* Conversation History */}
                 {summary?.conversationHistory && summary.conversationHistory.length > 0 && (
@@ -1254,6 +1473,48 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           {exchange.assistant || exchange.judge}
                         </div>
                       </div>
+                      {/* Per-turn Sources Tab (inline summary convo) */}
+                      {(() => {
+                        const turnSources = summaryConvoSources[idx]
+                        if (!turnSources || turnSources.length === 0) return null
+                        const toggleKey = `summary_${idx}`
+                        return (
+                          <div style={{ marginTop: '8px', marginBottom: '4px' }}>
+                            <button
+                              onClick={() => setShowSummaryConvoSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px',
+                                background: showSummaryConvoSources[toggleKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                                border: `1px solid ${showSummaryConvoSources[toggleKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                                borderRadius: '8px', color: currentTheme.accent, fontSize: '0.75rem', fontWeight: '500',
+                                cursor: 'pointer', transition: 'all 0.2s ease',
+                              }}
+                            >
+                              <Globe size={12} />
+                              Sources ({turnSources.length})
+                              <ChevronDown size={12} style={{ transform: showSummaryConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                            </button>
+                            {showSummaryConvoSources[toggleKey] && (
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                                style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
+                              >
+                                {turnSources.map((source, sIdx) => (
+                                  <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                                    style={{ display: 'block', padding: '6px 10px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '6px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                                  >
+                                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</div>
+                                    <div style={{ fontSize: '0.65rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.link}</div>
+                                    {source.snippet && (<div style={{ fontSize: '0.7rem', color: currentTheme.textSecondary, marginTop: '3px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{source.snippet}</div>)}
+                                  </a>
+                                ))}
+                              </motion.div>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </React.Fragment>
                   ))
                 )}
@@ -1343,15 +1604,23 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           onClick={() => {
                             clearResponses()
                             clearLastSubmittedPrompt()
-                            // Clear judge conversation context
+                            // Clear judge and model conversation context
                             if (currentUser?.id) {
                               axios.post(`${API_URL}/api/judge/clear-context`, {
                                 userId: currentUser.id
                               }).catch(err => console.error('[Clear Context] Error:', err))
+                              axios.post(`${API_URL}/api/model/clear-context`, {
+                                userId: currentUser.id
+                              }).catch(err => console.error('[Clear Model Context] Error:', err))
                             }
                             // Reset inline conversation state
                             setConversationInput('')
                             setConversationContext([])
+                            // Reset per-turn sources
+                            setSummaryConvoSources({})
+                            setShowSummaryConvoSources({})
+                            setSingleConvoSources({})
+                            setShowSingleConvoSources({})
                           }}
                           style={{
                             flex: 1,
@@ -1413,7 +1682,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                               alert('Please sign in to submit prompts to the leaderboard')
                               return
                             }
-                            setShowVotingConfirm(true)
+                            setShowPostWindow(true)
                           }}
                           style={{
                             flex: 1,
@@ -1775,6 +2044,48 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           {exchange.assistant}
         </div>
                       </div>
+                      {/* Per-turn Sources Tab (inline single-model convo) */}
+                      {(() => {
+                        const turnSources = singleConvoSources[idx]
+                        if (!turnSources || turnSources.length === 0) return null
+                        const toggleKey = `single_${idx}`
+                        return (
+                          <div style={{ marginTop: '8px', marginBottom: '4px' }}>
+                            <button
+                              onClick={() => setShowSingleConvoSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px',
+                                background: showSingleConvoSources[toggleKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                                border: `1px solid ${showSingleConvoSources[toggleKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                                borderRadius: '8px', color: currentTheme.accent, fontSize: '0.75rem', fontWeight: '500',
+                                cursor: 'pointer', transition: 'all 0.2s ease',
+                              }}
+                            >
+                              <Globe size={12} />
+                              Sources ({turnSources.length})
+                              <ChevronDown size={12} style={{ transform: showSingleConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                            </button>
+                            {showSingleConvoSources[toggleKey] && (
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                                style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
+                              >
+                                {turnSources.map((source, sIdx) => (
+                                  <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                                    style={{ display: 'block', padding: '6px 10px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '6px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                                  >
+                                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title}</div>
+                                    <div style={{ fontSize: '0.65rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.link}</div>
+                                    {source.snippet && (<div style={{ fontSize: '0.7rem', color: currentTheme.textSecondary, marginTop: '3px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{source.snippet}</div>)}
+                                  </a>
+                                ))}
+                              </motion.div>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </React.Fragment>
                   ))
                 )}
@@ -1872,11 +2183,19 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                               axios.post(`${API_URL}/api/judge/clear-context`, {
                                 userId: currentUser.id
                               }).catch(err => console.error('[Clear Context] Error:', err))
+                              axios.post(`${API_URL}/api/model/clear-context`, {
+                                userId: currentUser.id
+                              }).catch(err => console.error('[Clear Model Context] Error:', err))
                             }
                             setConversationInput('')
                             setConversationContext([])
                             setSingleModelConvoInput('')
                             setSingleModelConvoHistory([])
+                            // Reset per-turn sources
+                            setSummaryConvoSources({})
+                            setShowSummaryConvoSources({})
+                            setSingleConvoSources({})
+                            setShowSingleConvoSources({})
                           }}
                           style={{
                             flex: 1,
@@ -1939,7 +2258,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                               alert('Please sign in to submit prompts to the leaderboard')
                               return
                             }
-                            setShowVotingConfirm(true)
+                            setShowPostWindow(true)
                           }}
                           style={{
                             flex: 1,
@@ -2165,10 +2484,22 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     )}
                   </div>
             )}
+            {/* Subscription paused notice */}
+            {subscriptionExpiring && subscriptionRenewalDate && (
+              <div style={{ textAlign: 'center', marginBottom: '6px' }}>
+                <span style={{
+                  fontSize: '0.68rem',
+                  color: 'rgba(255, 255, 255, 0.55)',
+                  fontWeight: '400',
+                }}>
+                  Subscription paused · access until {new Date(subscriptionRenewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </span>
+              </div>
+            )}
             {/* Welcome Title */}
             <h2
               key={`welcome-title-${theme}`}
-                    style={{
+              style={{
                 textAlign: 'center',
                 fontSize: '1.3rem',
                 fontWeight: '600',
@@ -2492,15 +2823,42 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     )
                   })}
 
-                  {/* Send Button */}
+                  {/* Send / Cancel Button */}
                   {(() => {
                     const hasAutoSmart = Object.values(autoSmartProviders).some(enabled => enabled)
                     const hasModels = selectedModels.length > 0 || hasAutoSmart
                     const canSubmit = currentPrompt.trim() && hasModels
                     const hasPromptOnly = currentPrompt.trim() && !hasModels
+                    const isProcessing = isLoading || isGeneratingSummary
                     
                     return (
-                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {isProcessing ? (
+                        <motion.button
+                          onClick={() => {
+                            if (onCancelPrompt) onCancelPrompt()
+                          }}
+                          style={{
+                            width: '30px',
+                            height: '30px',
+                            padding: 0,
+                            background: '#ef4444',
+                            border: 'none',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.2s ease',
+                          }}
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          title="Cancel"
+                        >
+                          <Square size={14} fill="#fff" />
+                        </motion.button>
+                      ) : (
                       <motion.button
                         onClick={() => {
                           if (canSubmit) {
@@ -2511,8 +2869,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           }
                         }}
                           style={{ 
-                          padding: '5px 16px',
+                          width: '30px',
                           height: '30px',
+                          padding: 0,
                           background: canSubmit ? currentTheme.accent : hasPromptOnly ? '#ffaa00' : currentTheme.borderLight,
                           border: 'none',
                           borderRadius: '8px',
@@ -2521,17 +2880,15 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             display: 'flex', 
                             alignItems: 'center', 
                             justifyContent: 'center',
-                          gap: '6px',
-                          fontSize: '0.8rem',
-                          fontWeight: '600',
                           transition: 'all 0.2s ease',
-                          whiteSpace: 'nowrap',
                         }}
-                        whileHover={(canSubmit || hasPromptOnly) ? { scale: 1.03 } : {}}
-                        whileTap={(canSubmit || hasPromptOnly) ? { scale: 0.97 } : {}}
+                        whileHover={(canSubmit || hasPromptOnly) ? { scale: 1.1 } : {}}
+                        whileTap={(canSubmit || hasPromptOnly) ? { scale: 0.9 } : {}}
+                        title="Send"
                       >
-                        Send
+                        <Send size={14} />
                       </motion.button>
+                      )}
                         <div
                           style={{ position: 'absolute', top: '-8px', right: '-8px', cursor: 'help', zIndex: 10 }}
                           onMouseEnter={() => setShowSendTooltip(true)}
@@ -2744,146 +3101,418 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 })}
                   </AnimatePresence>
 
-      {/* Voting Confirmation Popup */}
+      {/* Post to Leaderboard Window */}
       <AnimatePresence>
-        {showVotingConfirm && (
-          <>
+        {showPostWindow && (
+          <div
+            onClick={() => { if (!isSubmittingToVote) { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null) } }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 10000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(0, 0, 0, 0.5)',
+              backdropFilter: 'blur(4px)',
+            }}
+          >
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowVotingConfirm(false)}
+              onClick={(e) => e.stopPropagation()}
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ duration: 0.2 }}
               style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: 'rgba(0, 0, 0, 0.3)',
-                zIndex: 10002,
-              }}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.15 }}
-              style={{
-                position: 'fixed',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
                 background: currentTheme.backgroundOverlay,
-                border: `1px solid rgba(255, 170, 0, 0.5)`,
-                borderRadius: '12px',
-                padding: '20px 24px',
-                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
-                zIndex: 10003,
-                minWidth: '320px',
+                border: `1px solid ${currentTheme.border}`,
+                borderRadius: '16px',
+                padding: '30px',
+                maxWidth: '600px',
+                width: 'calc(100% - 80px)',
+                maxHeight: '80vh',
+                overflowY: 'auto',
+                position: 'relative',
+                boxShadow: `0 0 40px ${currentTheme.shadow}`,
               }}
             >
-              <p style={{ 
-                color: currentTheme.text, 
-                margin: '0 0 16px 0', 
-                fontSize: '0.95rem',
-                lineHeight: '1.4'
-              }}>
-                Submit this prompt and responses to the leaderboard for voting?
-              </p>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <motion.button
-                  onClick={() => setShowVotingConfirm(false)}
-                  style={{
-                    padding: '8px 16px',
-                    background: 'transparent',
-                    border: `1px solid ${currentTheme.borderLight}`,
-                    borderRadius: '6px',
-                    color: currentTheme.textSecondary,
-                    fontSize: '0.85rem',
-                    cursor: 'pointer',
-                  }}
-                  whileHover={{ background: currentTheme.buttonBackgroundHover }}
-                >
-                  Cancel
-                </motion.button>
-                <motion.button
-                  onClick={async () => {
-                    setIsSubmittingToVote(true)
-                    try {
-                      let facts = null
-                      let sources = null
-                      
-                      if (ragDebugData) {
-                        if (ragDebugData.refiner?.primary?.facts_with_citations) {
-                          facts = ragDebugData.refiner.primary.facts_with_citations.map(f => ({
-                            fact: f.fact,
-                            source_quote: f.source_quote || null,
-                          }))
-                        } else if (ragDebugData.refiner?.backup?.facts_with_citations) {
-                          facts = ragDebugData.refiner.backup.facts_with_citations.map(f => ({
-                            fact: f.fact,
-                            source_quote: f.source_quote || null,
-                          }))
-                        }
+              {/* Close button */}
+              <button
+                onClick={() => { if (!isSubmittingToVote) { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null) } }}
+                style={{
+                  position: 'absolute',
+                  top: '16px',
+                  right: '16px',
+                  background: currentTheme.buttonBackground,
+                  border: `1px solid ${currentTheme.borderLight}`,
+                  borderRadius: '8px',
+                  padding: '6px',
+                  color: currentTheme.textSecondary,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <XCircle size={18} />
+              </button>
+
+              {promptPostedSuccess ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '20px 0' }}>
+                  <div style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '50%',
+                    background: 'rgba(34, 197, 94, 0.15)',
+                    border: '2px solid rgba(34, 197, 94, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <Check size={26} color="#22c55e" />
+                  </div>
+                  <p style={{ color: '#22c55e', margin: 0, fontSize: '1.1rem', fontWeight: '600' }}>
+                    Posted to leaderboard!
+                  </p>
+                  <motion.button
+                    onClick={() => { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null) }}
+                    style={{
+                      marginTop: '4px',
+                      padding: '10px 28px',
+                      background: 'rgba(34, 197, 94, 0.15)',
+                      border: '1px solid rgba(34, 197, 94, 0.4)',
+                      borderRadius: '10px',
+                      color: '#22c55e',
+                      fontSize: '0.9rem',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                    }}
+                    whileHover={{ background: 'rgba(34, 197, 94, 0.25)' }}
+                  >
+                    Close
+                  </motion.button>
+                </div>
+              ) : (
+                <>
+                  {/* Title */}
+                  <h2 style={{
+                    fontSize: '1.4rem',
+                    margin: '0 0 6px 0',
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    paddingRight: '30px',
+                  }}>
+                    Post to Leaderboard
+                  </h2>
+
+                  {/* Description textarea — on top */}
+                  <div style={{ marginBottom: '16px', marginTop: '16px' }}>
+                    <label style={{
+                      color: currentTheme.textSecondary,
+                      fontSize: '0.75rem',
+                      fontWeight: '500',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      display: 'block',
+                      marginBottom: '8px',
+                    }}>
+                      Description (optional)
+                    </label>
+                    <textarea
+                      value={postDescription}
+                      onChange={(e) => setPostDescription(e.target.value)}
+                      placeholder="Add context or thoughts about this prompt..."
+                      maxLength={500}
+                      style={{
+                        width: '100%',
+                        minHeight: '90px',
+                        padding: '12px 14px',
+                        background: currentTheme.buttonBackground,
+                        border: `1px solid ${currentTheme.borderLight}`,
+                        borderRadius: '10px',
+                        color: currentTheme.text,
+                        fontSize: '0.9rem',
+                        lineHeight: '1.5',
+                        resize: 'vertical',
+                        outline: 'none',
+                        fontFamily: 'inherit',
+                        boxSizing: 'border-box',
+                        transition: 'border-color 0.2s',
+                      }}
+                      onFocus={(e) => { e.target.style.borderColor = currentTheme.accent }}
+                      onBlur={(e) => { e.target.style.borderColor = currentTheme.borderLight }}
+                    />
+                    <p style={{
+                      color: currentTheme.textMuted || currentTheme.textSecondary,
+                      fontSize: '0.72rem',
+                      margin: '4px 0 0 0',
+                      textAlign: 'right',
+                    }}>
+                      {postDescription.length}/500
+                    </p>
+                  </div>
+
+                  {/* Prompt preview — below description, with 50-word truncation */}
+                  {(() => {
+                    const promptText = lastSubmittedPrompt?.trim() || 'No prompt'
+                    const words = promptText.split(/\s+/)
+                    const isTruncated = words.length > 50
+                    const displayText = (!postPromptExpanded && isTruncated) ? words.slice(0, 50).join(' ') : promptText
+                    return (
+                      <div style={{
+                        padding: '14px 16px',
+                        background: currentTheme.buttonBackground,
+                        border: `1px solid ${currentTheme.borderLight}`,
+                        borderRadius: '10px',
+                        marginBottom: '16px',
+                      }}>
+                        <p style={{
+                          color: currentTheme.textSecondary,
+                          fontSize: '0.75rem',
+                          fontWeight: '500',
+                          margin: '0 0 6px 0',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                        }}>
+                          Prompt
+                        </p>
+                        <p style={{
+                          color: currentTheme.text,
+                          fontSize: '0.95rem',
+                          margin: 0,
+                          lineHeight: '1.5',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                        }}>
+                          {displayText}
+                          {isTruncated && !postPromptExpanded && (
+                            <span
+                              onClick={() => setPostPromptExpanded(true)}
+                              style={{
+                                color: currentTheme.accent,
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: '500',
+                                marginLeft: '4px',
+                              }}
+                            >
+                              ... show more
+                            </span>
+                          )}
+                          {isTruncated && postPromptExpanded && (
+                            <span
+                              onClick={() => setPostPromptExpanded(false)}
+                              style={{
+                                color: currentTheme.accent,
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: '500',
+                                marginLeft: '4px',
+                              }}
+                            >
+                              {' '}show less
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )
+                  })()}
+
+                  {/* Response pull-down containers — each separate */}
+                  {(summary || (responses && responses.length > 0)) && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                      {/* Summary pull-down */}
+                      {summary && (
+                        <div style={{
+                          background: currentTheme.buttonBackground,
+                          border: `1px solid ${currentTheme.borderLight}`,
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                        }}>
+                          <button
+                            onClick={() => setPostActiveTab(postActiveTab === 'summary' ? null : 'summary')}
+                            style={{
+                              width: '100%',
+                              padding: '10px 12px',
+                              background: 'transparent',
+                              border: 'none',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              cursor: 'pointer',
+                              color: currentTheme.text,
+                            }}
+                          >
+                            <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>Summary Response</span>
+                            {postActiveTab === 'summary' ? (
+                              <ChevronUp size={16} color={currentTheme.accent} />
+                            ) : (
+                              <ChevronDown size={16} color={currentTheme.accent} />
+                            )}
+                          </button>
+                          {postActiveTab === 'summary' && (
+                            <div style={{ padding: '12px', borderTop: `1px solid ${currentTheme.borderLight}`, maxHeight: '200px', overflowY: 'auto' }}>
+                              <p style={{
+                                color: currentTheme.textSecondary,
+                                fontSize: '0.85rem',
+                                margin: 0,
+                                lineHeight: '1.5',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                              }}>
+                                {typeof summary === 'string' ? summary : (summary.text || summary.initialSummary || '')}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* Individual model pull-downs */}
+                      {responses && responses.map((r, idx) => (
+                        <div key={idx} style={{
+                          background: currentTheme.buttonBackground,
+                          border: `1px solid ${currentTheme.borderLight}`,
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                        }}>
+                          <button
+                            onClick={() => setPostActiveTab(postActiveTab === idx ? null : idx)}
+                            style={{
+                              width: '100%',
+                              padding: '10px 12px',
+                              background: 'transparent',
+                              border: 'none',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              cursor: 'pointer',
+                              color: currentTheme.text,
+                            }}
+                          >
+                            <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>{r.modelName || `Model ${idx + 1}`} Response</span>
+                            {postActiveTab === idx ? (
+                              <ChevronUp size={16} color={currentTheme.accent} />
+                            ) : (
+                              <ChevronDown size={16} color={currentTheme.accent} />
+                            )}
+                          </button>
+                          {postActiveTab === idx && (
+                            <div style={{ padding: '12px', borderTop: `1px solid ${currentTheme.borderLight}`, maxHeight: '200px', overflowY: 'auto' }}>
+                              <p style={{
+                                color: currentTheme.textSecondary,
+                                fontSize: '0.85rem',
+                                margin: 0,
+                                lineHeight: '1.5',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                              }}>
+                                {r.text || 'No response text'}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Submit button */}
+                  <motion.button
+                    onClick={async () => {
+                      setIsSubmittingToVote(true)
+                      try {
+                        let facts = null
+                        let sources = null
                         
-                        if (ragDebugData.search?.results && Array.isArray(ragDebugData.search.results)) {
+                        if (searchSources && Array.isArray(searchSources) && searchSources.length > 0) {
+                          sources = searchSources.map(s => ({
+                            title: s.title,
+                            link: s.link || s.url,
+                            snippet: s.snippet,
+                          }))
+                        } else if (ragDebugData?.search?.results && Array.isArray(ragDebugData.search.results)) {
                           sources = ragDebugData.search.results.map(s => ({
                             title: s.title,
                             link: s.link,
                             snippet: s.snippet,
                           }))
                         }
+                        
+                        if (ragDebugData) {
+                          if (ragDebugData.refiner?.primary?.facts_with_citations) {
+                            facts = ragDebugData.refiner.primary.facts_with_citations.map(f => ({
+                              fact: f.fact,
+                              source_quote: f.source_quote || null,
+                            }))
+                          } else if (ragDebugData.refiner?.backup?.facts_with_citations) {
+                            facts = ragDebugData.refiner.backup.facts_with_citations.map(f => ({
+                              fact: f.fact,
+                              source_quote: f.source_quote || null,
+                            }))
+                          }
+                        }
+                        
+                        const response = await axios.post(`${API_URL}/api/leaderboard/submit`, {
+                          userId: currentUser.id,
+                          promptText: lastSubmittedPrompt.trim(),
+                          category: lastSubmittedCategory || 'General Knowledge/Other',
+                          description: postDescription.trim() || null,
+                          responses: responses.length > 0 ? responses.map(r => ({
+                            modelName: r.modelName,
+                            actualModelName: r.actualModelName,
+                            originalModelName: r.originalModelName,
+                            text: r.text,
+                            error: r.error || false,
+                            tokens: r.tokens || null,
+                          })) : null,
+                          summary: summary || null,
+                          facts: facts,
+                          sources: sources,
+                        })
+                        
+                        if (response.data.success) {
+                          setPromptPostedSuccess(true)
+                        }
+                      } catch (error) {
+                        console.error('Error submitting to leaderboard:', error)
+                        if (error.response?.data?.alreadyPosted) {
+                          alert('This prompt has already been posted to the leaderboard.')
+                        } else {
+                          alert(error.response?.data?.error || 'Failed to submit prompt to leaderboard')
+                        }
+                      } finally {
+                        setIsSubmittingToVote(false)
                       }
-                      
-                      const response = await axios.post(`${API_URL}/api/leaderboard/submit`, {
-                        userId: currentUser.id,
-                        promptText: lastSubmittedPrompt.trim(),
-                        category: lastSubmittedCategory || 'General Knowledge/Other',
-                        responses: responses.length > 0 ? responses.map(r => ({
-                          modelName: r.modelName,
-                          actualModelName: r.actualModelName,
-                          originalModelName: r.originalModelName,
-                          text: r.text,
-                          error: r.error || false,
-                          tokens: r.tokens || null,
-                        })) : null,
-                        summary: summary || null,
-                        facts: facts,
-                        sources: sources,
-                      })
-                      
-                      if (response.data.success) {
-                        setShowVotingConfirm(false)
-                      }
-                    } catch (error) {
-                      console.error('Error submitting to leaderboard:', error)
-                      alert(error.response?.data?.error || 'Failed to submit prompt to leaderboard')
-                    } finally {
-                      setIsSubmittingToVote(false)
-                    }
-                  }}
-                  disabled={isSubmittingToVote}
-                  style={{
-                    padding: '8px 16px',
-                    background: 'rgba(255, 170, 0, 0.3)',
-                    border: '1px solid rgba(255, 170, 0, 0.6)',
-                    borderRadius: '6px',
-                    color: '#ffaa00',
-                    fontSize: '0.85rem',
-                    fontWeight: '500',
-                    cursor: isSubmittingToVote ? 'wait' : 'pointer',
-                    opacity: isSubmittingToVote ? 0.7 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                  whileHover={!isSubmittingToVote ? { background: 'rgba(255, 170, 0, 0.4)' } : {}}
-                >
-                  {isSubmittingToVote ? 'Submitting...' : 'Confirm Submit'}
-                </motion.button>
-              </div>
+                    }}
+                    disabled={isSubmittingToVote}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      background: currentTheme.accentGradient,
+                      border: 'none',
+                      borderRadius: '10px',
+                      color: '#fff',
+                      fontSize: '0.95rem',
+                      fontWeight: '600',
+                      cursor: isSubmittingToVote ? 'wait' : 'pointer',
+                      opacity: isSubmittingToVote ? 0.7 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                    }}
+                    whileHover={!isSubmittingToVote ? { scale: 1.01 } : {}}
+                    whileTap={!isSubmittingToVote ? { scale: 0.99 } : {}}
+                  >
+                    <Trophy size={18} />
+                    {isSubmittingToVote ? 'Posting...' : 'Submit to Leaderboard'}
+                  </motion.button>
+                </>
+              )}
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
 

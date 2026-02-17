@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore } from './store/useStore'
 import WelcomeScreen from './components/WelcomeScreen'
@@ -82,11 +82,14 @@ function App() {
       if (setSummaryMinimized) {
         setSummaryMinimized(true)
       }
-      // Clear judge conversation context
+      // Clear judge and model conversation context
       if (currentUser?.id) {
         axios.post(`${API_URL}/api/judge/clear-context`, {
           userId: currentUser.id
         }).catch(err => console.error('[Clear Context] Error:', err))
+        axios.post(`${API_URL}/api/model/clear-context`, {
+          userId: currentUser.id
+        }).catch(err => console.error('[Clear Model Context] Error:', err))
       }
     } catch (error) {
       console.error('[clearAllWindows] Error clearing windows:', error)
@@ -99,16 +102,33 @@ function App() {
   const shouldSubmit = useStore((state) => state.shouldSubmit)
   const clearSubmit = useStore((state) => state.clearSubmit)
   const setSummary = useStore((state) => state.setSummary)
-  const clearSelectedModels = useStore((state) => state.clearSelectedModels)
   const setIsSearchingWeb = useStore((state) => state.setIsSearchingWeb)
   const setSearchSources = useStore((state) => state.setSearchSources)
 
   const [isLoading, setIsLoading] = useState(false)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const [currentCategory, setCurrentCategory] = useState('general')
-  const [tokenUsageData, setTokenUsageData] = useState([])
   const [queryCount, setQueryCount] = useState(0)
   const [isUserAdmin, setIsUserAdmin] = useState(false)
+
+  // Abort controller for cancelling in-flight prompt submissions
+  const abortControllerRef = useRef(null)
+
+  const handleCancelPrompt = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    setIsLoading(false)
+    setIsSearchingWeb(false)
+    setIsGeneratingSummary(false)
+    // Reset the page back to the initial state
+    clearResponses()
+    setSummary(null)
+    setCurrentPrompt('')
+    setLastSubmittedPrompt('')
+    setLastSubmittedCategory('')
+  }
 
   // Check if current user is an admin (admins bypass subscription gate)
   useEffect(() => {
@@ -121,15 +141,11 @@ function App() {
     }
   }, [currentUser?.id])
 
-  // Clear selected models when navigating to home page from another tab
+  // Track previous tab (selected models are intentionally preserved across tab changes)
   const prevActiveTab = React.useRef(activeTab)
   useEffect(() => {
-    // Only clear if we're navigating TO home FROM another tab (not on initial load)
-    if (activeTab === 'home' && prevActiveTab.current !== 'home' && prevActiveTab.current !== undefined && currentUser) {
-      clearSelectedModels()
-    }
     prevActiveTab.current = activeTab
-  }, [activeTab, currentUser, clearSelectedModels])
+  }, [activeTab])
 
   // Handle prompt submission
   const handlePromptSubmit = async () => {
@@ -151,14 +167,24 @@ function App() {
     // Use deduplicated models
     const modelsToUse = uniqueModels
 
+    // Cancel any in-flight request before starting a new one
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
     setIsLoading(true)
     clearResponses()
     
-    // Clear judge conversation context when starting a new prompt from main page
+    // Clear judge and model conversation context when starting a new prompt from main page
     if (currentUser?.id) {
       axios.post(`${API_URL}/api/judge/clear-context`, {
         userId: currentUser.id
       }).catch(err => console.error('[Clear Context] Error:', err))
+      axios.post(`${API_URL}/api/model/clear-context`, {
+        userId: currentUser.id
+      }).catch(err => console.error('[Clear Model Context] Error:', err))
     }
 
     try {
@@ -203,7 +229,7 @@ function App() {
           query: currentPrompt,
           selectedModels: modelsToUse,
           userId: userId
-        })
+        }, { signal: abortController.signal })
 
         ragData = ragResponse.data
 
@@ -259,6 +285,10 @@ function App() {
 
         setIsSearchingWeb(false)
       } catch (ragError) {
+        // If aborted by user, re-throw so outer catch handles it cleanly
+        if (ragError.name === 'AbortError' || ragError.code === 'ERR_CANCELED' || abortController.signal.aborted) {
+          throw ragError
+        }
         console.error('[RAG Pipeline] Error:', ragError.message, ragError.response?.status)
         
         // If it's a subscription error (403), don't fall back to direct LLM calls
@@ -335,7 +365,7 @@ function App() {
             updateResponse(responseId, {
               text: (useStore.getState().responses.find(r => r.id === responseId)?.text || '') + token,
             })
-          })
+          }, abortController.signal)
           
           const responseText = llmResponse.text
           const actualModel = llmResponse.model || modelId
@@ -360,6 +390,10 @@ function App() {
             tokens: llmResponse.tokens || null,
           }
         } catch (error) {
+          // If aborted by user, don't write error to UI
+          if (error.name === 'AbortError' || abortController.signal.aborted) {
+            return { id: responseId, modelName: modelId, text: '', error: false, aborted: true }
+          }
           console.error(`[Direct LLM Stream] Error calling ${modelId}:`, error)
           updateResponse(responseId, {
             text: `Error: ${error.message}`,
@@ -449,11 +483,6 @@ function App() {
     // Collect initial token data (before summary generation)
     let tokenData = collectTokenData()
     
-    // Store token usage data
-    if (tokenData.length > 0) {
-      setTokenUsageData(tokenData)
-    }
-
     // Stop showing "fetching responses" loading, will show "working on summary" if needed
     // Note: setIsLoading(false) is now in the finally block to ensure it's always called
 
@@ -578,7 +607,8 @@ function App() {
                 onStatus: () => {},
                 onError: (message) => {
                   console.error('[Summary Stream] Error:', message)
-                }
+                },
+                signal: abortController.signal,
               })
 
               const rawSummaryText = summaryFinalData?.text || useStore.getState().summary?.text || ''
@@ -730,10 +760,6 @@ function App() {
           }
           // Re-collect token data including the judge tokens
           tokenData = collectTokenData(directJudgeTokens)
-          // Update token usage window with new data
-          if (tokenData.length > 0) {
-            setTokenUsageData(tokenData)
-          }
         }
         
         setSummary({
@@ -794,6 +820,12 @@ function App() {
     // Clear the prompt input (lastSubmittedPrompt was already saved at the beginning)
     setCurrentPrompt('')
     } catch (error) {
+      // If the user cancelled the request, handle gracefully
+      if (error.name === 'AbortError' || error.code === 'ERR_CANCELED' || abortController.signal.aborted) {
+        console.log('[handlePromptSubmit] Request cancelled by user')
+        return
+      }
+
       // Catch any unhandled errors to prevent the page from going black
       console.error('[handlePromptSubmit] Unhandled error:', error)
       console.error('[handlePromptSubmit] Error details:', {
@@ -828,6 +860,10 @@ function App() {
         })
       }
     } finally {
+      // Clear the abort controller ref
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null
+      }
       // Always clear loading state, even if an error occurred
       setIsLoading(false)
       setIsSearchingWeb(false)
@@ -913,8 +949,8 @@ function App() {
   const subscriptionRestricted = isCanceledOrPaused && !isWithinPaidPeriod && !isUserAdmin
   // Canceled/paused users WITHIN their paid period → full access but show a warning
   const subscriptionExpiring = isCanceledOrPaused && isWithinPaidPeriod && !isUserAdmin
-  // Paused users → lock the prompt box immediately (pausing = voluntarily stopping usage)
-  const subscriptionPaused = subStatus === 'paused' && !isUserAdmin
+  // Paused users past their paid period → lock the prompt box (they still had access until period ended)
+  const subscriptionPaused = subStatus === 'paused' && !isWithinPaidPeriod && !isUserAdmin
 
   return (
     <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: currentTheme.background }}>
@@ -926,8 +962,8 @@ function App() {
         <>
           <NavigationBar />
 
-          {/* Subscription Warning/Restricted Banner */}
-          {(subscriptionRestricted || subscriptionExpiring) && (
+          {/* Subscription Restricted Banner - only for users past their paid period */}
+          {subscriptionRestricted && (
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -939,10 +975,8 @@ function App() {
                 zIndex: 300,
                 padding: '12px 24px',
                 borderRadius: '12px',
-                background: subscriptionRestricted
-                  ? 'linear-gradient(135deg, rgba(255, 59, 48, 0.15), rgba(255, 59, 48, 0.08))'
-                  : 'linear-gradient(135deg, rgba(255, 170, 0, 0.15), rgba(255, 170, 0, 0.08))',
-                border: `1px solid ${subscriptionRestricted ? 'rgba(255, 59, 48, 0.4)' : 'rgba(255, 170, 0, 0.4)'}`,
+                background: 'linear-gradient(135deg, rgba(255, 59, 48, 0.15), rgba(255, 59, 48, 0.08))',
+                border: '1px solid rgba(255, 59, 48, 0.4)',
                 backdropFilter: 'blur(12px)',
                 display: 'flex',
                 alignItems: 'center',
@@ -951,11 +985,8 @@ function App() {
                 boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
               }}
             >
-              <span style={{ fontSize: '0.9rem', color: subscriptionRestricted ? '#ff6b6b' : '#ffaa00', lineHeight: '1.4' }}>
-                {subscriptionRestricted
-                  ? `Your subscription has ${subStatus === 'paused' ? 'been paused' : 'expired'}. You can view your stats, saved conversations, and profile, but prompts and the full leaderboard are unavailable.`
-                  : `Your subscription ${subStatus === 'paused' ? 'is paused' : 'has been canceled'}. You have full access until ${new Date(currentUser.subscriptionRenewalDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`
-                }
+              <span style={{ fontSize: '0.9rem', color: '#ff6b6b', lineHeight: '1.4' }}>
+                {`Your subscription has ${subStatus === 'paused' ? 'been paused' : 'expired'}. You can view your profile, saved conversations, and settings, but prompts and the full leaderboard are unavailable.`}
               </span>
               <motion.button
                 onClick={() => setActiveTab('settings')}
@@ -963,10 +994,10 @@ function App() {
                 whileTap={{ scale: 0.95 }}
                 style={{
                   padding: '6px 16px',
-                  background: subscriptionRestricted ? currentTheme.accentGradient : 'rgba(255, 255, 255, 0.15)',
-                  border: subscriptionRestricted ? 'none' : '1px solid rgba(255, 170, 0, 0.5)',
+                  background: currentTheme.accentGradient,
+                  border: 'none',
                   borderRadius: '8px',
-                  color: subscriptionRestricted ? '#fff' : '#ffaa00',
+                  color: '#fff',
                   fontSize: '0.8rem',
                   fontWeight: '600',
                   cursor: 'pointer',
@@ -980,7 +1011,7 @@ function App() {
 
                 {/* Main Content Area - Show based on active tab */}
                 {/* Note: AdminView is handled in early return above, so this should never render AdminView */}
-                {activeTab === 'home' && <MainView onClearAll={clearAllWindows} subscriptionRestricted={subscriptionRestricted} subscriptionPaused={subscriptionPaused} isLoading={isLoading} isGeneratingSummary={isGeneratingSummary} />}
+                {activeTab === 'home' && <MainView onClearAll={clearAllWindows} subscriptionRestricted={subscriptionRestricted} subscriptionPaused={subscriptionPaused} subscriptionExpiring={subscriptionExpiring} subscriptionRenewalDate={currentUser.subscriptionRenewalDate} isLoading={isLoading} isGeneratingSummary={isGeneratingSummary} onCancelPrompt={handleCancelPrompt} />}
                 {activeTab === 'leaderboard' && <LeaderboardView subscriptionRestricted={subscriptionRestricted} />}
                 {activeTab === 'saved' && <SavedConversationsView />}
                 {activeTab === 'settings' && <SettingsView />}
@@ -991,6 +1022,7 @@ function App() {
 
                 {/* Summary Window - Shows on all tabs except admin */}
                 {!isAdminRoute && <SummaryWindow />}
+
 
         </>
       )}

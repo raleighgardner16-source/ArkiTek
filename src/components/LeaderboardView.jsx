@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, Calendar, Star, Trash2, Layers, Lock } from 'lucide-react'
+import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, Calendar, Star, Trash2, Layers, Lock, Globe } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -23,6 +23,8 @@ const CATEGORIES = [
 
 const LeaderboardView = ({ subscriptionRestricted = false }) => {
   const currentUser = useStore((state) => state.currentUser)
+  const setViewingProfile = useStore((state) => state.setViewingProfile)
+  const setActiveTab = useStore((state) => state.setActiveTab)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const [activeSection, setActiveSection] = useState('today') // 'today', 'alltime', 'fyp'
@@ -38,6 +40,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
   const [expandedFacts, setExpandedFacts] = useState({})
   const [showResponseSection, setShowResponseSection] = useState({}) // Track which prompts have responses visible
   const [hoveredOwnLike, setHoveredOwnLike] = useState(null) // Track which own-prompt like button is hovered
+  const [expandedPromptText, setExpandedPromptText] = useState({}) // Track which prompt texts are fully expanded
   const [deleteConfirm, setDeleteConfirm] = useState(null) // Track which prompt is being confirmed for deletion
   const [deleting, setDeleting] = useState(false)
   const [showReplyInput, setShowReplyInput] = useState({}) // Track which comments have reply input visible
@@ -261,7 +264,21 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
         {/* Username, Category, and Date */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <p style={{ color: currentTheme.accent, fontSize: '1rem', fontWeight: '600', margin: 0 }}>
+            <p
+              onClick={(e) => {
+                e.stopPropagation()
+                if (prompt.userId === currentUser?.id) {
+                  // Navigate to own profile
+                  useStore.getState().clearViewingProfile()
+                } else {
+                  setViewingProfile({ userId: prompt.userId, username: prompt.username })
+                }
+                setActiveTab('statistics')
+              }}
+              style={{ color: currentTheme.accent, fontSize: '1rem', fontWeight: '600', margin: 0, cursor: 'pointer' }}
+              onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
+              onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none' }}
+            >
               {prompt.username}
             </p>
             {prompt.category && (
@@ -285,10 +302,59 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
           </span>
         </div>
         
-        {/* Prompt Text */}
-        <p style={{ color: currentTheme.text, fontSize: '1.1rem', margin: '0 0 16px 0', lineHeight: '1.6' }}>
-          {prompt.promptText}
-        </p>
+        {/* Description — shown above prompt */}
+        {prompt.description && (
+          <p style={{ 
+            color: currentTheme.textSecondary, 
+            fontSize: '0.9rem', 
+            margin: '0 0 10px 0', 
+            lineHeight: '1.5',
+            fontStyle: 'italic',
+          }}>
+            {prompt.description}
+          </p>
+        )}
+        
+        {/* Prompt Text — with 50-word truncation */}
+        {(() => {
+          const words = (prompt.promptText || '').split(/\s+/)
+          const isTruncated = words.length > 50
+          const isExpanded = expandedPromptText[prompt.id]
+          const displayText = (!isExpanded && isTruncated) ? words.slice(0, 50).join(' ') : prompt.promptText
+          return (
+            <p style={{ color: currentTheme.text, fontSize: '1.1rem', margin: '0 0 16px 0', lineHeight: '1.6' }}>
+              {displayText}
+              {isTruncated && !isExpanded && (
+                <span
+                  onClick={() => setExpandedPromptText(prev => ({ ...prev, [prompt.id]: true }))}
+                  style={{
+                    color: currentTheme.accent,
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: '500',
+                    marginLeft: '4px',
+                  }}
+                >
+                  ... show more
+                </span>
+              )}
+              {isTruncated && isExpanded && (
+                <span
+                  onClick={() => setExpandedPromptText(prev => ({ ...prev, [prompt.id]: false }))}
+                  style={{
+                    color: currentTheme.accent,
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: '500',
+                    marginLeft: '4px',
+                  }}
+                >
+                  {' '}show less
+                </span>
+              )}
+            </p>
+          )
+        })()}
         
         {/* See Responses Button and Content */}
         {(prompt.responses || prompt.summary || prompt.sources) && (
@@ -459,7 +525,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                     color: currentTheme.text,
                   }}
                 >
-                  <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Globe size={14} />
                     Sources ({prompt.sources.length})
                   </span>
                   {expandedFacts[prompt.id] ? (
@@ -656,90 +723,45 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
             </button>
           )}
           
-          {/* Delete Button - Only for own prompts */}
+          {/* Delete Button - Only for own prompts (inline confirm) */}
           {isOwnPrompt && (
             <button
-              onClick={() => setDeleteConfirm(prompt.id)}
+              onClick={() => {
+                if (deleteConfirm === prompt.id) {
+                  handleDeletePrompt(prompt.id)
+                } else {
+                  setDeleteConfirm(prompt.id)
+                }
+              }}
+              onBlur={() => { if (!deleting) setDeleteConfirm(null) }}
+              disabled={deleting}
               style={{
                 padding: '10px 20px',
-                background: 'rgba(255, 80, 80, 0.1)',
-                border: '1px solid rgba(255, 80, 80, 0.3)',
+                background: deleteConfirm === prompt.id ? 'rgba(255, 80, 80, 0.25)' : 'rgba(255, 80, 80, 0.1)',
+                border: `1px solid ${deleteConfirm === prompt.id ? 'rgba(255, 80, 80, 0.6)' : 'rgba(255, 80, 80, 0.3)'}`,
                 borderRadius: '8px',
                 color: '#ff5050',
                 fontSize: '0.95rem',
                 fontWeight: '500',
-                cursor: 'pointer',
+                cursor: deleting ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
                 transition: 'all 0.2s ease',
+                opacity: deleting ? 0.7 : 1,
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 80, 80, 0.2)'
+                if (!deleting) e.currentTarget.style.background = 'rgba(255, 80, 80, 0.3)'
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 80, 80, 0.1)'
+                if (!deleting) e.currentTarget.style.background = deleteConfirm === prompt.id ? 'rgba(255, 80, 80, 0.25)' : 'rgba(255, 80, 80, 0.1)'
               }}
             >
               <Trash2 size={18} />
-              Delete Post
+              {deleting ? 'Deleting...' : deleteConfirm === prompt.id ? 'Confirm Delete' : 'Delete Post'}
             </button>
           )}
         </div>
-        
-        {/* Delete Confirmation Modal */}
-        {deleteConfirm === prompt.id && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            style={{
-              marginBottom: '16px',
-              padding: '16px',
-              background: 'rgba(255, 80, 80, 0.1)',
-              border: '1px solid rgba(255, 80, 80, 0.3)',
-              borderRadius: '12px',
-            }}
-          >
-            <p style={{ color: currentTheme.text, marginBottom: '12px', fontSize: '0.95rem' }}>
-              Are you sure you want to delete this post? This action cannot be undone.
-            </p>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button
-                onClick={() => handleDeletePrompt(prompt.id)}
-                disabled={deleting}
-                style={{
-                  padding: '8px 16px',
-                  background: deleting ? 'rgba(255, 80, 80, 0.3)' : 'rgba(255, 80, 80, 0.2)',
-                  border: '1px solid rgba(255, 80, 80, 0.5)',
-                  borderRadius: '8px',
-                  color: '#ff5050',
-                  fontSize: '0.9rem',
-                  fontWeight: '500',
-                  cursor: deleting ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {deleting ? 'Deleting...' : 'Yes, Delete'}
-              </button>
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                disabled={deleting}
-                style={{
-                  padding: '8px 16px',
-                  background: currentTheme.buttonBackground,
-                  border: `1px solid ${currentTheme.borderLight}`,
-                  borderRadius: '8px',
-                  color: currentTheme.text,
-                  fontSize: '0.9rem',
-                  fontWeight: '500',
-                  cursor: deleting ? 'not-allowed' : 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </motion.div>
-        )}
 
         {/* Comments Section */}
         {isCommentsExpanded && currentUser && (
@@ -814,7 +836,20 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                         <div style={{ flex: 1 }}>
-                          <p style={{ color: currentTheme.accent, fontSize: '0.9rem', fontWeight: '600', margin: '0 0 4px 0' }}>
+                          <p
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (comment.userId === currentUser?.id) {
+                                useStore.getState().clearViewingProfile()
+                              } else {
+                                setViewingProfile({ userId: comment.userId, username: comment.username })
+                              }
+                              setActiveTab('statistics')
+                            }}
+                            style={{ color: currentTheme.accent, fontSize: '0.9rem', fontWeight: '600', margin: '0 0 4px 0', cursor: 'pointer' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
+                            onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none' }}
+                          >
                             {comment.username}
                           </p>
                           <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: 0, lineHeight: '1.5' }}>
@@ -964,7 +999,20 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                             return (
                               <div key={reply.id} style={{ marginBottom: '12px', padding: '12px', background: currentTheme.backgroundTertiary, borderRadius: '6px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
-                                  <p style={{ color: currentTheme.accentSecondary, fontSize: '0.85rem', fontWeight: '600', margin: 0 }}>
+                                  <p
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (reply.userId === currentUser?.id) {
+                                        useStore.getState().clearViewingProfile()
+                                      } else {
+                                        setViewingProfile({ userId: reply.userId, username: reply.username })
+                                      }
+                                      setActiveTab('statistics')
+                                    }}
+                                    style={{ color: currentTheme.accentSecondary, fontSize: '0.85rem', fontWeight: '600', margin: 0, cursor: 'pointer' }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none' }}
+                                  >
                                     {reply.username}
                                   </p>
                                   <p style={{ color: currentTheme.textMuted, fontSize: '0.7rem', margin: 0 }}>
@@ -1317,25 +1365,6 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
             ))}
           </div>
           
-          {/* Daily Reward Notice - Only show on Today's Favorites */}
-          {activeSection === 'today' && (
-            <div
-              style={{
-                marginTop: '20px',
-              }}
-            >
-              <div style={{
-                background: theme === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.9)',
-                padding: '12px 16px',
-                borderRadius: '8px',
-              }}>
-                <p style={{ color: currentTheme.text, fontSize: '1rem', margin: 0, lineHeight: '1.6' }}>
-                  <span style={{ color: currentTheme.accent, fontWeight: '600' }}>Daily Rewards:</span> At the end of each day at 12:00 AM, the top 5 most liked prompts will be selected. 
-                  Users who submitted these winning prompts will receive $10 of token usage credit added to their account!
-                </p>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Leaderboard Content */}

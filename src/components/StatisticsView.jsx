@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, FolderOpen, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield, Trash2 } from 'lucide-react'
+import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, FolderOpen, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield, Trash2, ArrowLeft } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -217,6 +217,9 @@ const StatisticsView = () => {
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
+  const viewingProfile = useStore((state) => state.viewingProfile)
+  const clearViewingProfile = useStore((state) => state.clearViewingProfile)
+  const isViewingOther = viewingProfile && viewingProfile.userId !== currentUser?.id
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [expandedProviders, setExpandedProviders] = useState({})
@@ -237,6 +240,9 @@ const StatisticsView = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [expandedBadgeCategory, setExpandedBadgeCategory] = useState(null)
   const [hoveredBadge, setHoveredBadge] = useState(null)
+  // Public profile data for another user
+  const [publicProfile, setPublicProfile] = useState(null)
+  const [loadingPublicProfile, setLoadingPublicProfile] = useState(false)
 
   // Handle successful usage purchase
   const handleUsagePurchaseSuccess = (data) => {
@@ -255,7 +261,34 @@ const StatisticsView = () => {
     setActiveTab(newTab)
   }
 
+  // When viewing another user, switch to their posts tab and fetch public profile
   useEffect(() => {
+    if (isViewingOther) {
+      setActiveTab('profile') // Default to their posts when viewing another user
+      fetchPublicProfile(viewingProfile.userId)
+    } else {
+      setPublicProfile(null)
+    }
+  }, [viewingProfile?.userId])
+
+  const fetchPublicProfile = async (userId) => {
+    try {
+      setLoadingPublicProfile(true)
+      const response = await axios.get(`${API_URL}/api/profile/${userId}`)
+      setPublicProfile(response.data)
+      setProfilePrompts(response.data.posts || [])
+    } catch (error) {
+      console.error('Error fetching public profile:', error)
+      setPublicProfile(null)
+      setProfilePrompts([])
+    } finally {
+      setLoadingPublicProfile(false)
+      setLoadingProfile(false)
+    }
+  }
+
+  useEffect(() => {
+    if (isViewingOther) return // Don't fetch own stats when viewing another user
     if (currentUser?.id) {
       fetchStats()
       fetchCategories()
@@ -267,7 +300,7 @@ const StatisticsView = () => {
         fetchProfilePrompts()
       }
     }
-  }, [currentUser, statsRefreshTrigger, activeTab])
+  }, [currentUser, statsRefreshTrigger, activeTab, isViewingOther])
 
   const fetchLeaderboardStats = async () => {
     if (!currentUser?.id) return
@@ -660,8 +693,32 @@ const StatisticsView = () => {
       >
         {/* Header */}
         <div style={{ marginBottom: '40px' }}>
+          {isViewingOther && (
+            <motion.button
+              onClick={() => clearViewingProfile()}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                background: currentTheme.buttonBackground,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '10px',
+                color: currentTheme.accent,
+                fontSize: '0.9rem',
+                fontWeight: '500',
+                cursor: 'pointer',
+                marginBottom: '16px',
+              }}
+            >
+              <ArrowLeft size={16} />
+              Back to My Profile
+            </motion.button>
+          )}
           <h1
-            key={`title-${theme}`}
+            key={`title-${theme}-${viewingProfile?.userId || 'self'}`}
             style={{
               fontSize: '2.5rem',
               marginBottom: '12px',
@@ -672,15 +729,24 @@ const StatisticsView = () => {
               display: 'inline-block',
             }}
           >
-            {currentUser?.firstName || currentUser?.username || 'Your'}'s Statistics
+            {isViewingOther
+              ? `${viewingProfile.username}'s Profile`
+              : `${currentUser?.firstName || currentUser?.username || 'Your'}'s Profile`}
           </h1>
-          {stats?.createdAt && (
+          {!isViewingOther && stats?.createdAt && (
             <p style={{ color: currentTheme.textSecondary, fontSize: '1rem', marginBottom: '8px' }}>
               Member for: {formatAccountAge(stats.createdAt)}
             </p>
           )}
+          {isViewingOther && publicProfile?.createdAt && (
+            <p style={{ color: currentTheme.textSecondary, fontSize: '1rem', marginBottom: '8px' }}>
+              Member for: {formatAccountAge(publicProfile.createdAt)}
+            </p>
+          )}
           <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem', marginBottom: '8px' }}>
-            Track your usage and performance across all providers and models
+            {isViewingOther
+              ? `Viewing ${viewingProfile.username}'s public profile`
+              : 'Track your usage and performance across all providers and models'}
           </p>
         </div>
 
@@ -691,8 +757,11 @@ const StatisticsView = () => {
             gap: '16px',
             marginBottom: '32px',
             borderBottom: `1px solid ${currentTheme.borderLight}`,
+            flexWrap: 'wrap',
           }}
         >
+          {/* Token Usage — own profile only */}
+          {!isViewingOther && (
           <button
             onClick={() => handleTabChange('tokens')}
             style={{
@@ -711,8 +780,9 @@ const StatisticsView = () => {
             }}
           >
             <Database size={20} />
-            Token Stats
+            Token Usage
           </button>
+          )}
           <button
             onClick={() => handleTabChange('badges')}
             style={{
@@ -733,6 +803,8 @@ const StatisticsView = () => {
             <Award size={20} />
             Badges
           </button>
+          {/* Categories — own profile only */}
+          {!isViewingOther && (
           <button
             onClick={() => handleTabChange('categories')}
             style={{
@@ -753,6 +825,9 @@ const StatisticsView = () => {
             <FolderOpen size={20} />
             Categories
           </button>
+          )}
+          {/* Ratings — own profile only */}
+          {!isViewingOther && (
           <button
             onClick={() => handleTabChange('ratings')}
             style={{
@@ -773,6 +848,9 @@ const StatisticsView = () => {
             <Star size={20} />
             Ratings & Models
           </button>
+          )}
+          {/* Leaderboard — own profile only */}
+          {!isViewingOther && (
           <button
             onClick={() => handleTabChange('leaderboard')}
             style={{
@@ -791,8 +869,9 @@ const StatisticsView = () => {
             }}
           >
             <Trophy size={20} />
-            Leaderboard Stats
+            Leaderboard
           </button>
+          )}
           <button
             onClick={() => handleTabChange('profile')}
             style={{
@@ -811,7 +890,7 @@ const StatisticsView = () => {
             }}
           >
             <User size={20} />
-            My Profile
+            {isViewingOther ? 'Posts' : 'My Posts'}
           </button>
         </div>
 
@@ -852,7 +931,7 @@ const StatisticsView = () => {
                     Available Usage Balance
                   </h2>
                   <p style={{ fontSize: '0.85rem', color: (userStats.monthlyCost || 0) > 0 ? '#f0a050' : currentTheme.textMuted, margin: '0 0 4px 0', fontStyle: 'italic' }}>
-                    Monthly Spend: ${(Math.round((userStats.monthlyCost || 0) * 100) / 100).toFixed(2)}
+                    Monthly Spend: ${(userStats.monthlyCost || 0).toFixed(2)}
                   </p>
                   {(userStats.monthlyCost || 0) > 5.00 && (
                     <p style={{ fontSize: '0.85rem', color: '#ff6b6b', margin: '0 0 4px 0', fontStyle: 'italic' }}>
@@ -1419,7 +1498,7 @@ const StatisticsView = () => {
                 >
                   <h2 key={`model-usage-title-${theme}`} style={{ color: currentTheme.accent, fontSize: '1.5rem', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <Cpu size={24} />
-                    Model Usage Statistics
+                    Model Usage
                   </h2>
                   <div key={`providers-list-${theme}`} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {Object.entries(userStats.providers)
@@ -2090,15 +2169,16 @@ const StatisticsView = () => {
             >
               {(() => {
                 // Compute badge progress from all available stats
-                const providers = userStats.providers || {}
-                const persistedBadges = new Set(userStats.earnedBadges || [])
+                const providers = isViewingOther ? {} : (userStats.providers || {})
+                const earnedBadgesList = isViewingOther ? (publicProfile?.earnedBadges || []) : (userStats.earnedBadges || [])
+                const persistedBadges = new Set(earnedBadgesList)
                 const badgeStats = {
                   totalTokens: userStats.totalTokens || 0,
                   totalPrompts: userStats.totalPrompts || 0,
                   streakDays: userStats.streakDays || 0,
-                  totalLikes: leaderboardStats?.totalLikes || 0,
+                  totalLikes: isViewingOther ? (publicProfile?.leaderboard?.totalLikes || 0) : (leaderboardStats?.totalLikes || 0),
                   totalRatings: ratingsStats?.totalRatings || 0,
-                  totalComments: leaderboardStats?.totalComments || 0,
+                  totalComments: isViewingOther ? (publicProfile?.leaderboard?.totalComments || 0) : (leaderboardStats?.totalComments || 0),
                   councilPrompts: userStats.councilPrompts || 0,
                   provider_openai_prompts: providers.openai?.totalPrompts || 0,
                   provider_anthropic_prompts: providers.anthropic?.totalPrompts || 0,
@@ -2129,8 +2209,8 @@ const StatisticsView = () => {
                   return { ...category, badges, earnedCount, totalCount: badges.length, currentValue }
                 })
 
-                // Save any newly earned badges to backend (fire-and-forget)
-                if (newlyEarned.length > 0 && currentUser?.id) {
+                // Save any newly earned badges to backend (fire-and-forget) — only for own profile
+                if (newlyEarned.length > 0 && currentUser?.id && !isViewingOther) {
                   axios.post(`${API_URL}/api/stats/${currentUser.id}/badges`, { newBadges: newlyEarned })
                     .then(() => console.log(`[Badges] Persisted ${newlyEarned.length} new badges`))
                     .catch(err => console.error('[Badges] Error saving badges:', err))
@@ -2592,17 +2672,21 @@ const StatisticsView = () => {
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                   }}>
-                    My Leaderboard Profile
+                    {isViewingOther ? `${viewingProfile.username}'s Posts` : 'My Leaderboard Posts'}
                   </h2>
                 </div>
                 <p style={{ color: currentTheme.textSecondary, fontSize: '0.95rem', margin: 0 }}>
-                  All prompts you have submitted to the community leaderboard.
+                  {isViewingOther
+                    ? `All prompts ${viewingProfile.username} has submitted to the community leaderboard.`
+                    : 'All prompts you have submitted to the community leaderboard.'}
                 </p>
               </div>
 
-              {loadingProfile ? (
+              {(loadingProfile || loadingPublicProfile) ? (
                 <div style={{ textAlign: 'center', padding: '40px' }}>
-                  <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>Loading your prompts...</p>
+                  <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>
+                    {isViewingOther ? `Loading ${viewingProfile.username}'s posts...` : 'Loading your prompts...'}
+                  </p>
                 </div>
               ) : profilePrompts.length === 0 ? (
                 <div style={{
@@ -2614,11 +2698,15 @@ const StatisticsView = () => {
                 }}>
                   <Rocket size={48} color={currentTheme.textMuted} style={{ marginBottom: '16px', opacity: 0.5 }} />
                   <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem', margin: '0 0 8px 0' }}>
-                    You haven't submitted any prompts to the leaderboard yet.
+                    {isViewingOther
+                      ? `${viewingProfile.username} hasn't submitted any prompts to the leaderboard yet.`
+                      : "You haven't submitted any prompts to the leaderboard yet."}
                   </p>
+                  {!isViewingOther && (
                   <p style={{ color: currentTheme.textMuted, fontSize: '0.9rem', margin: 0 }}>
                     Submit your first prompt from the home tab to see it here!
                   </p>
+                  )}
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -2747,69 +2835,43 @@ const StatisticsView = () => {
                             </span>
                           </div>
                         </div>
-                        {/* Delete button */}
+                        {/* Delete button — only on own profile (inline confirm) */}
+                        {!isViewingOther && (
                         <div style={{ position: 'relative', flexShrink: 0 }}>
-                          {confirmDeleteId === prompt.id ? (
-                            <div style={{
+                          <button
+                            onClick={() => {
+                              if (confirmDeleteId === prompt.id) {
+                                handleDeletePost(prompt.id)
+                              } else {
+                                setConfirmDeleteId(prompt.id)
+                              }
+                            }}
+                            onBlur={() => { if (deletingPostId !== prompt.id) setConfirmDeleteId(null) }}
+                            disabled={deletingPostId === prompt.id}
+                            style={{
+                              background: confirmDeleteId === prompt.id ? 'rgba(255, 107, 107, 0.15)' : 'transparent',
+                              border: confirmDeleteId === prompt.id ? '1px solid rgba(255, 107, 107, 0.4)' : '1px solid transparent',
+                              padding: confirmDeleteId === prompt.id ? '6px 12px' : '6px',
+                              cursor: deletingPostId === prompt.id ? 'default' : 'pointer',
+                              borderRadius: confirmDeleteId === prompt.id ? '8px' : '6px',
+                              transition: 'all 0.15s ease',
+                              opacity: deletingPostId === prompt.id ? 0.5 : confirmDeleteId === prompt.id ? 1 : 0.5,
+                              color: '#ff6b6b',
+                              fontSize: '0.75rem',
+                              fontWeight: '600',
                               display: 'flex',
-                              gap: '6px',
                               alignItems: 'center',
-                            }}>
-                              <button
-                                onClick={() => handleDeletePost(prompt.id)}
-                                disabled={deletingPostId === prompt.id}
-                                style={{
-                                  background: 'rgba(255, 107, 107, 0.15)',
-                                  border: '1px solid rgba(255, 107, 107, 0.4)',
-                                  borderRadius: '8px',
-                                  padding: '6px 12px',
-                                  color: '#ff6b6b',
-                                  fontSize: '0.75rem',
-                                  fontWeight: '600',
-                                  cursor: deletingPostId === prompt.id ? 'default' : 'pointer',
-                                  opacity: deletingPostId === prompt.id ? 0.5 : 1,
-                                  transition: 'all 0.15s ease',
-                                }}
-                              >
-                                {deletingPostId === prompt.id ? 'Deleting...' : 'Delete'}
-                              </button>
-                              <button
-                                onClick={() => setConfirmDeleteId(null)}
-                                style={{
-                                  background: currentTheme.buttonBackground,
-                                  border: `1px solid ${currentTheme.borderLight}`,
-                                  borderRadius: '8px',
-                                  padding: '6px 12px',
-                                  color: currentTheme.textSecondary,
-                                  fontSize: '0.75rem',
-                                  fontWeight: '500',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.15s ease',
-                                }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setConfirmDeleteId(prompt.id)}
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                padding: '6px',
-                                cursor: 'pointer',
-                                borderRadius: '6px',
-                                transition: 'all 0.15s ease',
-                                opacity: 0.5,
-                              }}
-                              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(255, 107, 107, 0.1)' }}
-                              onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = 'transparent' }}
-                              title="Delete this post"
-                            >
-                              <Trash2 size={16} color="#ff6b6b" />
-                            </button>
-                          )}
+                              gap: '6px',
+                            }}
+                            onMouseEnter={(e) => { if (deletingPostId !== prompt.id) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = confirmDeleteId === prompt.id ? 'rgba(255, 107, 107, 0.25)' : 'rgba(255, 107, 107, 0.1)' } }}
+                            onMouseLeave={(e) => { if (deletingPostId !== prompt.id) { e.currentTarget.style.opacity = confirmDeleteId === prompt.id ? '1' : '0.5'; e.currentTarget.style.background = confirmDeleteId === prompt.id ? 'rgba(255, 107, 107, 0.15)' : 'transparent' } }}
+                            title={confirmDeleteId === prompt.id ? 'Click again to confirm deletion' : 'Delete this post'}
+                          >
+                            <Trash2 size={16} />
+                            {deletingPostId === prompt.id ? 'Deleting...' : confirmDeleteId === prompt.id ? 'Confirm' : ''}
+                          </button>
                         </div>
+                        )}
                       </div>
 
                       {/* Prompt Stats */}

@@ -398,7 +398,7 @@ const writeUsers = (users, changedUserId = null) => {
       syncUserStatsToMongo(changedUserId) // Also sync stats to user_stats collection
     }
   } else {
-    // Sync all users
+    // Sync all users (fallback — ideally always pass changedUserId for efficiency)
   for (const [userId, userData] of Object.entries(users)) {
       syncUserToMongo(userId, userData)
       syncUserStatsToMongo(userId)
@@ -858,9 +858,18 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
   const tokensUsed = inputTokens + outputTokens
   const modelKey = `${provider}-${model}`
   
-  // Ensure monthlyUsage exists
+  // Ensure all required sub-objects exist (existing users loaded from MongoDB may lack these)
   if (!userUsage.monthlyUsage) {
     userUsage.monthlyUsage = {}
+  }
+  if (!userUsage.providers) {
+    userUsage.providers = {}
+  }
+  if (!userUsage.models) {
+    userUsage.models = {}
+  }
+  if (!userUsage.dailyUsage) {
+    userUsage.dailyUsage = {}
   }
   
   // Update user-visible stats (totals, monthly, provider) only for user-initiated calls
@@ -936,9 +945,6 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
   }
 
   // Update daily usage (for cost calculation and daily breakdown chart)
-  if (!userUsage.dailyUsage) {
-    userUsage.dailyUsage = {}
-  }
   if (!userUsage.dailyUsage[currentMonth]) {
     userUsage.dailyUsage[currentMonth] = {}
   }
@@ -1027,15 +1033,18 @@ app.use(express.json())
 // Authentication endpoints
 app.post('/api/auth/signup', async (req, res) => {
   try {
-    const { firstName, lastName, username, email, password } = req.body
+    const { firstName, lastName, username, email: rawEmail, password } = req.body
 
-    if (!firstName || !lastName || !username || !email || !password) {
+    if (!firstName || !lastName || !username || !rawEmail || !password) {
       return res.status(400).json({ error: 'All fields are required' })
     }
 
     if (password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' })
     }
+
+    // Normalize email to prevent case-sensitivity issues (e.g. "Test@Gmail.COM" vs "test@gmail.com")
+    const email = rawEmail.toLowerCase().trim()
 
     console.log('[Auth] Signup attempt for username:', username)
 
@@ -1776,6 +1785,9 @@ app.get('/api/stats/:userId', (req, res) => {
     }
   }
 
+  // Round all monetary values to 2 decimal places (cents) before sending
+  const roundCents = (v) => Math.round((v || 0) * 100) / 100
+
   // Note: Query costs ($0.001/query) are included in monthlyCost but not exposed to users
   res.json({
     totalTokens: userUsage.totalTokens || 0,
@@ -1786,17 +1798,17 @@ app.get('/api/stats/:userId', (req, res) => {
     monthlyInputTokens: monthlyStats.inputTokens || 0,
     monthlyOutputTokens: monthlyStats.outputTokens || 0,
     monthlyPrompts: monthlyStats.prompts || 0,
-    monthlyCost: monthlyCost,
-    remainingFreeAllocation: remainingFreeAllocation,
-    freeUsagePercentage: freeUsagePercentage,
-    totalAvailableBalance: totalAvailableBalance,
+    monthlyCost: roundCents(monthlyCost),
+    remainingFreeAllocation: roundCents(remainingFreeAllocation),
+    freeUsagePercentage: Math.round(freeUsagePercentage * 100) / 100,
+    totalAvailableBalance: roundCents(totalAvailableBalance),
     purchasedCredits: {
-      total: purchasedCredits.total || 0,
-      remaining: purchasedCreditsRemaining,
+      total: roundCents(purchasedCredits.total),
+      remaining: roundCents(purchasedCreditsRemaining),
       purchaseCount: purchasedCredits.purchases?.length || 0,
       lastPurchase: purchasedCredits.purchases?.[purchasedCredits.purchases.length - 1] || null
     },
-    dailyUsage: dailyUsage,
+    dailyUsage: dailyUsage.map(d => ({ ...d, cost: roundCents(d.cost), percentage: Math.round(d.percentage * 100) / 100 })),
     providers: providerStats,
     models: modelStats,
     categories: userUsage.categories || {},
@@ -2139,7 +2151,7 @@ app.post('/api/detect-search-needed', async (req, res) => {
 // Continue judge conversation with RAG pipeline support
 app.post('/api/judge/conversation', async (req, res) => {
   try {
-    const { userId, userMessage, conversationContext } = req.body
+    const { userId, userMessage, conversationContext, originalSummaryText } = req.body
     
     if (!userId || !userMessage) {
       return res.status(400).json({ error: 'userId and userMessage are required' })
@@ -2161,22 +2173,26 @@ app.post('/api/judge/conversation', async (req, res) => {
     const { category, needsSearch } = await detectCategoryForJudge(userMessage, userId)
     console.log(`[Judge Conversation] Category: ${category}, Needs Search: ${needsSearch}`)
     
-    // Get last 5 summaries from context or fetch from storage
+    // Get last 5 summaries from context — use frontend-provided context only if non-empty
     const usage = readUsage()
-    const contextSummaries = conversationContext || (usage[userId]?.judgeConversationContext || []).slice(0, 5)
+    const contextSummaries = (conversationContext && conversationContext.length > 0)
+      ? conversationContext
+      : (usage[userId]?.judgeConversationContext || []).slice(0, 5)
     
     // Build context string with the user's recent conversation history
-    // Position 0 is full response, positions 1-4 are summarized
-    const contextString = contextSummaries.length > 0
-      ? `Here is context from your recent conversation with this user:\n\n${contextSummaries.map((ctx, idx) => {
+    // Position 0 is full response (most recent, highest priority), positions 1-4 are summarized
+    let contextString = ''
+    if (contextSummaries.length > 0) {
+      contextString = `Here is context from your recent conversation with this user (most recent first — prioritize the latest context):\n\n${contextSummaries.map((ctx, idx) => {
           const promptPart = ctx.originalPrompt ? `User asked: ${ctx.originalPrompt}\n` : ''
-          // Use full response for position 0 (isFull=true), summary for others
           const responsePart = ctx.isFull && ctx.response 
             ? `Your response: ${ctx.response}`
             : `Your response (summary): ${ctx.summary}`
           return `${idx + 1}. ${promptPart}${responsePart}`
         }).join('\n\n')}\n\n`
-      : ''
+    } else if (originalSummaryText && originalSummaryText.trim()) {
+      contextString = `Your previous summary response that the user wants to continue discussing:\n${originalSummaryText.substring(0, 3000)}${originalSummaryText.length > 3000 ? '...' : ''}\n\n`
+    }
     
     let judgePrompt = ''
     let refinedData = null
@@ -2330,7 +2346,7 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
   }
 
   try {
-    const { userId, userMessage, conversationContext } = req.body
+    const { userId, userMessage, conversationContext, originalSummaryText } = req.body
 
     if (!userId || !userMessage) {
       sendSSE('error', { message: 'userId and userMessage are required' })
@@ -2351,18 +2367,26 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
     const { category, needsSearch } = await detectCategoryForJudge(userMessage, userId)
     console.log(`[Judge Conversation Stream] Category: ${category}, Needs Search: ${needsSearch}`)
 
-    // Get context summaries
+    // Get context summaries — use frontend-provided context only if non-empty, otherwise fall back to server-stored context
     const usage = readUsage()
-    const contextSummaries = conversationContext || (usage[userId]?.judgeConversationContext || []).slice(0, 5)
-    const contextString = contextSummaries.length > 0
-      ? `Here is context from your recent conversation with this user:\n\n${contextSummaries.map((ctx, idx) => {
+    const contextSummaries = (conversationContext && conversationContext.length > 0)
+      ? conversationContext
+      : (usage[userId]?.judgeConversationContext || []).slice(0, 5)
+    
+    let contextString = ''
+    if (contextSummaries.length > 0) {
+      // Build context with newest first (index 0 = most recent, highest priority)
+      contextString = `Here is context from your recent conversation with this user (most recent first — prioritize the latest context):\n\n${contextSummaries.map((ctx, idx) => {
           const promptPart = ctx.originalPrompt ? `User asked: ${ctx.originalPrompt}\n` : ''
           const responsePart = ctx.isFull && ctx.response
             ? `Your response: ${ctx.response}`
             : `Your response (summary): ${ctx.summary}`
           return `${idx + 1}. ${promptPart}${responsePart}`
         }).join('\n\n')}\n\n`
-      : ''
+    } else if (originalSummaryText && originalSummaryText.trim()) {
+      // Fallback: use the original summary text when no stored context exists yet
+      contextString = `Your previous summary response that the user wants to continue discussing:\n${originalSummaryText.substring(0, 3000)}${originalSummaryText.length > 3000 ? '...' : ''}\n\n`
+    }
 
     let judgePrompt = ''
     let refinedData = null
@@ -2607,7 +2631,7 @@ app.post('/api/model/conversation/stream', async (req, res) => {
           : `Your response (summary): ${ctx.summary}`
         return `${idx + 1}. ${promptPart}${responsePart}`
       }).join('\n\n')
-      prompt += `Here is context from your recent conversation with this user:\n\n${contextString}\n\n`
+      prompt += `Here is context from your recent conversation with this user (most recent first — prioritize the latest context):\n\n${contextString}\n\n`
     } else if (originalResponse && originalResponse.trim()) {
       prompt += `Your previous response that the user wants to continue discussing:\n${originalResponse.substring(0, 2000)}${originalResponse.length > 2000 ? '...' : ''}\n\n`
     }
@@ -2970,7 +2994,7 @@ app.post('/api/model/conversation', async (req, res) => {
           : `Your response (summary): ${ctx.summary}`
         return `${idx + 1}. ${promptPart}${responsePart}`
       }).join('\n\n')
-      prompt += `Here is context from your recent conversation with this user:\n\n${contextString}\n\n`
+      prompt += `Here is context from your recent conversation with this user (most recent first — prioritize the latest context):\n\n${contextString}\n\n`
     } else if (originalResponse && originalResponse.trim()) {
       // First follow-up: use the original response as initial context
       prompt += `Your previous response that the user wants to continue discussing:\n${originalResponse.substring(0, 2000)}${originalResponse.length > 2000 ? '...' : ''}\n\n`
@@ -6527,6 +6551,9 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
     const usage = readUsage()
     const deletedUsers = await readDeletedUsers()
     
+    // Collect users whose lastActiveAt needs syncing (batch write after loop)
+    const usersToSync = []
+    
     const userList = Object.values(users).map(user => {
       const userUsage = usage[user.id]
       
@@ -6556,7 +6583,7 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
       if (users[user.id] && lastActiveAt) {
         if (!users[user.id].lastActiveAt || new Date(users[user.id].lastActiveAt) < new Date(lastActiveAt)) {
           users[user.id].lastActiveAt = lastActiveAt
-        writeUsers(users)
+          usersToSync.push(user.id)
         }
       }
       
@@ -6572,6 +6599,13 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
         lastActiveAt: lastActiveAt || null,
       }
     })
+    
+    // Batch sync all changed users ONCE after the loop (instead of N times inside it)
+    if (usersToSync.length > 0) {
+      for (const uid of usersToSync) {
+        writeUsers(users, uid)
+      }
+    }
     
     res.json({
       totalUsers: userList.length,
@@ -6958,10 +6992,12 @@ app.post('/api/conversations/save', async (req, res) => {
     }
 
     if (type === 'individual') {
-      const { modelName, modelResponse, conversation } = req.body
+      const { modelName, modelResponse, conversation, sources, conversationSources } = req.body
       doc.modelName = modelName
       doc.modelResponse = modelResponse
       doc.conversation = conversation || []
+      doc.sources = sources || []
+      doc.conversationSources = conversationSources || {}
     } else if (type === 'full') {
       const { responses, summary, sources, facts } = req.body
 
@@ -7113,7 +7149,7 @@ app.delete('/api/conversations/:conversationId', async (req, res) => {
 app.post('/api/leaderboard/submit', async (req, res) => {
   console.log('[Leaderboard] Submit endpoint hit:', { userId: req.body?.userId, hasPromptText: !!req.body?.promptText })
   try {
-    const { userId, promptText, category, responses, summary, facts, sources } = req.body
+    const { userId, promptText, category, responses, summary, facts, sources, description } = req.body
     
     if (!userId || !promptText || !promptText.trim()) {
       console.log('[Leaderboard] Missing required fields:', { userId: !!userId, promptText: !!promptText })
@@ -7127,8 +7163,16 @@ app.post('/api/leaderboard/submit', async (req, res) => {
       return res.status(404).json({ error: 'User not found' })
     }
     
-    // Save to JSON (backward compatibility)
+    // Check for duplicate submission (same user, same prompt text)
     const leaderboard = readLeaderboard()
+    const normalizedPrompt = promptText.trim().toLowerCase()
+    const isDuplicate = leaderboard.prompts.some(
+      p => p.userId === userId && p.promptText.trim().toLowerCase() === normalizedPrompt
+    )
+    if (isDuplicate) {
+      return res.status(409).json({ error: 'You have already posted this prompt to the leaderboard', alreadyPosted: true })
+    }
+    
     const promptId = `prompt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     
     const promptEntry = {
@@ -7157,6 +7201,10 @@ app.post('/api/leaderboard/submit', async (req, res) => {
     
     if (sources && Array.isArray(sources)) {
       promptEntry.sources = sources
+    }
+    
+    if (description && typeof description === 'string' && description.trim()) {
+      promptEntry.description = description.trim()
     }
     
     leaderboard.prompts.push(promptEntry)
@@ -7463,6 +7511,68 @@ app.get('/api/leaderboard/user-stats/:userId', (req, res) => {
   } catch (error) {
     console.error('[Leaderboard] Error fetching user stats:', error)
     res.status(500).json({ error: 'Failed to fetch user stats' })
+  }
+})
+
+// Get a user's public profile (visible to other users)
+app.get('/api/profile/:userId', (req, res) => {
+  try {
+    const { userId } = req.params
+    const users = readUsers()
+    const user = users[userId]
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    const usage = readUsage()
+    const userUsage = usage[userId] || {}
+    const leaderboard = readLeaderboard()
+
+    // Public leaderboard stats
+    const userPrompts = leaderboard.prompts.filter(p => p.userId === userId)
+    const totalLikes = userPrompts.reduce((sum, p) => sum + (p.likes?.length || 0), 0)
+
+    // Count total comments
+    let totalComments = 0
+    leaderboard.prompts.forEach(prompt => {
+      (prompt.comments || []).forEach(comment => {
+        if (comment.userId === userId) totalComments++
+        ;(comment.replies || []).forEach(reply => {
+          if (reply.userId === userId) totalComments++
+        })
+      })
+    })
+
+    // Public profile data only — no spending, credits, tokens, or private stats
+    res.json({
+      username: user.username || 'Anonymous',
+      firstName: user.firstName || null,
+      createdAt: user.createdAt || null,
+      earnedBadges: userUsage.earnedBadges || [],
+      leaderboard: {
+        totalPosts: userPrompts.length,
+        totalLikes,
+        totalComments,
+      },
+      // Return their leaderboard posts (public)
+      posts: userPrompts.map(p => ({
+        id: p.id,
+        promptText: p.promptText,
+        category: p.category,
+        likeCount: p.likes?.length || 0,
+        likes: p.likes || [],
+        createdAt: p.createdAt,
+        comments: p.comments || [],
+        responses: p.responses || [],
+        summary: p.summary || null,
+        sources: p.sources || [],
+        facts: p.facts || [],
+      })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    })
+  } catch (error) {
+    console.error('[Profile] Error fetching public profile:', error)
+    res.status(500).json({ error: 'Failed to fetch profile' })
   }
 })
 
@@ -7816,7 +7926,7 @@ app.post('/api/stripe/setup-card', async (req, res) => {
       
       // Save customer ID to user
       user.stripeCustomerId = customerId
-      writeUsers(users)
+      writeUsers(users, userId)
       console.log(`[Stripe] Created new customer ${customerId} for user ${userId}`)
     }
     
@@ -8006,7 +8116,7 @@ app.post('/api/stripe/create-usage-intent', async (req, res) => {
       })
       customerId = customer.id
       user.stripeCustomerId = customerId
-      writeUsers(users)
+      writeUsers(users, userId)
     }
     
     // Calculate total with 3.5% fee
@@ -8193,7 +8303,7 @@ const syncSubscriptionFromStripe = async (userId, retries = 3) => {
             if (!user.subscriptionStartedDate) {
               user.subscriptionStartedDate = new Date().toISOString()
             }
-            writeUsers(users)
+            writeUsers(users, userId)
             console.log(`[Stripe] Recovered subscription for user ${userId}: customer=${cust.id}, sub=${activeSub.id}, status=${activeSub.status}`)
             return { synced: true, status: activeSub.status, subscriptionId: activeSub.id, endDate: user.subscriptionRenewalDate }
           }
@@ -8212,7 +8322,7 @@ const syncSubscriptionFromStripe = async (userId, retries = 3) => {
                   if (!user.subscriptionStartedDate) {
                     user.subscriptionStartedDate = new Date().toISOString()
                   }
-                  writeUsers(users)
+                  writeUsers(users, userId)
                   console.log(`[Stripe] Recovered (force-active) subscription for user ${userId}: customer=${cust.id}, sub=${sub.id}`)
                   return { synced: true, status: 'active', subscriptionId: sub.id, endDate: user.subscriptionRenewalDate }
                 }
@@ -8232,7 +8342,7 @@ const syncSubscriptionFromStripe = async (userId, retries = 3) => {
         user.subscriptionStatus = 'inactive'
         user.stripeSubscriptionId = null
           user.subscriptionRenewalDate = null
-        writeUsers(users)
+        writeUsers(users, userId)
         console.log(`[Stripe] Synced subscription status to inactive for user: ${userId}`)
         return { synced: true, status: 'inactive' }
       }
@@ -8268,7 +8378,7 @@ const syncSubscriptionFromStripe = async (userId, retries = 3) => {
             if (!user.subscriptionStartedDate) {
               user.subscriptionStartedDate = new Date().toISOString()
             }
-            writeUsers(users)
+            writeUsers(users, userId)
             if (oldStatus !== 'active') {
               console.log(`[Stripe] Force-synced subscription for user ${userId}: ${oldStatus} → active`)
             }
@@ -8285,7 +8395,7 @@ const syncSubscriptionFromStripe = async (userId, retries = 3) => {
     user.subscriptionStatus = subscription.status
       user.subscriptionRenewalDate = new Date(subscription.current_period_end * 1000).toISOString()
     
-    writeUsers(users)
+    writeUsers(users, userId)
     
     if (oldStatus !== subscription.status) {
       console.log(`[Stripe] Synced subscription status from Stripe for user ${userId}: ${oldStatus} → ${subscription.status}`)
@@ -8409,7 +8519,7 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
       const freshUsers = readUsers()
       if (freshUsers[userId] && !freshUsers[userId].stripeCustomerId) {
         freshUsers[userId].stripeCustomerId = customerId
-        writeUsers(freshUsers)
+        writeUsers(freshUsers, userId)
         // Also update the local reference
         user.stripeCustomerId = customerId
       } else if (freshUsers[userId]?.stripeCustomerId) {
@@ -8438,7 +8548,7 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
         if (!user.subscriptionStartedDate) {
           user.subscriptionStartedDate = new Date().toISOString()
         }
-        writeUsers(users)
+        writeUsers(users, userId)
         console.log(`[Stripe] User ${userId} already has active subscription ${activeSub.id}`)
         subscriptionIntentLocks.delete(userId)
         return res.json({ alreadyActive: true, subscriptionId: activeSub.id })
@@ -8461,7 +8571,7 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
           if (!user.subscriptionStartedDate) {
             user.subscriptionStartedDate = new Date().toISOString()
           }
-          writeUsers(users)
+          writeUsers(users, userId)
           console.log(`[Stripe] User ${userId} incomplete sub ${incompleteSub.id} has succeeded PI — force activating`)
           subscriptionIntentLocks.delete(userId)
           return res.json({ alreadyActive: true, subscriptionId: incompleteSub.id })
@@ -8474,7 +8584,7 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
           // Save the subscription ID on the user
           user.stripeSubscriptionId = incompleteSub.id
           user.subscriptionStatus = 'incomplete'
-          writeUsers(users)
+          writeUsers(users, userId)
 
           subscriptionIntentLocks.delete(userId)
           return res.json({
@@ -8526,7 +8636,7 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
     // Save subscription ID on the user record
     user.stripeSubscriptionId = subscription.id
     user.subscriptionStatus = 'incomplete'
-    writeUsers(users)
+    writeUsers(users, userId)
 
     console.log(`[Stripe] Created subscription intent for user ${userId}, sub: ${subscription.id}, PI: ${paymentIntent.id}`)
 
@@ -8577,7 +8687,7 @@ app.post('/api/stripe/confirm-subscription', async (req, res) => {
       user.subscriptionStatus = subscription.status
       user.stripeSubscriptionId = subscription.id
       user.subscriptionRenewalDate = new Date(subscription.current_period_end * 1000).toISOString()
-      writeUsers(users)
+      writeUsers(users, userId)
       console.log(`[Stripe] Subscription ${subId} confirmed active for user ${userId}`)
       return res.json({ 
         success: true, 
@@ -8594,7 +8704,7 @@ app.post('/api/stripe/confirm-subscription', async (req, res) => {
       if (!user.subscriptionStartedDate) {
         user.subscriptionStartedDate = new Date().toISOString()
       }
-      writeUsers(users)
+      writeUsers(users, userId)
       console.log(`[Stripe] Payment succeeded for sub ${subId}, force-activating user ${userId}`)
       return res.json({ 
         success: true, 
@@ -8650,7 +8760,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
 
       // Save customer ID to user
       user.stripeCustomerId = customerId
-      writeUsers(users)
+      writeUsers(users, userId)
     }
 
     // Create checkout session
@@ -8919,9 +9029,9 @@ app.post('/api/stripe/cancel-subscription-delete-account', async (req, res) => {
       reason: 'account_deleted',
     })
 
-    // Delete user from cache
+    // Delete user from cache (MongoDB deletion happens below via db.users.delete)
     delete users[userId]
-    writeUsers(users)
+    usersCache = users // Update the cache reference directly
 
     // Delete user usage data from cache
     const usage = readUsage()
@@ -9070,13 +9180,13 @@ const calculateAndRecordOverage = async (userId, month) => {
       
       // Update billed amount
       user.monthlyOverageBilled[month] = overage
-      writeUsers(users)
+      writeUsers(users, userId)
       
       console.log(`[Billing] Billed $${amountToBill.toFixed(2)} overage for user ${userId} for ${month}`)
       return { overage, billed: true, amountBilled: amountToBill }
     }
     
-    writeUsers(users)
+    writeUsers(users, userId)
     return { overage, billed: false }
   } catch (error) {
     console.error(`[Billing] Error calculating overage for ${userId}:`, error)
@@ -9138,7 +9248,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
             user.subscriptionStartedDate = new Date().toISOString()
           }
 
-          writeUsers(users)
+          writeUsers(users, userId)
           console.log(`[Stripe] Subscription ${event.type} for user: ${userId}, status: ${subscription.status}`)
         }
         break
@@ -9195,7 +9305,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
           user.subscriptionRenewalDate = new Date(subscription.current_period_end * 1000).toISOString()
           user.subscriptionStatus = subscription.status
 
-          writeUsers(users)
+          writeUsers(users, userId)
           console.log(`[Stripe] Payment succeeded for user: ${userId}`)
         }
         break
@@ -9213,7 +9323,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
           const user = users[userId]
           user.subscriptionStatus = 'past_due'
 
-          writeUsers(users)
+          writeUsers(users, userId)
           console.log(`[Stripe] Payment failed for user: ${userId}`)
         }
         break
@@ -9337,56 +9447,76 @@ const cleanupOldDailyUsage = async () => {
 }
 
 // ============================================================================
-// SERVER STARTUP
+// SERVERLESS INITIALIZATION (Vercel)
 // ============================================================================
-const startServer = async () => {
-  // Initialize database connection
+let _serverlessInitialized = false
+
+export const initializeForServerless = async () => {
+  if (_serverlessInitialized) return
+  _serverlessInitialized = true
   await initDatabase()
-  
-  // Load cache from MongoDB
   console.log('[Server] Loading data from MongoDB...')
   await loadCacheFromMongoDB()
-  
-  // Run cleanup once on startup, then schedule daily (every 24 hours)
   await cleanupOldDailyUsage()
-  setInterval(cleanupOldDailyUsage, 24 * 60 * 60 * 1000) // Run every 24 hours
-  console.log('[Server] 🗑️  Daily usage cleanup scheduled (runs every 24h)')
-  
-  // Serve static files from the React app build (for Railway fullstack deployment)
-  app.use(express.static(path.join(__dirname, 'dist')))
-  
-  // Catch-all handler: send back React's index.html file for client-side routing
-  // This must be AFTER all API routes
-  app.get('*', (req, res) => {
-    // Don't serve index.html for API routes
-    if (req.path.startsWith('/api/')) {
-      return res.status(404).json({ error: 'API endpoint not found' })
-    }
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'))
-  })
-  
-  // Start HTTP server
-  app.listen(PORT, () => {
-    console.log('')
-    console.log('═══════════════════════════════════════════════════')
-    console.log(`🚀 ARKTEK Fullstack Server - http://localhost:${PORT}`)
-    console.log('═══════════════════════════════════════════════════')
-    console.log(`🌐 Frontend:           Serving from /dist`)
-    console.log(`📡 LLM API Proxy:     Ready`)
-    console.log(`🔍 Serper Search:     Ready`)
-    console.log(`🗄️  Arkitek DB:       Connected (Primary Store)`)
-    console.log(`🛡️  ADMIN DB:         Connected (Admin/Expenses)`)
-    console.log(`👑 Admin Endpoints:   Ready`)
-    console.log(`🏆 Leaderboard:       Ready`)
-    console.log(`🗑️  Cleanup:          Scheduled (daily)`)
-    console.log('═══════════════════════════════════════════════════')
-    console.log('')
-  })
+  console.log('[Server] ✅ Serverless initialization complete')
 }
 
-startServer().catch(error => {
-  console.error('[Server] Failed to start:', error)
-  process.exit(1)
-})
+// Export Express app for Vercel serverless functions
+export default app
+
+// ============================================================================
+// LOCAL SERVER STARTUP (only when NOT running on Vercel)
+// ============================================================================
+if (!process.env.VERCEL) {
+  const startServer = async () => {
+    // Initialize database connection
+    await initDatabase()
+    
+    // Load cache from MongoDB
+    console.log('[Server] Loading data from MongoDB...')
+    await loadCacheFromMongoDB()
+    
+    // Run cleanup once on startup, then schedule daily (every 24 hours)
+    await cleanupOldDailyUsage()
+    setInterval(cleanupOldDailyUsage, 24 * 60 * 60 * 1000) // Run every 24 hours
+    console.log('[Server] 🗑️  Daily usage cleanup scheduled (runs every 24h)')
+    
+    // Serve static files from the React app build
+    app.use(express.static(path.join(__dirname, 'dist')))
+    
+    // Catch-all handler: send back React's index.html file for client-side routing
+    // This must be AFTER all API routes
+    app.get('*', (req, res) => {
+      // Don't serve index.html for API routes
+      if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'API endpoint not found' })
+      }
+      res.sendFile(path.join(__dirname, 'dist', 'index.html'))
+    })
+    
+    // Start HTTP server
+    app.listen(PORT, () => {
+      console.log('')
+      console.log('═══════════════════════════════════════════════════')
+      console.log(`🚀 ARKTEK Fullstack Server - http://localhost:${PORT}`)
+      console.log('═══════════════════════════════════════════════════')
+      console.log(`🌐 Frontend:           Serving from /dist`)
+      console.log(`📡 LLM API Proxy:     Ready`)
+      console.log(`🔍 Serper Search:     Ready`)
+      console.log(`🗄️  Arkitek DB:       Connected (Primary Store)`)
+      console.log(`🛡️  ADMIN DB:         Connected (Admin/Expenses)`)
+      console.log(`👑 Admin Endpoints:   Ready`)
+      console.log(`🏆 Leaderboard:       Ready`)
+      console.log(`🗑️  Cleanup:          Scheduled (daily)`)
+      console.log('═══════════════════════════════════════════════════')
+      console.log('')
+    })
+  }
+
+  startServer().catch(error => {
+    console.error('[Server] Failed to start:', error)
+    process.exit(1)
+  })
+}
 
 
