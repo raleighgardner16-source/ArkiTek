@@ -72,7 +72,7 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
   const sections = [
     { key: 'categoryDetection', label: 'Category Detection', icon: Code, color: '#00aaff' },
     { key: 'search', label: 'Search (Serper)', icon: Search, color: '#00ff88' },
-    { key: 'refiner', label: 'Refiner Models', icon: FileText, color: '#ffaa00' },
+    { key: 'refiner', label: 'Source Processing (Raw)', icon: FileText, color: '#ffaa00' },
     { key: 'council', label: 'Council Models', icon: Users, color: '#aa00ff' },
     { key: 'judgeFinalization', label: 'Judge Finalization', icon: Gavel, color: '#ff0088' },
     { key: 'conversationContext', label: 'Judge Conversation Context (5 Summaries)', icon: Brain, color: '#5dade2' },
@@ -154,137 +154,14 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
   }
 
   const renderRefiner = () => {
-    if (!debugData.refiner) return null
-    
-    const { primary, backup, judgeSelection } = debugData.refiner
-    
+    // Refiner no longer processes sources — raw source content is sent directly to council models
     return (
       <div style={{ marginBottom: '16px' }}>
-        {/* Primary Refiner */}
-        {primary && (
-          <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '8px', border: '1px solid #333' }}>
-            <div style={{ color: '#ffaa00', fontWeight: 'bold', marginBottom: '8px' }}>Primary Refiner: {primary.model}</div>
-            <div style={{ marginBottom: '12px' }}>
-              <div style={{ color: '#ffaa00', fontSize: '12px', marginBottom: '4px', fontWeight: 'bold' }}>Prompt:</div>
-              <div style={{ 
-                padding: '8px', 
-                backgroundColor: '#000', 
-                borderRadius: '4px', 
-                fontSize: '10px', 
-                color: '#ccc',
-                maxHeight: '400px',
-                overflowY: 'auto',
-                fontFamily: 'monospace',
-                whiteSpace: 'pre-wrap'
-              }}>
-                {primary.prompt || 'No prompt available'}
-              </div>
-            </div>
-            <div style={{ marginBottom: '12px' }}>
-              <div style={{ color: '#00ff88', fontSize: '12px', marginBottom: '4px', fontWeight: 'bold' }}>Response:</div>
-              <div style={{ 
-                padding: '8px', 
-                backgroundColor: '#000', 
-                borderRadius: '4px', 
-                fontSize: '10px', 
-                color: '#ccc',
-                maxHeight: '400px',
-                overflowY: 'auto',
-                fontFamily: 'monospace',
-                whiteSpace: 'pre-wrap'
-              }}>
-                {primary.response || 'No response available'}
-              </div>
-            </div>
-            <div style={{ color: '#888', fontSize: '11px' }}>
-              Discard Rate: {(primary.discard_rate * 100).toFixed(1)}% | Facts: {primary.facts_with_citations?.length || 0}
-            </div>
+        <div style={{ padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '8px', border: '1px solid #333' }}>
+          <div style={{ color: '#ffaa00', fontSize: '12px', fontStyle: 'italic' }}>
+            No refiner for source processing — raw scraped source content (up to 2000 chars per source) is sent directly to each council model for interpretation.
           </div>
-        )}
-        
-        {/* Backup Refiner */}
-        {backup && (
-          <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '8px', border: '1px solid #333' }}>
-            <div style={{ color: '#ffaa00', fontWeight: 'bold', marginBottom: '8px' }}>Backup Refiner: {backup.model}</div>
-            <div style={{ marginBottom: '12px' }}>
-              <div style={{ color: '#ffaa00', fontSize: '12px', marginBottom: '4px', fontWeight: 'bold' }}>Prompt:</div>
-              <div style={{ 
-                padding: '8px', 
-                backgroundColor: '#000', 
-                borderRadius: '4px', 
-                fontSize: '10px', 
-                color: '#ccc',
-                maxHeight: '400px',
-                overflowY: 'auto',
-                fontFamily: 'monospace',
-                whiteSpace: 'pre-wrap'
-              }}>
-                {backup.prompt || 'No prompt available'}
-              </div>
-            </div>
-            <div style={{ marginBottom: '12px' }}>
-              <div style={{ color: '#00ff88', fontSize: '12px', marginBottom: '4px', fontWeight: 'bold' }}>Response:</div>
-              <div style={{ 
-                padding: '8px', 
-                backgroundColor: '#000', 
-                borderRadius: '4px', 
-                fontSize: '10px', 
-                color: '#ccc',
-                maxHeight: '400px',
-                overflowY: 'auto',
-                fontFamily: 'monospace',
-                whiteSpace: 'pre-wrap'
-              }}>
-                {backup.response || 'No response available'}
-              </div>
-            </div>
-            <div style={{ color: '#888', fontSize: '11px' }}>
-              Discard Rate: {(backup.discard_rate * 100).toFixed(1)}% | Facts: {backup.facts_with_citations?.length || 0}
-            </div>
-          </div>
-        )}
-        
-        {/* Judge Selection */}
-        {judgeSelection && (
-          <div style={{ padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '8px', border: '1px solid #333' }}>
-            <div style={{ color: '#ff0088', fontWeight: 'bold', marginBottom: '8px' }}>Judge Refiner Selection: Gemini 3 Flash</div>
-            <div style={{ marginBottom: '12px' }}>
-              <div style={{ color: '#ff0088', fontSize: '12px', marginBottom: '4px', fontWeight: 'bold' }}>Prompt:</div>
-              <div style={{ 
-                padding: '8px', 
-                backgroundColor: '#000', 
-                borderRadius: '4px', 
-                fontSize: '10px', 
-                color: '#ccc',
-                maxHeight: '150px',
-                overflowY: 'auto',
-                fontFamily: 'monospace',
-                whiteSpace: 'pre-wrap'
-              }}>
-                {judgeSelection.prompt?.substring(0, 800)}...
-              </div>
-            </div>
-            <div style={{ marginBottom: '12px' }}>
-              <div style={{ color: '#00ff88', fontSize: '12px', marginBottom: '4px', fontWeight: 'bold' }}>Response:</div>
-              <div style={{ 
-                padding: '8px', 
-                backgroundColor: '#000', 
-                borderRadius: '4px', 
-                fontSize: '10px', 
-                color: '#ccc',
-                maxHeight: '150px',
-                overflowY: 'auto',
-                fontFamily: 'monospace',
-                whiteSpace: 'pre-wrap'
-              }}>
-                {judgeSelection.response}
-              </div>
-            </div>
-            <div style={{ color: '#888', fontSize: '11px' }}>
-              Selected: {judgeSelection.selected} | Reasoning: {judgeSelection.reasoning}
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     )
   }

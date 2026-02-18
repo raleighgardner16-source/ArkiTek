@@ -3179,19 +3179,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           }))
                         }
                         
-                        if (ragDebugData) {
-                          if (ragDebugData.refiner?.primary?.facts_with_citations) {
-                            facts = ragDebugData.refiner.primary.facts_with_citations.map(f => ({
-                              fact: f.fact,
-                              source_quote: f.source_quote || null,
-                            }))
-                          } else if (ragDebugData.refiner?.backup?.facts_with_citations) {
-                            facts = ragDebugData.refiner.backup.facts_with_citations.map(f => ({
-                              fact: f.fact,
-                              source_quote: f.source_quote || null,
-                            }))
-                          }
-                        }
+                        // No refiner facts — models read raw sources directly
+                        // facts remain null
                         
                         const response = await axios.post(`${API_URL}/api/leaderboard/submit`, {
                           userId: currentUser.id,

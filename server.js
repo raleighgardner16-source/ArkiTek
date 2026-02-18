@@ -2740,20 +2740,19 @@ app.post('/api/judge/conversation', async (req, res) => {
     }
     
     let judgePrompt = ''
-    let refinedData = null
+    let rawSourcesData = null
     let searchResults = []
     
-    // Step 2: If search is needed, run RAG pipeline (search + refiner)
+    // Step 2: If search is needed, search + scrape raw sources (no refiner)
     if (needsSearch) {
-      console.log('[Judge Conversation] Search needed, running RAG pipeline...')
+      console.log('[Judge Conversation] Search needed, fetching raw sources...')
       
-      // Perform search (top 5 sources, same as main pipeline)
       const serperApiKey = API_KEYS.serper
       if (!serperApiKey) {
         console.warn('[Judge Conversation] Serper API key not configured, skipping search')
       } else {
         try {
-          const serperData = await performSerperSearch(userMessage, 5) // Get top 5 sources (same as main pipeline)
+          const serperData = await performSerperSearch(userMessage, 5)
           searchResults = (serperData?.organic || []).map(r => ({
             title: r.title,
             link: r.link,
@@ -2762,14 +2761,14 @@ app.post('/api/judge/conversation', async (req, res) => {
           
           console.log(`[Judge Conversation] Search completed, found ${searchResults.length} results`)
           
-          // Run refiner step (using Gemini 2.5 Flash Lite)
+          // Scrape raw source content (no refiner LLM)
           if (searchResults.length > 0) {
-            refinedData = await refinerStep(userMessage, searchResults, false, userId)
-            console.log(`[Judge Conversation] Refiner completed, extracted ${refinedData.facts_with_citations?.length || 0} facts`)
+            rawSourcesData = await formatRawSourcesForPrompt(searchResults, 5)
+            console.log(`[Judge Conversation] Raw sources scraped: ${rawSourcesData.sourceCount} sources`)
           }
         } catch (searchError) {
-          console.error('[Judge Conversation] Search/refiner error:', searchError)
-          // Continue without refined data
+          console.error('[Judge Conversation] Search/scrape error:', searchError)
+          // Continue without source data
         }
       }
     }
@@ -2777,15 +2776,10 @@ app.post('/api/judge/conversation', async (req, res) => {
     // Step 3: Build prompt for Gemini (conversational, not judge mode)
     // After the initial judge summary, the user is just talking to Gemini naturally
     const todayDate = getCurrentDateString()
-    if (refinedData && refinedData.facts_with_citations && refinedData.facts_with_citations.length > 0) {
-      // Include refined facts in the prompt
-      const factsText = refinedData.facts_with_citations
-        .map((fact, idx) => `${idx + 1}. ${fact.fact}${fact.source_quote ? `\n   Source: "${fact.source_quote}"` : ''}`)
-        .join('\n\n')
-      
-      judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search — the results below are current and already retrieved for you. Use them directly to answer. Do NOT tell the user you cannot search the web.\n\n${contextString}Here is verified information from a recent web search that may help:\n\n${factsText}\n\nUser's question: ${userMessage}`
+    if (rawSourcesData && rawSourcesData.sourceCount > 0) {
+      judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search — the source content below is current and already retrieved for you. Read and parse it yourself to answer. Do NOT tell the user you cannot search the web.\n\n${contextString}Here is raw content from recent web sources that may help:\n\n${rawSourcesData.formatted}\n\nUser's question: ${userMessage}`
     } else {
-      // No search or no facts found, use direct conversational prompt
+      // No search or no sources found, use direct conversational prompt
       judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search. If search results are provided, use them directly. Do NOT tell the user you cannot search the web.\n\n${contextString}User: ${userMessage}`
     }
     
@@ -2842,13 +2836,7 @@ app.post('/api/judge/conversation', async (req, res) => {
         query: userMessage,
         results: searchResults
       },
-      refiner: refinedData ? {
-        primary: {
-          facts_with_citations: refinedData.facts_with_citations || [],
-          data_points: refinedData.data_points || [],
-          tokens: refinedData.tokens || null
-        }
-      } : null,
+      refiner: null, // No refiner — models read raw sources directly
       categoryDetection: {
         category: category,
         needsSearch: needsSearch
@@ -2864,15 +2852,11 @@ app.post('/api/judge/conversation', async (req, res) => {
       },
       category: category,
       needsSearch: needsSearch,
-      usedSearch: needsSearch && refinedData !== null,
+      usedSearch: needsSearch && rawSourcesData !== null && rawSourcesData.sourceCount > 0,
       // Include debug data so frontend can update Facts/Sources and Pipeline Debug windows
       debugData: debugData,
       searchResults: searchResults,
-      refinedData: refinedData ? {
-        facts_with_citations: refinedData.facts_with_citations || [],
-        data_points: refinedData.data_points || [],
-        tokens: refinedData.tokens || null
-      } : null
+      refinedData: null // No refiner — models read raw sources directly
     })
   } catch (error) {
     console.error('[Judge Conversation] Error:', error)
@@ -2938,10 +2922,10 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
     }
 
     let judgePrompt = ''
-    let refinedData = null
+    let rawSourcesData = null
     let searchResults = []
 
-    // Step 2: Search + refiner if needed
+    // Step 2: Search + scrape raw sources (no refiner)
     if (needsSearch) {
       sendSSE('status', { message: 'Searching the web...' })
       const serperApiKey = API_KEYS.serper
@@ -2954,23 +2938,20 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
           console.log(`[Judge Conversation Stream] Search completed, found ${searchResults.length} results`)
 
           if (searchResults.length > 0) {
-            sendSSE('status', { message: 'Analyzing sources...' })
-            refinedData = await refinerStep(userMessage, searchResults, false, userId)
-            console.log(`[Judge Conversation Stream] Refiner completed, extracted ${refinedData.facts_with_citations?.length || 0} facts`)
+            sendSSE('status', { message: 'Reading sources...' })
+            rawSourcesData = await formatRawSourcesForPrompt(searchResults, 5)
+            console.log(`[Judge Conversation Stream] Raw sources scraped: ${rawSourcesData.sourceCount} sources`)
           }
         } catch (searchError) {
-          console.error('[Judge Conversation Stream] Search/refiner error:', searchError)
+          console.error('[Judge Conversation Stream] Search/scrape error:', searchError)
         }
       }
     }
 
     // Step 3: Build prompt
     const todayDate = getCurrentDateString()
-    if (refinedData && refinedData.facts_with_citations && refinedData.facts_with_citations.length > 0) {
-      const factsText = refinedData.facts_with_citations
-        .map((fact, idx) => `${idx + 1}. ${fact.fact}${fact.source_quote ? `\n   Source: "${fact.source_quote}"` : ''}`)
-        .join('\n\n')
-      judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search — the results below are current and already retrieved for you. Use them directly to answer. Do NOT tell the user you cannot search the web.\n\n${contextString}Here is verified information from a recent web search that may help:\n\n${factsText}\n\nUser's question: ${userMessage}`
+    if (rawSourcesData && rawSourcesData.sourceCount > 0) {
+      judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search — the source content below is current and already retrieved for you. Read and parse it yourself to answer. Do NOT tell the user you cannot search the web.\n\n${contextString}Here is raw content from recent web sources that may help:\n\n${rawSourcesData.formatted}\n\nUser's question: ${userMessage}`
     } else {
       judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search. If search results are provided, use them directly. Do NOT tell the user you cannot search the web.\n\n${contextString}User: ${userMessage}`
     }
@@ -3066,13 +3047,7 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
     // Build debug data
     const debugData = needsSearch ? {
       search: { query: userMessage, results: searchResults },
-      refiner: refinedData ? {
-        primary: {
-          facts_with_citations: refinedData.facts_with_citations || [],
-          data_points: refinedData.data_points || [],
-          tokens: refinedData.tokens || null
-        }
-      } : null,
+      refiner: null, // No refiner — models read raw sources directly
       categoryDetection: { category, needsSearch }
     } : null
 
@@ -3081,14 +3056,10 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
       response: fullResponse,
       tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens },
       category, needsSearch,
-      usedSearch: needsSearch && refinedData !== null,
+      usedSearch: needsSearch && rawSourcesData !== null && rawSourcesData.sourceCount > 0,
       debugData,
       searchResults,
-      refinedData: refinedData ? {
-        facts_with_citations: refinedData.facts_with_citations || [],
-        data_points: refinedData.data_points || [],
-        tokens: refinedData.tokens || null
-      } : null
+      refinedData: null // No refiner — models read raw sources directly
     })
 
     res.end()
@@ -3145,8 +3116,8 @@ app.post('/api/model/conversation/stream', async (req, res) => {
     const { category, needsSearch } = await detectCategoryForJudge(userMessage, userId)
     console.log(`[Model Conversation Stream] Category: ${category}, Needs Search: ${needsSearch}`)
 
-    // Step 2: Search + refiner
-    let refinedData = null
+    // Step 2: Search + scrape raw sources (no refiner)
+    let rawSourcesData = null
     let searchResults = []
 
     if (needsSearch) {
@@ -3159,11 +3130,12 @@ app.post('/api/model/conversation/stream', async (req, res) => {
             title: r.title, link: r.link, snippet: r.snippet
           }))
           if (searchResults.length > 0) {
-            sendSSE('status', { message: 'Analyzing sources...' })
-            refinedData = await refinerStep(userMessage, searchResults, false, userId)
+            sendSSE('status', { message: 'Reading sources...' })
+            rawSourcesData = await formatRawSourcesForPrompt(searchResults, 5)
+            console.log(`[Model Conversation Stream] Raw sources scraped: ${rawSourcesData.sourceCount} sources`)
           }
         } catch (searchError) {
-          console.error('[Model Conversation Stream] Search/refiner error:', searchError)
+          console.error('[Model Conversation Stream] Search/scrape error:', searchError)
         }
       }
     }
@@ -3174,7 +3146,7 @@ app.post('/api/model/conversation/stream', async (req, res) => {
     const allModelContexts = userUsage.modelConversationContext || {}
     const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
 
-    let prompt = `Today's date is ${getCurrentDateString()}. You have access to real-time web search — when search results are provided below, use them directly to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the results are included in this prompt. Answer confidently using the provided data.\n\n`
+    let prompt = `Today's date is ${getCurrentDateString()}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data.\n\n`
 
     if (contextSummaries.length > 0) {
       const contextString = contextSummaries.map((ctx, idx) => {
@@ -3189,11 +3161,8 @@ app.post('/api/model/conversation/stream', async (req, res) => {
       prompt += `Your previous response that the user wants to continue discussing:\n${originalResponse.substring(0, 2000)}${originalResponse.length > 2000 ? '...' : ''}\n\n`
     }
 
-    if (refinedData && refinedData.facts_with_citations && refinedData.facts_with_citations.length > 0) {
-      const factsText = refinedData.facts_with_citations
-        .map((fact, idx) => `${idx + 1}. ${fact.fact}${fact.source_quote ? `\n   Source: "${fact.source_quote}"` : ''}`)
-        .join('\n\n')
-      prompt += `Here is verified information from a recent web search that may help answer the user's question:\n\n${factsText}\n\n`
+    if (rawSourcesData && rawSourcesData.sourceCount > 0) {
+      prompt += `Here is raw content from recent web sources that may help answer the user's question:\n\n${rawSourcesData.formatted}\n\n`
     }
 
     prompt += `User: ${userMessage}`
@@ -3446,13 +3415,9 @@ app.post('/api/model/conversation/stream', async (req, res) => {
       response: fullResponse,
       tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens },
       category, needsSearch,
-      usedSearch: needsSearch && refinedData !== null,
+      usedSearch: needsSearch && rawSourcesData !== null && rawSourcesData.sourceCount > 0,
       searchResults,
-      refinedData: refinedData ? {
-        facts_with_citations: refinedData.facts_with_citations || [],
-        data_points: refinedData.data_points || [],
-        tokens: refinedData.tokens || null
-      } : null
+      refinedData: null // No refiner — models read raw sources directly
     })
 
     clearInterval(heartbeat)
@@ -3502,11 +3467,11 @@ app.post('/api/model/conversation', async (req, res) => {
     console.log(`[Model Conversation] Category: ${category}, Needs Search: ${needsSearch}`)
     
     // Step 2: If search is needed, run search + refiner pipeline
-    let refinedData = null
+    let rawSourcesData = null
     let searchResults = []
     
     if (needsSearch) {
-      console.log(`[Model Conversation] Search needed for ${modelName}, running RAG pipeline...`)
+      console.log(`[Model Conversation] Search needed for ${modelName}, fetching raw sources...`)
       
       const serperApiKey = API_KEYS.serper
       if (serperApiKey) {
@@ -3520,14 +3485,14 @@ app.post('/api/model/conversation', async (req, res) => {
           
           console.log(`[Model Conversation] Search completed, found ${searchResults.length} results`)
           
-          // Run refiner step
+          // Scrape raw source content (no refiner LLM)
           if (searchResults.length > 0) {
-            refinedData = await refinerStep(userMessage, searchResults, false, userId)
-            console.log(`[Model Conversation] Refiner completed, extracted ${refinedData.facts_with_citations?.length || 0} facts`)
+            rawSourcesData = await formatRawSourcesForPrompt(searchResults, 5)
+            console.log(`[Model Conversation] Raw sources scraped: ${rawSourcesData.sourceCount} sources`)
           }
         } catch (searchError) {
-          console.error('[Model Conversation] Search/refiner error:', searchError)
-          // Continue without refined data
+          console.error('[Model Conversation] Search/scrape error:', searchError)
+          // Continue without source data
         }
       } else {
         console.warn('[Model Conversation] Serper API key not configured, skipping search')
@@ -3541,7 +3506,7 @@ app.post('/api/model/conversation', async (req, res) => {
     const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
     
     // Build context string from server-stored context (position 0 = full, 1-4 = summarized)
-    let prompt = `Today's date is ${getCurrentDateString()}. You have access to real-time web search — when search results are provided below, use them directly to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the results are included in this prompt. Answer confidently using the provided data.\n\n`
+    let prompt = `Today's date is ${getCurrentDateString()}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data.\n\n`
     if (contextSummaries.length > 0) {
       const contextString = contextSummaries.map((ctx, idx) => {
         const promptPart = ctx.originalPrompt ? `User asked: ${ctx.originalPrompt}\n` : ''
@@ -3556,13 +3521,9 @@ app.post('/api/model/conversation', async (req, res) => {
       prompt += `Your previous response that the user wants to continue discussing:\n${originalResponse.substring(0, 2000)}${originalResponse.length > 2000 ? '...' : ''}\n\n`
     }
     
-    // Step 4: Add refined search facts to prompt if available
-    if (refinedData && refinedData.facts_with_citations && refinedData.facts_with_citations.length > 0) {
-      const factsText = refinedData.facts_with_citations
-        .map((fact, idx) => `${idx + 1}. ${fact.fact}${fact.source_quote ? `\n   Source: "${fact.source_quote}"` : ''}`)
-        .join('\n\n')
-      
-      prompt += `Here is verified information from a recent web search that may help answer the user's question:\n\n${factsText}\n\n`
+    // Step 4: Add raw source content to prompt if available
+    if (rawSourcesData && rawSourcesData.sourceCount > 0) {
+      prompt += `Here is raw content from recent web sources that may help answer the user's question:\n\n${rawSourcesData.formatted}\n\n`
     }
     
     prompt += `User: ${userMessage}`
@@ -3679,7 +3640,7 @@ app.post('/api/model/conversation', async (req, res) => {
       console.error(`[Model Conversation] Error storing context for ${modelName}:`, err)
     })
     
-    console.log(`[Model Conversation] Response generated for ${modelName}, tokens: ${inputTokens}/${outputTokens}, usedSearch: ${needsSearch && refinedData !== null}`)
+    console.log(`[Model Conversation] Response generated for ${modelName}, tokens: ${inputTokens}/${outputTokens}, usedSearch: ${needsSearch && rawSourcesData !== null}`)
     
     res.json({
       response: responseText,
@@ -3690,13 +3651,9 @@ app.post('/api/model/conversation', async (req, res) => {
       },
       category: category,
       needsSearch: needsSearch,
-      usedSearch: needsSearch && refinedData !== null,
+      usedSearch: needsSearch && rawSourcesData !== null && rawSourcesData.sourceCount > 0,
       searchResults: searchResults,
-      refinedData: refinedData ? {
-        facts_with_citations: refinedData.facts_with_citations || [],
-        data_points: refinedData.data_points || [],
-        tokens: refinedData.tokens || null
-      } : null
+      refinedData: null // No refiner — models read raw sources directly
     })
     
   } catch (error) {
@@ -5485,6 +5442,57 @@ const formatSearchResults = async (searchResults, maxParseableSources = 5) => {
   return formatted
 }
 
+// Format raw scraped source content for direct injection into model prompts
+// Scrapes up to maxParseableSources, caps each at 2000 chars, returns a clean numbered block
+const formatRawSourcesForPrompt = async (searchResults, maxParseableSources = 5) => {
+  let formatted = ''
+  let parseableCount = 0
+  const scrapedSources = [] // Track which sources were successfully scraped
+  
+  for (let index = 0; index < searchResults.length; index++) {
+    const result = searchResults[index]
+    
+    // Skip non-parseable sources (videos, etc.)
+    if (isNonParseableSource(result.link)) {
+      console.log(`[Raw Sources] Skipping non-parseable source: ${result.link}`)
+      continue
+    }
+    
+    if (parseableCount >= maxParseableSources) {
+      console.log(`[Raw Sources] Reached maximum of ${maxParseableSources} parseable sources, stopping`)
+      break
+    }
+    
+    console.log(`[Raw Sources] Fetching content from: ${result.link}`)
+    const pageContent = await fetchPageContent(result.link)
+    
+    parseableCount++
+    const sourceNum = parseableCount
+    
+    formatted += `Source ${sourceNum}: "${result.title}"\n`
+    formatted += `URL: ${result.link}\n`
+    
+    if (pageContent && pageContent.trim().length > 100) {
+      formatted += `Content: ${pageContent}\n`
+      scrapedSources.push({ title: result.title, link: result.link, snippet: result.snippet, hasContent: true })
+    } else {
+      // Fall back to snippet if scraping failed
+      formatted += `Content: ${result.snippet || '[Unable to fetch content]'}\n`
+      scrapedSources.push({ title: result.title, link: result.link, snippet: result.snippet, hasContent: false })
+    }
+    
+    formatted += '\n'
+  }
+  
+  if (parseableCount < maxParseableSources) {
+    console.warn(`[Raw Sources] Only found ${parseableCount} parseable sources (wanted ${maxParseableSources})`)
+  } else {
+    console.log(`[Raw Sources] Successfully processed ${parseableCount} parseable sources`)
+  }
+  
+  return { formatted, sourceCount: parseableCount, scrapedSources }
+}
+
 // Refiner step: Extract facts with citations
 const refinerStep = async (query, searchResults, useSecondary = false, userId = null) => {
   let modelName = useSecondary ? 'gpt-4o-mini' : 'gemini-2.5-flash-lite'
@@ -6624,68 +6632,18 @@ app.post('/api/rag', async (req, res) => {
     
     // Query tracking is already handled by /api/search endpoint, so we don't need to track it again here
     
-    // Stage 2: Primary Refiner (Gemini 2.5 Flash-lite)
-    console.log('[RAG Pipeline] Stage 2: Primary refiner (Gemini 2.5 Flash-lite)...')
-    let primaryRefined
+    // Stage 2: Scrape raw source content (no refiner LLM — models read sources directly)
+    console.log('[RAG Pipeline] Stage 2: Scraping raw source content for direct model consumption...')
+    let rawSourcesData
     try {
-      primaryRefined = await refinerStep(query, searchResults, false, userId)
-      console.log('[RAG Pipeline] Primary refiner completed. Tokens:', {
-        hasTokens: !!primaryRefined?.tokens,
-        tokens: primaryRefined?.tokens,
-        input: primaryRefined?.tokens?.input,
-        output: primaryRefined?.tokens?.output,
-        total: primaryRefined?.tokens?.total
-      })
-    } catch (refinerError) {
-      console.error('[RAG Pipeline] Refiner step error:', refinerError.message)
-      console.error('[RAG Pipeline] Refiner error details:', refinerError.response?.data || refinerError.message)
-      throw new Error(`Refiner step failed: ${refinerError.message}`)
+      rawSourcesData = await formatRawSourcesForPrompt(searchResults, 5)
+      console.log(`[RAG Pipeline] Raw sources scraped: ${rawSourcesData.sourceCount} sources, ${rawSourcesData.formatted.length} chars`)
+    } catch (scrapeError) {
+      console.error('[RAG Pipeline] Source scraping error:', scrapeError.message)
+      rawSourcesData = { formatted: '', sourceCount: 0, scrapedSources: [] }
     }
     
-    let refinedData = primaryRefined
-    let backupRefined = null
-    
-    // Check if backup refiner is needed (>30% discard rate)
-    if (primaryRefined.discard_rate > 0.3) {
-      console.log(`[RAG Pipeline] High discard rate (${(primaryRefined.discard_rate * 100).toFixed(1)}%), triggering backup refiner`)
-      
-      // Stage 2b: Backup Refiner (GPT-4o-mini) - performs NEW Serper query
-      console.log('[RAG Pipeline] Stage 2b: Backup refiner (GPT-4o-mini) with new search...')
-      let backupSerperData
-      try {
-        // Request 5 results for backup refiner too
-        backupSerperData = await performSerperSearch(query, 5)
-        console.log('[RAG Pipeline] Backup Serper search successful, results:', backupSerperData?.organic?.length || 0)
-      } catch (backupSerperError) {
-        console.error('[RAG Pipeline] Backup Serper search failed:', backupSerperError.message)
-        // Continue with empty results - refiner will handle NOT_FOUND
-        backupSerperData = { organic: [] }
-      }
-      
-      const backupSearchResults = (backupSerperData?.organic || []).map(r => ({
-        title: r.title,
-        link: r.link,
-        snippet: r.snippet
-      }))
-      
-      backupRefined = await refinerStep(query, backupSearchResults, true, userId)
-      console.log('[RAG Pipeline] Backup refiner completed. Tokens:', {
-        hasTokens: !!backupRefined?.tokens,
-        tokens: backupRefined?.tokens,
-        input: backupRefined?.tokens?.input,
-        output: backupRefined?.tokens?.output,
-        total: backupRefined?.tokens?.total
-      })
-      
-      // Stage 2c: Judge selects best refiner summary
-      console.log('[RAG Pipeline] Stage 2c: Judge comparing refiner summaries...')
-      refinedData = await judgeRefinerSelection(query, primaryRefined, backupRefined, userId)
-      console.log(`[RAG Pipeline] Judge selected best summary (${refinedData.facts_with_citations.length} facts with citations)`)
-    } else {
-      console.log(`[RAG Pipeline] Primary refiner passed verification (${(primaryRefined.discard_rate * 100).toFixed(1)}% discard rate), proceeding to council`)
-    }
-    
-    // Stage 3: Council (parallel processing)
+    // Stage 3: Council (parallel processing) — models receive raw source content directly
     console.log(`[RAG Pipeline] Stage 3: Council processing with ${selectedModels.length} models...`)
     const councilPromises = selectedModels.map(async (modelId) => {
       console.log(`[RAG Pipeline] Council: Processing ${modelId}...`)
@@ -6727,42 +6685,27 @@ app.post('/api/rag', async (req, res) => {
         console.log(`[RAG Pipeline] Model mapping: "${model}" -> "${mappedModel}"`)
       }
       
-      // Format refined data for council prompt
+      // Prepare council prompt with raw source content
       console.log(`[RAG Pipeline] Council: Preparing prompt for ${modelId}`)
-      console.log(`[RAG Pipeline] Council: Refined data points count: ${refinedData.data_points?.length || 0}`)
-      console.log(`[RAG Pipeline] Council: First 3 data points:`, refinedData.data_points?.slice(0, 3) || 'none')
+      console.log(`[RAG Pipeline] Council: Raw sources count: ${rawSourcesData.sourceCount}`)
       
-      // Format facts with citations for council prompt
-      let factsWithSourcesText = ''
-      if (refinedData.facts_with_citations && refinedData.facts_with_citations.length > 0) {
-        factsWithSourcesText = refinedData.facts_with_citations.map((factObj, idx) => {
-          const fact = factObj.fact || factObj
-          const sourceQuote = factObj.source_quote || ''
-          return `${idx + 1}. ${fact}${sourceQuote ? `\n   [SOURCE QUOTE]: "${sourceQuote}"` : ''}`
-        }).join('\n\n')
-      } else if (refinedData.data_points && refinedData.data_points.length > 0) {
-        // Fallback to data_points if facts_with_citations not available
-        factsWithSourcesText = refinedData.data_points.map((p, idx) => `${idx + 1}. ${p}`).join('\n\n')
-      } else {
-        factsWithSourcesText = 'No factual data points found (NOT FOUND)'
-      }
-      
-      const councilPrompt = `Today's date is ${getCurrentDateString()}. You are analyzing factual information that was extracted from recent web search results. This data is current and up-to-date from the internet.
+      const councilPrompt = `Today's date is ${getCurrentDateString()}. You are reading raw content scraped from recent web search results. This data is current and up-to-date from the internet. Your job is to parse and interpret the source content yourself to answer the user's query.
 
 INSTRUCTIONS:
 1. TRUST the provided sources - they come from verified web sources, not your training data cutoff
 2. Keep your response CONCISE - aim for 3-4 paragraphs maximum
-3. When referencing sources in your response, refer to them by their number (e.g., "see source 4", "as stated in source 2", "source 1 indicates").
+3. When referencing sources in your response, refer to them by their number (e.g., "see source 4", "as stated in source 2", "source 1 indicates")
 4. Do NOT question the validity of sources based on your training data - the web search provides more recent information
-5. Provide a clear, direct answer to the user's query using these sources
+5. Extract the most relevant and useful information from each source to directly answer the user's query
+6. Ignore any irrelevant content, navigation text, or boilerplate that may appear in the raw source content
 
 User Query: ${query}
 
-Verified Sources from Web Search (numbered for easy reference):
-${factsWithSourcesText}`
+Web Sources (numbered for easy reference):
+${rawSourcesData.formatted}`
       
       console.log(`[RAG Pipeline] Council: Prompt length: ${councilPrompt.length} chars`)
-      console.log(`[RAG Pipeline] Council: Facts with sources text length: ${factsWithSourcesText.length} chars`)
+      console.log(`[RAG Pipeline] Council: Raw sources text length: ${rawSourcesData.formatted.length} chars`)
       
       try {
         // Call LLM directly (reuse the logic from /api/llm endpoint)
@@ -7056,29 +6999,16 @@ ${factsWithSourcesText}`
     console.log('[RAG Pipeline] Pipeline complete!')
     console.log('[RAG Pipeline] Council responses count:', councilResponses.length)
     
-    console.log('[RAG Pipeline] Preparing response with refiner_tokens:', {
-      primaryRefinedHasTokens: !!primaryRefined?.tokens,
-      backupRefinedHasTokens: !!backupRefined?.tokens,
-      primaryRefinedTokens: primaryRefined?.tokens,
-      backupRefinedTokens: backupRefined?.tokens,
-    })
+    console.log('[RAG Pipeline] Preparing response (no refiner — raw sources sent to models)')
     
     return res.json({
       query,
       search_results: searchResults,
-      refined_data: {
-        data_points: refinedData.data_points,
-        facts_with_citations: refinedData.facts_with_citations,
-        found: refinedData.found,
-        discard_rate: refinedData.discard_rate,
-        backup_used: backupRefined !== null
-      },
+      refined_data: null, // No refiner — models read raw sources directly
       council_responses: councilResponses,
-      // Include token info for refiner models
-      refiner_tokens: {
-        primary: primaryRefined?.tokens || null,
-        backup: backupRefined?.tokens || null,
-        judge_selection: refinedData?.judgeTokens || null
+      raw_sources: {
+        source_count: rawSourcesData.sourceCount,
+        scraped_sources: rawSourcesData.scrapedSources,
       },
     })
   } catch (error) {

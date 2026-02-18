@@ -496,29 +496,7 @@ function App() {
         }
       })
       
-      // Add refiner and judge tokens from RAG pipeline (if RAG was used)
-      if (ragData) {
-        if (ragData.refiner_tokens?.primary) {
-          tokenData.push({
-            modelName: 'gemini-2.5-flash-lite (Refiner)',
-            tokens: ragData.refiner_tokens.primary
-          })
-        }
-        
-        if (ragData.refiner_tokens?.backup) {
-          tokenData.push({
-            modelName: 'gpt-4o-mini (Refiner)',
-            tokens: ragData.refiner_tokens.backup
-          })
-        }
-        
-        if (ragData.refiner_tokens?.judge_selection) {
-          tokenData.push({
-            modelName: 'gemini-3-flash (Judge - Refiner Selection)',
-            tokens: ragData.refiner_tokens.judge_selection
-          })
-        }
-      }
+      // No refiner tokens — models read raw sources directly (refiner removed for source processing)
       
       // Add judge tokens from direct LLM path (when RAG wasn't used but summary was generated)
       if (directJudgeTokens) {
@@ -542,13 +520,8 @@ function App() {
         let sources = null
         
         if (ragData) {
-          // Extract facts with citations from refined data
-          if (ragData.refined_data?.facts_with_citations) {
-            facts = ragData.refined_data.facts_with_citations.map(f => ({
-              fact: f.fact,
-              source_quote: f.source_quote || null,
-            }))
-          }
+          // No refiner facts — models read raw sources directly
+          // facts remain null
           
           // Extract search results (sources)
           if (ragData.search_results && Array.isArray(ragData.search_results)) {
@@ -895,7 +868,7 @@ function App() {
             modelName: currentSummary.modelName || null,
           } : null,
           sources: searchSrcs || (ragData?.search_results) || [],
-          facts: ragData?.refined_data?.facts_with_citations || [],
+          facts: [], // No refiner — models read raw sources directly
         })
         console.log('[History] Auto-saved conversation to history')
       } catch (error) {
