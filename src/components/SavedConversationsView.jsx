@@ -42,6 +42,7 @@ const SavedConversationsView = () => {
   const [expandedMonths, setExpandedMonths] = useState({})
   const [expandedDays, setExpandedDays] = useState({})
   const [expandedSources, setExpandedSources] = useState({})
+  const [expandedTitles, setExpandedTitles] = useState({})
 
   useEffect(() => {
     if (currentUser?.id) {
@@ -197,12 +198,24 @@ const SavedConversationsView = () => {
               </span>
             )}
           </div>
-          {/* Title / prompt */}
-          <p style={{
-            color: currentTheme.text, fontSize: '0.88rem', fontWeight: '500',
-            margin: '0 0 4px 0', lineHeight: '1.3',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
+          {/* Title / prompt - click to expand full text */}
+          <p
+            onClick={(e) => {
+              e.stopPropagation()
+              setExpandedTitles(prev => ({ ...prev, [convo.id]: !prev[convo.id] }))
+            }}
+            title={expandedTitles[convo.id] ? 'Click to collapse' : 'Click to see full prompt'}
+            style={{
+              color: currentTheme.text, fontSize: '0.88rem', fontWeight: '500',
+              margin: '0 0 4px 0', lineHeight: '1.3',
+              cursor: 'pointer',
+              ...(expandedTitles[convo.id]
+                ? { whiteSpace: 'pre-wrap', wordBreak: 'break-word' }
+                : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+              ),
+              transition: 'all 0.2s ease',
+            }}
+          >
             {convo.title}
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

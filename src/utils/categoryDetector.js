@@ -50,16 +50,20 @@ Determine if a web search would genuinely help answer the query. Recommend a SIN
 
 needsSearch = true when:
 - The query asks about current events, recent news, or real-time information
-- The query references "today", "this year", "this week", "recently", or any time-relative language
+- The query references "today", "this year", "this week", "recently", "right now", "currently", "gonna", or any time-relative language
 - The query needs factual verification (specific facts, statistics, dates)
 - The query asks about specific people, companies, or events that may have recent updates
 - The query asks about weather, prices, scores, or anything that changes frequently
+- The query asks about rankings, comparisons, or "who/what is best" in a field that evolves over time (e.g. AI, tech, sports, politics, business)
+- The query asks for predictions or opinions about factual/evolving topics (e.g. "who will win the AI race", "what's the best phone right now", "which company is leading in X") — even if phrased as an opinion, the answer depends on current real-world data
+- The query mentions specific products, models, tools, or technologies that are actively being updated or released (e.g. AI models, software, hardware, games, etc.)
 
-needsSearch = false when:
-- The query is about general concepts, explanations, or "how does X work"
-- The query asks for opinions, advice, or creative content
-- The query is about well-established knowledge (science fundamentals, history, etc.)
-- The query can be answered from general knowledge without specific sources
+needsSearch = false ONLY when:
+- The query is purely about timeless concepts, explanations, or "how does X work" (e.g. "how does gravity work", "explain recursion")
+- The query asks for purely personal/creative content with no factual basis needed (e.g. "write me a poem", "give me life advice")
+- The query is about well-established historical knowledge that does NOT change (e.g. "when was the French Revolution", "what is the speed of light")
+
+IMPORTANT: When in doubt, set needsSearch = true. It is much better to search unnecessarily than to miss providing current information. If the topic is even slightly time-sensitive or involves entities that change over time, set needsSearch = true.
 
 CRITICAL: The recommendedModelType you choose will be applied to EVERY provider. Choose ONE type.
 
