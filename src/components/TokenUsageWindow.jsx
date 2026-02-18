@@ -258,6 +258,20 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
               </div>
             </div>
 
+            {/* Info note */}
+            <div style={{
+              background: 'rgba(255, 170, 0, 0.08)',
+              border: '1px solid rgba(255, 170, 0, 0.25)',
+              borderRadius: '8px',
+              padding: '10px 14px',
+              marginBottom: '16px',
+              fontSize: '0.75rem',
+              color: '#ccc',
+              lineHeight: '1.4',
+            }}>
+              <span style={{ color: '#ffaa00', fontWeight: '600' }}>Note:</span> Input token counts include each provider's message formatting overhead (role markers, separators, etc.). Some providers also inject internal system prompts that are counted as input tokens.
+            </div>
+
             {/* Summary */}
             <div
               style={{
@@ -363,13 +377,13 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                           {modelData.model}
                         </div>
                         <div style={{ 
-                          color: '#888', 
+                          color: modelData.source === 'api_response' ? '#48c9b0' : '#888', 
                           fontSize: '0.7rem',
-                          background: 'rgba(93, 173, 226, 0.1)',
+                          background: modelData.source === 'api_response' ? 'rgba(72, 201, 176, 0.15)' : 'rgba(93, 173, 226, 0.1)',
                           padding: '2px 6px',
                           borderRadius: '4px',
                         }}>
-                          {modelData.source === 'api_response' ? 'API' : 'Estimated'}
+                          {modelData.source === 'api_response' ? 'API Reported' : 'Estimated'}
                         </div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: modelData.reasoning > 0 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '6px', fontSize: '0.75rem' }}>

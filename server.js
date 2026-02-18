@@ -6,11 +6,16 @@ import crypto from 'crypto'
 import * as cheerio from 'cheerio'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { createRequire } from 'module'
 import { countTokens, extractTokensFromResponse, estimateTokensFallback } from './utils/tokenCounters.js'
 import Stripe from 'stripe'
 import { Resend } from 'resend'
 import db from './database/db.js'
 import adminDb from './database/adminDb.js'
+
+// Load disposable email domains list (CJS package, use createRequire for ESM compat)
+const require = createRequire(import.meta.url)
+const disposableDomains = require('disposable-email-domains')
 
 dotenv.config()
 
@@ -89,16 +94,20 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || ''
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || ''
 
-// Initialize Resend (email service for password resets)
+// Initialize Resend (email service for password resets + email verification)
 // Only initialize if API key is configured — server still works without it (password reset emails won't send)
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 const APP_NAME = 'ArkiTek'
 const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@arkitek.app' // Must be a verified domain in Resend
 const APP_URL = process.env.APP_URL || 'http://localhost:3000' // Frontend URL for reset links
 
+
 // In-memory store for password reset tokens (also persisted to MongoDB for durability)
 // Format: { token: { userId, email, expiresAt } }
 const passwordResetTokens = new Map()
+
+// In-memory store for email verification tokens (also persisted to MongoDB)
+const emailVerificationTokens = new Map()
 
 // ============================================================================
 // ADMIN LIST (MongoDB only)
@@ -199,6 +208,7 @@ const syncUserToMongo = async (userId, userData) => {
         lastName: userData.lastName,
         username: userData.username,
         email: userData.email,
+        canonicalEmail: userData.canonicalEmail || userData.email,
         password: userData.password,
         createdAt: userData.createdAt ? new Date(userData.createdAt) : new Date(),
         stripeCustomerId: userData.stripeCustomerId || null,
@@ -210,6 +220,13 @@ const syncUserToMongo = async (userId, userData) => {
         cancellationHistory: userData.cancellationHistory || [],
         lastActiveAt: userData.lastActiveAt || null,
         purchasedCredits: usageData.purchasedCredits || { total: 0, remaining: 0 },
+        // Free trial abuse prevention fields
+        emailVerified: userData.emailVerified || false,
+        signupIp: userData.signupIp || null,
+        deviceFingerprint: userData.deviceFingerprint || null,
+        plan: userData.plan || null,
+        // Model selection preferences (persists across sessions)
+        modelPreferences: userData.modelPreferences || null,
       }},
       { upsert: true }
     )
@@ -571,6 +588,33 @@ const hashPassword = (password) => {
   return crypto.createHash('sha256').update(password).digest('hex')
 }
 
+// ============================================================================
+// FREE TRIAL ABUSE PREVENTION UTILITIES
+// ============================================================================
+
+// Canonicalize email to prevent alias abuse (e.g. john+trial@gmail.com → john@gmail.com)
+const canonicalizeEmail = (email) => {
+  const [local, domain] = email.toLowerCase().trim().split('@')
+  // Gmail/Google domains: strip dots and +suffixes (Gmail ignores them)
+  const googleDomains = ['gmail.com', 'googlemail.com']
+  if (googleDomains.includes(domain)) {
+    const cleaned = local.split('+')[0].replace(/\./g, '')
+    return `${cleaned}@${domain}`
+  }
+  // For other providers, at least strip +suffixes (most support them)
+  const cleaned = local.split('+')[0]
+  return `${cleaned}@${domain}`
+}
+
+// Check if email uses a disposable/temporary domain (mailinator, guerrillamail, etc.)
+const isDisposableEmail = (email) => {
+  const domain = email.split('@')[1]?.toLowerCase()
+  return disposableDomains.includes(domain)
+}
+
+// Max free trials allowed per IP address (allows for shared households)
+const MAX_FREE_TRIALS_PER_IP = 2
+
 // Get current month key (YYYY-MM)
 const getCurrentMonth = () => {
   const now = new Date()
@@ -655,7 +699,7 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
     console.log(`[Prompt Tracking] User ${userId}: Council prompt detected (${responseCount} models). Total council prompts: ${userUsage.councilPrompts}`)
   }
 
-  // Update prompt totals
+  // Count 1 prompt per user submission (regardless of how many models are in the council)
   const oldTotal = userUsage.totalPrompts || 0
   userUsage.totalPrompts = (userUsage.totalPrompts || 0) + 1
   console.log(`[Prompt Tracking] User ${userId}: Prompts ${oldTotal} -> ${userUsage.totalPrompts}`)
@@ -676,6 +720,15 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
   const oldMonthly = userUsage.monthlyUsage[currentMonth].prompts || 0
   userUsage.monthlyUsage[currentMonth].prompts += 1
   console.log(`[Prompt Tracking] User ${userId} (${currentMonth}): Monthly prompts ${oldMonthly} -> ${userUsage.monthlyUsage[currentMonth].prompts}`)
+
+  // Count the user's typed prompt tokens towards the visible token counter
+  // (the user's input text is visible to them — counts alongside model output tokens)
+  if (promptText) {
+    const userPromptTokens = estimateTokensFallback(promptText)
+    userUsage.totalTokens = (userUsage.totalTokens || 0) + userPromptTokens
+    userUsage.monthlyUsage[currentMonth].tokens = (userUsage.monthlyUsage[currentMonth].tokens || 0) + userPromptTokens
+    console.log(`[Prompt Tracking] User ${userId}: Added ${userPromptTokens} user prompt tokens to visible counter`)
+  }
 
   // Track prompt history (keep last 100, we'll return last 20 to frontend)
   if (promptText) {
@@ -833,9 +886,48 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
   }
 }
 
+// Track a continued conversation prompt (1 per follow-up message in judge or model conversation)
+// Also counts the user's typed message tokens towards the visible token counter
+const trackConversationPrompt = (userId, userMessage) => {
+  if (!userId) return
+  
+  const usage = readUsage()
+  if (!usage[userId]) return
+  
+  const userUsage = usage[userId]
+  const currentMonth = getCurrentMonth()
+  
+  // Ensure monthlyUsage exists
+  if (!userUsage.monthlyUsage) userUsage.monthlyUsage = {}
+  if (!userUsage.monthlyUsage[currentMonth]) {
+    userUsage.monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
+  }
+  if (userUsage.monthlyUsage[currentMonth].prompts === undefined) {
+    userUsage.monthlyUsage[currentMonth].prompts = 0
+  }
+  
+  // Count 1 prompt for this conversation follow-up
+  userUsage.totalPrompts = (userUsage.totalPrompts || 0) + 1
+  userUsage.monthlyUsage[currentMonth].prompts += 1
+  console.log(`[Conversation Prompt] User ${userId}: Prompts -> ${userUsage.totalPrompts}, Monthly -> ${userUsage.monthlyUsage[currentMonth].prompts}`)
+  
+  // Count the user's typed conversation message tokens towards visible counter
+  if (userMessage) {
+    const userMsgTokens = estimateTokensFallback(userMessage)
+    userUsage.totalTokens = (userUsage.totalTokens || 0) + userMsgTokens
+    userUsage.monthlyUsage[currentMonth].tokens = (userUsage.monthlyUsage[currentMonth].tokens || 0) + userMsgTokens
+    console.log(`[Conversation Prompt] User ${userId}: Added ${userMsgTokens} user message tokens to visible counter`)
+  }
+  
+  writeUsage(usage)
+}
+
 // Track usage for a user
-// isPipeline = true for internal pipeline calls (category detection, refiner, summary, judge pipeline)
-// Pipeline usage is included in totals/cost but NOT shown in per-model stats on the UI
+// isPipeline = true for internal/behind-the-scenes calls (category detection, refiner, context summarization)
+// isPipeline = false for user-visible model calls (council members, summary, individual models, judge conversation)
+// Pipeline usage: only counted in dailyUsage/cost. NOT in visible token counters or per-model stats.
+// Non-pipeline usage: OUTPUT tokens counted in visible counters + per-model stats. All tokens counted in cost.
+// NOTE: Prompt counting is NOT done here — it's handled by trackPrompt (initial) and trackConversationPrompt (follow-ups).
 const trackUsage = async (userId, provider, model, inputTokens, outputTokens, isPipeline = false) => {
   const usage = readUsage()
   if (!usage[userId]) {
@@ -855,7 +947,6 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
   const userUsage = usage[userId]
   const currentMonth = getCurrentMonth()
   const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
-  const tokensUsed = inputTokens + outputTokens
   const modelKey = `${provider}-${model}`
   
   // Ensure all required sub-objects exist (existing users loaded from MongoDB may lack these)
@@ -872,23 +963,31 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
     userUsage.dailyUsage = {}
   }
   
-  // Update user-visible stats (totals, monthly, provider) only for user-initiated calls
-  // Pipeline calls (judge, refiner, category detection, summary) still count towards cost via dailyUsage below
+  // Update user-visible stats (totals, monthly, provider) only for user-visible calls
+  // Pipeline calls (refiner, category detection, context summarization) still count towards cost via dailyUsage below
+  // IMPORTANT: Token counters (totalTokens, monthlyTokens) only count OUTPUT tokens — these are the tokens
+  // the user actually sees on screen (council responses, summary text, individual model responses, judge responses).
+  // The user's typed input tokens are counted separately in trackPrompt/trackConversationPrompt.
+  // API input tokens (system prompts, search sources, context) are NOT counted in the visible counters.
   if (!isPipeline) {
-    // Update totals
-    userUsage.totalTokens += tokensUsed
+    // Update totals — only OUTPUT tokens count towards visible token counters
+    userUsage.totalTokens += outputTokens
     userUsage.totalInputTokens = (userUsage.totalInputTokens || 0) + inputTokens
     userUsage.totalOutputTokens = (userUsage.totalOutputTokens || 0) + outputTokens
 
-    // Update monthly usage
+    // Update monthly usage — only OUTPUT tokens for the visible counter
     if (!userUsage.monthlyUsage[currentMonth]) {
       userUsage.monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
     }
-    userUsage.monthlyUsage[currentMonth].tokens += tokensUsed
+    userUsage.monthlyUsage[currentMonth].tokens += outputTokens
     userUsage.monthlyUsage[currentMonth].inputTokens = (userUsage.monthlyUsage[currentMonth].inputTokens || 0) + inputTokens
     userUsage.monthlyUsage[currentMonth].outputTokens = (userUsage.monthlyUsage[currentMonth].outputTokens || 0) + outputTokens
 
-    // Update provider stats
+    // NOTE: Prompt counting is NOT done here. Prompts are counted:
+    // - 1 per initial user submission (in trackPrompt)
+    // - 1 per continued conversation message (in conversation endpoints)
+
+    // Update provider stats — only OUTPUT tokens for the visible token counter
     if (!userUsage.providers[provider]) {
       userUsage.providers[provider] = {
         totalTokens: 0,
@@ -901,7 +1000,7 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
         monthlyQueries: {},
       }
     }
-    userUsage.providers[provider].totalTokens += tokensUsed
+    userUsage.providers[provider].totalTokens += outputTokens
     userUsage.providers[provider].totalInputTokens = (userUsage.providers[provider].totalInputTokens || 0) + inputTokens
     userUsage.providers[provider].totalOutputTokens = (userUsage.providers[provider].totalOutputTokens || 0) + outputTokens
 
@@ -913,7 +1012,7 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
       userUsage.providers[provider].monthlyOutputTokens[currentMonth] = 0
       userUsage.providers[provider].monthlyQueries[currentMonth] = 0
     }
-    userUsage.providers[provider].monthlyTokens[currentMonth] += tokensUsed
+    userUsage.providers[provider].monthlyTokens[currentMonth] += outputTokens
     userUsage.providers[provider].monthlyInputTokens[currentMonth] = (userUsage.providers[provider].monthlyInputTokens[currentMonth] || 0) + inputTokens
     userUsage.providers[provider].monthlyOutputTokens[currentMonth] = (userUsage.providers[provider].monthlyOutputTokens[currentMonth] || 0) + outputTokens
   } else {
@@ -924,7 +1023,7 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
   }
 
   // Update model stats
-  // Update per-model stats only for user-initiated calls (not pipeline internals)
+  // Update per-model stats only for user-visible calls (not pipeline internals)
   if (!isPipeline) {
     if (!userUsage.models[modelKey]) {
       userUsage.models[modelKey] = {
@@ -938,7 +1037,7 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
         pricing: null,
       }
     }
-    userUsage.models[modelKey].totalTokens += tokensUsed
+    userUsage.models[modelKey].totalTokens += outputTokens
     userUsage.models[modelKey].totalInputTokens = (userUsage.models[modelKey].totalInputTokens || 0) + inputTokens
     userUsage.models[modelKey].totalOutputTokens = (userUsage.models[modelKey].totalOutputTokens || 0) + outputTokens
     userUsage.models[modelKey].totalPrompts = (userUsage.models[modelKey].totalPrompts || 0) + 1
@@ -1033,11 +1132,13 @@ app.use(express.json())
 // Authentication endpoints
 app.post('/api/auth/signup', async (req, res) => {
   try {
-    const { firstName, lastName, username, email: rawEmail, password } = req.body
+    const { firstName, lastName, username, email: rawEmail, password, plan, fingerprint } = req.body
 
     if (!firstName || !lastName || !username || !rawEmail || !password) {
       return res.status(400).json({ error: 'All fields are required' })
     }
+
+    const isFreeTrial = plan === 'free_trial'
 
     if (password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' })
@@ -1045,10 +1146,45 @@ app.post('/api/auth/signup', async (req, res) => {
 
     // Normalize email to prevent case-sensitivity issues (e.g. "Test@Gmail.COM" vs "test@gmail.com")
     const email = rawEmail.toLowerCase().trim()
+    // Canonicalize email to detect alias abuse (e.g. john+trial1@gmail.com → john@gmail.com)
+    const canonical = canonicalizeEmail(email)
 
-    console.log('[Auth] Signup attempt for username:', username)
+    console.log('[Auth] Signup attempt for username:', username, '| plan:', plan)
 
-    // Check if username or email already exists in MongoDB
+    // ==================== FREE TRIAL ABUSE PREVENTION ====================
+    if (isFreeTrial) {
+      // 1. Block disposable/temporary email domains (mailinator, guerrillamail, etc.)
+      if (isDisposableEmail(email)) {
+        console.log('[Auth] ❌ Blocked disposable email:', email)
+        return res.status(400).json({ error: 'Please use a permanent email address to sign up. Temporary email services are not allowed.' })
+      }
+
+      // 2. Check canonical email — catches Gmail alias abuse (john+1@gmail.com, j.o.h.n@gmail.com)
+      const existingCanonical = await db.users.getByCanonicalEmail(canonical)
+      if (existingCanonical && existingCanonical.plan === 'free_trial') {
+        console.log('[Auth] ❌ Canonical email already used for free trial:', canonical)
+        return res.status(400).json({ error: 'A free trial has already been used with this email address.' })
+      }
+
+      // 3. IP-based rate limiting — max N free trials per IP (allows shared households)
+      const signupIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown'
+      const trialCountFromIp = await db.users.countFreeTrialsByIp(signupIp)
+      if (trialCountFromIp >= MAX_FREE_TRIALS_PER_IP) {
+        console.log(`[Auth] ❌ IP ${signupIp} exceeded free trial limit (${trialCountFromIp}/${MAX_FREE_TRIALS_PER_IP})`)
+        return res.status(400).json({ error: 'Free trial limit reached for this network. Please subscribe to a Pro plan to continue.' })
+      }
+
+      // 4. Device fingerprint check — same browser can't get multiple free trials
+      if (fingerprint) {
+        const existingFingerprint = await db.users.getFreeTrialByFingerprint(fingerprint)
+        if (existingFingerprint) {
+          console.log('[Auth] ❌ Device fingerprint already used for free trial:', fingerprint.substring(0, 12) + '...')
+          return res.status(400).json({ error: 'A free trial has already been used on this device. Please subscribe to a Pro plan to continue.' })
+        }
+      }
+    }
+
+    // ==================== STANDARD DUPLICATE CHECKS ====================
     const existingUser = await db.users.getByUsername(username)
     if (existingUser) {
       return res.status(400).json({ error: 'Username already exists' })
@@ -1059,18 +1195,30 @@ app.post('/api/auth/signup', async (req, res) => {
       return res.status(400).json({ error: 'Email already registered' })
     }
 
-    // Create new user in MongoDB with a proper UUID (not the username)
+    // ==================== CREATE USER ====================
     const hashedPassword = hashPassword(password)
     const userId = crypto.randomUUID()
+    const signupIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown'
+    
+    // Both free trial and pro start as pending_verification (must verify email first)
+    // Free trial: pending_verification → trialing (after email verified)
+    // Pro: pending_verification → inactive (after email verified) → active (after payment)
+    const initialStatus = 'pending_verification'
     
     await db.users.create(userId, {
       email,
+      canonicalEmail: canonical,
       password: hashedPassword,
       firstName,
       lastName,
-      username
+      username,
+      subscriptionStatus: initialStatus,
+      signupIp,
+      deviceFingerprint: fingerprint || null,
+      emailVerified: false,
+      plan: isFreeTrial ? 'free_trial' : null,
     })
-    console.log('[Auth] User created in MongoDB:', userId)
+    console.log('[Auth] User created in MongoDB:', userId, '| status:', initialStatus)
 
     // Update cache
     const users = readUsers()
@@ -1080,22 +1228,27 @@ app.post('/api/auth/signup', async (req, res) => {
       lastName,
       username,
       email,
+      canonicalEmail: canonical,
       password: hashedPassword,
       createdAt: new Date().toISOString(),
       stripeCustomerId: null,
       stripeSubscriptionId: null,
-      subscriptionStatus: 'inactive',
+      subscriptionStatus: initialStatus,
       subscriptionRenewalDate: null,
-      subscriptionStartedDate: null,
+      subscriptionStartedDate: isFreeTrial ? new Date().toISOString() : null,
       subscriptionPausedDate: null,
       cancellationHistory: [],
       lastActiveAt: null,
       monthlyUsageCost: {},
       monthlyOverageBilled: {},
+      plan: isFreeTrial ? 'free_trial' : null,
+      emailVerified: false,
+      signupIp,
+      deviceFingerprint: fingerprint || null,
     }
     usersCache = users
 
-    // Initialize usage tracking in cache
+    // Initialize usage tracking in cache (no credits yet for free trial — granted after email verification)
     const usage = readUsage()
     usage[userId] = {
       totalTokens: 0,
@@ -1118,16 +1271,92 @@ app.post('/api/auth/signup', async (req, res) => {
     }
     usageCache = usage
 
-    res.json({
+    // ==================== EMAIL VERIFICATION (all plans) ====================
+    // Both free trial AND pro plans require email verification before proceeding
+    const verifyToken = crypto.randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+
+    // Store token in memory + MongoDB
+    emailVerificationTokens.set(verifyToken, { userId, email, expiresAt })
+    try {
+      const dbInstance = await db.getDb()
+      await dbInstance.collection('email_verifications').insertOne({
+        token: verifyToken,
+        userId,
+        email,
+        expiresAt,
+        createdAt: new Date(),
+        used: false,
+      })
+    } catch (dbErr) {
+      console.error('[Auth] Error saving verification token to DB:', dbErr)
+    }
+
+    // Send verification email
+    const verifyLink = `${APP_URL}/#verify-email?token=${verifyToken}`
+    const emailPurpose = isFreeTrial
+      ? 'Please verify your email address to continue setting up your free trial.'
+      : 'Please verify your email address to complete your account setup.'
+    try {
+      if (resend) {
+        await resend.emails.send({
+          from: FROM_EMAIL,
+          to: email,
+          subject: `${APP_NAME} — Verify Your Email`,
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 500px; margin: 0 auto; padding: 40px 20px;">
+              <h2 style="color: #333; margin-bottom: 24px;">Verify Your Email</h2>
+              <p style="color: #555; font-size: 16px; line-height: 1.6;">
+                Hi ${firstName},
+              </p>
+              <p style="color: #555; font-size: 16px; line-height: 1.6;">
+                Thanks for signing up for ${APP_NAME}! ${emailPurpose}
+              </p>
+              <div style="text-align: center; margin: 32px 0;">
+                <a href="${verifyLink}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #5dade2, #48c9b0); color: #000; font-weight: bold; font-size: 16px; text-decoration: none; border-radius: 8px;">
+                  Verify Email Address
+                </a>
+              </div>
+              <p style="color: #888; font-size: 14px; line-height: 1.6;">
+                This link expires in 24 hours. If the button doesn't work, copy and paste this link:
+              </p>
+              <p style="color: #5dade2; font-size: 13px; word-break: break-all;">
+                ${verifyLink}
+              </p>
+              <hr style="border: none; border-top: 1px solid #eee; margin: 32px 0;" />
+              <p style="color: #999; font-size: 13px;">
+                If you didn't sign up for ${APP_NAME}, you can safely ignore this email.
+              </p>
+            </div>
+          `,
+        })
+        console.log('[Auth] Verification email sent to:', email)
+      } else {
+        console.warn('[Auth] Resend not configured — verification email NOT sent. Token:', verifyToken.substring(0, 8) + '...')
+      }
+    } catch (emailErr) {
+      console.error('[Auth] Failed to send verification email:', emailErr)
+      // Don't fail signup — user can resend verification later
+    }
+
+    const signupMessage = isFreeTrial
+      ? 'Account created! Please check your email to verify your account and activate your free trial.'
+      : 'Account created! Please check your email to verify your account.'
+
+    return res.json({
       success: true,
+      requiresVerification: true,
+      message: signupMessage,
       user: {
         id: userId,
         firstName,
         lastName,
         username,
         email,
-        subscriptionStatus: 'inactive',
+        subscriptionStatus: 'pending_verification',
         subscriptionRenewalDate: null,
+        plan: isFreeTrial ? 'free_trial' : 'pro',
+        emailVerified: false,
       },
     })
   } catch (error) {
@@ -1180,8 +1409,13 @@ app.post('/api/auth/signin', async (req, res) => {
     }
     
     console.log('[Auth] Successful sign in for user:', username, '(id:', userId, ')')
+    
+    // Check if this user still needs email verification
+    const needsVerification = dbUser.subscriptionStatus === 'pending_verification' && !dbUser.emailVerified
+    
     res.json({
       success: true,
+      requiresVerification: needsVerification,
       user: {
         id: dbUser._id,
         firstName: dbUser.firstName,
@@ -1190,6 +1424,9 @@ app.post('/api/auth/signin', async (req, res) => {
         email: dbUser.email,
         subscriptionStatus: dbUser.subscriptionStatus || 'inactive',
         subscriptionRenewalDate: dbUser.subscriptionRenewalDate || null,
+        emailVerified: dbUser.emailVerified || false,
+        plan: dbUser.plan || null,
+        modelPreferences: dbUser.modelPreferences || null,
       },
     })
   } catch (error) {
@@ -1473,7 +1710,272 @@ setInterval(async () => {
     cleaned += result.deletedCount || 0
   } catch (err) { /* ignore cleanup errors */ }
   if (cleaned > 0) console.log(`[Auth] Cleaned up ${cleaned} expired/used reset tokens`)
+  
+  // Also clean email verification tokens
+  let emailCleaned = 0
+  for (const [token, data] of emailVerificationTokens.entries()) {
+    if (now > new Date(data.expiresAt)) {
+      emailVerificationTokens.delete(token)
+      emailCleaned++
+    }
+  }
+  try {
+    const dbInstance = await db.getDb()
+    const result = await dbInstance.collection('email_verifications').deleteMany({
+      $or: [
+        { expiresAt: { $lt: now } },
+        { used: true },
+      ]
+    })
+    emailCleaned += result.deletedCount || 0
+  } catch (err) { /* ignore cleanup errors */ }
+  if (emailCleaned > 0) console.log(`[Auth] Cleaned up ${emailCleaned} expired/used email verification tokens`)
 }, 60 * 60 * 1000) // Every hour
+
+// ============================================================================
+// EMAIL VERIFICATION
+// ============================================================================
+
+// Verify email — handles both free trial (needs phone next) and pro (goes to payment)
+app.post('/api/auth/verify-email', async (req, res) => {
+  try {
+    const { token } = req.body
+
+    if (!token) {
+      return res.status(400).json({ error: 'Verification token is required' })
+    }
+
+    console.log('[Auth] Email verification attempt with token:', token.substring(0, 8) + '...')
+
+    // Check in-memory first
+    let tokenData = emailVerificationTokens.get(token)
+
+    // If not in memory, check MongoDB (server may have restarted)
+    if (!tokenData) {
+      try {
+        const dbInstance = await db.getDb()
+        const dbToken = await dbInstance.collection('email_verifications').findOne({ token, used: false })
+        if (dbToken) {
+          tokenData = {
+            userId: dbToken.userId,
+            email: dbToken.email,
+            expiresAt: dbToken.expiresAt,
+          }
+        }
+      } catch (dbErr) {
+        console.error('[Auth] Error checking verification token in DB:', dbErr)
+      }
+    }
+
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Invalid or expired verification link. Please request a new one.' })
+    }
+
+    // Check if token has expired
+    if (new Date() > new Date(tokenData.expiresAt)) {
+      emailVerificationTokens.delete(token)
+      try {
+        const dbInstance = await db.getDb()
+        await dbInstance.collection('email_verifications').deleteOne({ token })
+      } catch (dbErr) { /* ignore cleanup errors */ }
+      return res.status(400).json({ error: 'This verification link has expired. Please request a new one.' })
+    }
+
+    const userId = tokenData.userId
+
+    // Get the user to check their plan
+    const dbUser = await db.users.get(userId)
+    if (!dbUser) {
+      return res.status(400).json({ error: 'User not found.' })
+    }
+
+    const isFreeTrial = dbUser.plan === 'free_trial'
+
+    if (isFreeTrial) {
+      // FREE TRIAL: Email verified → activate trial immediately
+      const freeTrialCredits = 0.50
+
+      await db.users.update(userId, {
+        emailVerified: true,
+        subscriptionStatus: 'trialing',
+        subscriptionStartedDate: new Date(),
+      })
+
+      // Update cache
+      const users = readUsers()
+      if (users[userId]) {
+        users[userId].emailVerified = true
+        users[userId].subscriptionStatus = 'trialing'
+        users[userId].subscriptionStartedDate = new Date().toISOString()
+        writeUsers(users, userId)
+      }
+
+      // Grant free trial credits
+      const usage = readUsage()
+      if (usage[userId]) {
+        usage[userId].purchasedCredits = { total: freeTrialCredits, remaining: freeTrialCredits }
+        usageCache = usage
+        scheduleUsageSync(userId)
+      }
+
+      // Invalidate the token (single-use)
+      emailVerificationTokens.delete(token)
+      try {
+        const dbInstance = await db.getDb()
+        await dbInstance.collection('email_verifications').updateOne({ token }, { $set: { used: true } })
+      } catch (dbErr) {
+        console.error('[Auth] Error marking verification token as used:', dbErr)
+      }
+
+      console.log('[Auth] ✅ Email verified + free trial activated for user:', userId)
+      res.json({
+        success: true,
+        message: 'Email verified! Your free trial is now active.',
+        user: {
+          id: userId,
+          subscriptionStatus: 'trialing',
+          emailVerified: true,
+          plan: 'free_trial',
+        },
+      })
+    } else {
+      // PRO PLAN: Email verified → go to payment (status becomes inactive)
+      await db.users.update(userId, {
+        emailVerified: true,
+        subscriptionStatus: 'inactive',
+      })
+
+      // Update cache
+      const users = readUsers()
+      if (users[userId]) {
+        users[userId].emailVerified = true
+        users[userId].subscriptionStatus = 'inactive'
+        writeUsers(users, userId)
+      }
+
+      // Invalidate the token (single-use)
+      emailVerificationTokens.delete(token)
+      try {
+        const dbInstance = await db.getDb()
+        await dbInstance.collection('email_verifications').updateOne({ token }, { $set: { used: true } })
+      } catch (dbErr) {
+        console.error('[Auth] Error marking verification token as used:', dbErr)
+      }
+
+      console.log('[Auth] ✅ Email verified for pro user (ready for payment):', userId)
+      res.json({
+        success: true,
+        message: 'Email verified! You can now sign in and set up your subscription.',
+        user: {
+          id: userId,
+          subscriptionStatus: 'inactive',
+          emailVerified: true,
+          plan: 'pro',
+        },
+      })
+    }
+  } catch (error) {
+    console.error('[Auth] Email verification error:', error)
+    res.status(500).json({ error: 'An error occurred. Please try again.' })
+  }
+})
+
+// Resend verification email
+app.post('/api/auth/resend-verification', async (req, res) => {
+  try {
+    const { userId, email } = req.body
+
+    if (!userId && !email) {
+      return res.status(400).json({ error: 'userId or email is required' })
+    }
+
+    // Find the user
+    let user
+    if (userId) {
+      user = await db.users.get(userId)
+    } else {
+      user = await db.users.getByEmail(email.toLowerCase().trim())
+    }
+
+    if (!user) {
+      // Don't reveal whether user exists
+      return res.json({ success: true, message: 'If an account exists, a new verification email has been sent.' })
+    }
+
+    // Only resend for users pending verification
+    if (user.emailVerified || user.subscriptionStatus !== 'pending_verification') {
+      return res.status(400).json({ error: 'This account is already verified.' })
+    }
+
+    // Rate limit: max 1 resend per 2 minutes
+    const dbInstance = await db.getDb()
+    const recentToken = await dbInstance.collection('email_verifications').findOne({
+      userId: user._id,
+      createdAt: { $gt: new Date(Date.now() - 2 * 60 * 1000) }, // Last 2 minutes
+      used: false,
+    })
+    if (recentToken) {
+      return res.status(429).json({ error: 'Please wait a couple minutes before requesting another verification email.' })
+    }
+
+    // Invalidate old tokens for this user
+    await dbInstance.collection('email_verifications').updateMany(
+      { userId: user._id, used: false },
+      { $set: { used: true } }
+    )
+
+    // Generate new token
+    const verifyToken = crypto.randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+
+    emailVerificationTokens.set(verifyToken, { userId: user._id, email: user.email, expiresAt })
+    await dbInstance.collection('email_verifications').insertOne({
+      token: verifyToken,
+      userId: user._id,
+      email: user.email,
+      expiresAt,
+      createdAt: new Date(),
+      used: false,
+    })
+
+    // Send verification email
+    const verifyLink = `${APP_URL}/#verify-email?token=${verifyToken}`
+    if (resend) {
+      await resend.emails.send({
+        from: FROM_EMAIL,
+        to: user.email,
+        subject: `${APP_NAME} — Verify Your Email`,
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 500px; margin: 0 auto; padding: 40px 20px;">
+            <h2 style="color: #333; margin-bottom: 24px;">Verify Your Email</h2>
+            <p style="color: #555; font-size: 16px; line-height: 1.6;">
+              Hi ${user.firstName || 'there'},
+            </p>
+            <p style="color: #555; font-size: 16px; line-height: 1.6;">
+              Here's a new verification link for your ${APP_NAME} account.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+              <a href="${verifyLink}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #5dade2, #48c9b0); color: #000; font-weight: bold; font-size: 16px; text-decoration: none; border-radius: 8px;">
+                Verify Email Address
+              </a>
+            </div>
+            <p style="color: #888; font-size: 14px;">This link expires in 24 hours.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 32px 0;" />
+            <p style="color: #999; font-size: 13px;">
+              If you didn't sign up for ${APP_NAME}, you can safely ignore this email.
+            </p>
+          </div>
+        `,
+      })
+      console.log('[Auth] Resent verification email to:', user.email)
+    }
+
+    res.json({ success: true, message: 'A new verification email has been sent.' })
+  } catch (error) {
+    console.error('[Auth] Resend verification error:', error)
+    res.status(500).json({ error: 'An error occurred. Please try again.' })
+  }
+})
 
 // Track a prompt submission
 app.post('/api/stats/prompt', (req, res) => {
@@ -1581,6 +2083,49 @@ app.delete('/api/auth/account', async (req, res) => {
   }
 })
 
+// ============================================================================
+// MODEL PREFERENCES — Save/Load user's selected models & Auto Smart state
+// ============================================================================
+
+// Save model preferences
+app.put('/api/user/model-preferences', async (req, res) => {
+  try {
+    const { userId, selectedModels, autoSmartProviders } = req.body
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+
+    const users = readUsers()
+    if (!users[userId]) return res.status(404).json({ error: 'User not found' })
+
+    // Save to user cache
+    users[userId].modelPreferences = {
+      selectedModels: selectedModels || [],
+      autoSmartProviders: autoSmartProviders || {},
+      updatedAt: new Date().toISOString(),
+    }
+    writeUsers(users, userId)
+
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[Model Preferences] Error saving:', error)
+    res.status(500).json({ error: 'Failed to save model preferences' })
+  }
+})
+
+// Load model preferences
+app.get('/api/user/model-preferences/:userId', (req, res) => {
+  try {
+    const { userId } = req.params
+    const users = readUsers()
+    if (!users[userId]) return res.status(404).json({ error: 'User not found' })
+
+    const prefs = users[userId].modelPreferences || null
+    res.json({ modelPreferences: prefs })
+  } catch (error) {
+    console.error('[Model Preferences] Error loading:', error)
+    res.status(500).json({ error: 'Failed to load model preferences' })
+  }
+})
+
 // Get user statistics
 app.get('/api/stats/:userId', (req, res) => {
   const { userId } = req.params
@@ -1655,7 +2200,7 @@ app.get('/api/stats/:userId', (req, res) => {
   const createdAt = user?.createdAt || null
 
   // Calculate monthly cost and remaining free allocation
-  const FREE_MONTHLY_ALLOCATION = 5.00 // $5 per month included in subscription
+  const FREE_MONTHLY_ALLOCATION = 7.50 // $7.50 per month included in subscription
   
   // Get the tracked monthly cost from users cache (incremental counter)
   let cachedMonthlyCost = user?.monthlyUsageCost?.[currentMonth] || 0
@@ -1761,7 +2306,7 @@ app.get('/api/stats/:userId', (req, res) => {
         dayCost += queryCost
       }
       
-      // Calculate percentage of $5 allocation used on this day
+      // Calculate percentage of $7.50 allocation used on this day
       const dayPercentage = (dayCost / FREE_MONTHLY_ALLOCATION) * 100
       
       dailyUsage.push({
@@ -2167,7 +2712,7 @@ app.post('/api/judge/conversation', async (req, res) => {
       })
     }
     
-    console.log('[Judge Conversation] Processing message with Grok (conversational mode, with RAG support)')
+    console.log('[Judge Conversation] Processing message with Gemini 3 Flash (conversational mode, with RAG support)')
     
     // Step 1: Detect category and determine if search is needed (using same model as main page)
     const { category, needsSearch } = await detectCategoryForJudge(userMessage, userId)
@@ -2229,8 +2774,8 @@ app.post('/api/judge/conversation', async (req, res) => {
       }
     }
     
-    // Step 3: Build prompt for Grok (conversational, not judge mode)
-    // After the initial judge summary, the user is just talking to Grok naturally
+    // Step 3: Build prompt for Gemini (conversational, not judge mode)
+    // After the initial judge summary, the user is just talking to Gemini naturally
     const todayDate = getCurrentDateString()
     if (refinedData && refinedData.facts_with_citations && refinedData.facts_with_citations.length > 0) {
       // Include refined facts in the prompt
@@ -2244,31 +2789,31 @@ app.post('/api/judge/conversation', async (req, res) => {
       judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search. If search results are provided, use them directly. Do NOT tell the user you cannot search the web.\n\n${contextString}User: ${userMessage}`
     }
     
-    // Step 4: Call Grok
-    const apiKey = API_KEYS.xai
+    // Step 4: Call Gemini 3 Flash
+    const apiKey = API_KEYS.google
     if (!apiKey) {
-      return res.status(500).json({ error: 'xAI API key not configured' })
+      return res.status(500).json({ error: 'Google API key not configured' })
     }
     
+    const judgeModel = 'gemini-3-flash'
+    const judgeModelApi = 'gemini-3-flash-preview'
+    
     const response = await axios.post(
-      'https://api.x.ai/v1/chat/completions',
+      `https://generativelanguage.googleapis.com/v1beta/models/${judgeModelApi}:generateContent?key=${apiKey}`,
       {
-        model: 'grok-4-1-fast-reasoning',
-        messages: [{ role: 'user', content: judgePrompt }],
-        temperature: 0.7
+        contents: [{ parts: [{ text: judgePrompt }] }],
       },
       {
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         }
       }
     )
     
-    const responseText = response.data.choices[0].message.content
+    const responseText = response.data.candidates[0].content.parts[0].text
     
-    // Track usage for Grok call
-    const responseTokens = extractTokensFromResponse(response.data, 'xai')
+    // Track usage for Gemini call
+    const responseTokens = extractTokensFromResponse(response.data, 'google')
     let inputTokens = 0
     let outputTokens = 0
     
@@ -2276,11 +2821,15 @@ app.post('/api/judge/conversation', async (req, res) => {
       inputTokens = responseTokens.inputTokens || 0
       outputTokens = responseTokens.outputTokens || 0
     } else {
-      inputTokens = await countTokens(judgePrompt, 'xai', 'grok-4-1-fast-reasoning')
-      outputTokens = await countTokens(responseText, 'xai', 'grok-4-1-fast-reasoning')
+      inputTokens = await countTokens(judgePrompt, 'google', judgeModel)
+      outputTokens = await countTokens(responseText, 'google', judgeModel)
     }
     
-    trackUsage(userId, 'xai', 'grok-4-1-fast-reasoning', inputTokens, outputTokens, true)
+    // User sees the judge conversation response on screen — NOT pipeline
+    trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
+    
+    // Count this continued conversation as 1 prompt + count user's message tokens
+    trackConversationPrompt(userId, userMessage)
     
     // Summarize the response and store it (async, don't wait) - pass just the user message as originalPrompt
     storeJudgeContext(userId, responseText, userMessage).catch(err => {
@@ -2360,7 +2909,7 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
       return res.end()
     }
 
-    console.log('[Judge Conversation Stream] Processing message with Grok')
+    console.log('[Judge Conversation Stream] Processing message with Gemini 3 Flash')
 
     // Step 1: Category detection
     sendSSE('status', { message: 'Analyzing query...' })
@@ -2426,119 +2975,123 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
       judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search. If search results are provided, use them directly. Do NOT tell the user you cannot search the web.\n\n${contextString}User: ${userMessage}`
     }
 
-    // Step 4: Stream from Grok
-    const apiKey = API_KEYS.xai
+    // Step 4: Stream from Gemini 3 Flash
+    const apiKey = API_KEYS.google
     if (!apiKey) {
-      sendSSE('error', { message: 'xAI API key not configured' })
+      sendSSE('error', { message: 'Google API key not configured' })
       return res.end()
     }
 
+    const judgeModel = 'gemini-3-flash'
+    const judgeModelApi = 'gemini-3-flash-preview'
+
     sendSSE('status', { message: 'Generating response...' })
 
+    // Prepend system instruction into the user prompt for Gemini (Gemini uses systemInstruction or inline)
+    const systemPrefix = 'You are a helpful conversational AI assistant. Respond directly and naturally to the user\'s follow-up questions. Do NOT format your response as a council summary — no CONSENSUS, SUMMARY, AGREEMENTS, or DISAGREEMENTS sections. Just answer conversationally as a single assistant. Use the conversation context provided to maintain continuity.\n\n'
+
     const streamResponse = await axios.post(
-      'https://api.x.ai/v1/chat/completions',
+      `https://generativelanguage.googleapis.com/v1beta/models/${judgeModelApi}:streamGenerateContent?key=${apiKey}&alt=sse`,
       {
-        model: 'grok-4-1-fast-reasoning',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a helpful conversational AI assistant. Respond directly and naturally to the user\'s follow-up questions. Do NOT format your response as a council summary — no CONSENSUS, SUMMARY, AGREEMENTS, or DISAGREEMENTS sections. Just answer conversationally as a single assistant. Use the conversation context provided to maintain continuity.'
-          },
-          { role: 'user', content: judgePrompt }
-        ],
-        temperature: 0.7,
-        stream: true
+        contents: [{ parts: [{ text: systemPrefix + judgePrompt }] }],
       },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        responseType: 'stream'
-      }
+      { responseType: 'stream' }
     )
 
     let fullResponse = ''
     let inputTokens = 0
     let outputTokens = 0
 
-    streamResponse.data.on('data', (chunk) => {
-      const lines = chunk.toString().split('\n').filter(l => l.trim().startsWith('data:'))
-      for (const line of lines) {
-        const jsonStr = line.replace(/^data:\s*/, '').trim()
-        if (jsonStr === '[DONE]') continue
-        try {
-          const parsed = JSON.parse(jsonStr)
-          const token = parsed.choices?.[0]?.delta?.content || ''
-          if (token) {
-            fullResponse += token
-            sendSSE('token', { content: token })
-          }
-          // Capture usage from the final chunk
-          if (parsed.usage) {
-            inputTokens = parsed.usage.prompt_tokens || 0
-            outputTokens = parsed.usage.completion_tokens || 0
-          }
-        } catch (e) {
-          // Skip unparseable chunks
+    await new Promise((resolve, reject) => {
+      let buffer = ''
+      const processLine = (line) => {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.replace('data: ', '').trim()
+          if (!jsonStr) return
+          try {
+            const parsed = JSON.parse(jsonStr)
+            const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
+            if (text) {
+              fullResponse += text
+              sendSSE('token', { content: text })
+            }
+            if (parsed.usageMetadata) {
+              inputTokens = parsed.usageMetadata.promptTokenCount || inputTokens
+              outputTokens = parsed.usageMetadata.candidatesTokenCount || outputTokens
+            }
+          } catch (e) { /* skip */ }
         }
       }
+      streamResponse.data.on('data', (chunk) => {
+        buffer += chunk.toString()
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          processLine(line)
+        }
+      })
+      streamResponse.data.on('end', () => {
+        if (buffer.trim()) {
+          const remaining = buffer.split('\n')
+          for (const line of remaining) {
+            processLine(line)
+          }
+        }
+        resolve()
+      })
+      streamResponse.data.on('error', reject)
     })
 
-    streamResponse.data.on('end', async () => {
-      // If tokens weren't in stream, estimate them
-      if (inputTokens === 0 && outputTokens === 0) {
-        try {
-          inputTokens = await countTokens(judgePrompt, 'xai', 'grok-4-1-fast-reasoning')
-          outputTokens = await countTokens(fullResponse, 'xai', 'grok-4-1-fast-reasoning')
-        } catch (e) {
-          console.error('[Judge Stream] Token counting error:', e)
-        }
+    // If tokens weren't in stream, estimate them
+    if (inputTokens === 0 && outputTokens === 0) {
+      try {
+        inputTokens = await countTokens(judgePrompt, 'google', judgeModel)
+        outputTokens = await countTokens(fullResponse, 'google', judgeModel)
+      } catch (e) {
+        console.error('[Judge Stream] Token counting error:', e)
       }
+    }
 
-      trackUsage(userId, 'xai', 'grok-4-1-fast-reasoning', inputTokens, outputTokens, true)
+    // User sees the judge conversation stream on screen — NOT pipeline
+    trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
 
-      // Store context async
-      storeJudgeContext(userId, fullResponse, userMessage).catch(err => {
-        console.error('[Judge Conversation Stream] Error storing context:', err)
-      })
+    // Count this continued conversation as 1 prompt + count user's message tokens
+    trackConversationPrompt(userId, userMessage)
 
-      // Build debug data
-      const debugData = needsSearch ? {
-        search: { query: userMessage, results: searchResults },
-        refiner: refinedData ? {
-          primary: {
-            facts_with_citations: refinedData.facts_with_citations || [],
-            data_points: refinedData.data_points || [],
-            tokens: refinedData.tokens || null
-          }
-        } : null,
-        categoryDetection: { category, needsSearch }
-      } : null
+    // Store context async
+    storeJudgeContext(userId, fullResponse, userMessage).catch(err => {
+      console.error('[Judge Conversation Stream] Error storing context:', err)
+    })
 
-      // Send final metadata
-      sendSSE('done', {
-        response: fullResponse,
-        tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens },
-        category, needsSearch,
-        usedSearch: needsSearch && refinedData !== null,
-        debugData,
-        searchResults,
-        refinedData: refinedData ? {
+    // Build debug data
+    const debugData = needsSearch ? {
+      search: { query: userMessage, results: searchResults },
+      refiner: refinedData ? {
+        primary: {
           facts_with_citations: refinedData.facts_with_citations || [],
           data_points: refinedData.data_points || [],
           tokens: refinedData.tokens || null
-        } : null
-      })
+        }
+      } : null,
+      categoryDetection: { category, needsSearch }
+    } : null
 
-      res.end()
+    // Send final metadata
+    sendSSE('done', {
+      response: fullResponse,
+      tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens },
+      category, needsSearch,
+      usedSearch: needsSearch && refinedData !== null,
+      debugData,
+      searchResults,
+      refinedData: refinedData ? {
+        facts_with_citations: refinedData.facts_with_citations || [],
+        data_points: refinedData.data_points || [],
+        tokens: refinedData.tokens || null
+      } : null
     })
 
-    streamResponse.data.on('error', (err) => {
-      console.error('[Judge Stream] Stream error:', err)
-      sendSSE('error', { message: 'Stream error: ' + err.message })
-      res.end()
-    })
+    res.end()
 
   } catch (error) {
     console.error('[Judge Conversation Stream] Error:', error.message)
@@ -2878,6 +3431,9 @@ app.post('/api/model/conversation/stream', async (req, res) => {
     // Track usage
     trackUsage(userId, provider, model, inputTokens, outputTokens)
 
+    // Count this continued conversation as 1 prompt + count user's message tokens
+    trackConversationPrompt(userId, userMessage)
+
     // Store context async
     storeModelContext(userId, modelName, fullResponse, userMessage).catch(err => {
       console.error(`[Model Conversation Stream] Error storing context for ${modelName}:`, err)
@@ -3114,6 +3670,9 @@ app.post('/api/model/conversation', async (req, res) => {
     
     // Track usage
     trackUsage(userId, provider, model, inputTokens, outputTokens)
+    
+    // Count this continued conversation as 1 prompt + count user's message tokens
+    trackConversationPrompt(userId, userMessage)
     
     // Store response in server-side context (async, don't wait — same as judge)
     storeModelContext(userId, modelName, responseText, userMessage).catch(err => {
@@ -4310,8 +4869,11 @@ app.post('/api/llm/stream', async (req, res) => {
       return res.end()
     }
 
-    // Estimate tokens if not captured from stream
+    // Determine if tokens came from the API stream or need estimation
+    let tokenSource = 'api_response' // assume API reported them via the stream
     if (inputTokens === 0 && outputTokens === 0) {
+      // API didn't return usage — fall back to estimation
+      tokenSource = 'estimated'
       try {
         inputTokens = await countTokens(prompt, provider, mappedModel)
         outputTokens = await countTokens(fullResponse, provider, mappedModel)
@@ -4336,7 +4898,7 @@ app.post('/api/llm/stream', async (req, res) => {
         total: totalTokens,
         provider,
         model,
-        source: 'stream'
+        source: tokenSource
       }
     })
 
@@ -4366,7 +4928,7 @@ app.post('/api/llm/stream', async (req, res) => {
 })
 
 // ==================== STREAMING SUMMARY ENDPOINT ====================
-// SSE streaming version for judge/summary generation (always Grok)
+// SSE streaming version for judge/summary generation (always Gemini 3 Flash)
 app.post('/api/summary/stream', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
@@ -4385,79 +4947,92 @@ app.post('/api/summary/stream', async (req, res) => {
       return res.end()
     }
 
-    const apiKey = API_KEYS.xai
+    const apiKey = API_KEYS.google
     if (!apiKey) {
-      sendSSE('error', { message: 'xAI API key not configured' })
+      sendSSE('error', { message: 'Google API key not configured' })
       return res.end()
     }
 
-    const grokModel = 'grok-4-1-fast-reasoning'
+    const judgeModel = 'gemini-3-flash'
+    const judgeModelApi = 'gemini-3-flash-preview'
     let fullResponse = ''
     let inputTokens = 0
     let outputTokens = 0
 
     const streamResponse = await axios.post(
-      'https://api.x.ai/v1/chat/completions',
+      `https://generativelanguage.googleapis.com/v1beta/models/${judgeModelApi}:streamGenerateContent?key=${apiKey}&alt=sse`,
       {
-        model: grokModel,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
-        stream: true,
-        stream_options: { include_usage: true }
+        contents: [{ parts: [{ text: prompt }] }],
       },
-      {
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        responseType: 'stream'
-      }
+      { responseType: 'stream' }
     )
 
     await new Promise((resolve, reject) => {
-      streamResponse.data.on('data', (chunk) => {
-        const lines = chunk.toString().split('\n').filter(l => l.trim().startsWith('data:'))
-        for (const line of lines) {
-          const jsonStr = line.replace(/^data:\s*/, '').trim()
-          if (jsonStr === '[DONE]') continue
+      let buffer = ''
+      const processLine = (line) => {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.replace('data: ', '').trim()
+          if (!jsonStr) return
           try {
             const parsed = JSON.parse(jsonStr)
-            const token = parsed.choices?.[0]?.delta?.content || ''
-            if (token) {
-              fullResponse += token
-              sendSSE('token', { content: token })
+            const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
+            if (text) {
+              fullResponse += text
+              sendSSE('token', { content: text })
             }
-            if (parsed.usage) {
-              inputTokens = parsed.usage.prompt_tokens || 0
-              outputTokens = parsed.usage.completion_tokens || 0
+            if (parsed.usageMetadata) {
+              inputTokens = parsed.usageMetadata.promptTokenCount || inputTokens
+              outputTokens = parsed.usageMetadata.candidatesTokenCount || outputTokens
             }
           } catch (e) { /* skip */ }
         }
+      }
+      streamResponse.data.on('data', (chunk) => {
+        buffer += chunk.toString()
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          processLine(line)
+        }
       })
-      streamResponse.data.on('end', resolve)
+      streamResponse.data.on('end', () => {
+        if (buffer.trim()) {
+          const remaining = buffer.split('\n')
+          for (const line of remaining) {
+            processLine(line)
+          }
+        }
+        resolve()
+      })
       streamResponse.data.on('error', reject)
     })
 
-    // Estimate tokens if not captured
+    // Determine if tokens came from the API stream or need estimation
+    let tokenSource = 'api_response' // assume API reported them via the stream
     if (inputTokens === 0 && outputTokens === 0) {
+      tokenSource = 'estimated'
       try {
-        inputTokens = await countTokens(prompt, 'xai', grokModel)
-        outputTokens = await countTokens(fullResponse, 'xai', grokModel)
+        inputTokens = await countTokens(prompt, 'google', judgeModel)
+        outputTokens = await countTokens(fullResponse, 'google', judgeModel)
       } catch (e) { /* skip */ }
     }
 
-    // Track usage as summary/judge call (pipeline — not shown in user stats, only cost)
+    // Track usage as summary call — user sees the summary output on screen,
+    // so this is NOT pipeline (output tokens count in visible counters, counts as a prompt)
     if (userId) {
-      trackUsage(userId, 'xai', grokModel, inputTokens, outputTokens, true)
+      trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
     }
 
     sendSSE('done', {
       text: fullResponse,
-      model: grokModel,
+      model: judgeModel,
       tokens: {
         input: inputTokens,
         output: outputTokens,
         total: inputTokens + outputTokens,
-        provider: 'xai',
-        model: grokModel,
-        source: 'stream'
+        provider: 'google',
+        model: judgeModel,
+        source: tokenSource
       }
     })
 
@@ -5271,32 +5846,32 @@ Respond with ONLY a JSON object in this format:
 If both summaries have similar citation quality, prefer the one with more citations.`
   
   try {
-    const apiKey = API_KEYS.xai
+    const apiKey = API_KEYS.google
     if (!apiKey) {
-      console.log('[Judge] xAI API key not configured, using citation count as fallback')
+      console.log('[Judge] Google API key not configured, using citation count as fallback')
       return backupCitationCount > primaryCitationCount ? backupRefined : primaryRefined
     }
     
+    const judgeModel = 'gemini-3-flash'
+    const judgeModelApi = 'gemini-3-flash-preview'
+    
     const response = await axios.post(
-      'https://api.x.ai/v1/chat/completions',
+      `https://generativelanguage.googleapis.com/v1beta/models/${judgeModelApi}:generateContent?key=${apiKey}`,
       {
-        model: 'grok-4-1-fast-reasoning',
-        messages: [{ role: 'user', content: judgePrompt }],
-        temperature: 0.3
+        contents: [{ parts: [{ text: judgePrompt }] }],
       },
       {
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         }
       }
     )
     
-      const content = response.data.choices[0].message.content
+      const content = response.data.candidates[0].content.parts[0].text
       
-      // Track usage for judge refiner selection (xAI/Grok) and get token info
+      // Track usage for judge refiner selection (Google/Gemini) and get token info
       if (content) {
-        const responseTokens = extractTokensFromResponse(response.data, 'xai')
+        const responseTokens = extractTokensFromResponse(response.data, 'google')
         let inputTokens = 0
         let outputTokens = 0
         
@@ -5304,21 +5879,21 @@ If both summaries have similar citation quality, prefer the one with more citati
           inputTokens = responseTokens.inputTokens || 0
           outputTokens = responseTokens.outputTokens || 0
         } else {
-          inputTokens = await countTokens(judgePrompt, 'xai', 'grok-4-1-fast-reasoning')
-          outputTokens = await countTokens(content, 'xai', 'grok-4-1-fast-reasoning')
+          inputTokens = await countTokens(judgePrompt, 'google', judgeModel)
+          outputTokens = await countTokens(content, 'google', judgeModel)
         }
         
         // Track usage for judge refiner selection (pipeline — not shown in per-model stats)
         if (userId) {
-          trackUsage(userId, 'xai', 'grok-4-1-fast-reasoning', inputTokens, outputTokens, true)
+          trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, true)
         }
         
         judgeTokenInfo = {
           input: inputTokens,
           output: outputTokens,
           total: inputTokens + outputTokens,
-          provider: 'xai',
-          model: 'grok-4-1-fast-reasoning',
+          provider: 'google',
+          model: judgeModel,
           source: responseTokens ? 'api_response' : 'tokenizer'
         }
       }
@@ -5473,32 +6048,32 @@ DISAGREEMENTS:
 
 
   try {
-    const apiKey = API_KEYS.xai
+    const apiKey = API_KEYS.google
     if (!apiKey) {
-      throw new Error('xAI API key not configured')
+      throw new Error('Google API key not configured')
     }
     
+    const judgeModel = 'gemini-3-flash'
+    const judgeModelApi = 'gemini-3-flash-preview'
+    
     const response = await axios.post(
-      'https://api.x.ai/v1/chat/completions',
+      `https://generativelanguage.googleapis.com/v1beta/models/${judgeModelApi}:generateContent?key=${apiKey}`,
       {
-        model: 'grok-4-1-fast-reasoning',
-        messages: [{ role: 'user', content: judgePrompt }],
-        temperature: 0.7
+        contents: [{ parts: [{ text: judgePrompt }] }],
       },
       {
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         }
       }
     )
     
-    const content = response.data.choices[0].message.content
+    const content = response.data.candidates[0].content.parts[0].text
     
-    // Track usage for judge finalization (xAI/Grok) and get token info
+    // Track usage for judge finalization (Google/Gemini) and get token info
     let judgeTokenInfo = null
     if (content) {
-      const responseTokens = extractTokensFromResponse(response.data, 'xai')
+      const responseTokens = extractTokensFromResponse(response.data, 'google')
       let inputTokens = 0
       let outputTokens = 0
       
@@ -5506,21 +6081,21 @@ DISAGREEMENTS:
         inputTokens = responseTokens.inputTokens || 0
         outputTokens = responseTokens.outputTokens || 0
       } else {
-        inputTokens = await countTokens(judgePrompt, 'xai', 'grok-4-1-fast-reasoning')
-        outputTokens = await countTokens(content, 'xai', 'grok-4-1-fast-reasoning')
+        inputTokens = await countTokens(judgePrompt, 'google', judgeModel)
+        outputTokens = await countTokens(content, 'google', judgeModel)
       }
       
       // Track usage for judge finalization (pipeline — not shown in per-model stats)
       if (userId) {
-        trackUsage(userId, 'xai', 'grok-4-1-fast-reasoning', inputTokens, outputTokens, true)
+        trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, true)
       }
       
       judgeTokenInfo = {
         input: inputTokens,
         output: outputTokens,
         total: inputTokens + outputTokens,
-        provider: 'xai',
-        model: 'grok-4-1-fast-reasoning',
+        provider: 'google',
+        model: judgeModel,
         source: responseTokens ? 'api_response' : 'tokenizer'
       }
     }
@@ -5684,13 +6259,13 @@ DISAGREEMENTS:
   }
 }
 
-// Summarize Grok response using Gemini 2.5 Flash Lite (max 75 tokens)
-const summarizeGrokResponse = async (grokResponse, userId = null) => {
-  console.log('[Summarize] Summarizing Grok response using Gemini 2.5 Flash Lite')
+// Summarize judge response using Gemini 2.5 Flash Lite (max 75 tokens)
+const summarizeJudgeResponse = async (judgeResponseText, userId = null) => {
+  console.log('[Summarize] Summarizing judge response using Gemini 2.5 Flash Lite')
   
   const summaryPrompt = `Summarize this response in 75 tokens or less. Be concise but preserve key information and context:
 
-${grokResponse}
+${judgeResponseText}
 
 Provide only the summary (max 75 tokens):`
   
@@ -5700,7 +6275,7 @@ Provide only the summary (max 75 tokens):`
       console.warn('[Summarize] Google API key not configured, using fallback truncation')
       // Fallback: simple truncation
       return { 
-        summary: grokResponse.substring(0, 200) + (grokResponse.length > 200 ? '...' : ''), 
+        summary: judgeResponseText.substring(0, 200) + (judgeResponseText.length > 200 ? '...' : ''), 
         tokens: 50 // Estimate
       }
     }
@@ -5765,17 +6340,17 @@ Provide only the summary (max 75 tokens):`
     console.log(`[Summarize] Summary created: ${tokens} tokens`)
     return { summary, tokens }
   } catch (error) {
-    console.error('[Summarize] Error summarizing Grok response:', error)
+    console.error('[Summarize] Error summarizing judge response:', error)
     // Fallback: simple truncation
     return { 
-      summary: grokResponse.substring(0, 200) + (grokResponse.length > 200 ? '...' : ''), 
+      summary: judgeResponseText.substring(0, 200) + (judgeResponseText.length > 200 ? '...' : ''), 
       tokens: 50 // Estimate
     }
   }
 }
 
 // Store judge conversation context (rolling window of 5 - position 0 is full, positions 1-4 are summarized)
-const storeJudgeContext = async (userId, grokResponse, originalPrompt = null) => {
+const storeJudgeContext = async (userId, judgeResponse, originalPrompt = null) => {
   if (!userId) return
   
   try {
@@ -5795,7 +6370,7 @@ const storeJudgeContext = async (userId, grokResponse, originalPrompt = null) =>
     // If there's an existing item at position 0 (full response), summarize it before shifting
     if (context.length > 0 && context[0].isFull) {
       console.log('[Judge Context] Summarizing previous full response before adding new one')
-      const { summary, tokens } = await summarizeGrokResponse(context[0].response, userId)
+      const { summary, tokens } = await summarizeJudgeResponse(context[0].response, userId)
       context[0] = {
         summary,
         tokens,
@@ -5807,7 +6382,7 @@ const storeJudgeContext = async (userId, grokResponse, originalPrompt = null) =>
     
     // Add new FULL response at position 0 (not summarized yet)
     context.unshift({
-      response: grokResponse, // Store full response
+      response: judgeResponse, // Store full response
       summary: null, // Will be summarized when pushed to position 1
       tokens: null,
       originalPrompt: originalPrompt || null, // Just the user's prompt
@@ -5851,7 +6426,7 @@ const storeModelContext = async (userId, modelName, modelResponse, originalPromp
     // If there's an existing item at position 0 (full response), summarize it before shifting
     if (context.length > 0 && context[0].isFull) {
       console.log(`[Model Context] Summarizing previous full response for ${modelName} before adding new one`)
-      const { summary, tokens } = await summarizeGrokResponse(context[0].response, userId)
+      const { summary, tokens } = await summarizeJudgeResponse(context[0].response, userId)
       context[0] = {
         summary,
         tokens,
@@ -6919,6 +7494,169 @@ app.get('/api/admin/expenses/history', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('[Admin] Error fetching expense history:', error)
     res.status(500).json({ error: 'Failed to fetch expense history' })
+  }
+})
+
+// ==================== CONVERSATION HISTORY (AUTO-SAVE) ====================
+// Every prompt+response is automatically saved to 'conversation_history' collection.
+// Organized by Year → Month → Day in the frontend.
+
+app.post('/api/history/auto-save', async (req, res) => {
+  try {
+    const { userId, originalPrompt, category, responses, summary, sources, facts, ragDebugData } = req.body
+
+    if (!userId || !originalPrompt) {
+      return res.status(400).json({ error: 'userId and originalPrompt are required' })
+    }
+
+    const users = readUsers()
+    if (!users[userId]) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    const dbInstance = await db.getDb()
+    const historyId = `hist-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const title = originalPrompt.substring(0, 80) + (originalPrompt.length > 80 ? '...' : '')
+
+    const doc = {
+      _id: historyId,
+      userId,
+      title,
+      originalPrompt,
+      category: category || 'General',
+      savedAt: new Date(),
+      // All model responses from the council or individual model
+      responses: (responses || []).map(r => ({
+        modelName: r.modelName || r.actualModelName || 'Unknown',
+        actualModelName: r.actualModelName || r.modelName || 'Unknown',
+        text: r.text || r.modelResponse || '',
+        error: r.error || false,
+        tokens: r.tokens || null,
+      })),
+      // Summary/Judge analysis (if council of 2+ models)
+      summary: summary ? {
+        text: summary.text || '',
+        consensus: summary.consensus || null,
+        agreements: summary.agreements || [],
+        disagreements: summary.disagreements || [],
+        singleModel: summary.singleModel || false,
+        modelName: summary.modelName || null,
+      } : null,
+      // Search sources
+      sources: sources || [],
+      // Extracted facts
+      facts: facts || [],
+    }
+
+    await dbInstance.collection('conversation_history').insertOne(doc)
+    console.log(`[History] Auto-saved conversation for user ${userId}: ${historyId}`)
+    res.json({ success: true, historyId, title })
+  } catch (error) {
+    console.error('[History] Error auto-saving:', error)
+    res.status(500).json({ error: 'Failed to save conversation history' })
+  }
+})
+
+// Get full detail of a single history entry
+// NOTE: This route MUST be defined BEFORE /api/history/:userId to avoid Express matching "detail" as a userId
+app.get('/api/history/detail/:historyId', async (req, res) => {
+  try {
+    const { historyId } = req.params
+    const dbInstance = await db.getDb()
+    const doc = await dbInstance.collection('conversation_history').findOne({ _id: historyId })
+
+    if (!doc) {
+      return res.status(404).json({ error: 'History entry not found' })
+    }
+
+    res.json({
+      conversation: {
+        id: doc._id,
+        title: doc.title,
+        originalPrompt: doc.originalPrompt,
+        category: doc.category,
+        savedAt: doc.savedAt,
+        responses: doc.responses || [],
+        summary: doc.summary || null,
+        sources: doc.sources || [],
+        facts: doc.facts || [],
+      }
+    })
+  } catch (error) {
+    console.error('[History] Error fetching detail:', error)
+    res.status(500).json({ error: 'Failed to fetch history detail' })
+  }
+})
+
+// List all conversation history for a user (lightweight — no full responses)
+app.get('/api/history/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+
+    const dbInstance = await db.getDb()
+    const results = await dbInstance.collection('conversation_history')
+      .find({ userId })
+      .sort({ savedAt: -1 })
+      .project({
+        _id: 1,
+        title: 1,
+        originalPrompt: 1,
+        category: 1,
+        savedAt: 1,
+        'responses.modelName': 1,
+        'responses.error': 1,
+        'summary.consensus': 1,
+        'summary.singleModel': 1,
+      })
+      .toArray()
+
+    const mapped = results.map(c => ({
+      id: c._id,
+      title: c.title,
+      originalPrompt: c.originalPrompt,
+      category: c.category,
+      savedAt: c.savedAt,
+      modelCount: c.responses?.length || 0,
+      modelNames: (c.responses || []).filter(r => !r.error).map(r => r.modelName),
+      consensus: c.summary?.consensus || null,
+      isSingleModel: c.summary?.singleModel || (c.responses?.length === 1),
+    }))
+
+    res.json({ history: mapped })
+  } catch (error) {
+    console.error('[History] Error listing:', error)
+    res.status(500).json({ error: 'Failed to list conversation history' })
+  }
+})
+
+// Delete a history entry
+app.delete('/api/history/:historyId', async (req, res) => {
+  try {
+    const { historyId } = req.params
+    const { userId } = req.body
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+
+    const dbInstance = await db.getDb()
+    const result = await dbInstance.collection('conversation_history').deleteOne({
+      _id: historyId,
+      userId,
+    })
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'History entry not found or not owned by this user' })
+    }
+
+    console.log(`[History] Deleted ${historyId} for user ${userId}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[History] Error deleting:', error)
+    res.status(500).json({ error: 'Failed to delete history entry' })
   }
 })
 
@@ -9085,7 +9823,7 @@ const calculateAndRecordOverage = async (userId, month) => {
     }
     
     // Calculate monthly cost
-    const FREE_MONTHLY_ALLOCATION = 5.00
+    const FREE_MONTHLY_ALLOCATION = 7.50
     const pricing = getPricingData()
     const dailyData = userUsage.dailyUsage?.[month] || {}
     let monthlyCost = 0
@@ -9114,7 +9852,7 @@ const calculateAndRecordOverage = async (userId, month) => {
       }
     })
     
-    // Calculate overage (cost above $5 free allocation)
+    // Calculate overage (cost above $7.50 free allocation)
     const overage = Math.max(0, monthlyCost - FREE_MONTHLY_ALLOCATION)
     
     // Update user's monthly usage cost

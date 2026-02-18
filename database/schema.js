@@ -45,13 +45,14 @@
 export const usersSchema = {
   _id: 'string',              // UUID (e.g., "a1b2c3d4-...")
   email: 'string',            // user email
+  canonicalEmail: 'string',   // Normalized email (strips Gmail dots, +aliases) for duplicate detection
   password: 'string',         // hashed password (if using local auth)
   firstName: 'string',        // user's first name
   lastName: 'string',         // user's last name
   username: 'string',         // display username (unique, used for login)
   stripeCustomerId: 'string', // Stripe customer ID (optional)
   stripeSubscriptionId: 'string', // Stripe subscription ID
-  subscriptionStatus: 'string', // 'active', 'canceled', 'paused', 'past_due', 'inactive'
+  subscriptionStatus: 'string', // 'active', 'canceled', 'paused', 'past_due', 'inactive', 'trialing', 'pending_verification'
   subscriptionRenewalDate: 'Date', // When user will be auto-charged next (null if not active)
   subscriptionStartedDate: 'Date', // When user first subscribed (never changes once set)
   subscriptionPausedDate: 'Date',  // When user paused their subscription (null until paused)
@@ -65,6 +66,11 @@ export const usersSchema = {
     total: 'number',          // Total ever purchased
     remaining: 'number',      // Currently available
   },
+  // --- Free trial abuse prevention ---
+  emailVerified: 'boolean',    // Whether user has verified their email address
+  signupIp: 'string',         // IP address at signup (for rate limiting free trials)
+  deviceFingerprint: 'string', // Browser fingerprint at signup (blocks same device re-trials)
+  plan: 'string',             // 'free_trial' | 'pro' | null
 }
 
 /**
@@ -384,6 +390,26 @@ export const passwordResetsSchema = {
 }
 
 /**
+ * EMAIL_VERIFICATIONS COLLECTION
+ * 
+ * Stores temporary email verification tokens for free trial signups.
+ * Tokens expire after 24 hours. MongoDB TTL auto-deletes expired documents.
+ * 
+ * Index: { token: 1 } (unique, for token lookup)
+ * Index: { userId: 1 } (for user's pending verification)
+ * Index: { expiresAt: 1 } (TTL, auto-delete expired)
+ */
+export const emailVerificationsSchema = {
+  _id: 'ObjectId',
+  token: 'string',            // Secure random 64-char hex token
+  userId: 'string',           // Foreign key to users._id
+  email: 'string',            // Email to verify
+  expiresAt: 'Date',          // When this token expires (24 hours from creation)
+  createdAt: 'Date',          // When this token was created
+  used: 'boolean',            // Whether this token has been used
+}
+
+/**
  * Index definitions for migration script
  */
 export const indexes = {
@@ -417,10 +443,13 @@ export const indexes = {
   
   users: [
     { key: { email: 1 }, options: { unique: true } },
+    { key: { canonicalEmail: 1 }, options: { sparse: true } }, // For canonical email duplicate detection
     { key: { username: 1 }, options: { unique: true } },
     { key: { stripeCustomerId: 1 }, options: { sparse: true } },
     { key: { subscriptionStatus: 1 } },            // For subscription filtering
-    { key: { lastActiveAt: -1 } }                  // For activity sorting
+    { key: { lastActiveAt: -1 } },                 // For activity sorting
+    { key: { signupIp: 1, plan: 1 } },             // For IP-based free trial rate limiting
+    { key: { deviceFingerprint: 1, plan: 1 }, options: { sparse: true } }, // For fingerprint-based trial detection
   ],
   
   user_stats: [
@@ -431,6 +460,17 @@ export const indexes = {
     { key: { token: 1 }, options: { unique: true } },
     { key: { userId: 1 } },
     { key: { expiresAt: 1 }, options: { expireAfterSeconds: 0 } } // TTL index — auto-deletes expired tokens
+  ],
+  
+  email_verifications: [
+    { key: { token: 1 }, options: { unique: true } },
+    { key: { userId: 1 } },
+    { key: { expiresAt: 1 }, options: { expireAfterSeconds: 0 } } // TTL index — auto-deletes expired tokens
+  ],
+  
+  conversation_history: [
+    { key: { userId: 1, savedAt: -1 } },  // List user's history sorted by date
+    { key: { savedAt: -1 } },             // Global date sort
   ]
 }
 

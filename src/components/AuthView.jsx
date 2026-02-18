@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogIn, UserPlus, Mail, Lock, User, CreditCard, ArrowLeft, CheckCircle, KeyRound, Eye, EyeOff } from 'lucide-react'
+import { LogIn, UserPlus, Mail, Lock, User, CreditCard, ArrowLeft, CheckCircle, KeyRound, Eye, EyeOff, ShieldCheck, Loader } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
+import FingerprintJS from '@fingerprintjs/fingerprintjs'
 
-// Possible views: 'signin' | 'signup' | 'forgot-username' | 'forgot-password' | 'reset-password'
+// Possible views: 'select-plan' | 'signin' | 'signup' | 'forgot-username' | 'forgot-password' | 'reset-password' | 'verification-pending' | 'verify-email'
 
-const AuthView = () => {
-  const [view, setView] = useState('signin')
+const AuthView = ({ initialView, onNavigate }) => {
+  const [view, setView] = useState(initialView || 'signin')
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -27,16 +28,38 @@ const AuthView = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [selectedPlan, setSelectedPlan] = useState('free_trial')
+  const [fingerprint, setFingerprint] = useState(null)
+  const [verificationEmail, setVerificationEmail] = useState('')
+  const [verificationUserId, setVerificationUserId] = useState('')
+  const [verifyingEmail, setVerifyingEmail] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
   // Always use dark theme for the auth page
   const currentTheme = getTheme('dark')
   const setCurrentUser = useStore((state) => state.setCurrentUser)
   const setShowWelcome = useStore((state) => state.setShowWelcome)
   const clearSelectedModels = useStore((state) => state.clearSelectedModels)
+  const setSelectedModels = useStore((state) => state.setSelectedModels)
+  const setAutoSmartProviders = useStore((state) => state.setAutoSmartProviders)
   const setActiveTab = useStore((state) => state.setActiveTab)
 
   const isSignUp = view === 'signup'
 
-  // Detect #reset-password?token=xxx in the URL on mount
+  // Initialize FingerprintJS for device fingerprinting (free trial abuse prevention)
+  useEffect(() => {
+    const loadFingerprint = async () => {
+      try {
+        const fp = await FingerprintJS.load()
+        const result = await fp.get()
+        setFingerprint(result.visitorId)
+      } catch (err) {
+        console.warn('Fingerprint not available:', err)
+      }
+    }
+    loadFingerprint()
+  }, [])
+
+  // Detect #reset-password?token=xxx or #verify-email?token=xxx in the URL on mount
   useEffect(() => {
     const hash = window.location.hash
     if (hash.startsWith('#reset-password')) {
@@ -46,8 +69,24 @@ const AuthView = () => {
         setResetToken(token)
         setView('reset-password')
       }
+    } else if (hash.startsWith('#verify-email')) {
+      const params = new URLSearchParams(hash.split('?')[1] || '')
+      const token = params.get('token')
+      if (token) {
+        setView('verify-email')
+        handleVerifyEmail(token)
+      }
     }
   }, [])
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [resendCooldown])
+
 
   const handleChange = (e) => {
     setFormData({
@@ -73,14 +112,35 @@ const AuthView = () => {
       }
 
       const endpoint = isSignUp ? '/api/auth/signup' : '/api/auth/signin'
-      const response = await axios.post(`${API_URL}${endpoint}`, formData)
+      const payload = isSignUp
+        ? { ...formData, plan: selectedPlan, fingerprint }
+        : formData
+      const response = await axios.post(`${API_URL}${endpoint}`, payload)
 
       if (response.data.success) {
         const user = response.data.user
 
-        // Reset model initialization so MainView enables Auto Smart for all providers fresh
-        clearSelectedModels()
-        localStorage.removeItem('arktek-models-initialized')
+        // Check if email verification is required (both plans require email verification on signup)
+        if (response.data.requiresVerification) {
+          setVerificationEmail(user.email)
+          setVerificationUserId(user.id)
+          setView('verification-pending')
+          return
+        }
+
+        // Restore model preferences from server (if returning user has saved prefs)
+        if (user.modelPreferences) {
+          const { selectedModels: savedModels, autoSmartProviders: savedAutoSmart } = user.modelPreferences
+          if (savedModels) setSelectedModels(savedModels)
+          if (savedAutoSmart) setAutoSmartProviders(savedAutoSmart)
+          localStorage.setItem('arktek-models-initialized', 'true')
+          console.log('[Auth] Restored model preferences from server')
+        } else {
+          // New user with no saved prefs — clear and let MainView set Auto Smart defaults
+          clearSelectedModels()
+          setAutoSmartProviders({})
+          localStorage.removeItem('arktek-models-initialized')
+        }
         // Store user data in the store
         setCurrentUser(user)
         // Always start on the main page
@@ -92,6 +152,58 @@ const AuthView = () => {
       console.error('Auth error:', err)
       const errorMessage = err.response?.data?.error || err.message || 'An error occurred. Please try again.'
       setError(errorMessage)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Verify email token (called when user clicks verification link)
+  const handleVerifyEmail = async (token) => {
+    setVerifyingEmail(true)
+    setError('')
+    setSuccessMessage('')
+
+    try {
+      const response = await axios.post(`${API_URL}/api/auth/verify-email`, { token })
+
+      if (response.data.success) {
+        setSuccessMessage(response.data.message || 'Email verified! You can now sign in.')
+        // Clear hash from URL
+        window.location.hash = ''
+        // After 3 seconds, switch to sign-in view
+        setTimeout(() => {
+          setView('signin')
+          setSuccessMessage('')
+        }, 3000)
+      }
+    } catch (err) {
+      console.error('Email verification error:', err)
+      setError(err.response?.data?.error || 'Verification failed. Please try again or request a new link.')
+    } finally {
+      setVerifyingEmail(false)
+    }
+  }
+
+  // Resend verification email
+  const handleResendVerification = async () => {
+    if (resendCooldown > 0) return
+    setError('')
+    setSuccessMessage('')
+    setLoading(true)
+
+    try {
+      const response = await axios.post(`${API_URL}/api/auth/resend-verification`, {
+        userId: verificationUserId,
+        email: verificationEmail,
+      })
+
+      if (response.data.success) {
+        setSuccessMessage(response.data.message || 'A new verification email has been sent!')
+        setResendCooldown(120) // 2-minute cooldown
+      }
+    } catch (err) {
+      console.error('Resend verification error:', err)
+      setError(err.response?.data?.error || 'Failed to resend. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -209,7 +321,7 @@ const AuthView = () => {
     setResetEmail('')
     setNewPassword('')
     setConfirmPassword('')
-    if (newView === 'signin' || newView === 'signup') {
+    if (newView === 'signin' || newView === 'signup' || newView === 'select-plan') {
       setFormData({
         firstName: '',
         lastName: '',
@@ -217,6 +329,12 @@ const AuthView = () => {
         email: '',
         password: '',
       })
+    }
+    // Update URL
+    if (newView === 'signin') {
+      window.history.replaceState({}, '', '/signin')
+    } else if (newView === 'signup' || newView === 'select-plan') {
+      window.history.replaceState({}, '', '/signup')
     }
   }
 
@@ -249,6 +367,8 @@ const AuthView = () => {
   // Determine the title and subtitle for the current view
   const getViewInfo = () => {
     switch (view) {
+      case 'select-plan':
+        return { title: 'ArkiTek', subtitle: 'Choose your plan to get started' }
       case 'signup':
         return { title: 'ArkiTek', subtitle: 'Create your account' }
       case 'forgot-username':
@@ -257,6 +377,10 @@ const AuthView = () => {
         return { title: 'Forgot Password', subtitle: 'Enter your email to receive a reset link' }
       case 'reset-password':
         return { title: 'Reset Password', subtitle: 'Enter your new password' }
+      case 'verification-pending':
+        return { title: 'Check Your Email', subtitle: 'We sent you a verification link' }
+      case 'verify-email':
+        return { title: 'Verifying Email', subtitle: 'Please wait while we verify your email' }
       default:
         return { title: 'ArkiTek', subtitle: 'Sign in to your account' }
     }
@@ -376,16 +500,17 @@ const AuthView = () => {
         transition={{ duration: 0.2 }}
         style={{
           width: '100%',
-          maxWidth: '450px',
+          maxWidth: view === 'select-plan' ? '860px' : '450px',
           padding: '40px',
           background: currentTheme.backgroundOverlay,
           border: `1px solid ${currentTheme.borderLight}`,
           borderRadius: '20px',
           boxShadow: `0 0 40px ${currentTheme.shadowLight}`,
+          transition: 'max-width 0.3s ease',
         }}
       >
-        {/* Back button for forgot/reset views */}
-        {(view === 'forgot-username' || view === 'forgot-password' || view === 'reset-password') && (
+        {/* Back button for forgot/reset/verification views */}
+        {(view === 'forgot-username' || view === 'forgot-password' || view === 'reset-password' || view === 'verification-pending' || view === 'verify-email') && (
           <button
             onClick={() => goToView('signin')}
             style={{
@@ -410,7 +535,7 @@ const AuthView = () => {
         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
           <h1
             style={{
-              fontSize: view === 'signin' || view === 'signup' ? '2.5rem' : '1.8rem',
+              fontSize: view === 'signin' || view === 'signup' || view === 'select-plan' ? '2.5rem' : '1.8rem',
               marginBottom: '10px',
               background: currentTheme.accentGradient,
               WebkitBackgroundClip: 'text',
@@ -466,6 +591,209 @@ const AuthView = () => {
             <CheckCircle size={18} />
             {successMessage}
           </motion.div>
+        )}
+
+        {/* ==================== PLAN SELECTION ==================== */}
+        {view === 'select-plan' && (
+          <div>
+            <div style={{ display: 'flex', flexDirection: 'row', gap: '24px', marginBottom: '24px' }}>
+              {/* Free Trial Card */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPlan('free_trial')
+                  goToView('signup')
+                }}
+                style={{
+                  flex: 1,
+                  padding: '32px',
+                  background: 'rgba(93, 173, 226, 0.05)',
+                  border: '1px solid rgba(93, 173, 226, 0.2)',
+                  borderRadius: '16px',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#5dade2'
+                  e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
+                  e.currentTarget.style.transform = 'translateY(-4px)'
+                  e.currentTarget.style.boxShadow = '0 8px 30px rgba(93, 173, 226, 0.15)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(93, 173, 226, 0.2)'
+                  e.currentTarget.style.background = 'rgba(93, 173, 226, 0.05)'
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+              >
+                <span style={{
+                  display: 'inline-block',
+                  padding: '6px 16px',
+                  background: 'rgba(93, 173, 226, 0.15)',
+                  borderRadius: '100px',
+                  fontSize: '0.85rem',
+                  color: '#5dade2',
+                  fontWeight: 600,
+                  marginBottom: '20px',
+                }}>
+                  Free Trial
+                </span>
+                <div style={{ marginBottom: '20px' }}>
+                  <span style={{ fontSize: '2.8rem', fontWeight: 800, color: '#fff' }}>Free</span>
+                </div>
+                <div style={{
+                  borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                  paddingTop: '20px',
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  textAlign: 'left',
+                }}>
+                  {['Limited free usage', 'Access to all models'].map((feature, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <CheckCircle size={16} style={{ color: '#5dade2', flexShrink: 0 }} />
+                      <span style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.9rem' }}>{feature}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{
+                  marginTop: '24px',
+                  padding: '12px 0',
+                  width: '100%',
+                  background: 'rgba(93, 173, 226, 0.12)',
+                  borderRadius: '10px',
+                  color: '#5dade2',
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                }}>
+                  Get Started Free
+                </div>
+              </button>
+
+              {/* Pro Card */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPlan('pro')
+                  goToView('signup')
+                }}
+                style={{
+                  flex: 1,
+                  padding: '32px',
+                  background: 'rgba(72, 201, 176, 0.05)',
+                  border: '1px solid rgba(72, 201, 176, 0.2)',
+                  borderRadius: '16px',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  position: 'relative',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#48c9b0'
+                  e.currentTarget.style.background = 'rgba(72, 201, 176, 0.1)'
+                  e.currentTarget.style.transform = 'translateY(-4px)'
+                  e.currentTarget.style.boxShadow = '0 8px 30px rgba(72, 201, 176, 0.15)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(72, 201, 176, 0.2)'
+                  e.currentTarget.style.background = 'rgba(72, 201, 176, 0.05)'
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+              >
+                <span style={{
+                  display: 'inline-block',
+                  padding: '6px 16px',
+                  background: 'rgba(72, 201, 176, 0.15)',
+                  borderRadius: '100px',
+                  fontSize: '0.85rem',
+                  color: '#48c9b0',
+                  fontWeight: 600,
+                  marginBottom: '20px',
+                }}>
+                  Pro
+                </span>
+                <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                  <span style={{ fontSize: '2.8rem', fontWeight: 800, color: '#fff' }}>$19.95</span>
+                  <span style={{ fontSize: '1rem', color: 'rgba(255, 255, 255, 0.4)' }}>/mo</span>
+                </div>
+                <div style={{
+                  borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                  paddingTop: '20px',
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  textAlign: 'left',
+                }}>
+                  {['15x more usage', 'All models & features', 'Monthly rewards: usage bonuses, badges & collectible icons'].map((feature, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <CheckCircle size={16} style={{ color: '#48c9b0', flexShrink: 0 }} />
+                      <span style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.9rem' }}>{feature}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{
+                  marginTop: '24px',
+                  padding: '12px 0',
+                  width: '100%',
+                  background: 'rgba(72, 201, 176, 0.12)',
+                  borderRadius: '10px',
+                  color: '#48c9b0',
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                }}>
+                  Subscribe to Pro
+                </div>
+              </button>
+            </div>
+
+            {/* Already have an account? */}
+            <div style={{ textAlign: 'center' }}>
+              <button
+                type="button"
+                onClick={() => goToView('signin')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#5dade2',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  textDecoration: 'underline',
+                }}
+              >
+                Already have an account? Sign in
+              </button>
+            </div>
+
+            {/* Back to Home */}
+            {onNavigate && (
+              <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('landing')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: currentTheme.textSecondary,
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  ← Back to Home
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* ==================== SIGN IN / SIGN UP FORM ==================== */}
@@ -690,7 +1018,41 @@ const AuthView = () => {
               </div>
             )}
 
-            {isSignUp && <div style={{ marginBottom: '10px' }} />}
+            {isSignUp && (
+              <div style={{
+                marginBottom: '16px',
+                padding: '12px 16px',
+                background: selectedPlan === 'pro' ? 'rgba(72, 201, 176, 0.08)' : 'rgba(93, 173, 226, 0.08)',
+                border: `1px solid ${selectedPlan === 'pro' ? 'rgba(72, 201, 176, 0.25)' : 'rgba(93, 173, 226, 0.25)'}`,
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <div>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: selectedPlan === 'pro' ? '#48c9b0' : '#5dade2' }}>
+                    {selectedPlan === 'pro' ? 'Pro Plan' : 'Free Trial'}
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.4)', marginLeft: '8px' }}>
+                    {selectedPlan === 'pro' ? '$19.95/mo' : 'Free'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => goToView('select-plan')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: currentTheme.textSecondary,
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Change
+                </button>
+              </div>
+            )}
 
             <motion.button
               type="submit"
@@ -731,32 +1093,12 @@ const AuthView = () => {
               )}
             </motion.button>
 
-            {isSignUp && (
-              <div style={{
-                textAlign: 'center',
-                marginBottom: '16px',
-                padding: '12px',
-                background: 'rgba(93, 173, 226, 0.05)',
-                border: '1px solid rgba(93, 173, 226, 0.15)',
-                borderRadius: '8px',
-              }}>
-                <p style={{
-                  color: 'rgba(255, 255, 255, 0.6)',
-                  fontSize: '0.8rem',
-                  margin: 0,
-                  lineHeight: 1.5,
-                }}>
-                  <CreditCard size={14} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
-                  A subscription ($19.95/mo) is required to use ArkiTek. You'll enter your payment info after creating your account. Includes $5/mo in usage credits.
-                </p>
-              </div>
-            )}
 
             {/* Toggle Sign In/Sign Up */}
             <div style={{ textAlign: 'center' }}>
               <button
                 type="button"
-                onClick={() => goToView(isSignUp ? 'signin' : 'signup')}
+                onClick={() => goToView(isSignUp ? 'signin' : 'select-plan')}
                 style={{
                   background: 'none',
                   border: 'none',
@@ -771,6 +1113,25 @@ const AuthView = () => {
                   : "Don't have an account? Sign up"}
               </button>
             </div>
+
+            {/* Back to Home */}
+            {onNavigate && (
+              <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('landing')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(255, 255, 255, 0.4)',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  ← Back to Home
+                </button>
+              </div>
+            )}
           </form>
         )}
 
@@ -1151,6 +1512,128 @@ const AuthView = () => {
             </motion.button>
           </form>
         )}
+
+        {/* ==================== VERIFICATION PENDING ==================== */}
+        {view === 'verification-pending' && (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{
+              marginBottom: '24px',
+              padding: '24px',
+              background: 'rgba(93, 173, 226, 0.05)',
+              border: '1px solid rgba(93, 173, 226, 0.15)',
+              borderRadius: '14px',
+            }}>
+              <Mail size={48} style={{ color: '#5dade2', marginBottom: '16px' }} />
+              <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '12px' }}>
+                Verification Email Sent
+              </h3>
+              <p style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.9rem', lineHeight: 1.6, margin: 0 }}>
+                We sent a verification link to:
+              </p>
+              <p style={{ color: '#5dade2', fontWeight: 600, fontSize: '1rem', margin: '8px 0 16px' }}>
+                {verificationEmail}
+              </p>
+              <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.85rem', lineHeight: 1.5, margin: 0 }}>
+                Click the link in your email to verify your account. The link expires in 24 hours.
+              </p>
+            </div>
+
+            <div style={{
+              padding: '16px',
+              background: 'rgba(255, 255, 255, 0.03)',
+              borderRadius: '10px',
+              marginBottom: '20px',
+            }}>
+              <p style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '0.85rem', margin: '0 0 12px' }}>
+                Didn't receive the email? Check your spam folder or:
+              </p>
+              <motion.button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={loading || resendCooldown > 0}
+                whileHover={{ scale: resendCooldown > 0 ? 1 : 1.02 }}
+                whileTap={{ scale: resendCooldown > 0 ? 1 : 0.98 }}
+                style={{
+                  padding: '10px 24px',
+                  background: (loading || resendCooldown > 0) ? 'rgba(128, 128, 128, 0.2)' : 'rgba(93, 173, 226, 0.15)',
+                  border: `1px solid ${(loading || resendCooldown > 0) ? 'rgba(128, 128, 128, 0.3)' : 'rgba(93, 173, 226, 0.3)'}`,
+                  borderRadius: '8px',
+                  color: (loading || resendCooldown > 0) ? 'rgba(255, 255, 255, 0.3)' : '#5dade2',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  cursor: (loading || resendCooldown > 0) ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {loading ? 'Sending...' : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Verification Email'}
+              </motion.button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => goToView('signin')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#5dade2',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                textDecoration: 'underline',
+              }}
+            >
+              Back to sign in
+            </button>
+          </div>
+        )}
+
+        {/* ==================== VERIFY EMAIL (from email link) ==================== */}
+        {view === 'verify-email' && (
+          <div style={{ textAlign: 'center' }}>
+            {verifyingEmail ? (
+              <div style={{ padding: '40px 0' }}>
+                <Loader size={40} style={{ color: '#5dade2', animation: 'spin 1s linear infinite', marginBottom: '16px' }} />
+                <p style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '1rem' }}>
+                  Verifying your email address...
+                </p>
+                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+              </div>
+            ) : successMessage ? (
+              <div style={{ padding: '24px 0' }}>
+                <ShieldCheck size={48} style={{ color: '#48c9b0', marginBottom: '16px' }} />
+                <h3 style={{ color: '#48c9b0', fontSize: '1.1rem', marginBottom: '12px' }}>
+                  Email Verified!
+                </h3>
+                <p style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                  {successMessage}
+                </p>
+              </div>
+            ) : error ? (
+              <div style={{ padding: '24px 0' }}>
+                <Mail size={48} style={{ color: '#FF6B6B', marginBottom: '16px' }} />
+                <h3 style={{ color: '#FF6B6B', fontSize: '1.1rem', marginBottom: '12px' }}>
+                  Verification Failed
+                </h3>
+                <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '20px' }}>
+                  {error}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => goToView('signin')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#5dade2',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Back to sign in
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )}
+
       </motion.div>
       </AnimatePresence>
     </div>

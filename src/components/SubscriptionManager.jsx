@@ -976,7 +976,7 @@ const SubscriptionManager = () => {
                 ⚠️ If you delete your account, all data from this account will be permanently lost and cannot be recovered.
               </p>
               <p style={{ color: '#ff6b6b', margin: 0, lineHeight: '1.7', textAlign: 'center', fontSize: '0.9rem' }}>
-                Your subscription will be canceled for good. This includes all your statistics, saved conversations, usage history, and leaderboard posts.
+                Your subscription will be canceled for good. This includes all your statistics, saved conversations, usage history, and Prompt Feed posts.
             </p>
             </div>
             <div

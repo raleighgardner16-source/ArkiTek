@@ -1343,13 +1343,13 @@ const AdminView = () => {
                             <p style={{ color: '#aaaaaa', fontSize: '0.7rem', margin: '0 0 2px 0' }}>End of Month Price</p>
                             <p
                               style={{
-                                color: (userCost.cost || 0) > 5.00 ? '#ff6b6b' : '#48c9b0',
+                                color: (userCost.cost || 0) > 7.50 ? '#ff6b6b' : '#48c9b0',
                                 fontSize: '1rem',
                                 fontWeight: 'bold',
                                 margin: 0,
                               }}
                             >
-                              ${Math.max(0, ((userCost.cost || 0) - 5.00).toFixed(2))}
+                              ${Math.max(0, ((userCost.cost || 0) - 7.50).toFixed(2))}
                             </p>
                           </div>
                         </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { X, FileText, Move, Minimize2, Maximize2, ChevronRight, ChevronDown, Send, Search, Save, Info, Globe } from 'lucide-react'
+import { X, FileText, Move, Minimize2, Maximize2, ChevronRight, ChevronDown, Send, Search, Globe } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -38,8 +38,6 @@ const SummaryWindow = () => {
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const [conversationContext, setConversationContext] = useState([])
   const [isSearchingInConvo, setIsSearchingInConvo] = useState(false)
-  const [savingState, setSavingState] = useState('idle') // 'idle'|'saving'|'saved'
-  const [showSaveTooltip, setShowSaveTooltip] = useState(false)
   const [convoSources, setConvoSources] = useState({}) // { turnIndex: [...sources] } — per-turn follow-up search results
   const [showConvoSources, setShowConvoSources] = useState({}) // { turnIndex: true/false } — per-turn toggle
   const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
@@ -73,39 +71,6 @@ const SummaryWindow = () => {
       axios.post(`${API_URL}/api/model/clear-context`, {
         userId: currentUser.id
       }).catch(err => console.error('[Clear Model Context] Error:', err))
-    }
-  }
-  
-  // Save this summary/judge response + conversation individually
-  const handleSaveSummary = async () => {
-    if (!currentUser?.id || !summary) return
-    setSavingState('saving')
-    try {
-      const conversation = conversationContext.map(ctx => ([
-        { role: 'user', text: ctx.user, timestamp: ctx.timestamp },
-        { role: 'assistant', text: ctx.judge || ctx.assistant, timestamp: ctx.timestamp },
-      ])).flat()
-
-      await axios.post(`${API_URL}/api/conversations/save`, {
-        userId: currentUser.id,
-        type: 'individual',
-        originalPrompt: summary.originalPrompt || lastSubmittedPrompt || '',
-        category: lastSubmittedCategory || 'General',
-        modelName: summary.singleModel ? (summary.modelName || 'Single Model') : 'Judge Summary',
-        modelResponse: summary.text || '',
-        conversation,
-        sources: searchSources || [],
-        conversationSources: convoSources || {},
-      })
-      setSavingState('saved')
-    } catch (error) {
-      console.error('[Save] Error saving summary:', error)
-      if (error.response?.data?.alreadySaved) {
-        setSavingState('saved')
-      } else {
-        alert('Failed to save. Please try again.')
-        setSavingState('idle')
-      }
     }
   }
   
@@ -1496,123 +1461,6 @@ const SummaryWindow = () => {
                 <Send size={18} />
                 {isSendingMessage ? 'Sending...' : 'Send'}
               </button>
-              {/* Save Summary/Judge Response Button */}
-              <div style={{ position: 'relative' }}>
-                <button
-                  onClick={handleSaveSummary}
-                  disabled={savingState === 'saving' || savingState === 'saved'}
-                  style={{
-                    padding: '12px 16px',
-                    background: savingState === 'saved' ? 'rgba(0, 200, 100, 0.2)' : currentTheme.buttonBackground,
-                    border: `1px solid ${savingState === 'saved' ? 'rgba(0, 200, 100, 0.5)' : currentTheme.borderLight}`,
-                    borderRadius: '8px',
-                    color: savingState === 'saved' ? '#00c864' : currentTheme.accent,
-                    fontSize: '0.9rem',
-                    fontWeight: '500',
-                    cursor: (savingState === 'saving' || savingState === 'saved') ? 'not-allowed' : 'pointer',
-                    opacity: savingState === 'saving' ? 0.6 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    whiteSpace: 'nowrap',
-                  }}
-                  title={savingState === 'saved' ? 'Already saved' : undefined}
-                >
-                  <Save size={18} />
-                  {savingState === 'saving'
-                    ? 'Saving...'
-                    : savingState === 'saved'
-                    ? 'Saved!'
-                    : summary?.singleModel
-                    ? `Save ${getProviderName(summary?.modelName)} Convo`
-                    : 'Save Summary Convo'}
-                </button>
-                <div
-                  style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help' }}
-                  onMouseEnter={() => setShowSaveTooltip(true)}
-                  onMouseLeave={() => setShowSaveTooltip(false)}
-                >
-                  <Info size={14} color={currentTheme.textMuted} />
-                  {showSaveTooltip && (
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '20px',
-                      right: 0,
-                      background: currentTheme.backgroundOverlay,
-                      border: `1px solid ${currentTheme.borderLight}`,
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      fontSize: '0.75rem',
-                      color: currentTheme.textSecondary,
-                      width: '200px',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                      zIndex: 100,
-                    }}>
-                      Save this {summary?.singleModel ? "model's response" : 'judge summary'} and conversation history.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        {/* Save button for single-model responses (no conversation input area) */}
-        {summary?.singleModel && (
-          <div style={{ paddingTop: '14px', borderTop: `1px solid ${currentTheme.borderLight}`, display: 'flex', justifyContent: 'flex-end' }}>
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={handleSaveSummary}
-                disabled={savingState === 'saving' || savingState === 'saved'}
-                style={{
-                  padding: '10px 16px',
-                  background: savingState === 'saved' ? 'rgba(0, 200, 100, 0.2)' : currentTheme.buttonBackground,
-                  border: `1px solid ${savingState === 'saved' ? 'rgba(0, 200, 100, 0.5)' : currentTheme.borderLight}`,
-                  borderRadius: '8px',
-                  color: savingState === 'saved' ? '#00c864' : currentTheme.accent,
-                  fontSize: '0.85rem',
-                  fontWeight: '500',
-                  cursor: (savingState === 'saving' || savingState === 'saved') ? 'not-allowed' : 'pointer',
-                  opacity: savingState === 'saving' ? 0.6 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-                title={savingState === 'saved' ? 'Already saved' : undefined}
-              >
-                <Save size={16} />
-                {savingState === 'saving'
-                  ? 'Saving...'
-                  : savingState === 'saved'
-                  ? 'Saved!'
-                  : summary?.singleModel
-                  ? `Save ${getProviderName(summary?.modelName)} Convo`
-                  : 'Save Summary Convo'}
-              </button>
-              <div
-                style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help' }}
-                onMouseEnter={() => setShowSaveTooltip(true)}
-                onMouseLeave={() => setShowSaveTooltip(false)}
-              >
-                <Info size={14} color={currentTheme.textMuted} />
-                {showSaveTooltip && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '20px',
-                    right: 0,
-                    background: currentTheme.backgroundOverlay,
-                    border: `1px solid ${currentTheme.borderLight}`,
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                    fontSize: '0.75rem',
-                    color: currentTheme.textSecondary,
-                    width: '200px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                    zIndex: 100,
-                  }}>
-                    Save this model's response to your saved conversations.
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         )}

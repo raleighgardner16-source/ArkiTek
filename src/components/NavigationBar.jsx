@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Home, Settings, User, LogOut, Clock, X, Trophy, Sun, Moon, BookmarkCheck } from 'lucide-react'
+import { Home, Settings, User, LogOut, Clock, X, Trophy, Sun, Moon, History, MessageSquarePlus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -12,7 +12,6 @@ const NavigationBar = () => {
   const setActiveTab = useStore((state) => state.setActiveTab)
   const currentUser = useStore((state) => state.currentUser)
   const clearCurrentUser = useStore((state) => state.clearCurrentUser)
-  const clearSelectedModels = useStore((state) => state.clearSelectedModels)
   const clearResponses = useStore((state) => state.clearResponses)
   const setCurrentPrompt = useStore((state) => state.setCurrentPrompt)
   const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
@@ -20,8 +19,9 @@ const NavigationBar = () => {
   const toggleTheme = useStore((state) => state.toggleTheme)
   const setNavExpanded = useStore((state) => state.setNavExpanded)
   const clearViewingProfile = useStore((state) => state.clearViewingProfile)
-  const [isHovered, setIsHovered] = useState(false)
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(true) // Nav starts expanded by default
+  const [showCollapseTooltip, setShowCollapseTooltip] = useState(false)
+  const [showExpandTooltip, setShowExpandTooltip] = useState(false)
   const [promptHistory, setPromptHistory] = useState([])
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   
@@ -71,6 +71,12 @@ const NavigationBar = () => {
     }
   }
 
+  const handleNewChat = () => {
+    clearResponses()
+    setCurrentPrompt('')
+    setActiveTab('home')
+  }
+
   const tabs = [
     {
       id: 'home',
@@ -78,14 +84,20 @@ const NavigationBar = () => {
       label: 'Home',
     },
     {
+      id: 'new-chat',
+      icon: MessageSquarePlus,
+      label: 'New Chat',
+      action: handleNewChat,
+    },
+    {
       id: 'leaderboard',
       icon: Trophy,
-      label: 'Leaderboard',
+      label: 'Prompt Feed',
     },
     {
       id: 'saved',
-      icon: BookmarkCheck,
-      label: 'Saved',
+      icon: History,
+      label: 'History',
     },
     {
       id: 'statistics',
@@ -99,18 +111,22 @@ const NavigationBar = () => {
     },
   ]
 
+  const toggleNavExpanded = () => {
+    const next = !isExpanded
+    setIsExpanded(next)
+    setNavExpanded(next)
+    // Clear tooltips so they don't stick after the button unmounts mid-hover
+    setShowCollapseTooltip(false)
+    setShowExpandTooltip(false)
+  }
+
+  // Sync store on mount
+  useEffect(() => {
+    setNavExpanded(isExpanded)
+  }, [])
+
   return (
     <motion.div
-      onMouseEnter={() => {
-        setIsHovered(true)
-        setIsExpanded(true)
-        setNavExpanded(true)
-      }}
-      onMouseLeave={() => {
-        setIsHovered(false)
-        setNavExpanded(false)
-        setTimeout(() => setIsExpanded(false), 300)
-      }}
       style={{
         position: 'fixed',
         left: 0,
@@ -127,41 +143,118 @@ const NavigationBar = () => {
         backdropFilter: 'blur(10px)',
       }}
     >
-      {/* Logo/Header */}
+      {/* Logo/Header + Collapse Toggle */}
       <div
         style={{
           padding: '0 20px',
           marginBottom: '30px',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: isExpanded ? 'flex-start' : 'center',
+          justifyContent: isExpanded ? 'space-between' : 'center',
         }}
       >
         {isExpanded ? (
-          <div
-            key={`nav-title-${theme}`}
-            style={{
-              fontSize: '1.3rem',
-              fontWeight: 'bold',
-              background: currentTheme.accentGradient,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              color: currentTheme.accent,
-              display: 'inline-block',
-            }}
-          >
-            ArkiTek
-          </div>
+          <>
+            <div
+              key={`nav-title-${theme}`}
+              style={{
+                fontSize: '1.3rem',
+                fontWeight: 'bold',
+                background: currentTheme.accentGradient,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                color: currentTheme.accent,
+                display: 'inline-block',
+              }}
+            >
+              ArkiTek
+            </div>
+            {/* Collapse arrow */}
+            <div style={{ position: 'relative', display: 'inline-flex' }}>
+              <button
+                onClick={toggleNavExpanded}
+                onMouseEnter={() => setShowCollapseTooltip(true)}
+                onMouseLeave={() => setShowCollapseTooltip(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: currentTheme.textSecondary,
+                  padding: '4px',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <ChevronLeft size={20} />
+              </button>
+              {showCollapseTooltip && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  marginTop: '6px',
+                  background: 'rgba(0, 0, 0, 0.85)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '6px',
+                  padding: '5px 10px',
+                  whiteSpace: 'nowrap',
+                  zIndex: 200,
+                  color: '#ffffff',
+                  fontSize: '0.7rem',
+                  pointerEvents: 'none',
+                }}>
+                  Minimize sidebar
+                </div>
+              )}
+            </div>
+          </>
         ) : (
-          <div
-            style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '50%',
-              background: currentTheme.accentGradient,
-            }}
-          />
+          <div style={{ position: 'relative', display: 'inline-flex' }}>
+            <button
+              onClick={toggleNavExpanded}
+              onMouseEnter={() => setShowExpandTooltip(true)}
+              onMouseLeave={() => setShowExpandTooltip(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: currentTheme.textSecondary,
+                padding: '4px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <ChevronRight size={20} />
+            </button>
+            {showExpandTooltip && (
+              <div style={{
+                position: 'absolute',
+                left: '100%',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                marginLeft: '8px',
+                background: 'rgba(0, 0, 0, 0.85)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '6px',
+                padding: '5px 10px',
+                whiteSpace: 'nowrap',
+                zIndex: 200,
+                color: '#ffffff',
+                fontSize: '0.7rem',
+                pointerEvents: 'none',
+              }}>
+                Expand sidebar
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -169,7 +262,7 @@ const NavigationBar = () => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {tabs.map((tab) => {
           const Icon = tab.icon
-          const isActive = activeTab === tab.id
+          const isActive = tab.action ? false : activeTab === tab.id
           const [isTabHovered, setIsTabHovered] = useState(false)
           const shouldHighlight = isActive || isTabHovered
           
@@ -177,6 +270,10 @@ const NavigationBar = () => {
             <motion.button
               key={tab.id}
               onClick={() => {
+                if (tab.action) {
+                  tab.action()
+                  return
+                }
                 // Clear any viewed profile when navigating away from statistics
                 if (tab.id !== 'statistics') clearViewingProfile()
                 setActiveTab(tab.id)
@@ -215,7 +312,7 @@ const NavigationBar = () => {
                   {tab.label}
                 </motion.span>
               )}
-              {isHovered && !isExpanded && (
+              {!isExpanded && isTabHovered && (
                 <motion.div
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -396,9 +493,10 @@ const NavigationBar = () => {
               }).catch(() => {})
             }
             clearCurrentUser()
-            clearSelectedModels()
             clearResponses()
             setCurrentPrompt('')
+            // Note: selectedModels and autoSmartProviders are NOT cleared —
+            // they are saved on the server and will be restored on next sign-in
             window.location.reload()
           }}
           style={{

@@ -13,6 +13,10 @@ import AuthView from './components/AuthView'
 import SubscriptionGate from './components/SubscriptionGate'
 import AdminView from './components/AdminView'
 import SavedConversationsView from './components/SavedConversationsView'
+import TokenUsageWindow from './components/TokenUsageWindow'
+import LandingPage from './components/LandingPage'
+import TermsOfService from './components/TermsOfService'
+import PrivacyPolicy from './components/PrivacyPolicy'
 import { callLLM, callLLMStream, getAllModels, searchWithSerper } from './services/llmProviders'
 import { streamFetch } from './utils/streamFetch'
 import { detectCategory } from './utils/categoryDetector'
@@ -30,6 +34,7 @@ function App() {
 
   const showWelcome = useStore((state) => state.showWelcome)
   const currentUser = useStore((state) => state.currentUser)
+  const clearCurrentUser = useStore((state) => state.clearCurrentUser)
   const setGeminiDetectionResponse = useStore((state) => state.setGeminiDetectionResponse)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
@@ -39,28 +44,61 @@ function App() {
     const hash = window.location.hash
     return path === '/admin' || path === '/admin/' || hash === '#/admin'
   })
+
+  // Public page routing for non-logged-in users
+  // Determines which public page to show: 'landing', 'signin', 'signup', 'terms', 'privacy'
+  const [publicPage, setPublicPage] = useState(() => {
+    const path = window.location.pathname
+    if (path === '/signin' || path === '/login') return 'signin'
+    if (path === '/signup' || path === '/register') return 'signup'
+    if (path === '/terms' || path === '/terms-of-service') return 'terms'
+    if (path === '/privacy' || path === '/privacy-policy') return 'privacy'
+    return 'landing'
+  })
+
+  // Navigate between public pages (updates URL and state)
+  const navigatePublic = (page) => {
+    setPublicPage(page)
+    const pathMap = {
+      landing: '/',
+      signin: '/signin',
+      signup: '/signup',
+      terms: '/terms',
+      privacy: '/privacy',
+    }
+    window.history.pushState({}, '', pathMap[page] || '/')
+    window.scrollTo(0, 0)
+  }
+
   const activeTab = useStore((state) => state.activeTab || 'home')
   const setActiveTab = useStore((state) => state.setActiveTab)
   
   // Listen for navigation changes
   useEffect(() => {
-    const checkAdminRoute = () => {
+    const checkRoutes = () => {
       const path = window.location.pathname
       const hash = window.location.hash
       setIsAdminRoute(path === '/admin' || path === '/admin/' || hash === '#/admin')
+      
+      // Update public page based on URL
+      if (path === '/signin' || path === '/login') setPublicPage('signin')
+      else if (path === '/signup' || path === '/register') setPublicPage('signup')
+      else if (path === '/terms' || path === '/terms-of-service') setPublicPage('terms')
+      else if (path === '/privacy' || path === '/privacy-policy') setPublicPage('privacy')
+      else if (path === '/' || path === '') setPublicPage('landing')
     }
     
     // Check immediately in case pathname changed after initial render
-    checkAdminRoute()
+    checkRoutes()
     
     // Listen for browser back/forward navigation
-    window.addEventListener('popstate', checkAdminRoute)
+    window.addEventListener('popstate', checkRoutes)
     // Also listen for hash changes (in case using hash routing)
-    window.addEventListener('hashchange', checkAdminRoute)
+    window.addEventListener('hashchange', checkRoutes)
     
     return () => {
-      window.removeEventListener('popstate', checkAdminRoute)
-      window.removeEventListener('hashchange', checkAdminRoute)
+      window.removeEventListener('popstate', checkRoutes)
+      window.removeEventListener('hashchange', checkRoutes)
     }
   }, [])
   const selectedModels = useStore((state) => state.selectedModels)
@@ -110,6 +148,16 @@ function App() {
   const [currentCategory, setCurrentCategory] = useState('general')
   const [queryCount, setQueryCount] = useState(0)
   const [isUserAdmin, setIsUserAdmin] = useState(false)
+  const [showTokenUsage, setShowTokenUsage] = useState(true) // Temporarily visible for debugging
+  const storeResponses = useStore((state) => state.responses)
+  const storeTokenData = useStore((state) => state.tokenData)
+
+  // Re-open the token usage window whenever new token data arrives
+  useEffect(() => {
+    if (storeTokenData && storeTokenData.length > 0) {
+      setShowTokenUsage(true)
+    }
+  }, [storeTokenData])
 
   // Abort controller for cancelling in-flight prompt submissions
   const abortControllerRef = useRef(null)
@@ -466,7 +514,7 @@ function App() {
         
         if (ragData.refiner_tokens?.judge_selection) {
           tokenData.push({
-            modelName: 'grok-4-1-fast-reasoning (Judge - Refiner Selection)',
+            modelName: 'gemini-3-flash (Judge - Refiner Selection)',
             tokens: ragData.refiner_tokens.judge_selection
           })
         }
@@ -538,7 +586,7 @@ function App() {
     })
     updateStats(currentPrompt, modelNames, category, ratings)
 
-    // Generate summary using Grok via streaming (user sees tokens appear in real-time)
+    // Generate summary using Gemini 3 Flash via streaming (user sees tokens appear in real-time)
     // Only generate summary if 2+ models were used (no point summarizing a single response)
     const validResponses = responses.filter((r) => !r.error && r.text)
     
@@ -576,7 +624,7 @@ function App() {
         
         Important: Only include the section label followed by a colon, then the content. Do NOT repeat section headers within the content. Do NOT use markdown formatting like ** for section headers.`
 
-              // Use Grok via streaming summary endpoint
+              // Use Gemini 3 Flash via streaming summary endpoint
               const userId = currentUser?.id || null
               
               // Set an initial empty summary so the window appears and starts showing text
@@ -755,7 +803,7 @@ function App() {
         // Collect judge tokens and update token data
         if (summaryTokens) {
           const directJudgeTokens = {
-            modelName: 'grok-4-1-fast-reasoning (Judge - Finalization)',
+            modelName: 'gemini-3-flash (Judge - Finalization)',
             tokens: summaryTokens
           }
           // Re-collect token data including the judge tokens
@@ -770,16 +818,16 @@ function App() {
           disagreements: disagreements,
           timestamp: Date.now(),
           singleModel: false,
-          prompt: summaryPrompt, // Include the prompt sent to Grok
+          prompt: summaryPrompt, // Include the prompt sent to Gemini
           originalPrompt: currentPrompt, // The user's original question
         })
         
         // Store initial summary in conversation context
-        // The backend will automatically summarize the raw Grok response and store it
+        // The backend will automatically summarize the raw judge response and store it
         if (currentUser?.id && rawSummaryText) {
           axios.post(`${API_URL}/api/judge/store-initial-summary`, {
             userId: currentUser.id,
-            summaryText: rawSummaryText, // Raw Grok response (not formatted)
+            summaryText: rawSummaryText, // Raw judge response (not formatted)
             originalPrompt: summaryPrompt
           }).catch(err => {
             console.error('[Summary] Error storing initial summary:', err)
@@ -795,7 +843,7 @@ function App() {
         console.error('[Summary] Error generating summary:', error.message)
         // Show a user-friendly error message
         setSummary({
-          text: `Error generating summary: ${error.message}. Please check your Grok API key and try again.`,
+          text: `Error generating summary: ${error.message}. Please check your Google API key and try again.`,
           timestamp: Date.now(),
           error: true,
           originalPrompt: currentPrompt, // The user's original question
@@ -815,6 +863,44 @@ function App() {
       }
     } else {
       setIsGeneratingSummary(false)
+    }
+
+    // Save full token data to store (includes refiner, category detection, judge, and council tokens)
+    useStore.getState().setTokenData(tokenData)
+
+    // Auto-save this conversation to history (Year → Month → Day browsable in History tab)
+    if (currentUser?.id) {
+      try {
+        const currentSummary = useStore.getState().summary
+        const currentResponses = useStore.getState().responses || responses
+        const searchSrcs = useStore.getState().searchSources
+        
+        await axios.post(`${API_URL}/api/history/auto-save`, {
+          userId: currentUser.id,
+          originalPrompt: savedPrompt,
+          category: category || 'General',
+          responses: currentResponses.map(r => ({
+            modelName: r.modelName || r.actualModelName || 'Unknown',
+            actualModelName: r.actualModelName || r.modelName || 'Unknown',
+            text: r.text || '',
+            error: r.error || false,
+            tokens: r.tokens || null,
+          })),
+          summary: currentSummary ? {
+            text: currentSummary.text || '',
+            consensus: currentSummary.consensus || null,
+            agreements: currentSummary.agreements || [],
+            disagreements: currentSummary.disagreements || [],
+            singleModel: currentSummary.singleModel || false,
+            modelName: currentSummary.modelName || null,
+          } : null,
+          sources: searchSrcs || (ragData?.search_results) || [],
+          facts: ragData?.refined_data?.facts_with_citations || [],
+        })
+        console.log('[History] Auto-saved conversation to history')
+      } catch (error) {
+        console.error('[History] Error auto-saving:', error.message)
+      }
     }
 
     // Clear the prompt input (lastSubmittedPrompt was already saved at the beginning)
@@ -923,9 +1009,29 @@ function App() {
     )
   }
 
-  // Show auth view if not logged in (regular routes)
+  // Show public pages if not logged in
   if (!currentUser) {
-    return <AuthView />
+    // Terms and Privacy are always accessible (even needed by Stripe)
+    if (publicPage === 'terms') return <TermsOfService onNavigate={navigatePublic} />
+    if (publicPage === 'privacy') return <PrivacyPolicy onNavigate={navigatePublic} />
+    // Auth views (sign in / sign up)
+    if (publicPage === 'signin' || publicPage === 'signup' || publicPage === 'select-plan') {
+      return <AuthView initialView={publicPage} onNavigate={navigatePublic} />
+    }
+    // Default: Landing page
+    return <LandingPage onNavigate={navigatePublic} />
+  }
+
+  // Logged-in users on terms/privacy pages — still show those pages
+  if (publicPage === 'terms') return <TermsOfService onNavigate={(page) => { if (page === 'landing') { navigatePublic('landing'); } else { navigatePublic(page); } }} />
+  if (publicPage === 'privacy') return <PrivacyPolicy onNavigate={(page) => { if (page === 'landing') { navigatePublic('landing'); } else { navigatePublic(page); } }} />
+
+  // If a logged-in user somehow lands on /signin, /signup, or /, redirect them to the app
+  if (publicPage === 'signin' || publicPage === 'signup' || publicPage === 'landing') {
+    // Reset URL to / for the app
+    if (window.location.pathname !== '/' && window.location.pathname !== '/admin') {
+      window.history.replaceState({}, '', '/')
+    }
   }
 
   // Subscription logic:
@@ -938,6 +1044,13 @@ function App() {
   const isWithinPaidPeriod = currentUser.subscriptionRenewalDate && new Date(currentUser.subscriptionRenewalDate) > new Date()
   const isCanceledOrPaused = subStatus === 'canceled' || subStatus === 'paused'
   
+  // Users with pending email verification → log them out so they see the verification flow
+  if (subStatus === 'pending_verification' && !isUserAdmin) {
+    // Clear user so they see AuthView (where they can sign in and see verification-pending)
+    clearCurrentUser()
+    return null
+  }
+
   // Users who never subscribed, have incomplete signup, or failed payment → SubscriptionGate
   const needsSubscriptionGate = !isCanceledOrPaused && subStatus !== 'active' && subStatus !== 'trialing'
   
@@ -986,7 +1099,7 @@ function App() {
               }}
             >
               <span style={{ fontSize: '0.9rem', color: '#ff6b6b', lineHeight: '1.4' }}>
-                {`Your subscription has ${subStatus === 'paused' ? 'been paused' : 'expired'}. You can view your profile, saved conversations, and settings, but prompts and the full leaderboard are unavailable.`}
+                {`Your subscription has ${subStatus === 'paused' ? 'been paused' : 'expired'}. You can view your profile, saved conversations, and settings, but prompts and the full Prompt Feed are unavailable.`}
               </span>
               <motion.button
                 onClick={() => setActiveTab('settings')}
@@ -1023,6 +1136,17 @@ function App() {
                 {/* Summary Window - Shows on all tabs except admin */}
                 {!isAdminRoute && <SummaryWindow />}
 
+                {/* Token Usage Window - Temporarily visible for debugging */}
+                {activeTab === 'home' && (
+                  <TokenUsageWindow
+                    isOpen={showTokenUsage && (storeTokenData.length > 0 || storeResponses.length > 0)}
+                    onClose={() => setShowTokenUsage(false)}
+                    tokenData={storeTokenData.length > 0 ? storeTokenData : storeResponses.filter(r => r.tokens).map(r => ({
+                      modelName: r.modelName || r.actualModelName || 'Unknown',
+                      tokens: r.tokens,
+                    }))}
+                  />
+                )}
 
         </>
       )}

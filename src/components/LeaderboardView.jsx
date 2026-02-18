@@ -1161,7 +1161,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
       case 'alltime':
         return 'All Time Favorites'
       default:
-        return 'Community Leaderboard'
+        return 'Prompt Feed'
     }
   }
 
@@ -1238,7 +1238,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
             >
               <Lock size={16} color="#ff6b6b" />
               <span style={{ color: '#ff6b6b', fontSize: '0.85rem' }}>
-                Your subscription has expired. The leaderboard is limited. Resubscribe to view the full leaderboard.
+                Your subscription has expired. The Prompt Feed is limited. Resubscribe to view the full Prompt Feed.
               </span>
             </div>
           )}
@@ -1370,7 +1370,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
         {/* Leaderboard Content */}
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>
-            <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>Loading leaderboard...</p>
+            <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>Loading Prompt Feed...</p>
           </div>
         ) : (() => {
           // Filter prompts by selected category
@@ -1394,7 +1394,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                 ) : (
                   <>
                     {activeSection === 'today' && "No prompts submitted today yet. Be the first!"}
-                    {activeSection === 'alltime' && "No prompts on the leaderboard yet. Be the first to submit one!"}
+                    {activeSection === 'alltime' && "No prompts on the Prompt Feed yet. Be the first to submit one!"}
                     {activeSection === 'fyp' && "No prompts to show yet. Check back soon!"}
                   </>
                 )}

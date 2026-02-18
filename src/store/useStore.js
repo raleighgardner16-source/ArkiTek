@@ -20,6 +20,17 @@ export const useStore = create(
       setSelectedModels: (models) => set({ selectedModels: models }),
       clearSelectedModels: () => set({ selectedModels: [] }),
 
+      // Auto Smart provider preferences (which providers have Auto Smart enabled)
+      autoSmartProviders: {},
+      setAutoSmartProviders: (providersOrFn) => {
+        if (typeof providersOrFn === 'function') {
+          set((state) => ({ autoSmartProviders: providersOrFn(state.autoSmartProviders) }))
+        } else {
+          set({ autoSmartProviders: providersOrFn })
+        }
+      },
+      clearAutoSmartProviders: () => set({ autoSmartProviders: {} }),
+
       // Current prompt
       currentPrompt: '',
       setCurrentPrompt: (prompt) => set({ currentPrompt: prompt }),
@@ -50,11 +61,12 @@ export const useStore = create(
         })),
       clearResponses: () => {
         set({ responses: [] })
-        // Also clear summary, GPT-4o-mini response, debug data, sources, and reset window states when clearing responses
+        // Also clear summary, GPT-4o-mini response, debug data, sources, tokens, and reset window states when clearing responses
         set({ summary: null })
         set({ geminiDetectionResponse: null })
         set({ ragDebugData: null })
         set({ searchSources: null })
+        set({ tokenData: [] })
         set({ showFactsWindow: true }) // Reset to default state
         set({ showPipelineDebugWindow: true }) // Reset to default state
         // Note: lastSubmittedPrompt is NOT cleared here - it's managed by handlePromptSubmit
@@ -161,6 +173,11 @@ export const useStore = create(
       isSearchingWeb: false,
       setIsSearchingWeb: (searching) => set({ isSearchingWeb: searching }),
       
+      // Full token data (all models including refiner, category detection, judge)
+      tokenData: [],
+      setTokenData: (data) => set({ tokenData: data }),
+      clearTokenData: () => set({ tokenData: [] }),
+
       // Facts window visibility
       showFactsWindow: true,
       setShowFactsWindow: (show) => set({ showFactsWindow: show }),

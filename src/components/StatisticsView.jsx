@@ -78,7 +78,7 @@ const BADGE_CATEGORIES = [
     id: 'community',
     name: 'Community Champion',
     icon: Heart,
-    description: 'Get likes on your leaderboard prompts',
+    description: 'Get likes on your Prompt Feed posts',
     statKey: 'totalLikes',
     badges: [
       { name: 'First Fan', threshold: 1, emoji: '👍', color: '#FF69B4', desc: '1 like' },
@@ -372,7 +372,7 @@ const StatisticsView = () => {
         monthlyTokens: 0,
         monthlyPrompts: 0,
         monthlyCost: 0,
-        remainingFreeAllocation: 5.00,
+        remainingFreeAllocation: 7.50,
         freeUsagePercentage: 100,
         dailyUsage: [],
         providers: {},
@@ -522,9 +522,9 @@ const StatisticsView = () => {
     monthlyOutputTokens: 0,
     monthlyPrompts: 0,
     monthlyCost: 0,
-    remainingFreeAllocation: 5.00,
+    remainingFreeAllocation: 7.50,
     freeUsagePercentage: 100,
-    totalAvailableBalance: 5.00,
+    totalAvailableBalance: 7.50,
     purchasedCredits: { total: 0, remaining: 0, purchaseCount: 0, lastPurchase: null },
     dailyUsage: [],
     providers: {},
@@ -849,7 +849,7 @@ const StatisticsView = () => {
             Ratings & Models
           </button>
           )}
-          {/* Leaderboard — own profile only */}
+          {/* Prompt Feed — own profile only */}
           {!isViewingOther && (
           <button
             onClick={() => handleTabChange('leaderboard')}
@@ -869,7 +869,7 @@ const StatisticsView = () => {
             }}
           >
             <Trophy size={20} />
-            Leaderboard
+            Prompt Feed
           </button>
           )}
           <button
@@ -933,9 +933,9 @@ const StatisticsView = () => {
                   <p style={{ fontSize: '0.85rem', color: (userStats.monthlyCost || 0) > 0 ? '#f0a050' : currentTheme.textMuted, margin: '0 0 4px 0', fontStyle: 'italic' }}>
                     Monthly Spend: ${(userStats.monthlyCost || 0).toFixed(2)}
                   </p>
-                  {(userStats.monthlyCost || 0) > 5.00 && (
+                  {(userStats.monthlyCost || 0) > 7.50 && (
                     <p style={{ fontSize: '0.85rem', color: '#ff6b6b', margin: '0 0 4px 0', fontStyle: 'italic' }}>
-                      Additional Usage: ${Math.max(0, (userStats.monthlyCost || 0) - 5.00).toFixed(2)}
+                      Additional Usage: ${Math.max(0, (userStats.monthlyCost || 0) - 7.50).toFixed(2)}
                     </p>
                   )}
                   <p style={{ fontSize: '0.85rem', color: (userStats.purchasedCredits?.remaining || 0) > 0 ? '#00cc66' : currentTheme.textMuted, margin: 0, fontStyle: 'italic' }}>
@@ -1999,7 +1999,7 @@ const StatisticsView = () => {
             >
               {loadingLeaderboardStats ? (
                 <div style={{ textAlign: 'center', padding: '40px' }}>
-                  <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>Loading leaderboard stats...</p>
+                  <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>Loading Prompt Feed stats...</p>
                 </div>
               ) : currentUser ? (
                 <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
@@ -2152,7 +2152,7 @@ const StatisticsView = () => {
                   }}
                 >
                   <p style={{ color: '#888888', fontSize: '1.1rem' }}>
-                    Please sign in to view your leaderboard stats.
+                    Please sign in to view your Prompt Feed stats.
                   </p>
                 </div>
               )}
@@ -2672,13 +2672,13 @@ const StatisticsView = () => {
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                   }}>
-                    {isViewingOther ? `${viewingProfile.username}'s Posts` : 'My Leaderboard Posts'}
+                    {isViewingOther ? `${viewingProfile.username}'s Posts` : 'My Prompt Feed Posts'}
                   </h2>
                 </div>
                 <p style={{ color: currentTheme.textSecondary, fontSize: '0.95rem', margin: 0 }}>
                   {isViewingOther
-                    ? `All prompts ${viewingProfile.username} has submitted to the community leaderboard.`
-                    : 'All prompts you have submitted to the community leaderboard.'}
+                    ? `All prompts ${viewingProfile.username} has submitted to the Prompt Feed.`
+                    : 'All prompts you have submitted to the Prompt Feed.'}
                 </p>
               </div>
 
@@ -2699,8 +2699,8 @@ const StatisticsView = () => {
                   <Rocket size={48} color={currentTheme.textMuted} style={{ marginBottom: '16px', opacity: 0.5 }} />
                   <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem', margin: '0 0 8px 0' }}>
                     {isViewingOther
-                      ? `${viewingProfile.username} hasn't submitted any prompts to the leaderboard yet.`
-                      : "You haven't submitted any prompts to the leaderboard yet."}
+                      ? `${viewingProfile.username} hasn't submitted any prompts to the Prompt Feed yet.`
+                      : "You haven't submitted any prompts to the Prompt Feed yet."}
                   </p>
                   {!isViewingOther && (
                   <p style={{ color: currentTheme.textMuted, fontSize: '0.9rem', margin: 0 }}>

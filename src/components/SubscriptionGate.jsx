@@ -412,14 +412,13 @@ const SubscriptionGate = ({ currentUser }) => {
           borderRadius: '12px',
         }}>
           <h3 style={{ color: '#ffffff', fontSize: '1.05rem', marginBottom: '10px', marginTop: 0 }}>
-            ArkiTek Plus — $19.95/month
+            ArkiTek Pro — $19.95/month
           </h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {[
-              'Access to all major AI providers',
-              '$5/month in usage credits included',
-              'Model comparisons and summary',
-              'Full statistics & usage tracking',
+              '15x more usage',
+              'All models & features',
+              'Monthly rewards: usage bonuses, badges & collectible icons',
             ].map((feature, i) => (
               <li key={i} style={{
                 color: 'rgba(255, 255, 255, 0.7)',

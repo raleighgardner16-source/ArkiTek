@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe } from 'lucide-react'
+import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -22,148 +22,142 @@ const getProviderFromModelName = (modelName) => {
   return modelName.split('-')[0].toLowerCase()
 }
 
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+]
+
 const SavedConversationsView = () => {
   const currentUser = useStore((state) => state.currentUser)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
 
-  const [conversations, setConversations] = useState([])
+  const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
-  const [selectedConvo, setSelectedConvo] = useState(null) // full detail of selected conversation
+  const [selectedConvo, setSelectedConvo] = useState(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null) // id of card showing inline confirm
-  const [deletingId, setDeletingId] = useState(null) // id currently being deleted
-  const [filter, setFilter] = useState('individual') // 'individual', 'full'
-  const [selectedProvider, setSelectedProvider] = useState(null) // provider key for individual tab
-  const [expandedMonths, setExpandedMonths] = useState({}) // Track which month/year groups are expanded
-  const [expandedSources, setExpandedSources] = useState({}) // Track which source sections are expanded
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+  const [expandedYears, setExpandedYears] = useState({})
+  const [expandedMonths, setExpandedMonths] = useState({})
+  const [expandedDays, setExpandedDays] = useState({})
+  const [expandedSources, setExpandedSources] = useState({})
 
   useEffect(() => {
     if (currentUser?.id) {
-      fetchConversations()
+      fetchHistory()
     }
   }, [currentUser])
 
-  const fetchConversations = async () => {
+  const fetchHistory = async () => {
     setLoading(true)
     try {
-      const res = await axios.get(`${API_URL}/api/conversations/${currentUser.id}`)
-      setConversations(res.data.conversations || [])
+      const res = await axios.get(`${API_URL}/api/history/${currentUser.id}`)
+      setHistory(res.data.history || [])
     } catch (error) {
-      console.error('[Saved] Error fetching conversations:', error)
+      console.error('[History] Error fetching:', error)
     }
     setLoading(false)
   }
 
-  const fetchDetail = async (convoId) => {
+  const fetchDetail = async (historyId) => {
     setLoadingDetail(true)
-    setExpandedSources({}) // Reset source toggles for the new detail view
+    setExpandedSources({})
     try {
-      const res = await axios.get(`${API_URL}/api/conversations/detail/${convoId}`)
+      const res = await axios.get(`${API_URL}/api/history/detail/${historyId}`)
       setSelectedConvo(res.data.conversation)
     } catch (error) {
-      console.error('[Saved] Error fetching detail:', error)
+      console.error('[History] Error fetching detail:', error)
       alert('Failed to load conversation details.')
     }
     setLoadingDetail(false)
   }
 
-  const handleDelete = async (convoId, convoType) => {
+  const handleDelete = async (historyId) => {
     try {
-      setDeletingId(convoId)
-      await axios.delete(`${API_URL}/api/conversations/${convoId}`, {
-        data: { userId: currentUser.id, type: convoType }
+      setDeletingId(historyId)
+      await axios.delete(`${API_URL}/api/history/${historyId}`, {
+        data: { userId: currentUser.id }
       })
-      setConversations(prev => prev.filter(c => c.id !== convoId))
-      if (selectedConvo?.id === convoId) {
+      setHistory(prev => prev.filter(c => c.id !== historyId))
+      if (selectedConvo?.id === historyId) {
         setSelectedConvo(null)
       }
       setConfirmDeleteId(null)
     } catch (error) {
-      console.error('[Saved] Error deleting:', error)
+      console.error('[History] Error deleting:', error)
       alert('Failed to delete conversation.')
     } finally {
       setDeletingId(null)
     }
   }
 
-  const filteredConversations = conversations.filter(c => {
-    if (c.type !== filter) return false
-    if (filter === 'individual' && selectedProvider) {
-      return getProviderFromModelName(c.modelName) === selectedProvider
-    }
-    return true
-  })
-
-  // Build provider counts for individual responses
-  const individualConvos = conversations.filter(c => c.type === 'individual')
-  const providerCounts = {}
-  individualConvos.forEach(c => {
-    const provider = getProviderFromModelName(c.modelName)
-    providerCounts[provider] = (providerCounts[provider] || 0) + 1
-  })
-  // Sort providers alphabetically by display name
-  const availableProviders = Object.keys(providerCounts).sort((a, b) => {
-    const nameA = PROVIDER_MAP[a]?.name || a
-    const nameB = PROVIDER_MAP[b]?.name || b
-    return nameA.localeCompare(nameB)
-  })
-
-  const formatDate = (dateStr) => {
-    const d = new Date(dateStr)
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
-      ' at ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-  }
-
-  const formatDayOnly = (dateStr) => {
-    const d = new Date(dateStr)
-    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) +
-      ' at ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-  }
-
-  const getMonthYearKey = (dateStr) => {
+  // --- Date helpers ---
+  const getYear = (dateStr) => new Date(dateStr).getFullYear()
+  const getMonthKey = (dateStr) => {
     const d = new Date(dateStr)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   }
-
-  const getMonthYearLabel = (key) => {
-    const [year, month] = key.split('-')
-    const d = new Date(parseInt(year), parseInt(month) - 1)
-    return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  const getDayKey = (dateStr) => new Date(dateStr).toISOString().split('T')[0]
+  const getMonthLabel = (monthKey) => {
+    const [, month] = monthKey.split('-')
+    return MONTH_NAMES[parseInt(month, 10) - 1]
+  }
+  const getDayLabel = (dayKey) => {
+    const d = new Date(dayKey + 'T12:00:00')
+    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+  }
+  const formatTime = (dateStr) => {
+    const d = new Date(dateStr)
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
   }
 
-  // Group filtered conversations by month/year
-  const groupedConversations = filteredConversations.reduce((groups, convo) => {
-    const key = getMonthYearKey(convo.savedAt)
-    if (!groups[key]) groups[key] = []
-    groups[key].push(convo)
-    return groups
-  }, {})
-
-  // Sort month keys in descending order (newest first)
-  const sortedMonthKeys = Object.keys(groupedConversations).sort((a, b) => b.localeCompare(a))
-
-  // Reset expanded months when filter or provider changes so all tabs start closed
-  useEffect(() => {
-    setExpandedMonths({})
-  }, [filter, selectedProvider])
-
-  const toggleMonth = (monthKey) => {
-    setExpandedMonths(prev => ({ ...prev, [monthKey]: !prev[monthKey] }))
+  // --- Build hierarchy: Year → Month → Day → convos ---
+  const buildHierarchy = () => {
+    const years = {}
+    history.forEach(convo => {
+      const year = getYear(convo.savedAt)
+      const monthKey = getMonthKey(convo.savedAt)
+      const dayKey = getDayKey(convo.savedAt)
+      if (!years[year]) years[year] = {}
+      if (!years[year][monthKey]) years[year][monthKey] = {}
+      if (!years[year][monthKey][dayKey]) years[year][monthKey][dayKey] = []
+      years[year][monthKey][dayKey].push(convo)
+    })
+    return years
   }
 
+  const hierarchy = buildHierarchy()
+  const sortedYears = Object.keys(hierarchy).sort((a, b) => b - a)
+
+  const toggleYear = (year) => setExpandedYears(prev => ({ ...prev, [year]: !prev[year] }))
+  const toggleMonth = (monthKey) => setExpandedMonths(prev => ({ ...prev, [monthKey]: !prev[monthKey] }))
+  const toggleDay = (dayKey) => setExpandedDays(prev => ({ ...prev, [dayKey]: !prev[dayKey] }))
+
+  // Count convos in a given scope
+  const countInYear = (yearData) => Object.values(yearData).reduce((sum, months) => sum + Object.values(months).reduce((s, days) => s + days.length, 0), 0)
+  const countInMonth = (monthData) => Object.values(monthData).reduce((sum, days) => sum + days.length, 0)
+
+  // --- Render a conversation card ---
   const renderConvoCard = (convo) => (
     <motion.div
       key={convo.id}
-      onClick={() => fetchDetail(convo.id)}
+      onClick={() => {
+        // Toggle: if this convo is already selected, close the detail panel
+        if (selectedConvo?.id === convo.id) {
+          setSelectedConvo(null)
+        } else {
+          fetchDetail(convo.id)
+        }
+      }}
       style={{
         background: selectedConvo?.id === convo.id
           ? `${currentTheme.accent}15`
           : currentTheme.backgroundOverlay,
         border: `1px solid ${selectedConvo?.id === convo.id ? currentTheme.accent + '40' : currentTheme.borderLight}`,
-        borderRadius: '12px',
-        padding: '16px',
-        marginBottom: '10px',
+        borderRadius: '10px',
+        padding: '12px 14px',
+        marginBottom: '6px',
         cursor: 'pointer',
         transition: 'all 0.2s ease',
       }}
@@ -174,120 +168,99 @@ const SavedConversationsView = () => {
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-            {convo.type === 'full' ? (
-              <Layers size={16} color="#60a5fa" />
+          {/* Model chips */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '5px', flexWrap: 'wrap' }}>
+            {convo.isSingleModel ? (
+              <span style={{
+                fontSize: '0.65rem', fontWeight: '600', color: '#a855f7',
+                textTransform: 'uppercase', letterSpacing: '0.5px',
+                display: 'flex', alignItems: 'center', gap: '4px',
+              }}>
+                <MessageCircle size={12} /> Single Model
+              </span>
             ) : (
-              <MessageCircle size={16} color="#a855f7" />
+              <span style={{
+                fontSize: '0.65rem', fontWeight: '600', color: '#60a5fa',
+                textTransform: 'uppercase', letterSpacing: '0.5px',
+                display: 'flex', alignItems: 'center', gap: '4px',
+              }}>
+                <Layers size={12} /> Council ({convo.modelCount} models)
+              </span>
             )}
-            <span style={{
-              fontSize: '0.7rem',
-              fontWeight: '600',
-              color: convo.type === 'full' ? '#60a5fa' : '#a855f7',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}>
-              {convo.type === 'full' ? 'All Council Responses' : convo.modelName || 'Individual'}
-            </span>
+            {convo.consensus !== null && (
+              <span style={{
+                padding: '1px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: '600',
+                background: convo.consensus >= 80 ? 'rgba(72, 201, 176, 0.15)' : convo.consensus >= 50 ? 'rgba(241, 196, 15, 0.15)' : 'rgba(255, 107, 107, 0.15)',
+                color: convo.consensus >= 80 ? '#48c9b0' : convo.consensus >= 50 ? '#f1c40f' : '#ff6b6b',
+              }}>
+                {convo.consensus}%
+              </span>
+            )}
           </div>
+          {/* Title / prompt */}
           <p style={{
-            color: currentTheme.text,
-            fontSize: '0.95rem',
-            fontWeight: '500',
-            margin: '0 0 6px 0',
-            lineHeight: '1.3',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            color: currentTheme.text, fontSize: '0.88rem', fontWeight: '500',
+            margin: '0 0 4px 0', lineHeight: '1.3',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {convo.title}
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '0.75rem', color: currentTheme.textMuted }}>
-              {formatDayOnly(convo.savedAt)}
+            <span style={{ fontSize: '0.7rem', color: currentTheme.textMuted, display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <Clock size={10} /> {formatTime(convo.savedAt)}
             </span>
-            {convo.category && convo.category !== 'General' && (
+            {convo.category && convo.category !== 'General' && convo.category !== 'General Knowledge/Other' && (
               <span style={{
-                padding: '2px 6px',
-                background: currentTheme.buttonBackground,
-                borderRadius: '4px',
-                fontSize: '0.7rem',
-                color: currentTheme.textMuted,
+                padding: '1px 6px', background: currentTheme.buttonBackground,
+                borderRadius: '4px', fontSize: '0.65rem', color: currentTheme.textMuted,
               }}>
                 {convo.category}
               </span>
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {/* Delete button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
           {confirmDeleteId === convo.id ? (
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleDelete(convo.id, convo.type)
-                }}
+                onClick={(e) => { e.stopPropagation(); handleDelete(convo.id) }}
                 disabled={deletingId === convo.id}
                 style={{
-                  background: 'rgba(255, 107, 107, 0.15)',
-                  border: '1px solid rgba(255, 107, 107, 0.4)',
-                  borderRadius: '8px',
-                  padding: '5px 10px',
-                  color: '#ff6b6b',
-                  fontSize: '0.72rem',
-                  fontWeight: '600',
-                  cursor: deletingId === convo.id ? 'default' : 'pointer',
-                  opacity: deletingId === convo.id ? 0.5 : 1,
-                  transition: 'all 0.15s ease',
-                  whiteSpace: 'nowrap',
+                  background: 'rgba(255, 107, 107, 0.15)', border: '1px solid rgba(255, 107, 107, 0.4)',
+                  borderRadius: '6px', padding: '4px 8px', color: '#ff6b6b',
+                  fontSize: '0.68rem', fontWeight: '600', cursor: deletingId === convo.id ? 'default' : 'pointer',
+                  opacity: deletingId === convo.id ? 0.5 : 1, whiteSpace: 'nowrap',
                 }}
               >
-                {deletingId === convo.id ? 'Deleting...' : 'Delete'}
+                {deletingId === convo.id ? '...' : 'Delete'}
               </button>
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setConfirmDeleteId(null)
-                }}
+                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null) }}
                 style={{
-                  background: currentTheme.buttonBackground,
-                  border: `1px solid ${currentTheme.borderLight}`,
-                  borderRadius: '8px',
-                  padding: '5px 10px',
-                  color: currentTheme.textSecondary,
-                  fontSize: '0.72rem',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  whiteSpace: 'nowrap',
+                  background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`,
+                  borderRadius: '6px', padding: '4px 8px', color: currentTheme.textSecondary,
+                  fontSize: '0.68rem', cursor: 'pointer', whiteSpace: 'nowrap',
                 }}
               >
-                Cancel
+                No
               </button>
             </div>
           ) : (
             <>
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setConfirmDeleteId(convo.id)
-                }}
+                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(convo.id) }}
                 style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '6px',
-                  borderRadius: '6px',
-                  transition: 'all 0.15s ease',
-                  opacity: 0.5,
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  padding: '4px', borderRadius: '4px', opacity: 0.4, transition: 'opacity 0.15s',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(255, 107, 107, 0.1)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = 'transparent' }}
-                title="Delete this conversation"
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.4' }}
+                title="Delete"
               >
-                <Trash2 size={16} color="#ff6b6b" />
+                <Trash2 size={14} color="#ff6b6b" />
               </button>
-              <ChevronRight size={16} color={currentTheme.textMuted} />
+              <ChevronRight size={14} color={currentTheme.textMuted} />
             </>
           )}
         </div>
@@ -295,7 +268,7 @@ const SavedConversationsView = () => {
     </motion.div>
   )
 
-  // Helper to render a collapsible sources section
+  // --- Render sources section ---
   const renderSourcesSection = (sources, toggleKey, label = 'Sources') => {
     if (!sources || !Array.isArray(sources) || sources.length === 0) return null
     const isOpen = expandedSources[toggleKey]
@@ -344,9 +317,14 @@ const SavedConversationsView = () => {
     )
   }
 
-  // Detail view of a single conversation
+  // --- Detail view ---
   const renderDetail = () => {
     if (!selectedConvo) return null
+    const formatDate = (dateStr) => {
+      const d = new Date(dateStr)
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+        ' at ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    }
 
     return (
       <motion.div
@@ -366,41 +344,27 @@ const SavedConversationsView = () => {
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
           <div style={{ flex: 1 }}>
-            <h2 style={{
-              fontSize: '1.4rem',
-              color: currentTheme.text,
-              margin: '0 0 8px 0',
-              lineHeight: '1.3',
-            }}>
+            <h2 style={{ fontSize: '1.4rem', color: currentTheme.text, margin: '0 0 8px 0', lineHeight: '1.3' }}>
               {selectedConvo.title}
             </h2>
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{
                 padding: '4px 10px',
-                background: selectedConvo.type === 'full' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(168, 85, 247, 0.15)',
-                border: `1px solid ${selectedConvo.type === 'full' ? 'rgba(59, 130, 246, 0.4)' : 'rgba(168, 85, 247, 0.4)'}`,
-                borderRadius: '6px',
-                fontSize: '0.75rem',
-                color: selectedConvo.type === 'full' ? '#60a5fa' : '#a855f7',
+                background: selectedConvo.responses?.length > 1 ? 'rgba(59, 130, 246, 0.15)' : 'rgba(168, 85, 247, 0.15)',
+                border: `1px solid ${selectedConvo.responses?.length > 1 ? 'rgba(59, 130, 246, 0.4)' : 'rgba(168, 85, 247, 0.4)'}`,
+                borderRadius: '6px', fontSize: '0.75rem',
+                color: selectedConvo.responses?.length > 1 ? '#60a5fa' : '#a855f7',
                 fontWeight: '600',
               }}>
-                {selectedConvo.type === 'full' ? 'All Council Responses' : 'Individual'}
+                {selectedConvo.responses?.length > 1 ? `Council (${selectedConvo.responses.length} models)` : 'Single Model'}
               </span>
-              {selectedConvo.modelName && (
-                <span style={{ fontSize: '0.85rem', color: currentTheme.textSecondary }}>
-                  {selectedConvo.modelName}
-                </span>
-              )}
               <span style={{ fontSize: '0.8rem', color: currentTheme.textMuted }}>
                 {formatDate(selectedConvo.savedAt)}
               </span>
-              {selectedConvo.category && (
+              {selectedConvo.category && selectedConvo.category !== 'General Knowledge/Other' && (
                 <span style={{
-                  padding: '3px 8px',
-                  background: currentTheme.buttonBackground,
-                  borderRadius: '4px',
-                  fontSize: '0.75rem',
-                  color: currentTheme.textSecondary,
+                  padding: '3px 8px', background: currentTheme.buttonBackground,
+                  borderRadius: '4px', fontSize: '0.75rem', color: currentTheme.textSecondary,
                 }}>
                   {selectedConvo.category}
                 </span>
@@ -410,14 +374,29 @@ const SavedConversationsView = () => {
           <button
             onClick={() => setSelectedConvo(null)}
             style={{
-              background: 'none',
-              border: 'none',
+              background: 'rgba(255, 107, 107, 0.1)',
+              border: '1px solid rgba(255, 107, 107, 0.3)',
+              borderRadius: '8px',
               cursor: 'pointer',
-              padding: '8px',
-              color: currentTheme.textMuted,
+              padding: '6px',
+              color: '#ff6b6b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s ease',
+              flexShrink: 0,
             }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 107, 107, 0.25)'
+              e.currentTarget.style.borderColor = 'rgba(255, 107, 107, 0.6)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 107, 107, 0.1)'
+              e.currentTarget.style.borderColor = 'rgba(255, 107, 107, 0.3)'
+            }}
+            title="Close"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
@@ -426,12 +405,10 @@ const SavedConversationsView = () => {
           <div style={{
             background: currentTheme.buttonBackground,
             border: `1px solid ${currentTheme.borderLight}`,
-            borderRadius: '12px',
-            padding: '16px',
-            marginBottom: '20px',
+            borderRadius: '12px', padding: '16px', marginBottom: '20px',
           }}>
             <div style={{ fontSize: '0.75rem', color: currentTheme.accent, fontWeight: '600', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Original Prompt
+              Your Prompt
             </div>
             <p style={{ color: currentTheme.text, margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
               {selectedConvo.originalPrompt}
@@ -439,403 +416,295 @@ const SavedConversationsView = () => {
           </div>
         )}
 
-        {/* Individual model response */}
-        {selectedConvo.type === 'individual' && (
-          <>
-            <div style={{
-              background: currentTheme.buttonBackground,
-              border: `1px solid ${currentTheme.borderLight}`,
-              borderRadius: '12px',
-              padding: '16px',
-              marginBottom: '16px',
-            }}>
-              <div style={{ fontSize: '0.75rem', color: currentTheme.accent, fontWeight: '600', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                {selectedConvo.modelName || 'Model'} Response
-              </div>
-              <p style={{ color: currentTheme.textSecondary, margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap', fontSize: '0.95rem' }}>
-                {selectedConvo.modelResponse}
-              </p>
-              {/* Initial sources — from the first prompt */}
-              {renderSourcesSection(selectedConvo.sources, 'initial_sources', 'Sources')}
-            </div>
-
-            {/* Conversation history */}
-            {selectedConvo.conversation && selectedConvo.conversation.length > 0 && (
-              <div style={{ marginTop: '16px' }}>
-                <h3 style={{ fontSize: '1rem', color: currentTheme.text, marginBottom: '12px' }}>
-                  Conversation History ({selectedConvo.conversation.length} messages)
-                </h3>
-                {selectedConvo.conversation.map((msg, idx) => {
-                  // After each assistant message, check if there are per-turn sources
-                  // Conversation is stored as flat array: [user, assistant, user, assistant, ...]
-                  // Turn index = Math.floor(idx / 2) for assistant messages (idx is odd)
-                  const turnIndex = Math.floor(idx / 2)
-                  const isAssistant = msg.role === 'assistant'
-                  const turnSources = isAssistant && selectedConvo.conversationSources
-                    ? selectedConvo.conversationSources[turnIndex] || selectedConvo.conversationSources[String(turnIndex)]
-                    : null
-
-                  return (
-                    <React.Fragment key={idx}>
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                          marginBottom: '10px',
-                        }}
-                      >
-                        <div style={{
-                          maxWidth: '80%',
-                          padding: '12px 16px',
-                          borderRadius: '12px',
-                          background: msg.role === 'user'
-                            ? currentTheme.accentGradient
-                            : currentTheme.buttonBackground,
-                          border: msg.role === 'user' ? 'none' : `1px solid ${currentTheme.borderLight}`,
-                          color: msg.role === 'user' ? '#000' : currentTheme.textSecondary,
-                        }}>
-                          <div style={{ fontSize: '0.7rem', fontWeight: '600', marginBottom: '4px', textTransform: 'uppercase', opacity: 0.7 }}>
-                            {msg.role === 'user' ? 'You' : selectedConvo.modelName || 'Assistant'}
-                          </div>
-                          <p style={{ margin: 0, lineHeight: '1.5', whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>
-                            {msg.text}
-                          </p>
-                        </div>
-                      </div>
-                      {/* Per-turn sources for this follow-up exchange */}
-                      {turnSources && turnSources.length > 0 && renderSourcesSection(turnSources, `convo_sources_${turnIndex}`, 'Sources')}
-                    </React.Fragment>
-                  )
-                })}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Full session responses */}
-        {selectedConvo.type === 'full' && (
-          <>
-            {/* All model responses */}
-            {selectedConvo.responses && selectedConvo.responses.length > 0 && (
-              <div style={{ marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '1rem', color: currentTheme.text, marginBottom: '12px' }}>
-                  Council Responses ({selectedConvo.responses.length} models)
-                </h3>
-                {selectedConvo.responses.map((resp, idx) => (
-                  <ExpandableResponse
-                    key={idx}
-                    resp={resp}
-                    idx={idx}
-                    currentTheme={currentTheme}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Summary / Judge — collapsible tab */}
-            {selectedConvo.summary && (
-              <ExpandableSummary
-                summary={selectedConvo.summary}
+        {/* Model Responses */}
+        {selectedConvo.responses && selectedConvo.responses.length > 0 && (
+          <div style={{ marginBottom: '20px' }}>
+            <h3 style={{ fontSize: '1rem', color: currentTheme.text, marginBottom: '12px' }}>
+              {selectedConvo.responses.length > 1 ? `Council Responses (${selectedConvo.responses.length} models)` : 'Model Response'}
+            </h3>
+            {selectedConvo.responses.map((resp, idx) => (
+              <ExpandableResponse
+                key={idx}
+                resp={resp}
+                idx={idx}
                 currentTheme={currentTheme}
               />
-            )}
+            ))}
+          </div>
+        )}
 
-            {/* Sources */}
-            {renderSourcesSection(selectedConvo.sources, 'full_session_sources', 'Sources')}
+        {/* Summary / Judge */}
+        {selectedConvo.summary && selectedConvo.summary.text && (
+          <ExpandableSummary
+            summary={selectedConvo.summary}
+            currentTheme={currentTheme}
+          />
+        )}
 
-            {/* Facts */}
-            {selectedConvo.facts && selectedConvo.facts.length > 0 && (
-              <div style={{
-                background: currentTheme.buttonBackground,
-                border: `1px solid ${currentTheme.borderLight}`,
-                borderRadius: '12px',
-                padding: '16px',
-              }}>
-                <div style={{ fontSize: '0.75rem', color: currentTheme.accent, fontWeight: '600', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Facts ({selectedConvo.facts.length})
-                </div>
-                {selectedConvo.facts.map((fact, idx) => (
-                  <p key={idx} style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: '0 0 6px 0', lineHeight: '1.5' }}>
-                    • {typeof fact === 'string' ? fact : fact.text || JSON.stringify(fact)}
-                  </p>
-                ))}
-              </div>
-            )}
-          </>
+        {/* Sources */}
+        {renderSourcesSection(selectedConvo.sources, 'detail_sources', 'Sources')}
+
+        {/* Facts */}
+        {selectedConvo.facts && selectedConvo.facts.length > 0 && (
+          <div style={{
+            background: currentTheme.buttonBackground,
+            border: `1px solid ${currentTheme.borderLight}`,
+            borderRadius: '12px', padding: '16px',
+          }}>
+            <div style={{ fontSize: '0.75rem', color: currentTheme.accent, fontWeight: '600', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Facts ({selectedConvo.facts.length})
+            </div>
+            {selectedConvo.facts.map((fact, idx) => (
+              <p key={idx} style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: '0 0 6px 0', lineHeight: '1.5' }}>
+                • {typeof fact === 'string' ? fact : fact.fact || fact.text || JSON.stringify(fact)}
+              </p>
+            ))}
+          </div>
         )}
       </motion.div>
     )
   }
 
+  // --- Main render ---
   return (
     <div style={{
-      position: 'fixed',
-      top: 0,
-      left: '240px',
-      width: 'calc(100% - 240px)',
-      height: '100%',
-      overflowY: 'auto',
-      zIndex: 10,
-      padding: '40px',
+      position: 'fixed', top: 0, left: '240px',
+      width: 'calc(100% - 240px)', height: '100%',
+      overflowY: 'auto', zIndex: 10, padding: '40px',
     }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Header */}
-      <h1
-        key={`title-${theme}`}
-        style={{
-          fontSize: '2.5rem',
-          marginBottom: '12px',
-          background: currentTheme.accentGradient,
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          color: currentTheme.accent,
-          display: 'inline-block',
-        }}
-      >
-        Saved Conversations
-      </h1>
-      <p style={{ color: currentTheme.textSecondary, marginBottom: '24px', fontSize: '1rem' }}>
-        {conversations.length} saved conversation{conversations.length !== 1 ? 's' : ''}
-      </p>
+        {/* Header */}
+        <h1
+          key={`title-${theme}`}
+          style={{
+            fontSize: '2.5rem', marginBottom: '12px',
+            background: currentTheme.accentGradient,
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            color: currentTheme.accent, display: 'inline-block',
+          }}
+        >
+          History
+        </h1>
+        <p style={{ color: currentTheme.textSecondary, marginBottom: '24px', fontSize: '1rem' }}>
+          {history.length} conversation{history.length !== 1 ? 's' : ''}
+        </p>
 
-      {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
-        {[
-          { id: 'individual', label: 'Individual Responses' },
-          { id: 'full', label: 'All Council Responses' },
-        ].map(f => (
-          <button
-            key={f.id}
-            onClick={() => { setFilter(f.id); if (f.id === 'full') setSelectedProvider(null) }}
-            style={{
-              padding: '8px 16px',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: filter === f.id ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
-              borderRadius: '0',
-              color: filter === f.id ? currentTheme.accent : currentTheme.textSecondary,
-              fontSize: '0.85rem',
-              fontWeight: filter === f.id ? '600' : '400',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Provider sub-tabs for Individual Responses */}
-      {filter === 'individual' && availableProviders.length > 0 && (
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => setSelectedProvider(null)}
-            style={{
-              padding: '6px 14px',
-              background: selectedProvider === null
-                ? `${currentTheme.accent}20`
-                : currentTheme.buttonBackground,
-              border: `1px solid ${selectedProvider === null ? currentTheme.accent + '60' : currentTheme.borderLight}`,
-              borderRadius: '20px',
-              color: selectedProvider === null ? currentTheme.accent : currentTheme.textSecondary,
-              fontSize: '0.8rem',
-              fontWeight: selectedProvider === null ? '600' : '400',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-          >
-            All
-            <span style={{
-              padding: '1px 7px',
-              background: selectedProvider === null ? currentTheme.accent + '30' : currentTheme.backgroundOverlay,
-              borderRadius: '10px',
-              fontSize: '0.7rem',
-              fontWeight: '600',
-              color: selectedProvider === null ? currentTheme.accent : currentTheme.textMuted,
-              minWidth: '20px',
-              textAlign: 'center',
-            }}>
-              {individualConvos.length}
-            </span>
-          </button>
-          {availableProviders.map(providerKey => {
-            const info = PROVIDER_MAP[providerKey] || { name: providerKey, color: '#888' }
-            const isActive = selectedProvider === providerKey
-            return (
-              <button
-                key={providerKey}
-                onClick={() => setSelectedProvider(isActive ? null : providerKey)}
-                style={{
-                  padding: '6px 14px',
-                  background: isActive
-                    ? `${info.color}20`
-                    : currentTheme.buttonBackground,
-                  border: `1px solid ${isActive ? info.color + '60' : currentTheme.borderLight}`,
-                  borderRadius: '20px',
-                  color: isActive ? info.color : currentTheme.textSecondary,
-                  fontSize: '0.8rem',
-                  fontWeight: isActive ? '600' : '400',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
-              >
-                {info.name}
-                <span style={{
-                  padding: '1px 7px',
-                  background: isActive ? info.color + '30' : currentTheme.backgroundOverlay,
-                  borderRadius: '10px',
-                  fontSize: '0.7rem',
-                  fontWeight: '600',
-                  color: isActive ? info.color : currentTheme.textMuted,
-                  minWidth: '20px',
-                  textAlign: 'center',
-                }}>
-                  {providerCounts[providerKey]}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px', color: currentTheme.textMuted }}>
-          Loading saved conversations...
-        </div>
-      ) : filteredConversations.length === 0 ? (
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '60px',
-          background: currentTheme.backgroundOverlay,
-          border: `1px solid ${currentTheme.borderLight}`,
-          borderRadius: '16px',
-        }}>
-          <MessageCircle size={48} color={currentTheme.textMuted} style={{ marginBottom: '16px', opacity: 0.5 }} />
-          <p style={{ color: currentTheme.textMuted, fontSize: '1.1rem', margin: '0 0 8px 0' }}>
-            No saved conversations yet
-          </p>
-          <p style={{ color: currentTheme.textMuted, fontSize: '0.85rem', margin: 0, opacity: 0.7 }}>
-            Use the save buttons in model responses or the "Save All" button to save conversations.
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', gap: '24px' }}>
-          {/* Conversation list grouped by month/year */}
-          <div style={{
-            width: selectedConvo ? '340px' : '100%',
-            minWidth: selectedConvo ? '340px' : undefined,
-            transition: 'width 0.3s ease',
-          }}>
-            {sortedMonthKeys.map((monthKey) => {
-              const isExpanded = expandedMonths[monthKey]
-              const convosInMonth = groupedConversations[monthKey]
-              return (
-                <div key={monthKey} style={{ marginBottom: '12px' }}>
-                  {/* Month/Year Header */}
-                  <button
-                    onClick={() => toggleMonth(monthKey)}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '12px 16px',
-                      background: isExpanded
-                        ? `${currentTheme.accent}12`
-                        : currentTheme.backgroundOverlay,
-                      border: `1px solid ${isExpanded ? currentTheme.accent + '30' : currentTheme.borderLight}`,
-                      borderRadius: isExpanded ? '12px 12px 0 0' : '12px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <Calendar size={16} color={currentTheme.accent} />
-                      <span style={{
-                        fontSize: '0.95rem',
-                        fontWeight: '600',
-                        color: currentTheme.text,
-                      }}>
-                        {getMonthYearLabel(monthKey)}
-                      </span>
-                      <span style={{
-                        padding: '2px 8px',
-                        background: currentTheme.buttonBackground,
-                        borderRadius: '10px',
-                        fontSize: '0.75rem',
-                        color: currentTheme.textMuted,
-                        fontWeight: '500',
-                      }}>
-                        {convosInMonth.length}
-                      </span>
-                    </div>
-                    {isExpanded ? (
-                      <ChevronUp size={18} color={currentTheme.textMuted} />
-                    ) : (
-                      <ChevronDown size={18} color={currentTheme.textMuted} />
-                    )}
-                  </button>
-
-                  {/* Expanded month content */}
-                  <AnimatePresence>
-                    {isExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        style={{
-                          overflow: 'hidden',
-                          borderLeft: `1px solid ${currentTheme.borderLight}`,
-                          borderRight: `1px solid ${currentTheme.borderLight}`,
-                          borderBottom: `1px solid ${currentTheme.borderLight}`,
-                          borderRadius: '0 0 12px 12px',
-                          padding: '8px',
-                        }}
-                      >
-                        {convosInMonth.map((convo) => renderConvoCard(convo))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )
-            })}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '60px', color: currentTheme.textMuted }}>
+            Loading conversation history...
           </div>
+        ) : history.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: '60px',
+            background: currentTheme.backgroundOverlay,
+            border: `1px solid ${currentTheme.borderLight}`, borderRadius: '16px',
+          }}>
+            <Clock size={48} color={currentTheme.textMuted} style={{ marginBottom: '16px', opacity: 0.5 }} />
+            <p style={{ color: currentTheme.textMuted, fontSize: '1.1rem', margin: '0 0 8px 0' }}>
+              No conversation history yet
+            </p>
+            <p style={{ color: currentTheme.textMuted, fontSize: '0.85rem', margin: 0, opacity: 0.7 }}>
+              Your conversations will automatically appear here after each prompt.
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: '24px' }}>
+            {/* Left: Year → Month → Day hierarchy */}
+            <div style={{
+              width: selectedConvo ? '360px' : '100%',
+              minWidth: selectedConvo ? '360px' : undefined,
+              transition: 'width 0.3s ease',
+            }}>
+              {sortedYears.map((year) => {
+                const yearData = hierarchy[year]
+                const isYearOpen = expandedYears[year]
+                const yearCount = countInYear(yearData)
+                const sortedMonthKeys = Object.keys(yearData).sort((a, b) => b.localeCompare(a))
 
-          {/* Detail panel */}
-          <AnimatePresence mode="wait">
-            {loadingDetail ? (
-              <div style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: currentTheme.textMuted,
-              }}>
-                Loading...
-              </div>
-            ) : selectedConvo ? (
-              renderDetail()
-            ) : null}
-          </AnimatePresence>
-        </div>
-      )}
+                return (
+                  <div key={year} style={{ marginBottom: '8px' }}>
+                    {/* Year header */}
+                    <button
+                      onClick={() => toggleYear(year)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center',
+                        justifyContent: 'space-between', padding: '14px 18px',
+                        background: isYearOpen ? `${currentTheme.accent}12` : currentTheme.backgroundOverlay,
+                        border: `1px solid ${isYearOpen ? currentTheme.accent + '30' : currentTheme.borderLight}`,
+                        borderRadius: isYearOpen ? '14px 14px 0 0' : '14px',
+                        cursor: 'pointer', transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <Calendar size={18} color={currentTheme.accent} />
+                        <span style={{ fontSize: '1.1rem', fontWeight: '700', color: currentTheme.text }}>
+                          {year}
+                        </span>
+                        <span style={{
+                          padding: '2px 10px', background: currentTheme.buttonBackground,
+                          borderRadius: '10px', fontSize: '0.75rem', color: currentTheme.textMuted, fontWeight: '600',
+                        }}>
+                          {yearCount}
+                        </span>
+                      </div>
+                      {isYearOpen ? <ChevronUp size={18} color={currentTheme.textMuted} /> : <ChevronDown size={18} color={currentTheme.textMuted} />}
+                    </button>
 
+                    {/* Months within year */}
+                    <AnimatePresence>
+                      {isYearOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          style={{
+                            overflow: 'hidden',
+                            borderLeft: `1px solid ${currentTheme.borderLight}`,
+                            borderRight: `1px solid ${currentTheme.borderLight}`,
+                            borderBottom: `1px solid ${currentTheme.borderLight}`,
+                            borderRadius: '0 0 14px 14px',
+                            padding: '6px',
+                          }}
+                        >
+                          {sortedMonthKeys.map((monthKey) => {
+                            const monthData = yearData[monthKey]
+                            const isMonthOpen = expandedMonths[monthKey]
+                            const monthCount = countInMonth(monthData)
+                            const sortedDayKeys = Object.keys(monthData).sort((a, b) => b.localeCompare(a))
+
+                            return (
+                              <div key={monthKey} style={{ marginBottom: '4px' }}>
+                                {/* Month header */}
+                                <button
+                                  onClick={() => toggleMonth(monthKey)}
+                                  style={{
+                                    width: '100%', display: 'flex', alignItems: 'center',
+                                    justifyContent: 'space-between', padding: '10px 14px',
+                                    background: isMonthOpen ? `${currentTheme.accentSecondary}10` : 'transparent',
+                                    border: `1px solid ${isMonthOpen ? currentTheme.accentSecondary + '25' : 'transparent'}`,
+                                    borderRadius: isMonthOpen ? '10px 10px 0 0' : '10px',
+                                    cursor: 'pointer', transition: 'all 0.2s ease',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '0.95rem', fontWeight: '600', color: currentTheme.text }}>
+                                      {getMonthLabel(monthKey)}
+                                    </span>
+                                    <span style={{
+                                      padding: '1px 8px', background: currentTheme.buttonBackground,
+                                      borderRadius: '8px', fontSize: '0.7rem', color: currentTheme.textMuted, fontWeight: '500',
+                                    }}>
+                                      {monthCount}
+                                    </span>
+                                  </div>
+                                  {isMonthOpen ? <ChevronUp size={16} color={currentTheme.textMuted} /> : <ChevronDown size={16} color={currentTheme.textMuted} />}
+                                </button>
+
+                                {/* Days within month */}
+                                <AnimatePresence>
+                                  {isMonthOpen && (
+                                    <motion.div
+                                      initial={{ height: 0, opacity: 0 }}
+                                      animate={{ height: 'auto', opacity: 1 }}
+                                      exit={{ height: 0, opacity: 0 }}
+                                      transition={{ duration: 0.15 }}
+                                      style={{
+                                        overflow: 'hidden',
+                                        borderLeft: `1px solid ${currentTheme.borderLight}`,
+                                        borderRight: `1px solid ${currentTheme.borderLight}`,
+                                        borderBottom: `1px solid ${currentTheme.borderLight}`,
+                                        borderRadius: '0 0 10px 10px',
+                                        padding: '4px 6px',
+                                      }}
+                                    >
+                                      {sortedDayKeys.map((dayKey) => {
+                                        const dayConvos = monthData[dayKey]
+                                        const isDayOpen = expandedDays[dayKey]
+
+                                        return (
+                                          <div key={dayKey} style={{ marginBottom: '3px' }}>
+                                            {/* Day header */}
+                                            <button
+                                              onClick={() => toggleDay(dayKey)}
+                                              style={{
+                                                width: '100%', display: 'flex', alignItems: 'center',
+                                                justifyContent: 'space-between', padding: '8px 12px',
+                                                background: isDayOpen ? `${currentTheme.accent}08` : 'transparent',
+                                                border: 'none',
+                                                borderRadius: isDayOpen ? '8px 8px 0 0' : '8px',
+                                                cursor: 'pointer', transition: 'all 0.15s ease',
+                                              }}
+                                            >
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <Clock size={13} color={currentTheme.accentSecondary} />
+                                                <span style={{ fontSize: '0.85rem', fontWeight: '500', color: currentTheme.text }}>
+                                                  {getDayLabel(dayKey)}
+                                                </span>
+                                                <span style={{
+                                                  padding: '1px 6px', background: currentTheme.buttonBackground,
+                                                  borderRadius: '6px', fontSize: '0.65rem', color: currentTheme.textMuted, fontWeight: '500',
+                                                }}>
+                                                  {dayConvos.length}
+                                                </span>
+                                              </div>
+                                              {isDayOpen ? <ChevronUp size={14} color={currentTheme.textMuted} /> : <ChevronDown size={14} color={currentTheme.textMuted} />}
+                                            </button>
+
+                                            {/* Conversations within day */}
+                                            <AnimatePresence>
+                                              {isDayOpen && (
+                                                <motion.div
+                                                  initial={{ height: 0, opacity: 0 }}
+                                                  animate={{ height: 'auto', opacity: 1 }}
+                                                  exit={{ height: 0, opacity: 0 }}
+                                                  transition={{ duration: 0.12 }}
+                                                  style={{ overflow: 'hidden', padding: '4px 4px 4px 16px' }}
+                                                >
+                                                  {dayConvos.map(convo => renderConvoCard(convo))}
+                                                </motion.div>
+                                              )}
+                                            </AnimatePresence>
+                                          </div>
+                                        )
+                                      })}
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            )
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Right: Detail panel */}
+            <AnimatePresence mode="wait">
+              {loadingDetail ? (
+                <div style={{
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: currentTheme.textMuted,
+                }}>
+                  Loading...
+                </div>
+              ) : selectedConvo ? (
+                renderDetail()
+              ) : null}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-// Expandable summary/judge for full session view
+// Expandable summary/judge for detail view
 const ExpandableSummary = ({ summary, currentTheme }) => {
   const [expanded, setExpanded] = useState(false)
-
   const label = summary.singleModel
     ? `${summary.modelName || 'Model'} Response`
     : 'Judge Summary'
@@ -844,27 +713,17 @@ const ExpandableSummary = ({ summary, currentTheme }) => {
     <div style={{
       background: currentTheme.buttonBackground,
       border: `1px solid ${currentTheme.borderLight}`,
-      borderRadius: '12px',
-      marginBottom: '16px',
-      overflow: 'hidden',
+      borderRadius: '12px', marginBottom: '16px', overflow: 'hidden',
     }}>
       <button
         onClick={() => setExpanded(!expanded)}
         style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '14px 16px',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          color: currentTheme.text,
+          width: '100%', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', padding: '14px 16px',
+          background: 'none', border: 'none', cursor: 'pointer', color: currentTheme.text,
         }}
       >
-        <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>
-          {label}
-        </span>
+        <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>{label}</span>
         {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
       </button>
       <AnimatePresence>
@@ -887,35 +746,38 @@ const ExpandableSummary = ({ summary, currentTheme }) => {
   )
 }
 
-// Expandable model response for full session view
+// Expandable model response for detail view
 const ExpandableResponse = ({ resp, idx, currentTheme }) => {
   const [expanded, setExpanded] = useState(false)
+  const providerKey = getProviderFromModelName(resp.modelName || resp.actualModelName)
+  const providerInfo = PROVIDER_MAP[providerKey] || { name: providerKey, color: '#888' }
 
   return (
     <div style={{
       background: currentTheme.buttonBackground,
       border: `1px solid ${currentTheme.borderLight}`,
-      borderRadius: '12px',
-      marginBottom: '10px',
-      overflow: 'hidden',
+      borderRadius: '12px', marginBottom: '10px', overflow: 'hidden',
     }}>
       <button
         onClick={() => setExpanded(!expanded)}
         style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '14px 16px',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          color: currentTheme.text,
+          width: '100%', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', padding: '14px 16px',
+          background: 'none', border: 'none', cursor: 'pointer', color: currentTheme.text,
         }}
       >
-        <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>
-          {resp.modelName || `Model ${idx + 1}`}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{
+            width: '8px', height: '8px', borderRadius: '50%',
+            background: providerInfo.color, flexShrink: 0,
+          }} />
+          <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>
+            {resp.modelName || resp.actualModelName || `Model ${idx + 1}`}
+          </span>
+          {resp.error && (
+            <span style={{ fontSize: '0.7rem', color: '#ff6b6b', fontWeight: '500' }}>Error</span>
+          )}
+        </div>
         {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
       </button>
       <AnimatePresence>
@@ -928,41 +790,8 @@ const ExpandableResponse = ({ resp, idx, currentTheme }) => {
           >
             <div style={{ padding: '0 16px 16px 16px' }}>
               <p style={{ color: currentTheme.textSecondary, margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>
-                {resp.modelResponse}
+                {resp.text || resp.modelResponse || (resp.error ? 'This model encountered an error.' : 'No response.')}
               </p>
-              {/* Conversation history for this model */}
-              {resp.conversation && resp.conversation.length > 0 && (
-                <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: `1px solid ${currentTheme.borderLight}` }}>
-                  <div style={{ fontSize: '0.75rem', color: currentTheme.textMuted, marginBottom: '8px', fontWeight: '600' }}>
-                    Conversation ({resp.conversation.length} messages)
-                  </div>
-                  {resp.conversation.map((msg, msgIdx) => (
-                    <div
-                      key={msgIdx}
-                      style={{
-                        display: 'flex',
-                        justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                        marginBottom: '8px',
-                      }}
-                    >
-                      <div style={{
-                        maxWidth: '85%',
-                        padding: '10px 14px',
-                        borderRadius: '10px',
-                        background: msg.role === 'user' ? 'rgba(59, 130, 246, 0.15)' : currentTheme.backgroundOverlay,
-                        border: `1px solid ${msg.role === 'user' ? 'rgba(59, 130, 246, 0.3)' : currentTheme.borderLight}`,
-                      }}>
-                        <div style={{ fontSize: '0.65rem', fontWeight: '600', marginBottom: '3px', textTransform: 'uppercase', color: currentTheme.textMuted }}>
-                          {msg.role === 'user' ? 'You' : resp.modelName || 'Assistant'}
-                        </div>
-                        <p style={{ margin: 0, color: currentTheme.textSecondary, fontSize: '0.85rem', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
-                          {msg.text}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </motion.div>
         )}
@@ -972,4 +801,3 @@ const ExpandableResponse = ({ resp, idx, currentTheme }) => {
 }
 
 export default SavedConversationsView
-

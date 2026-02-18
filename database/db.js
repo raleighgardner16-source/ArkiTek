@@ -128,6 +128,37 @@ const users = {
   },
   
   /**
+   * Get user by canonical email (normalized for alias detection)
+   * @param {string} canonicalEmail 
+   * @returns {Promise<Object|null>}
+   */
+  async getByCanonicalEmail(canonicalEmail) {
+    const db = await getDb()
+    return db.collection('users').findOne({ canonicalEmail })
+  },
+  
+  /**
+   * Count free trial signups from a specific IP address
+   * @param {string} ip 
+   * @returns {Promise<number>}
+   */
+  async countFreeTrialsByIp(ip) {
+    const db = await getDb()
+    return db.collection('users').countDocuments({ signupIp: ip, plan: 'free_trial' })
+  },
+  
+  /**
+   * Check if a device fingerprint has already been used for a free trial
+   * @param {string} fingerprint 
+   * @returns {Promise<Object|null>}
+   */
+  async getFreeTrialByFingerprint(fingerprint) {
+    const db = await getDb()
+    if (!fingerprint) return null
+    return db.collection('users').findOne({ deviceFingerprint: fingerprint, plan: 'free_trial' })
+  },
+  
+  /**
    * Create new user
    * @param {string} userId 
    * @param {Object} userData 
@@ -139,20 +170,26 @@ const users = {
     const doc = {
       _id: userId,
       email: userData.email,
+      canonicalEmail: userData.canonicalEmail || userData.email,
       password: userData.password || null,
       firstName: userData.firstName || null,
       lastName: userData.lastName || null,
       username: userData.username || userId,
       stripeCustomerId: null,
       stripeSubscriptionId: null,
-      subscriptionStatus: 'inactive',
+      subscriptionStatus: userData.subscriptionStatus || 'inactive',
       subscriptionRenewalDate: null,
       createdAt: new Date(),
       lastActiveAt: new Date(),
       purchasedCredits: {
         total: 0,
         remaining: 0
-      }
+      },
+      // Free trial abuse prevention fields
+      emailVerified: userData.emailVerified || false,
+      signupIp: userData.signupIp || null,
+      deviceFingerprint: userData.deviceFingerprint || null,
+      plan: userData.plan || null,
     }
     
     await db.collection('users').insertOne(doc)

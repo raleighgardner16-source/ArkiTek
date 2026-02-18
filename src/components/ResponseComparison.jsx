@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Save, Info, FileText, RotateCcw, Search, Globe } from 'lucide-react'
+import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -62,8 +62,6 @@ const ResponseComparison = () => {
   const [conversationHistories, setConversationHistories] = useState({}) // { responseId: [{ user, assistant, timestamp }] }
   const [sendingMessages, setSendingMessages] = useState({}) // { responseId: true/false }
   const [searchingInConvo, setSearchingInConvo] = useState({}) // { responseId: true/false }
-  const [savingStates, setSavingStates] = useState({}) // { responseId: 'idle'|'saving'|'saved' }
-  const [showSaveTooltip, setShowSaveTooltip] = useState({}) // { responseId: true/false }
   const [convoSources, setConvoSources] = useState({}) // { responseId: { turnIndex: [...sources] } } — per-turn follow-up search results
   const [showConvoSources, setShowConvoSources] = useState({}) // { "responseId_turnIndex": true/false } — per-turn toggle
   const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
@@ -369,46 +367,6 @@ const ResponseComparison = () => {
     })
   }
 
-  // Save individual model response + conversation to MongoDB
-  const handleSaveIndividual = async (responseId, modelName, responseText) => {
-    if (!currentUser?.id) {
-      alert('Please sign in to save conversations')
-      return
-    }
-    
-    setSavingStates(prev => ({ ...prev, [responseId]: 'saving' }))
-    
-    try {
-      const history = conversationHistories[responseId] || []
-      const conversation = history.map(h => ([
-        { role: 'user', text: h.user, timestamp: h.timestamp },
-        { role: 'assistant', text: h.assistant, timestamp: h.timestamp },
-      ])).flat()
-
-      await axios.post(`${API_URL}/api/conversations/save`, {
-        userId: currentUser.id,
-        type: 'individual',
-        originalPrompt: lastSubmittedPrompt || '',
-        category: lastSubmittedCategory || 'General',
-        modelName,
-        modelResponse: responseText,
-        conversation,
-        sources: searchSources || [],
-        conversationSources: convoSources[responseId] || {},
-      })
-
-      setSavingStates(prev => ({ ...prev, [responseId]: 'saved' }))
-    } catch (error) {
-      console.error('[Save] Error saving individual conversation:', error)
-      if (error.response?.data?.alreadySaved) {
-        setSavingStates(prev => ({ ...prev, [responseId]: 'saved' }))
-      } else {
-        alert('Failed to save conversation. Please try again.')
-        setSavingStates(prev => ({ ...prev, [responseId]: 'idle' }))
-      }
-    }
-  }
-
   // Auto-minimize only once when responses first appear (so summary is seen first)
   useEffect(() => {
     if (responses.length > 0 && !hasAutoMinimized.current) {
@@ -675,6 +633,8 @@ const ResponseComparison = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            background: theme === 'light' ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.7)',
+            backdropFilter: 'blur(4px)',
           }}
         >
         <motion.div
@@ -683,7 +643,7 @@ const ResponseComparison = () => {
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           style={{
-            background: currentTheme.backgroundOverlay,
+            background: theme === 'light' ? '#ffffff' : 'rgba(20, 20, 35, 0.98)',
             border: `1px solid ${currentTheme.border}`,
             borderRadius: '16px',
             padding: '30px',
@@ -1099,67 +1059,6 @@ const ResponseComparison = () => {
                     color={conversationInputs[response.id]?.trim() ? '#fff' : currentTheme.textMuted} 
                   />
                 </motion.button>
-                {/* Save Individual Response Button */}
-                <div style={{ position: 'relative' }}>
-                  <motion.button
-                    onClick={() => handleSaveIndividual(response.id, response.modelName, responseText)}
-                    disabled={savingStates[response.id] === 'saving' || savingStates[response.id] === 'saved'}
-                    style={{
-                      padding: '10px 16px',
-                      background: savingStates[response.id] === 'saved' ? 'rgba(0, 200, 100, 0.2)' : currentTheme.buttonBackground,
-                      border: `1px solid ${savingStates[response.id] === 'saved' ? 'rgba(0, 200, 100, 0.5)' : currentTheme.borderLight}`,
-                      borderRadius: '12px',
-                      cursor: (savingStates[response.id] === 'saving' || savingStates[response.id] === 'saved') ? 'not-allowed' : 'pointer',
-                      opacity: savingStates[response.id] === 'saving' ? 0.6 : 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      whiteSpace: 'nowrap',
-                      color: savingStates[response.id] === 'saved' ? '#00c864' : currentTheme.accent,
-                      fontSize: '0.85rem',
-                      fontWeight: '500',
-                    }}
-                    whileHover={(savingStates[response.id] !== 'saving' && savingStates[response.id] !== 'saved') ? { scale: 1.05 } : {}}
-                    whileTap={(savingStates[response.id] !== 'saving' && savingStates[response.id] !== 'saved') ? { scale: 0.95 } : {}}
-                    title={savingStates[response.id] === 'saved' ? 'Already saved' : "Save this model's response & conversation"}
-                  >
-                    <Save 
-                      size={18} 
-                      color={savingStates[response.id] === 'saved' ? '#00c864' : currentTheme.accent}
-                    />
-                    {savingStates[response.id] === 'saving'
-                      ? 'Saving...'
-                      : savingStates[response.id] === 'saved'
-                      ? 'Saved!'
-                      : `Save ${getProviderName(response.modelName)} Convo`}
-                  </motion.button>
-                  {/* Info tooltip icon */}
-                  <div
-                    style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help' }}
-                    onMouseEnter={() => setShowSaveTooltip(prev => ({ ...prev, [response.id]: true }))}
-                    onMouseLeave={() => setShowSaveTooltip(prev => ({ ...prev, [response.id]: false }))}
-                  >
-                    <Info size={14} color={currentTheme.textMuted} />
-                    {showSaveTooltip[response.id] && (
-                      <div style={{
-                        position: 'absolute',
-                        bottom: '20px',
-                        right: 0,
-                        background: currentTheme.backgroundOverlay,
-                        border: `1px solid ${currentTheme.borderLight}`,
-                        borderRadius: '8px',
-                        padding: '8px 12px',
-                        fontSize: '0.75rem',
-                        color: currentTheme.textSecondary,
-                        width: '200px',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                        zIndex: 100,
-                      }}>
-                        Save this model's response and conversation history to your saved conversations.
-                      </div>
-                    )}
-                  </div>
-                </div>
               </div>
               <p style={{ 
                 fontSize: '0.75rem', 
@@ -1167,7 +1066,7 @@ const ResponseComparison = () => {
                 marginTop: '8px',
                 fontStyle: 'italic'
               }}>
-                {savingStates[response.id] === 'saved' ? '✓ Saved!' : 'Press Enter to send, Shift+Enter for new line. Context: last 5 exchanges.'}
+                Press Enter to send, Shift+Enter for new line. Context: last 5 exchanges.
               </p>
             </div>
           </motion.div>
@@ -1384,6 +1283,8 @@ const ResponseComparison = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          background: theme === 'light' ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.7)',
+          backdropFilter: 'blur(4px)',
         }}
       >
         <motion.div
@@ -1392,7 +1293,7 @@ const ResponseComparison = () => {
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           style={{
-            background: theme === 'light' ? '#ffffff' : 'rgba(10, 10, 20, 0.98)',
+            background: theme === 'light' ? '#ffffff' : 'rgba(20, 20, 35, 0.98)',
             border: `1px solid ${currentTheme.borderLight}`,
             borderRadius: '16px',
             padding: '30px',
@@ -1795,66 +1696,6 @@ const ResponseComparison = () => {
                   color={conversationInputs[response.id]?.trim() ? '#fff' : currentTheme.textMuted} 
                 />
               </motion.button>
-              {/* Save Individual Response Button */}
-              <div style={{ position: 'relative' }}>
-                <motion.button
-                  onClick={() => handleSaveIndividual(response.id, response.modelName, responseText)}
-                  disabled={savingStates[response.id] === 'saving' || savingStates[response.id] === 'saved'}
-                  style={{
-                    padding: '10px 16px',
-                    background: savingStates[response.id] === 'saved' ? 'rgba(0, 200, 100, 0.2)' : currentTheme.buttonBackground,
-                    border: `1px solid ${savingStates[response.id] === 'saved' ? 'rgba(0, 200, 100, 0.5)' : currentTheme.borderLight}`,
-                    borderRadius: '12px',
-                    cursor: (savingStates[response.id] === 'saving' || savingStates[response.id] === 'saved') ? 'not-allowed' : 'pointer',
-                    opacity: savingStates[response.id] === 'saving' ? 0.6 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    whiteSpace: 'nowrap',
-                    color: savingStates[response.id] === 'saved' ? '#00c864' : currentTheme.accent,
-                    fontSize: '0.85rem',
-                    fontWeight: '500',
-                  }}
-                  whileHover={(savingStates[response.id] !== 'saving' && savingStates[response.id] !== 'saved') ? { scale: 1.05 } : {}}
-                  whileTap={(savingStates[response.id] !== 'saving' && savingStates[response.id] !== 'saved') ? { scale: 0.95 } : {}}
-                  title={savingStates[response.id] === 'saved' ? 'Already saved' : "Save this model's response & conversation"}
-                >
-                  <Save 
-                    size={18} 
-                    color={savingStates[response.id] === 'saved' ? '#00c864' : currentTheme.accent}
-                  />
-                  {savingStates[response.id] === 'saving'
-                    ? 'Saving...'
-                    : savingStates[response.id] === 'saved'
-                    ? 'Saved!'
-                    : `Save ${getProviderName(response.modelName)} Convo`}
-                </motion.button>
-                <div
-                  style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help' }}
-                  onMouseEnter={() => setShowSaveTooltip(prev => ({ ...prev, [`card-${response.id}`]: true }))}
-                  onMouseLeave={() => setShowSaveTooltip(prev => ({ ...prev, [`card-${response.id}`]: false }))}
-                >
-                  <Info size={14} color={currentTheme.textMuted} />
-                  {showSaveTooltip[`card-${response.id}`] && (
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '20px',
-                      right: 0,
-                      background: currentTheme.backgroundOverlay,
-                      border: `1px solid ${currentTheme.borderLight}`,
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      fontSize: '0.75rem',
-                      color: currentTheme.textSecondary,
-                      width: '200px',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                      zIndex: 100,
-                    }}>
-                      Save this model's response and conversation history to your saved conversations.
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
             <p style={{ 
               fontSize: '0.75rem', 
@@ -1862,7 +1703,7 @@ const ResponseComparison = () => {
               marginTop: '8px',
               fontStyle: 'italic'
             }}>
-              {savingStates[response.id] === 'saved' ? '✓ Saved!' : 'Press Enter to send, Shift+Enter for new line. Context: last 5 exchanges.'}
+              Press Enter to send, Shift+Enter for new line. Context: last 5 exchanges.
             </p>
           </div>
         </motion.div>

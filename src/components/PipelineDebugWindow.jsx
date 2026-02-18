@@ -247,7 +247,7 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
         {/* Judge Selection */}
         {judgeSelection && (
           <div style={{ padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '8px', border: '1px solid #333' }}>
-            <div style={{ color: '#ff0088', fontWeight: 'bold', marginBottom: '8px' }}>Judge Refiner Selection: Grok 4-1-fast-reasoning</div>
+            <div style={{ color: '#ff0088', fontWeight: 'bold', marginBottom: '8px' }}>Judge Refiner Selection: Gemini 3 Flash</div>
             <div style={{ marginBottom: '12px' }}>
               <div style={{ color: '#ff0088', fontSize: '12px', marginBottom: '4px', fontWeight: 'bold' }}>Prompt:</div>
               <div style={{ 
@@ -350,7 +350,7 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
     
     return (
       <div style={{ marginBottom: '16px' }}>
-        <div style={{ color: '#ff0088', fontWeight: 'bold', marginBottom: '8px' }}>Model: Grok 4-1-fast-reasoning</div>
+        <div style={{ color: '#ff0088', fontWeight: 'bold', marginBottom: '8px' }}>Model: Gemini 3 Flash</div>
         <div style={{ marginBottom: '12px' }}>
           <div style={{ color: '#ff0088', fontSize: '12px', marginBottom: '4px', fontWeight: 'bold' }}>Prompt:</div>
           <div style={{ 

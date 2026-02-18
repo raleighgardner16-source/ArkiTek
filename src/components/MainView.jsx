@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Save, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 import { detectCategory } from '../utils/categoryDetector'
@@ -46,8 +46,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [postDescription, setPostDescription] = useState('')
   const [postPromptExpanded, setPostPromptExpanded] = useState(false)
   const [postActiveTab, setPostActiveTab] = useState(null)
-  const [saveAllState, setSaveAllState] = useState('idle') // 'idle'|'saving'|'saved'
-  const [showSaveAllTooltip, setShowSaveAllTooltip] = useState(false)
   const [showCouncilTooltip, setShowCouncilTooltip] = useState(false)
 
   // Inline conversation state (moved from SummaryWindow)
@@ -55,15 +53,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [isSendingConvo, setIsSendingConvo] = useState(false)
   const [isSearchingInConvo, setIsSearchingInConvo] = useState(false)
   const [conversationContext, setConversationContext] = useState([])
-  const [convoSavingState, setConvoSavingState] = useState('idle')
-  const [showConvoSaveTooltip, setShowConvoSaveTooltip] = useState(false)
   const [summaryConvoSources, setSummaryConvoSources] = useState({}) // { turnIndex: [...sources] } — per-turn summary follow-up search
   const [showSummaryConvoSources, setShowSummaryConvoSources] = useState({}) // { turnIndex: true/false }
   const [showClearSummaryTooltip, setShowClearSummaryTooltip] = useState(false)
   const [showPostPromptTooltip, setShowPostPromptTooltip] = useState(false)
   const [showClearTooltip, setShowClearTooltip] = useState(false)
   const [showPostPromptSingleTooltip, setShowPostPromptSingleTooltip] = useState(false)
-  const [showSaveConvoSingleTooltip, setShowSaveConvoSingleTooltip] = useState(false)
   const [showSendTooltip, setShowSendTooltip] = useState(false)
 
   // Single-model conversation state
@@ -141,7 +136,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
   // Track which provider tab is expanded (only one at a time) - now click-based
   const [expandedProviders, setExpandedProviders] = useState({})
-  const [autoSmartProviders, setAutoSmartProviders] = useState({}) // Track which providers have auto smart enabled
+  const autoSmartProviders = useStore((state) => state.autoSmartProviders)
+  const setAutoSmartProviders = useStore((state) => state.setAutoSmartProviders)
   const [dropdownPositions, setDropdownPositions] = useState({}) // Store dropdown positions
 
   // Shift the bottom bar up when a provider dropdown is open so model options are visible
@@ -451,22 +447,34 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     }
   }, [availableModels, selectedModels, setSelectedModels])
 
-  // On sign-in (or first visit), enable Auto Smart for all providers so one model per provider
-  // is automatically selected based on prompt category when the user submits.
+  // On sign-in (or first visit), restore saved model preferences from the server.
+  // If no preferences exist (brand new user), default to Auto Smart for all providers.
   // Also migrates the old "all models selected" state to Auto Smart.
+  const modelPrefsRestoredRef = useRef(false)
   useEffect(() => {
     if (Object.keys(modelsByProvider).length === 0) return
+    if (modelPrefsRestoredRef.current) return // Only run once per mount
 
     const hasInitialized = localStorage.getItem('arktek-models-initialized')
 
-    // Fresh sign-in: no models selected and no init flag
-    if (!hasInitialized && selectedModels.length === 0) {
+    // Check if user has saved model preferences (returned from sign-in or already in store)
+    const hasStorePrefs = selectedModels.length > 0 || Object.keys(autoSmartProviders).length > 0
+
+    // If user already has preferences in the store (restored from sign-in), mark as done
+    if (hasStorePrefs && hasInitialized) {
+      modelPrefsRestoredRef.current = true
+      return
+    }
+
+    // Fresh sign-in with no saved prefs: default to Auto Smart for all providers
+    if (!hasInitialized && !hasStorePrefs) {
       const autoSmartState = {}
       Object.keys(modelsByProvider).forEach(providerKey => {
         autoSmartState[providerKey] = true
       })
       setAutoSmartProviders(autoSmartState)
       localStorage.setItem('arktek-models-initialized', 'true')
+      modelPrefsRestoredRef.current = true
       return
     }
 
@@ -477,13 +485,11 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       const totalAvailableModels = Object.values(modelsByProvider).reduce(
         (sum, p) => sum + p.models.length, 0
       )
-      // Check if every single available model is selected (the old bug)
       const allSelected = totalAvailableModels > 0 && selectedModels.length >= totalAvailableModels &&
         Object.values(modelsByProvider).every(providerData =>
           providerData.models.every(m => selectedModels.includes(m.id))
         )
       if (allSelected) {
-        // Clear all individual selections and enable Auto Smart for every provider
         setSelectedModels([])
         const autoSmartState = {}
         Object.keys(modelsByProvider).forEach(providerKey => {
@@ -493,7 +499,30 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       }
       localStorage.setItem('arktek-autosmart-migrated', 'true')
     }
+
+    modelPrefsRestoredRef.current = true
   }, [modelsByProvider, selectedModels, setSelectedModels])
+
+  // Debounced save of model preferences to the server whenever they change
+  const savePrefsTimeoutRef = useRef(null)
+  useEffect(() => {
+    if (!currentUser?.id) return
+    if (!modelPrefsRestoredRef.current) return // Don't save during initialization
+
+    // Debounce: save 1.5s after last change
+    if (savePrefsTimeoutRef.current) clearTimeout(savePrefsTimeoutRef.current)
+    savePrefsTimeoutRef.current = setTimeout(() => {
+      axios.put(`${API_URL}/api/user/model-preferences`, {
+        userId: currentUser.id,
+        selectedModels,
+        autoSmartProviders,
+      }).catch(err => console.error('[Model Prefs] Error saving:', err.message))
+    }, 1500)
+
+    return () => {
+      if (savePrefsTimeoutRef.current) clearTimeout(savePrefsTimeoutRef.current)
+    }
+  }, [selectedModels, autoSmartProviders, currentUser?.id])
 
   // Global Enter key listener - allows submitting prompt even when input isn't focused
   useEffect(() => {
@@ -575,8 +604,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     // Reset conversation state for new prompt
     setConversationInput('')
     setConversationContext([])
-    setConvoSavingState('idle')
-    setSaveAllState('idle')
     setShowCouncilPanel(false)
     setSingleModelConvoInput('')
     setSingleModelConvoHistory([])
@@ -745,51 +772,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   // Keep ref updated with latest handleSubmit
   handleSubmitRef.current = handleSubmit
 
-  // Save All: saves all council responses, judge summary, sources, and conversations
-  const handleSaveAll = async () => {
-    if (!currentUser?.id) {
-      alert('Please sign in to save conversations')
-      return
-    }
-    setSaveAllState('saving')
-    try {
-      const allResponses = responses.map(r => ({
-        modelName: r.modelName || r.model || '',
-        modelResponse: r.text || r.response || '',
-        conversation: [],
-      }))
-
-      const summaryData = useStore.getState().summary
-      const ragData = useStore.getState().ragDebugData
-
-      await axios.post(`${API_URL}/api/conversations/save`, {
-        userId: currentUser.id,
-        type: 'full',
-        originalPrompt: lastSubmittedPrompt || '',
-        category: lastSubmittedCategory || 'General',
-        responses: allResponses,
-        summary: summaryData ? {
-          text: summaryData.text || '',
-          originalPrompt: summaryData.originalPrompt || '',
-          singleModel: summaryData.singleModel || false,
-          modelName: summaryData.modelName || null,
-        } : null,
-        sources: searchSources || [],
-        facts: ragData?.facts || [],
-      })
-
-      setSaveAllState('saved')
-    } catch (error) {
-      console.error('[Save All] Error:', error)
-      if (error.response?.data?.alreadySaved) {
-        setSaveAllState('saved')
-      } else {
-        alert('Failed to save conversation. Please try again.')
-        setSaveAllState('idle')
-      }
-    }
-  }
-
   // ---- Inline Conversation Handlers ---- //
   
   // Scroll to top when initial response/summary loads, scroll to bottom only for follow-up messages
@@ -939,75 +921,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     } finally {
       setIsSendingConvo(false)
       setIsSearchingInConvo(false)
-    }
-  }
-
-  const handleSaveConversation = async () => {
-    if (!currentUser?.id) return
-
-    // Single-model save (no summary exists)
-    if (!summary && responses.length === 1 && responses[0]) {
-      setConvoSavingState('saving')
-      try {
-        const singleResponse = responses[0]
-        const conversation = singleModelConvoHistory.map(ctx => ([
-          { role: 'user', text: ctx.user, timestamp: ctx.timestamp },
-          { role: 'assistant', text: ctx.assistant, timestamp: ctx.timestamp },
-        ])).flat()
-
-        await axios.post(`${API_URL}/api/conversations/save`, {
-          userId: currentUser.id,
-          type: 'individual',
-          originalPrompt: lastSubmittedPrompt || '',
-          category: lastSubmittedCategory || 'General',
-          modelName: singleResponse.modelName || 'Model',
-          modelResponse: singleResponse.text || '',
-          conversation,
-          sources: searchSources || [],
-          conversationSources: singleConvoSources || {},
-        })
-        setConvoSavingState('saved')
-      } catch (error) {
-        console.error('[Save] Error saving single model conversation:', error)
-        if (error.response?.data?.alreadySaved) {
-          setConvoSavingState('saved')
-        } else {
-          alert('Failed to save. Please try again.')
-          setConvoSavingState('idle')
-        }
-      }
-      return
-    }
-
-    // Multi-model summary save
-    if (!summary) return
-    setConvoSavingState('saving')
-    try {
-      const conversation = conversationContext.map(ctx => ([
-        { role: 'user', text: ctx.user, timestamp: ctx.timestamp },
-        { role: 'assistant', text: ctx.judge || ctx.assistant, timestamp: ctx.timestamp },
-      ])).flat()
-
-      await axios.post(`${API_URL}/api/conversations/save`, {
-        userId: currentUser.id,
-        type: 'individual',
-        originalPrompt: summary.originalPrompt || lastSubmittedPrompt || '',
-        category: lastSubmittedCategory || 'General',
-        modelName: summary.singleModel ? (summary.modelName || 'Single Model') : 'Judge Summary',
-        modelResponse: summary.text || '',
-        conversation,
-        sources: searchSources || [],
-        conversationSources: summaryConvoSources || {},
-      })
-      setConvoSavingState('saved')
-    } catch (error) {
-      console.error('[Save] Error saving summary:', error)
-      if (error.response?.data?.alreadySaved) {
-        setConvoSavingState('saved')
-      } else {
-        alert('Failed to save. Please try again.')
-        setConvoSavingState('idle')
-      }
     }
   }
 
@@ -1625,10 +1538,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           style={{
                             flex: 1,
                             padding: '4px 6px',
-                            background: theme === 'light' ? 'rgba(255, 59, 48, 0.85)' : 'rgba(255, 59, 48, 0.15)',
-                            border: theme === 'light' ? '1px solid rgba(200, 40, 30, 0.8)' : '1px solid rgba(255, 59, 48, 0.4)',
+                            background: theme === 'light' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.12)',
+                            border: theme === 'light' ? '1px solid rgba(200, 200, 200, 0.8)' : '1px solid rgba(255, 255, 255, 0.3)',
                             borderRadius: '12px',
-                            color: theme === 'light' ? '#fff' : '#ff6b6b',
+                            color: theme === 'light' ? '#333' : '#ffffff',
                             fontSize: '0.7rem',
                             fontWeight: '500',
                             cursor: 'pointer',
@@ -1641,12 +1554,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             height: '28px',
                           }}
                           whileHover={{ 
-                            background: theme === 'light' ? 'rgba(255, 40, 30, 0.95)' : 'rgba(255, 59, 48, 0.25)',
+                            background: theme === 'light' ? 'rgba(240, 240, 240, 1)' : 'rgba(255, 255, 255, 0.2)',
                           }}
                           whileTap={{ scale: 0.96 }}
                         >
-                          <Trash2 size={12} />
-                          Clear Summary
+                          <MessageSquarePlus size={12} />
+                          New Chat
                         </motion.button>
                           <div
                             style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
@@ -1669,7 +1582,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                                 zIndex: 100,
                               }}>
-                                Clear the summary and all council responses for this prompt.
+                                Start a new chat and clear the current conversation.
                               </div>
                             )}
                           </div>
@@ -1679,7 +1592,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         <motion.button
                           onClick={() => {
                             if (!currentUser?.id) {
-                              alert('Please sign in to submit prompts to the leaderboard')
+                              alert('Please sign in to submit prompts to the Prompt Feed')
                               return
                             }
                             setShowPostWindow(true)
@@ -1731,127 +1644,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                                 zIndex: 100,
                               }}>
-                                Submit your prompt and the council's response to the community leaderboard.
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
-                          <motion.button
-                            onClick={handleSaveAll}
-                            disabled={saveAllState === 'saving' || saveAllState === 'saved'}
-                            style={{
-                              flex: 1,
-                              padding: '4px 6px',
-                              background: saveAllState === 'saved'
-                                ? 'rgba(0, 200, 100, 0.18)'
-                                : theme === 'light' ? 'rgba(59, 130, 246, 0.85)' : 'rgba(59, 130, 246, 0.15)',
-                              border: saveAllState === 'saved'
-                                ? '1px solid rgba(0, 200, 100, 0.45)'
-                                : theme === 'light' ? '1px solid rgba(37, 99, 235, 0.8)' : '1px solid rgba(59, 130, 246, 0.4)',
-                              borderRadius: '12px',
-                              color: saveAllState === 'saved'
-                                ? '#00c864'
-                                : theme === 'light' ? '#fff' : '#60a5fa',
-                              fontSize: '0.7rem',
-                              fontWeight: '500',
-                              cursor: (saveAllState === 'saving' || saveAllState === 'saved') ? 'not-allowed' : 'pointer',
-                              opacity: saveAllState === 'saving' ? 0.6 : 1,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '4px',
-                              transition: 'all 0.2s ease',
-                              whiteSpace: 'nowrap',
-                              height: '28px',
-                            }}
-                            whileHover={(saveAllState !== 'saving' && saveAllState !== 'saved') ? { 
-                              background: saveAllState === 'saved' ? 'rgba(0, 200, 100, 0.28)' : theme === 'light' ? 'rgba(37, 99, 235, 0.95)' : 'rgba(59, 130, 246, 0.25)',
-                            } : {}}
-                            whileTap={(saveAllState !== 'saving' && saveAllState !== 'saved') ? { scale: 0.96 } : {}}
-                            title={saveAllState === 'saved' ? 'Already saved' : 'Save all council responses'}
-                          >
-                            <Save size={12} />
-                            {saveAllState === 'saving' ? 'Saving...' : saveAllState === 'saved' ? 'Saved!' : 'Save Council'}
-                          </motion.button>
-                          <div
-                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
-                            onMouseEnter={() => setShowSaveAllTooltip(true)}
-                            onMouseLeave={() => setShowSaveAllTooltip(false)}
-                          >
-                            <Info size={10} color={currentTheme.textMuted} />
-                            {showSaveAllTooltip && (
-                              <div style={{
-                                position: 'absolute',
-                                bottom: '16px',
-                                right: 0,
-                                background: currentTheme.backgroundOverlay,
-                                border: `1px solid ${currentTheme.borderLight}`,
-                                borderRadius: '8px',
-                                padding: '6px 10px',
-                                fontSize: '0.7rem',
-                                color: currentTheme.textSecondary,
-                                width: '180px',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                                zIndex: 100,
-                              }}>
-                                Save all model responses from this session as one bundle.
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
-                          <motion.button
-                            onClick={handleSaveConversation}
-                            disabled={convoSavingState === 'saving' || convoSavingState === 'saved'}
-                            style={{
-                              flex: 1,
-                              padding: '4px 6px',
-                              background: convoSavingState === 'saved' ? 'rgba(0, 200, 100, 0.18)' : currentTheme.buttonBackground,
-                              border: `1px solid ${convoSavingState === 'saved' ? 'rgba(0, 200, 100, 0.45)' : currentTheme.borderLight}`,
-                              borderRadius: '12px',
-                              color: convoSavingState === 'saved' ? '#00c864' : currentTheme.accent,
-                              fontSize: '0.7rem',
-                              fontWeight: '500',
-                              cursor: (convoSavingState === 'saving' || convoSavingState === 'saved') ? 'not-allowed' : 'pointer',
-                              opacity: convoSavingState === 'saving' ? 0.6 : 1,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '4px',
-                              whiteSpace: 'nowrap',
-                              height: '28px',
-                            }}
-                            whileHover={(convoSavingState !== 'saving' && convoSavingState !== 'saved') ? { scale: 1.02 } : {}}
-                            title={convoSavingState === 'saved' ? 'Already saved' : 'Save the summary conversation'}
-                          >
-                            <Save size={12} />
-                            {convoSavingState === 'saving' ? 'Saving...' : convoSavingState === 'saved' ? 'Saved!' : 'Save Convo'}
-                          </motion.button>
-                          <div
-                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
-                            onMouseEnter={() => setShowConvoSaveTooltip(true)}
-                            onMouseLeave={() => setShowConvoSaveTooltip(false)}
-                          >
-                            <Info size={10} color={currentTheme.textMuted} />
-                            {showConvoSaveTooltip && (
-                              <div style={{
-                                position: 'absolute',
-                                bottom: '16px',
-                                right: 0,
-                                background: currentTheme.backgroundOverlay,
-                                border: `1px solid ${currentTheme.borderLight}`,
-                                borderRadius: '8px',
-                                padding: '6px 10px',
-                                fontSize: '0.7rem',
-                                color: currentTheme.textSecondary,
-                                width: '180px',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                                zIndex: 100,
-                              }}>
-                                Save the summary judge conversation and its history.
+                                Submit your prompt and the council's response to the Prompt Feed.
                               </div>
                             )}
                           </div>
@@ -1890,7 +1683,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             title={showCouncilPanel ? 'Hide Council Responses' : 'Show Council Responses'}
                           >
                             <LayoutGrid size={12} />
-                            {showCouncilPanel ? 'Hide Council' : 'Show Council'}
+                            {showCouncilPanel ? 'Hide Council Responses' : 'Show Council Responses'}
                           </motion.button>
                           <div
                             style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
@@ -2200,10 +1993,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           style={{
                             flex: 1,
                             padding: '4px 6px',
-                            background: theme === 'light' ? 'rgba(255, 59, 48, 0.85)' : 'rgba(255, 59, 48, 0.15)',
-                            border: theme === 'light' ? '1px solid rgba(200, 40, 30, 0.8)' : '1px solid rgba(255, 59, 48, 0.4)',
+                            background: theme === 'light' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.12)',
+                            border: theme === 'light' ? '1px solid rgba(200, 200, 200, 0.8)' : '1px solid rgba(255, 255, 255, 0.3)',
                             borderRadius: '12px',
-                            color: theme === 'light' ? '#fff' : '#ff6b6b',
+                            color: theme === 'light' ? '#333' : '#ffffff',
                             fontSize: '0.7rem',
                             fontWeight: '500',
                             cursor: 'pointer',
@@ -2216,12 +2009,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             height: '28px',
                           }}
                           whileHover={{ 
-                            background: theme === 'light' ? 'rgba(255, 40, 30, 0.95)' : 'rgba(255, 59, 48, 0.25)',
+                            background: theme === 'light' ? 'rgba(240, 240, 240, 1)' : 'rgba(255, 255, 255, 0.2)',
                           }}
                           whileTap={{ scale: 0.96 }}
                         >
-                          <Trash2 size={12} />
-                          Clear
+                          <MessageSquarePlus size={12} />
+                          New Chat
                         </motion.button>
                           <div
                             style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
@@ -2244,7 +2037,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                                 zIndex: 100,
                               }}>
-                                Clear the model response and conversation history.
+                                Start a new chat and clear the current conversation.
                               </div>
                             )}
                           </div>
@@ -2255,7 +2048,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         <motion.button
                           onClick={() => {
                             if (!currentUser?.id) {
-                              alert('Please sign in to submit prompts to the leaderboard')
+                              alert('Please sign in to submit prompts to the Prompt Feed')
                               return
                             }
                             setShowPostWindow(true)
@@ -2307,66 +2100,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                                 zIndex: 100,
                               }}>
-                                Submit your prompt and response to the community leaderboard.
+                                Submit your prompt and response to the Prompt Feed.
                               </div>
                             )}
                           </div>
                         </div>
 
-                        {/* Save Convo Button */}
-                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
-                        <motion.button
-                          onClick={handleSaveConversation}
-                          disabled={convoSavingState === 'saving' || convoSavingState === 'saved'}
-                          style={{
-                            flex: 1,
-                            padding: '4px 6px',
-                            background: convoSavingState === 'saved' ? 'rgba(0, 200, 100, 0.18)' : currentTheme.buttonBackground,
-                            border: `1px solid ${convoSavingState === 'saved' ? 'rgba(0, 200, 100, 0.45)' : currentTheme.borderLight}`,
-                            borderRadius: '12px',
-                            color: convoSavingState === 'saved' ? '#00c864' : currentTheme.accent,
-                            fontSize: '0.7rem',
-                            fontWeight: '500',
-                            cursor: (convoSavingState === 'saving' || convoSavingState === 'saved') ? 'not-allowed' : 'pointer',
-                            opacity: convoSavingState === 'saving' ? 0.6 : 1,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px',
-                            whiteSpace: 'nowrap',
-                            height: '28px',
-                          }}
-                          whileHover={(convoSavingState !== 'saving' && convoSavingState !== 'saved') ? { scale: 1.02 } : {}}
-                        >
-                          <Save size={12} />
-                          {convoSavingState === 'saving' ? 'Saving...' : convoSavingState === 'saved' ? 'Saved!' : 'Save Convo'}
-                        </motion.button>
-                          <div
-                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
-                            onMouseEnter={() => setShowSaveConvoSingleTooltip(true)}
-                            onMouseLeave={() => setShowSaveConvoSingleTooltip(false)}
-                          >
-                            <Info size={10} color={currentTheme.textMuted} />
-                            {showSaveConvoSingleTooltip && (
-                              <div style={{
-                                position: 'absolute',
-                                bottom: '16px',
-                                right: 0,
-                                background: currentTheme.backgroundOverlay,
-                                border: `1px solid ${currentTheme.borderLight}`,
-                                borderRadius: '8px',
-                                padding: '6px 10px',
-                                fontSize: '0.7rem',
-                                color: currentTheme.textSecondary,
-                                width: '180px',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                                zIndex: 100,
-                              }}>
-                                Save this conversation and its history for later viewing.
-                              </div>
-                            )}
-                          </div>
-                        </div>
                       </div>
                     )}
 
@@ -3101,7 +2840,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 })}
                   </AnimatePresence>
 
-      {/* Post to Leaderboard Window */}
+      {/* Post to Prompt Feed Window */}
       <AnimatePresence>
         {showPostWindow && (
           <div
@@ -3175,7 +2914,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     <Check size={26} color="#22c55e" />
                   </div>
                   <p style={{ color: '#22c55e', margin: 0, fontSize: '1.1rem', fontWeight: '600' }}>
-                    Posted to leaderboard!
+                    Posted to Prompt Feed!
                   </p>
                   <motion.button
                     onClick={() => { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null) }}
@@ -3206,7 +2945,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     WebkitTextFillColor: 'transparent',
                     paddingRight: '30px',
                   }}>
-                    Post to Leaderboard
+                    Post to Prompt Feed
                   </h2>
 
                   {/* Description textarea — on top */}
@@ -3478,9 +3217,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       } catch (error) {
                         console.error('Error submitting to leaderboard:', error)
                         if (error.response?.data?.alreadyPosted) {
-                          alert('This prompt has already been posted to the leaderboard.')
+                          alert('This prompt has already been posted to the Prompt Feed.')
                         } else {
-                          alert(error.response?.data?.error || 'Failed to submit prompt to leaderboard')
+                          alert(error.response?.data?.error || 'Failed to submit prompt to Prompt Feed')
                         }
                       } finally {
                         setIsSubmittingToVote(false)
@@ -3507,7 +3246,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     whileTap={!isSubmittingToVote ? { scale: 0.99 } : {}}
                   >
                     <Trophy size={18} />
-                    {isSubmittingToVote ? 'Posting...' : 'Submit to Leaderboard'}
+                    {isSubmittingToVote ? 'Posting...' : 'Submit to Prompt Feed'}
                   </motion.button>
                 </>
               )}
