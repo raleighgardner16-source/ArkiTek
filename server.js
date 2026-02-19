@@ -2999,9 +2999,8 @@ app.post('/api/judge/conversation', async (req, res) => {
       outputTokens = await countTokens(responseText, 'google', judgeModel)
     }
     
-    // Judge is an internal model — pipeline, excluded from user-visible stats.
-    // Cost still tracked via dailyUsage.
-    trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, true)
+    // User sees the judge conversation response on screen — NOT pipeline
+    trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
     
     // Count this continued conversation as 1 prompt + count user's message tokens
     trackConversationPrompt(userId, userMessage)
@@ -3218,10 +3217,9 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
       }
     }
 
-    // Judge is an internal model — pipeline, excluded from user-visible stats.
-    // Cost still tracked via dailyUsage.
-    trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, true)
-
+    // User sees the judge conversation stream on screen — NOT pipeline
+    trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
+    
     // Count this continued conversation as 1 prompt + count user's message tokens
     trackConversationPrompt(userId, userMessage)
 
@@ -5198,11 +5196,10 @@ app.post('/api/summary/stream', async (req, res) => {
       } catch (e) { /* skip */ }
     }
 
-    // Track usage as summary/judge call — pipeline, not counted in user-visible stats.
-    // The judge is an internal model (not user-selected), so its tokens should not appear
-    // in per-model stats or the main token counter. Cost is still tracked via dailyUsage.
+    // Track usage as summary call — user sees the summary output on screen,
+    // so this is NOT pipeline (counts in visible counters).
     if (userId) {
-      trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, true)
+      trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
     }
 
     sendSSE('done', {
