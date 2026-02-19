@@ -2358,11 +2358,15 @@ app.get('/api/stats/:userId', async (req, res) => {
   // Round all monetary values to 2 decimal places (cents) before sending
   const roundCents = (v) => Math.round((v || 0) * 100) / 100
 
-  // Derive totalTokens/monthlyTokens from the granular input/output counters.
-  // These are always accurate since they've been tracked consistently.
-  // The old .totalTokens accumulator may be stale from a previous counting method.
-  const totalTokens = (userUsage.totalInputTokens || 0) + (userUsage.totalOutputTokens || 0)
-  const monthlyTokens = (monthlyStats.inputTokens || 0) + (monthlyStats.outputTokens || 0)
+  // Use the HIGHER of the accumulated totalTokens vs the derived value from separate counters.
+  // totalTokens has the full historical data (accumulated since account creation).
+  // totalInputTokens/totalOutputTokens were added later and only have data since that code change.
+  // For established users, totalTokens > totalInputTokens + totalOutputTokens.
+  // For new data, they stay in sync. Math.max ensures we never show a lower number.
+  const derivedTotal = (userUsage.totalInputTokens || 0) + (userUsage.totalOutputTokens || 0)
+  const totalTokens = Math.max(userUsage.totalTokens || 0, derivedTotal)
+  const derivedMonthly = (monthlyStats.inputTokens || 0) + (monthlyStats.outputTokens || 0)
+  const monthlyTokens = Math.max(monthlyStats.tokens || 0, derivedMonthly)
 
   // Note: Query costs ($0.001/query) are included in monthlyCost but not exposed to users
   res.json({
