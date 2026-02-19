@@ -475,12 +475,19 @@ function App() {
     // For direct path, responses are already in the store via addResponse + updateResponse
 
     // Helper function to collect all token data
-    // Only includes user-visible model calls (council, summary, judge) — NOT pipeline calls (category detection)
+    // Includes all model calls for display. Pipeline calls (category detection) are flagged
+    // with isPipeline so the Token Usage Window can show them separately without counting them.
     const collectTokenData = (directJudgeTokens = null) => {
       const tokenData = []
       
-      // Category detection tokens are excluded — they are pipeline/internal calls
-      // and are not counted toward the user's visible token stats
+      // Add category detection tokens (shown in window but NOT counted in stats)
+      if (categoryDetectionTokens) {
+        tokenData.push({
+          modelName: 'Category Detection (Refiner)',
+          tokens: categoryDetectionTokens,
+          isPipeline: true // Flag so Token Usage Window can display separately
+        })
+      }
       
       // Add council response tokens (these include full input + output)
       responses.forEach(r => {

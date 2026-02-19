@@ -16,9 +16,13 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
 
   if (!isOpen || !tokenData || tokenData.length === 0) return null
 
-  // Group tokens by provider and aggregate totals
+  // Separate pipeline (category detection) items from counted items
+  const pipelineItems = tokenData.filter(item => item.isPipeline)
+  const countedItems = tokenData.filter(item => !item.isPipeline)
+
+  // Group COUNTED tokens by provider and aggregate totals
   const groupedByProvider = {}
-  tokenData.forEach((item) => {
+  countedItems.forEach((item) => {
     if (!item.tokens) return
     const provider = item.tokens.provider || 'unknown'
     if (!groupedByProvider[provider]) {
@@ -50,21 +54,26 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
     })
   })
 
-  // Calculate totals
-  const totalInput = tokenData.reduce((sum, item) => sum + (item.tokens?.input || 0), 0)
-  const totalOutput = tokenData.reduce((sum, item) => sum + (item.tokens?.output || 0), 0)
-  const totalReasoning = tokenData.reduce((sum, item) => sum + (item.tokens?.reasoningTokens || 0), 0)
+  // Calculate totals (only counted items — excludes pipeline)
+  const totalInput = countedItems.reduce((sum, item) => sum + (item.tokens?.input || 0), 0)
+  const totalOutput = countedItems.reduce((sum, item) => sum + (item.tokens?.output || 0), 0)
+  const totalReasoning = countedItems.reduce((sum, item) => sum + (item.tokens?.reasoningTokens || 0), 0)
   const totalTokens = totalInput + totalOutput
 
-  // Calculate aggregate breakdown (across all models that have breakdown data)
-  const hasAnyBreakdown = tokenData.some(item => item.tokens?.breakdown)
+  // Pipeline totals (for display only — not counted in stats)
+  const pipelineTotalInput = pipelineItems.reduce((sum, item) => sum + (item.tokens?.input || 0), 0)
+  const pipelineTotalOutput = pipelineItems.reduce((sum, item) => sum + (item.tokens?.output || 0), 0)
+  const pipelineTotalTokens = pipelineTotalInput + pipelineTotalOutput
+
+  // Calculate aggregate breakdown (across all counted models that have breakdown data)
+  const hasAnyBreakdown = countedItems.some(item => item.tokens?.breakdown)
   let totalUserPrompt = 0
   let totalSourceContext = 0
   let totalSystemOverhead = 0
   let modelsWithSources = 0
 
   if (hasAnyBreakdown) {
-    tokenData.forEach(item => {
+    countedItems.forEach(item => {
       if (item.tokens?.breakdown) {
         totalUserPrompt += item.tokens.breakdown.userPrompt || 0
         totalSourceContext += item.tokens.breakdown.sourceContext || 0
@@ -517,6 +526,105 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                 </div>
               </div>
             ))}
+
+            {/* Pipeline / Internal Models (not counted in stats) */}
+            {pipelineItems.length > 0 && (
+              <div
+                style={{
+                  background: 'rgba(255, 170, 0, 0.05)',
+                  border: '1px solid rgba(255, 170, 0, 0.2)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '16px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ color: '#ffaa00', fontSize: '1rem', margin: 0, fontWeight: 'bold' }}>
+                      Pipeline (Not Counted)
+                    </h3>
+                    <span style={{
+                      fontSize: '0.65rem',
+                      color: '#ffaa00',
+                      background: 'rgba(255, 170, 0, 0.15)',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      fontWeight: '600',
+                    }}>
+                      Internal
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', fontSize: '0.85rem' }}>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '0.7rem', marginBottom: '2px' }}>Input</div>
+                      <div style={{ color: '#ccc', fontSize: '1rem', fontWeight: 'bold' }}>
+                        {pipelineTotalInput.toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '0.7rem', marginBottom: '2px' }}>Output</div>
+                      <div style={{ color: '#ccc', fontSize: '1rem', fontWeight: 'bold' }}>
+                        {pipelineTotalOutput.toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '0.7rem', marginBottom: '2px' }}>Total</div>
+                      <div style={{ color: '#ffaa00', fontSize: '1rem', fontWeight: 'bold' }}>
+                        {pipelineTotalTokens.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {pipelineItems.map((item, index) => (
+                    <div
+                      key={`pipeline-${index}`}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        border: '1px solid rgba(255, 170, 0, 0.1)',
+                        borderRadius: '8px',
+                        padding: '10px',
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div style={{ color: '#ffaa00', fontWeight: '500' }}>
+                          {item.modelName || item.tokens?.model || 'Unknown'}
+                        </div>
+                        <div style={{ 
+                          color: '#ffaa00',
+                          fontSize: '0.65rem',
+                          background: 'rgba(255, 170, 0, 0.12)',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                        }}>
+                          Not Counted
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', fontSize: '0.75rem' }}>
+                        <div>
+                          <div style={{ color: '#888', marginBottom: '2px' }}>Input</div>
+                          <div style={{ color: '#ccc' }}>{(item.tokens?.input || 0).toLocaleString()}</div>
+                        </div>
+                        <div>
+                          <div style={{ color: '#888', marginBottom: '2px' }}>Output</div>
+                          <div style={{ color: '#ccc' }}>{(item.tokens?.output || 0).toLocaleString()}</div>
+                        </div>
+                        <div>
+                          <div style={{ color: '#888', marginBottom: '2px' }}>Total</div>
+                          <div style={{ color: '#ffaa00', fontWeight: 'bold' }}>
+                            {((item.tokens?.input || 0) + (item.tokens?.output || 0)).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: '8px', fontSize: '0.68rem', color: '#888', fontStyle: 'italic' }}>
+                  These tokens are used internally for category detection and query classification. They are not counted toward your token stats.
+                </div>
+              </div>
+            )}
           </motion.div>
         </motion.div>
       )}
