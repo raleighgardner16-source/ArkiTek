@@ -2852,7 +2852,8 @@ app.post('/api/judge/conversation', async (req, res) => {
       tokens: {
         input: inputTokens,
         output: outputTokens,
-        total: inputTokens + outputTokens
+        total: inputTokens + outputTokens,
+        breakdown: rawSourcesData ? buildTokenBreakdown(userMessage, rawSourcesData.formatted, inputTokens) : null
       },
       category: category,
       needsSearch: needsSearch,
@@ -3058,7 +3059,7 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
     // Send final metadata
     sendSSE('done', {
       response: fullResponse,
-      tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens },
+      tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens, breakdown: rawSourcesData ? buildTokenBreakdown(userMessage, rawSourcesData.formatted, inputTokens) : null },
       category, needsSearch,
       usedSearch: needsSearch && rawSourcesData !== null && rawSourcesData.sourceCount > 0,
       debugData,
@@ -3417,7 +3418,7 @@ app.post('/api/model/conversation/stream', async (req, res) => {
     // Send final metadata
     sendSSE('done', {
       response: fullResponse,
-      tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens },
+      tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens, breakdown: rawSourcesData ? buildTokenBreakdown(userMessage, rawSourcesData.formatted, inputTokens) : null },
       category, needsSearch,
       usedSearch: needsSearch && rawSourcesData !== null && rawSourcesData.sourceCount > 0,
       searchResults,
@@ -3651,7 +3652,8 @@ app.post('/api/model/conversation', async (req, res) => {
       tokens: {
         input: inputTokens,
         output: outputTokens,
-        total: inputTokens + outputTokens
+        total: inputTokens + outputTokens,
+        breakdown: rawSourcesData ? buildTokenBreakdown(userMessage, rawSourcesData.formatted, inputTokens) : null
       },
       category: category,
       needsSearch: needsSearch,
@@ -3912,6 +3914,19 @@ app.get('/api/stats/:userId/streak', (req, res) => {
 const estimateTokens = (text) => {
   console.warn('[Deprecated] estimateTokens() is deprecated. Use countTokens() with provider/model instead.')
   return estimateTokensFallback(text)
+}
+
+// Build a token breakdown showing user prompt vs source context vs system overhead
+// This lets the frontend display what's "counted" vs "behind the scenes"
+const buildTokenBreakdown = (userQuery, sourceContent, totalInputTokens) => {
+  const userPromptTokens = estimateTokensFallback(userQuery || '')
+  const sourceTokens = estimateTokensFallback(sourceContent || '')
+  const systemOverhead = Math.max(0, totalInputTokens - userPromptTokens - sourceTokens)
+  return {
+    userPrompt: userPromptTokens,
+    sourceContext: sourceTokens,
+    systemOverhead: systemOverhead
+  }
 }
 
 // Helper function to check if user has active subscription
@@ -6821,7 +6836,8 @@ ${rawSourcesData.formatted}`
             reasoningTokens: reasoningTokens, // Reasoning tokens from API metadata
             provider: providerKey,
             model: model,
-            source: tokenSource
+            source: tokenSource,
+            breakdown: buildTokenBreakdown(query, rawSourcesData?.formatted, inputTokens)
           } : null
           
           // Store token info in a variable accessible to return statement
@@ -6881,7 +6897,8 @@ ${rawSourcesData.formatted}`
               total: inputTokens + outputTokens,
               provider: providerKey,
               model: model,
-              source: tokenSource
+              source: tokenSource,
+              breakdown: buildTokenBreakdown(query, rawSourcesData?.formatted, inputTokens)
             }
           }
         } else if (providerKey === 'anthropic') {
@@ -6930,7 +6947,8 @@ ${rawSourcesData.formatted}`
               total: inputTokens + outputTokens,
               provider: providerKey,
               model: model,
-              source: tokenSource
+              source: tokenSource,
+              breakdown: buildTokenBreakdown(query, rawSourcesData?.formatted, inputTokens)
             }
           }
         } else {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Minimize2, Maximize2 } from 'lucide-react'
+import { X, Minimize2, Maximize2, Eye, EyeOff } from 'lucide-react'
 import { useStore } from '../store/useStore'
 
 const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
@@ -26,46 +26,103 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
         totalInput: 0,
         totalOutput: 0,
         totalReasoning: 0,
-        totalTokens: 0, // Sum of input + output only (excludes reasoning tokens)
+        totalTokens: 0,
         models: []
       }
     }
     const input = item.tokens.input || 0
     const output = item.tokens.output || 0
     const reasoning = item.tokens.reasoningTokens || 0
-    // Calculate total as input + output only (excludes reasoning/computing tokens)
     const total = input + output
     
     groupedByProvider[provider].totalInput += input
     groupedByProvider[provider].totalOutput += output
     groupedByProvider[provider].totalReasoning += reasoning
-    groupedByProvider[provider].totalTokens += total // Just input + output
+    groupedByProvider[provider].totalTokens += total
     groupedByProvider[provider].models.push({
       model: item.modelName || item.tokens.model || 'unknown',
       input: input,
       output: output,
       reasoning: reasoning,
-      total: total, // Just input + output
-      source: item.tokens.source || 'unknown'
+      total: total,
+      source: item.tokens.source || 'unknown',
+      breakdown: item.tokens.breakdown || null
     })
   })
 
-  // Calculate totals - only count input + output tokens (exclude reasoning/computing tokens)
+  // Calculate totals
   const totalInput = tokenData.reduce((sum, item) => sum + (item.tokens?.input || 0), 0)
   const totalOutput = tokenData.reduce((sum, item) => sum + (item.tokens?.output || 0), 0)
   const totalReasoning = tokenData.reduce((sum, item) => sum + (item.tokens?.reasoningTokens || 0), 0)
-  // Total is simply input + output (excludes reasoning tokens)
   const totalTokens = totalInput + totalOutput
+
+  // Calculate aggregate breakdown (across all models that have breakdown data)
+  const hasAnyBreakdown = tokenData.some(item => item.tokens?.breakdown)
+  let totalUserPrompt = 0
+  let totalSourceContext = 0
+  let totalSystemOverhead = 0
+  let modelsWithSources = 0
+
+  if (hasAnyBreakdown) {
+    tokenData.forEach(item => {
+      if (item.tokens?.breakdown) {
+        totalUserPrompt += item.tokens.breakdown.userPrompt || 0
+        totalSourceContext += item.tokens.breakdown.sourceContext || 0
+        totalSystemOverhead += item.tokens.breakdown.systemOverhead || 0
+        modelsWithSources++
+      }
+    })
+  }
+
+  // The "counted" tokens = output tokens + user prompt tokens (estimated once, not per model)
+  // User prompt is counted once by trackPrompt, output tokens counted per model by trackUsage
+  const singleUserPromptEstimate = hasAnyBreakdown && modelsWithSources > 0
+    ? Math.round(totalUserPrompt / modelsWithSources) // Average since each model gets the same prompt
+    : 0
+  const totalCounted = totalOutput + singleUserPromptEstimate
+  const totalHidden = totalSourceContext + totalSystemOverhead
+
+  // Reusable breakdown section for per-model cards
+  const renderModelBreakdown = (breakdown) => {
+    if (!breakdown) return null
+    return (
+      <div style={{
+        marginTop: '8px',
+        padding: '8px 10px',
+        background: 'rgba(255, 255, 255, 0.03)',
+        borderRadius: '6px',
+        border: '1px solid rgba(255, 255, 255, 0.06)',
+        fontSize: '0.7rem',
+      }}>
+        <div style={{ color: '#888', fontWeight: '600', marginBottom: '6px', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Input Breakdown (estimated)
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+          <div>
+            <div style={{ color: '#48c9b0', marginBottom: '2px' }}>Your Prompt</div>
+            <div style={{ color: '#fff' }}>~{(breakdown.userPrompt || 0).toLocaleString()}</div>
+          </div>
+          <div>
+            <div style={{ color: '#e67e22', marginBottom: '2px' }}>Web Sources</div>
+            <div style={{ color: '#fff' }}>~{(breakdown.sourceContext || 0).toLocaleString()}</div>
+          </div>
+          <div>
+            <div style={{ color: '#888', marginBottom: '2px' }}>System</div>
+            <div style={{ color: '#fff' }}>~{(breakdown.systemOverhead || 0).toLocaleString()}</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // If inline mode, render without modal overlay
   if (inline) {
-    // Group tokens by provider and aggregate totals
-    const groupedByProvider = {}
+    const inlineGrouped = {}
     tokenData.forEach((item) => {
       if (!item.tokens) return
       const provider = item.tokens.provider || 'unknown'
-      if (!groupedByProvider[provider]) {
-        groupedByProvider[provider] = {
+      if (!inlineGrouped[provider]) {
+        inlineGrouped[provider] = {
           totalInput: 0,
           totalOutput: 0,
           totalReasoning: 0,
@@ -73,34 +130,33 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
           models: []
         }
       }
-      groupedByProvider[provider].totalInput += item.tokens.inputTokens || 0
-      groupedByProvider[provider].totalOutput += item.tokens.outputTokens || 0
-      groupedByProvider[provider].totalReasoning += item.tokens.reasoningTokens || 0
-      groupedByProvider[provider].totalTokens += (item.tokens.inputTokens || 0) + (item.tokens.outputTokens || 0)
-      groupedByProvider[provider].models.push(item)
+      inlineGrouped[provider].totalInput += item.tokens.inputTokens || item.tokens.input || 0
+      inlineGrouped[provider].totalOutput += item.tokens.outputTokens || item.tokens.output || 0
+      inlineGrouped[provider].totalReasoning += item.tokens.reasoningTokens || 0
+      inlineGrouped[provider].totalTokens += (item.tokens.inputTokens || item.tokens.input || 0) + (item.tokens.outputTokens || item.tokens.output || 0)
+      inlineGrouped[provider].models.push(item)
     })
 
-    const totalTokens = Object.values(groupedByProvider).reduce((sum, provider) => sum + provider.totalTokens, 0)
-    const totalReasoning = Object.values(groupedByProvider).reduce((sum, provider) => sum + provider.totalReasoning, 0)
+    const inlineTotalTokens = Object.values(inlineGrouped).reduce((sum, provider) => sum + provider.totalTokens, 0)
+    const inlineTotalReasoning = Object.values(inlineGrouped).reduce((sum, provider) => sum + provider.totalReasoning, 0)
 
     return (
       <div style={{ padding: '16px' }}>
         <h3 style={{ color: '#5dade2', fontSize: '1.2rem', margin: '0 0 16px 0', fontWeight: 'bold' }}>
           Token Usage by Model/Provider
         </h3>
-        {/* Content from the original component */}
         <div style={{ marginBottom: '16px' }}>
           <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
             <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
-              <strong style={{ color: '#5dade2' }}>Total Tokens:</strong> {totalTokens.toLocaleString()}
+              <strong style={{ color: '#5dade2' }}>Total Tokens:</strong> {inlineTotalTokens.toLocaleString()}
             </div>
-            {totalReasoning > 0 && (
+            {inlineTotalReasoning > 0 && (
               <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
-                <strong style={{ color: '#ffaa00' }}>Reasoning Tokens:</strong> {totalReasoning.toLocaleString()}
+                <strong style={{ color: '#ffaa00' }}>Reasoning Tokens:</strong> {inlineTotalReasoning.toLocaleString()}
               </div>
             )}
           </div>
-          {Object.entries(groupedByProvider).map(([provider, data]) => (
+          {Object.entries(inlineGrouped).map(([provider, data]) => (
             <div key={provider} style={{ marginBottom: '20px', padding: '12px', background: 'rgba(93, 173, 226, 0.05)', borderRadius: '8px', border: '1px solid rgba(93, 173, 226, 0.2)' }}>
               <h4 style={{ color: '#5dade2', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
                 {provider === 'openai' ? 'Chatgpt' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
@@ -115,7 +171,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
               </div>
               {data.models.map((item, idx) => (
                 <div key={idx} style={{ marginLeft: '12px', marginBottom: '8px', fontSize: '0.8rem', color: '#cccccc' }}>
-                  {item.modelName}: {((item.tokens?.inputTokens || 0) + (item.tokens?.outputTokens || 0)).toLocaleString()} tokens
+                  {item.modelName}: {((item.tokens?.inputTokens || item.tokens?.input || 0) + (item.tokens?.outputTokens || item.tokens?.output || 0)).toLocaleString()} tokens
                   {item.tokens?.reasoningTokens > 0 && ` (+${item.tokens.reasoningTokens.toLocaleString()} reasoning)`}
                 </div>
               ))}
@@ -126,9 +182,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
     )
   }
 
-  // Show minimized state - just a small button to restore
-  // Stacked above Summary window (60px offset for button height + gap)
-  // Only show on home tab
+  // Show minimized state
   if (isMinimized && activeTab === 'home') {
     return (
       <motion.button
@@ -138,7 +192,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
         style={{
           position: 'fixed',
           bottom: '80px',
-          right: '20px', // Position in bottom-right, stacked above summary
+          right: '20px',
           background: 'rgba(93, 173, 226, 0.2)',
           border: '1px solid rgba(93, 173, 226, 0.5)',
           borderRadius: '12px',
@@ -162,7 +216,6 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
     )
   }
   
-  // Don't show anything if minimized and not on home tab
   if (isMinimized && activeTab !== 'home') {
     return null
   }
@@ -209,7 +262,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ color: '#5dade2', fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>
-                Token Usage by Model/Provider
+                Token Usage
               </h2>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <button
@@ -258,32 +311,105 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
               </div>
             </div>
 
-            {/* Info note */}
-            <div style={{
-              background: 'rgba(255, 170, 0, 0.08)',
-              border: '1px solid rgba(255, 170, 0, 0.25)',
-              borderRadius: '8px',
-              padding: '10px 14px',
-              marginBottom: '16px',
-              fontSize: '0.75rem',
-              color: '#ccc',
-              lineHeight: '1.4',
-            }}>
-              <span style={{ color: '#ffaa00', fontWeight: '600' }}>Note:</span> Input token counts include each provider's message formatting overhead (role markers, separators, etc.). Some providers also inject internal system prompts that are counted as input tokens.
-            </div>
+            {/* Counted vs Behind the Scenes — only show when breakdown data is available */}
+            {hasAnyBreakdown ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                {/* Counted section */}
+                <div style={{
+                  background: 'rgba(72, 201, 176, 0.08)',
+                  border: '1px solid rgba(72, 201, 176, 0.25)',
+                  borderRadius: '12px',
+                  padding: '14px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                    <Eye size={14} color="#48c9b0" />
+                    <span style={{ color: '#48c9b0', fontWeight: '700', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Counted Toward Your Stats
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#aaa' }}>Your Prompt</span>
+                      <span style={{ color: '#fff', fontWeight: '600' }}>~{singleUserPromptEstimate.toLocaleString()}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#aaa' }}>Model Output</span>
+                      <span style={{ color: '#fff', fontWeight: '600' }}>{totalOutput.toLocaleString()}</span>
+                    </div>
+                    {totalReasoning > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#aaa' }}>Reasoning</span>
+                        <span style={{ color: '#FFD700', fontWeight: '600' }}>{totalReasoning.toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div style={{ borderTop: '1px solid rgba(72, 201, 176, 0.2)', paddingTop: '6px', marginTop: '2px', display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#48c9b0', fontWeight: '600' }}>Total Counted</span>
+                      <span style={{ color: '#48c9b0', fontWeight: '700', fontSize: '0.9rem' }}>{totalCounted.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
 
-            {/* Summary */}
+                {/* Behind the scenes section */}
+                <div style={{
+                  background: 'rgba(230, 126, 34, 0.08)',
+                  border: '1px solid rgba(230, 126, 34, 0.25)',
+                  borderRadius: '12px',
+                  padding: '14px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                    <EyeOff size={14} color="#e67e22" />
+                    <span style={{ color: '#e67e22', fontWeight: '700', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Behind the Scenes
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#aaa' }}>Web Sources</span>
+                      <span style={{ color: '#fff', fontWeight: '600' }}>~{totalSourceContext.toLocaleString()}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#aaa' }}>System / Formatting</span>
+                      <span style={{ color: '#fff', fontWeight: '600' }}>~{totalSystemOverhead.toLocaleString()}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#777', fontSize: '0.7rem', fontStyle: 'italic' }}>across {modelsWithSources} model{modelsWithSources !== 1 ? 's' : ''}</span>
+                      <span style={{ color: '#777', fontSize: '0.7rem' }}></span>
+                    </div>
+                    <div style={{ borderTop: '1px solid rgba(230, 126, 34, 0.2)', paddingTop: '6px', marginTop: '2px', display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#e67e22', fontWeight: '600' }}>Total Hidden</span>
+                      <span style={{ color: '#e67e22', fontWeight: '700', fontSize: '0.9rem' }}>~{totalHidden.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Info note when no breakdown is available (no RAG/sources used) */
+              <div style={{
+                background: 'rgba(255, 170, 0, 0.08)',
+                border: '1px solid rgba(255, 170, 0, 0.25)',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                marginBottom: '16px',
+                fontSize: '0.75rem',
+                color: '#ccc',
+                lineHeight: '1.4',
+              }}>
+                <span style={{ color: '#ffaa00', fontWeight: '600' }}>Note:</span> No web sources were used for this prompt. Input tokens consist of your prompt plus system formatting. All output tokens are counted toward your stats.
+              </div>
+            )}
+
+            {/* Total API Usage bar */}
             <div
               style={{
                 background: 'rgba(93, 173, 226, 0.1)',
                 border: '1px solid rgba(93, 173, 226, 0.3)',
                 borderRadius: '12px',
                 padding: '16px',
-                marginBottom: '24px',
+                marginBottom: '20px',
               }}
             >
-              <h3 style={{ color: '#5dade2', fontSize: '1.1rem', margin: '0 0 12px 0', fontWeight: 'bold' }}>
-                Total Usage
+              <h3 style={{ color: '#5dade2', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: 'bold' }}>
+                Total API Usage
               </h3>
               <div style={{ display: 'grid', gridTemplateColumns: totalReasoning > 0 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '12px' }}>
                 <div>
@@ -410,6 +536,8 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                           </div>
                         </div>
                       </div>
+                      {/* Per-model input breakdown */}
+                      {renderModelBreakdown(modelData.breakdown)}
                     </div>
                   ))}
                 </div>
@@ -423,4 +551,3 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
 }
 
 export default TokenUsageWindow
-
