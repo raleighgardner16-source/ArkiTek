@@ -475,18 +475,14 @@ function App() {
     // For direct path, responses are already in the store via addResponse + updateResponse
 
     // Helper function to collect all token data
+    // Only includes user-visible model calls (council, summary, judge) — NOT pipeline calls (category detection)
     const collectTokenData = (directJudgeTokens = null) => {
       const tokenData = []
       
-      // Add category detection tokens (Gemini 2.5 Flash Lite - always called first)
-      if (categoryDetectionTokens) {
-        tokenData.push({
-          modelName: 'gemini-2.5-flash-lite (Category Detection)',
-          tokens: categoryDetectionTokens
-        })
-      }
+      // Category detection tokens are excluded — they are pipeline/internal calls
+      // and are not counted toward the user's visible token stats
       
-      // Add council response tokens
+      // Add council response tokens (these include full input + output)
       responses.forEach(r => {
         if (r.tokens) {
           tokenData.push({
@@ -838,7 +834,7 @@ function App() {
       setIsGeneratingSummary(false)
     }
 
-    // Save full token data to store (includes refiner, category detection, judge, and council tokens)
+    // Save token data to store (includes council + judge/summary tokens; excludes pipeline/category detection)
     useStore.getState().setTokenData(tokenData)
 
     // Auto-save this conversation to history (Year → Month → Day browsable in History tab)

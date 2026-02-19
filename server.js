@@ -721,14 +721,9 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
   userUsage.monthlyUsage[currentMonth].prompts += 1
   console.log(`[Prompt Tracking] User ${userId} (${currentMonth}): Monthly prompts ${oldMonthly} -> ${userUsage.monthlyUsage[currentMonth].prompts}`)
 
-  // Count the user's typed prompt tokens towards the visible token counter
-  // (the user's input text is visible to them — counts alongside model output tokens)
-  if (promptText) {
-    const userPromptTokens = estimateTokensFallback(promptText)
-    userUsage.totalTokens = (userUsage.totalTokens || 0) + userPromptTokens
-    userUsage.monthlyUsage[currentMonth].tokens = (userUsage.monthlyUsage[currentMonth].tokens || 0) + userPromptTokens
-    console.log(`[Prompt Tracking] User ${userId}: Added ${userPromptTokens} user prompt tokens to visible counter`)
-  }
+  // NOTE: User's typed prompt tokens are NOT counted here anymore.
+  // They are included in the full inputTokens counted by trackUsage() (which now counts input + output).
+  // Adding them here would cause double-counting since the API's input token count already includes the user prompt.
 
   // Track prompt history (keep last 100, we'll return last 20 to frontend)
   if (promptText) {
@@ -911,13 +906,9 @@ const trackConversationPrompt = (userId, userMessage) => {
   userUsage.monthlyUsage[currentMonth].prompts += 1
   console.log(`[Conversation Prompt] User ${userId}: Prompts -> ${userUsage.totalPrompts}, Monthly -> ${userUsage.monthlyUsage[currentMonth].prompts}`)
   
-  // Count the user's typed conversation message tokens towards visible counter
-  if (userMessage) {
-    const userMsgTokens = estimateTokensFallback(userMessage)
-    userUsage.totalTokens = (userUsage.totalTokens || 0) + userMsgTokens
-    userUsage.monthlyUsage[currentMonth].tokens = (userUsage.monthlyUsage[currentMonth].tokens || 0) + userMsgTokens
-    console.log(`[Conversation Prompt] User ${userId}: Added ${userMsgTokens} user message tokens to visible counter`)
-  }
+  // NOTE: User's typed conversation message tokens are NOT counted here anymore.
+  // They are included in the full inputTokens counted by trackUsage() (which now counts input + output).
+  // Adding them here would cause double-counting since the API's input token count already includes the user message.
   
   writeUsage(usage)
 }
@@ -926,7 +917,9 @@ const trackConversationPrompt = (userId, userMessage) => {
 // isPipeline = true for internal/behind-the-scenes calls (category detection, refiner, context summarization)
 // isPipeline = false for user-visible model calls (council members, summary, individual models, judge conversation)
 // Pipeline usage: only counted in dailyUsage/cost. NOT in visible token counters or per-model stats.
-// Non-pipeline usage: OUTPUT tokens counted in visible counters + per-model stats. All tokens counted in cost.
+// Non-pipeline usage: FULL input+output tokens counted in visible counters + per-model stats. All tokens counted in cost.
+// This means visible counters include: user prompt + web sources + system formatting + model output.
+// Pipeline calls (category detection etc.) are excluded from visible counters.
 // NOTE: Prompt counting is NOT done here — it's handled by trackPrompt (initial) and trackConversationPrompt (follow-ups).
 const trackUsage = async (userId, provider, model, inputTokens, outputTokens, isPipeline = false) => {
   const usage = readUsage()
@@ -965,21 +958,21 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
   
   // Update user-visible stats (totals, monthly, provider) only for user-visible calls
   // Pipeline calls (refiner, category detection, context summarization) still count towards cost via dailyUsage below
-  // IMPORTANT: Token counters (totalTokens, monthlyTokens) only count OUTPUT tokens — these are the tokens
-  // the user actually sees on screen (council responses, summary text, individual model responses, judge responses).
-  // The user's typed input tokens are counted separately in trackPrompt/trackConversationPrompt.
-  // API input tokens (system prompts, search sources, context) are NOT counted in the visible counters.
+  // Token counters (totalTokens, monthlyTokens) count FULL usage: input + output tokens.
+  // This includes the user's prompt, web source content, system formatting, AND model output.
+  // Pipeline-only calls (category detection, etc.) are excluded — they use isPipeline = true.
+  // The user's typed input tokens are ALSO counted separately in trackPrompt/trackConversationPrompt.
   if (!isPipeline) {
-    // Update totals — only OUTPUT tokens count towards visible token counters
-    userUsage.totalTokens += outputTokens
+    // Update totals — full input + output tokens count towards visible token counters
+    userUsage.totalTokens += (inputTokens + outputTokens)
     userUsage.totalInputTokens = (userUsage.totalInputTokens || 0) + inputTokens
     userUsage.totalOutputTokens = (userUsage.totalOutputTokens || 0) + outputTokens
 
-    // Update monthly usage — only OUTPUT tokens for the visible counter
+    // Update monthly usage — full input + output for the visible counter
     if (!userUsage.monthlyUsage[currentMonth]) {
       userUsage.monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
     }
-    userUsage.monthlyUsage[currentMonth].tokens += outputTokens
+    userUsage.monthlyUsage[currentMonth].tokens += (inputTokens + outputTokens)
     userUsage.monthlyUsage[currentMonth].inputTokens = (userUsage.monthlyUsage[currentMonth].inputTokens || 0) + inputTokens
     userUsage.monthlyUsage[currentMonth].outputTokens = (userUsage.monthlyUsage[currentMonth].outputTokens || 0) + outputTokens
 
@@ -987,7 +980,7 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
     // - 1 per initial user submission (in trackPrompt)
     // - 1 per continued conversation message (in conversation endpoints)
 
-    // Update provider stats — only OUTPUT tokens for the visible token counter
+    // Update provider stats — full input + output tokens for the visible token counter
     if (!userUsage.providers[provider]) {
       userUsage.providers[provider] = {
         totalTokens: 0,
@@ -1000,7 +993,7 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
         monthlyQueries: {},
       }
     }
-    userUsage.providers[provider].totalTokens += outputTokens
+    userUsage.providers[provider].totalTokens += (inputTokens + outputTokens)
     userUsage.providers[provider].totalInputTokens = (userUsage.providers[provider].totalInputTokens || 0) + inputTokens
     userUsage.providers[provider].totalOutputTokens = (userUsage.providers[provider].totalOutputTokens || 0) + outputTokens
 
@@ -1012,7 +1005,7 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
       userUsage.providers[provider].monthlyOutputTokens[currentMonth] = 0
       userUsage.providers[provider].monthlyQueries[currentMonth] = 0
     }
-    userUsage.providers[provider].monthlyTokens[currentMonth] += outputTokens
+    userUsage.providers[provider].monthlyTokens[currentMonth] += (inputTokens + outputTokens)
     userUsage.providers[provider].monthlyInputTokens[currentMonth] = (userUsage.providers[provider].monthlyInputTokens[currentMonth] || 0) + inputTokens
     userUsage.providers[provider].monthlyOutputTokens[currentMonth] = (userUsage.providers[provider].monthlyOutputTokens[currentMonth] || 0) + outputTokens
   } else {
@@ -1037,7 +1030,7 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
         pricing: null,
       }
     }
-    userUsage.models[modelKey].totalTokens += outputTokens
+    userUsage.models[modelKey].totalTokens += (inputTokens + outputTokens)
     userUsage.models[modelKey].totalInputTokens = (userUsage.models[modelKey].totalInputTokens || 0) + inputTokens
     userUsage.models[modelKey].totalOutputTokens = (userUsage.models[modelKey].totalOutputTokens || 0) + outputTokens
     userUsage.models[modelKey].totalPrompts = (userUsage.models[modelKey].totalPrompts || 0) + 1

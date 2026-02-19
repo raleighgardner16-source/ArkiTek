@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Minimize2, Maximize2, Eye, EyeOff } from 'lucide-react'
+import { X, Minimize2, Maximize2, Eye } from 'lucide-react'
 import { useStore } from '../store/useStore'
 
 const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
@@ -74,13 +74,11 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
     })
   }
 
-  // The "counted" tokens = output tokens + user prompt tokens (estimated once, not per model)
-  // User prompt is counted once by trackPrompt, output tokens counted per model by trackUsage
+  // All input+output tokens are now counted (except pipeline/category detection calls).
+  // The breakdown just shows what makes up the input tokens for transparency.
   const singleUserPromptEstimate = hasAnyBreakdown && modelsWithSources > 0
     ? Math.round(totalUserPrompt / modelsWithSources) // Average since each model gets the same prompt
     : 0
-  const totalCounted = totalOutput + singleUserPromptEstimate
-  const totalHidden = totalSourceContext + totalSystemOverhead
 
   // Reusable breakdown section for per-model cards
   const renderModelBreakdown = (breakdown) => {
@@ -311,82 +309,58 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
               </div>
             </div>
 
-            {/* Counted vs Behind the Scenes — only show when breakdown data is available */}
+            {/* Token breakdown — shows what makes up input tokens */}
             {hasAnyBreakdown ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                {/* Counted section */}
-                <div style={{
-                  background: 'rgba(72, 201, 176, 0.08)',
-                  border: '1px solid rgba(72, 201, 176, 0.25)',
-                  borderRadius: '12px',
-                  padding: '14px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-                    <Eye size={14} color="#48c9b0" />
-                    <span style={{ color: '#48c9b0', fontWeight: '700', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Counted Toward Your Stats
-                    </span>
+              <div style={{
+                background: 'rgba(93, 173, 226, 0.06)',
+                border: '1px solid rgba(93, 173, 226, 0.2)',
+                borderRadius: '12px',
+                padding: '14px',
+                marginBottom: '16px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                  <Eye size={14} color="#5dade2" />
+                  <span style={{ color: '#5dade2', fontWeight: '700', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    What's In Your Token Count
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#aaa' }}>Your Prompt</span>
+                    <span style={{ color: '#fff', fontWeight: '600' }}>~{singleUserPromptEstimate.toLocaleString()}</span>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#aaa' }}>Web Sources</span>
+                    <span style={{ color: '#e67e22', fontWeight: '600' }}>~{totalSourceContext.toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#aaa' }}>System / Formatting</span>
+                    <span style={{ color: '#fff', fontWeight: '600' }}>~{totalSystemOverhead.toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#aaa' }}>Model Output</span>
+                    <span style={{ color: '#fff', fontWeight: '600' }}>{totalOutput.toLocaleString()}</span>
+                  </div>
+                  {totalReasoning > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#aaa' }}>Your Prompt</span>
-                      <span style={{ color: '#fff', fontWeight: '600' }}>~{singleUserPromptEstimate.toLocaleString()}</span>
+                      <span style={{ color: '#aaa' }}>Reasoning</span>
+                      <span style={{ color: '#FFD700', fontWeight: '600' }}>{totalReasoning.toLocaleString()}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#aaa' }}>Model Output</span>
-                      <span style={{ color: '#fff', fontWeight: '600' }}>{totalOutput.toLocaleString()}</span>
-                    </div>
-                    {totalReasoning > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#aaa' }}>Reasoning</span>
-                        <span style={{ color: '#FFD700', fontWeight: '600' }}>{totalReasoning.toLocaleString()}</span>
-                      </div>
-                    )}
-                    <div style={{ borderTop: '1px solid rgba(72, 201, 176, 0.2)', paddingTop: '6px', marginTop: '2px', display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#48c9b0', fontWeight: '600' }}>Total Counted</span>
-                      <span style={{ color: '#48c9b0', fontWeight: '700', fontSize: '0.9rem' }}>{totalCounted.toLocaleString()}</span>
-                    </div>
+                  )}
+                  <div style={{ borderTop: '1px solid rgba(93, 173, 226, 0.2)', paddingTop: '6px', marginTop: '2px', display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#5dade2', fontWeight: '600' }}>Total (across {modelsWithSources} model{modelsWithSources !== 1 ? 's' : ''})</span>
+                    <span style={{ color: '#5dade2', fontWeight: '700', fontSize: '0.9rem' }}>{totalTokens.toLocaleString()}</span>
                   </div>
                 </div>
-
-                {/* Behind the scenes section */}
-                <div style={{
-                  background: 'rgba(230, 126, 34, 0.08)',
-                  border: '1px solid rgba(230, 126, 34, 0.25)',
-                  borderRadius: '12px',
-                  padding: '14px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-                    <EyeOff size={14} color="#e67e22" />
-                    <span style={{ color: '#e67e22', fontWeight: '700', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Behind the Scenes
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#aaa' }}>Web Sources</span>
-                      <span style={{ color: '#fff', fontWeight: '600' }}>~{totalSourceContext.toLocaleString()}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#aaa' }}>System / Formatting</span>
-                      <span style={{ color: '#fff', fontWeight: '600' }}>~{totalSystemOverhead.toLocaleString()}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#777', fontSize: '0.7rem', fontStyle: 'italic' }}>across {modelsWithSources} model{modelsWithSources !== 1 ? 's' : ''}</span>
-                      <span style={{ color: '#777', fontSize: '0.7rem' }}></span>
-                    </div>
-                    <div style={{ borderTop: '1px solid rgba(230, 126, 34, 0.2)', paddingTop: '6px', marginTop: '2px', display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#e67e22', fontWeight: '600' }}>Total Hidden</span>
-                      <span style={{ color: '#e67e22', fontWeight: '700', fontSize: '0.9rem' }}>~{totalHidden.toLocaleString()}</span>
-                    </div>
-                  </div>
+                <div style={{ marginTop: '10px', fontSize: '0.68rem', color: '#777', lineHeight: '1.4' }}>
+                  <span style={{ color: '#e67e22', fontWeight: '600' }}>Not included:</span> Internal pipeline tokens (category detection, search query generation) are not counted toward your stats.
                 </div>
               </div>
             ) : (
               /* Info note when no breakdown is available (no RAG/sources used) */
               <div style={{
-                background: 'rgba(255, 170, 0, 0.08)',
-                border: '1px solid rgba(255, 170, 0, 0.25)',
+                background: 'rgba(93, 173, 226, 0.06)',
+                border: '1px solid rgba(93, 173, 226, 0.2)',
                 borderRadius: '8px',
                 padding: '10px 14px',
                 marginBottom: '16px',
@@ -394,7 +368,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                 color: '#ccc',
                 lineHeight: '1.4',
               }}>
-                <span style={{ color: '#ffaa00', fontWeight: '600' }}>Note:</span> No web sources were used for this prompt. Input tokens consist of your prompt plus system formatting. All output tokens are counted toward your stats.
+                <span style={{ color: '#5dade2', fontWeight: '600' }}>Note:</span> No web sources were used for this prompt. Your token count includes your prompt, system formatting, and model output. Internal pipeline tokens (category detection) are not counted.
               </div>
             )}
 
