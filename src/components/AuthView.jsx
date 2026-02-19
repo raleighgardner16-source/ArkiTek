@@ -87,6 +87,39 @@ const AuthView = ({ initialView, onNavigate }) => {
     }
   }, [resendCooldown])
 
+  // Poll for email verification status when on verification-pending view
+  // This auto-detects when the user verifies on another device (e.g. phone)
+  useEffect(() => {
+    if (view !== 'verification-pending' || !verificationUserId) return
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await axios.post(`${API_URL}/api/auth/check-verification`, {
+          userId: verificationUserId,
+        })
+
+        if (response.data.success && response.data.verified && response.data.user) {
+          clearInterval(pollInterval)
+          console.log('[Auth] Email verified (detected via polling) — auto-logging in')
+          const user = response.data.user
+
+          // New user — clear model prefs so MainView sets Auto Smart defaults
+          clearSelectedModels()
+          setAutoSmartProviders({})
+          localStorage.removeItem('arktek-models-initialized')
+
+          setCurrentUser(user)
+          setActiveTab('home')
+          setShowWelcome(false)
+        }
+      } catch (err) {
+        // Silently ignore polling errors — will retry on next interval
+      }
+    }, 5000) // Check every 5 seconds
+
+    return () => clearInterval(pollInterval)
+  }, [view, verificationUserId])
+
 
   const handleChange = (e) => {
     setFormData({
@@ -167,14 +200,33 @@ const AuthView = ({ initialView, onNavigate }) => {
       const response = await axios.post(`${API_URL}/api/auth/verify-email`, { token })
 
       if (response.data.success) {
-        setSuccessMessage(response.data.message || 'Email verified! You can now sign in.')
+        const user = response.data.user
         // Clear hash from URL
         window.location.hash = ''
-        // After 3 seconds, switch to sign-in view
-        setTimeout(() => {
-          setView('signin')
-          setSuccessMessage('')
-        }, 3000)
+
+        // If server returned full user data, auto-login the user
+        if (user && user.firstName && user.username) {
+          setSuccessMessage('Email verified! Signing you in...')
+
+          // New user — clear model prefs so MainView sets Auto Smart defaults
+          clearSelectedModels()
+          setAutoSmartProviders({})
+          localStorage.removeItem('arktek-models-initialized')
+
+          // Brief delay so user sees the success message, then auto-login
+          setTimeout(() => {
+            setCurrentUser(user)
+            setActiveTab('home')
+            setShowWelcome(false)
+          }, 1500)
+        } else {
+          // Fallback: show success message and switch to signin
+          setSuccessMessage(response.data.message || 'Email verified! You can now sign in.')
+          setTimeout(() => {
+            setView('signin')
+            setSuccessMessage('')
+          }, 3000)
+        }
       }
     } catch (err) {
       console.error('Email verification error:', err)
@@ -1536,6 +1588,13 @@ const AuthView = ({ initialView, onNavigate }) => {
               <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.85rem', lineHeight: 1.5, margin: 0 }}>
                 Click the link in your email to verify your account. The link expires in 24 hours.
               </p>
+              <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <Loader size={14} style={{ color: 'rgba(93, 173, 226, 0.6)', animation: 'spin 1s linear infinite' }} />
+                <p style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '0.8rem', margin: 0 }}>
+                  Waiting for verification — this page will update automatically
+                </p>
+                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+              </div>
             </div>
 
             <div style={{

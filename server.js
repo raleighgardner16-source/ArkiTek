@@ -1852,10 +1852,16 @@ app.post('/api/auth/verify-email', async (req, res) => {
         success: true,
         message: 'Email verified! Your free trial is now active.',
         user: {
-          id: userId,
+          id: dbUser._id,
+          firstName: dbUser.firstName,
+          lastName: dbUser.lastName,
+          username: dbUser.username,
+          email: dbUser.email,
           subscriptionStatus: 'trialing',
+          subscriptionRenewalDate: null,
           emailVerified: true,
           plan: 'free_trial',
+          modelPreferences: dbUser.modelPreferences || null,
         },
       })
     } else {
@@ -1885,17 +1891,72 @@ app.post('/api/auth/verify-email', async (req, res) => {
       console.log('[Auth] ✅ Email verified for pro user (ready for payment):', userId)
       res.json({
         success: true,
-        message: 'Email verified! You can now sign in and set up your subscription.',
+        message: 'Email verified! Setting up your account...',
         user: {
-          id: userId,
+          id: dbUser._id,
+          firstName: dbUser.firstName,
+          lastName: dbUser.lastName,
+          username: dbUser.username,
+          email: dbUser.email,
           subscriptionStatus: 'inactive',
+          subscriptionRenewalDate: null,
           emailVerified: true,
           plan: 'pro',
+          modelPreferences: dbUser.modelPreferences || null,
         },
       })
     }
   } catch (error) {
     console.error('[Auth] Email verification error:', error)
+    res.status(500).json({ error: 'An error occurred. Please try again.' })
+  }
+})
+
+// Check verification status — used by the verification-pending page to poll for completion
+// When email is verified, returns full user data so the client can auto-login
+app.post('/api/auth/check-verification', async (req, res) => {
+  try {
+    const { userId } = req.body
+
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' })
+    }
+
+    const dbUser = await db.users.get(userId)
+    if (!dbUser) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    // If email is not yet verified, return pending status
+    if (!dbUser.emailVerified || dbUser.subscriptionStatus === 'pending_verification') {
+      return res.json({ success: true, verified: false })
+    }
+
+    // Email is verified — return full user data for auto-login
+    console.log('[Auth] Verification poll: user', userId, 'is verified, returning user data for auto-login')
+
+    // Update last active
+    const loginDate = new Date()
+    await db.users.update(userId, { lastActiveAt: loginDate })
+
+    res.json({
+      success: true,
+      verified: true,
+      user: {
+        id: dbUser._id,
+        firstName: dbUser.firstName,
+        lastName: dbUser.lastName,
+        username: dbUser.username,
+        email: dbUser.email,
+        subscriptionStatus: dbUser.subscriptionStatus || 'inactive',
+        subscriptionRenewalDate: dbUser.subscriptionRenewalDate || null,
+        emailVerified: dbUser.emailVerified || false,
+        plan: dbUser.plan || null,
+        modelPreferences: dbUser.modelPreferences || null,
+      },
+    })
+  } catch (error) {
+    console.error('[Auth] Check verification error:', error)
     res.status(500).json({ error: 'An error occurred. Please try again.' })
   }
 })
