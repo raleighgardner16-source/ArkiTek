@@ -250,7 +250,7 @@ const syncUserStatsToMongo = async (userId) => {
         monthlyUsageCost: userData.monthlyUsageCost || {},
         monthlyOverageBilled: userData.monthlyOverageBilled || {},
         stats: {
-          totalTokens: usageData.totalTokens || 0,
+          totalTokens: (usageData.totalInputTokens || 0) + (usageData.totalOutputTokens || 0),
           totalInputTokens: usageData.totalInputTokens || 0,
           totalOutputTokens: usageData.totalOutputTokens || 0,
           totalQueries: usageData.totalQueries || 0,
@@ -882,7 +882,7 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
 }
 
 // Track a continued conversation prompt (1 per follow-up message in judge or model conversation)
-// Also counts the user's typed message tokens towards the visible token counter
+// Counts 1 prompt per follow-up message. Token counting is handled by trackUsage() separately.
 const trackConversationPrompt = (userId, userMessage) => {
   if (!userId) return
   
@@ -961,7 +961,6 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
   // Token counters (totalTokens, monthlyTokens) count FULL usage: input + output tokens.
   // This includes the user's prompt, web source content, system formatting, AND model output.
   // Pipeline-only calls (category detection, etc.) are excluded — they use isPipeline = true.
-  // The user's typed input tokens are ALSO counted separately in trackPrompt/trackConversationPrompt.
   if (!isPipeline) {
     // Update totals — full input + output tokens count towards visible token counters
     userUsage.totalTokens += (inputTokens + outputTokens)
@@ -2326,13 +2325,29 @@ app.get('/api/stats/:userId', (req, res) => {
   // Round all monetary values to 2 decimal places (cents) before sending
   const roundCents = (v) => Math.round((v || 0) * 100) / 100
 
+  // Recalculate totalTokens and monthlyTokens from the separate input/output counters.
+  // The accumulated .totalTokens field may be inconsistent due to a mid-lifecycle change
+  // from output-only counting to full input+output counting. The separate input/output
+  // counters have always been tracked accurately, so deriving from them is always correct.
+  const recalcTotalTokens = (userUsage.totalInputTokens || 0) + (userUsage.totalOutputTokens || 0)
+  const recalcMonthlyTokens = (monthlyStats.inputTokens || 0) + (monthlyStats.outputTokens || 0)
+
+  // Also fix the in-memory accumulator so it stays consistent going forward
+  if (userUsage.totalTokens !== recalcTotalTokens) {
+    userUsage.totalTokens = recalcTotalTokens
+    if (monthlyStats.tokens !== recalcMonthlyTokens) {
+      monthlyStats.tokens = recalcMonthlyTokens
+    }
+    writeUsage(usage, userId)
+  }
+
   // Note: Query costs ($0.001/query) are included in monthlyCost but not exposed to users
   res.json({
-    totalTokens: userUsage.totalTokens || 0,
+    totalTokens: recalcTotalTokens,
     totalInputTokens: userUsage.totalInputTokens || 0,
     totalOutputTokens: userUsage.totalOutputTokens || 0,
     totalPrompts: userUsage.totalPrompts || 0,
-    monthlyTokens: monthlyStats.tokens || 0,
+    monthlyTokens: recalcMonthlyTokens,
     monthlyInputTokens: monthlyStats.inputTokens || 0,
     monthlyOutputTokens: monthlyStats.outputTokens || 0,
     monthlyPrompts: monthlyStats.prompts || 0,
