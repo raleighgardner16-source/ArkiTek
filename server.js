@@ -441,9 +441,19 @@ const writeUsage = (usage, changedUserId = null) => {
   }
 }
   usageCache = usage
-  // Debounced sync to MongoDB (batches rapid writes)
-  if (usageSyncTimer) clearTimeout(usageSyncTimer)
-  usageSyncTimer = setTimeout(() => flushUsageToMongo(), 2000)
+  
+  if (process.env.VERCEL) {
+    // On Vercel serverless: flush immediately (fire-and-forget).
+    // The 2-second debounced timer NEVER fires because Vercel freezes the instance
+    // after each response is sent. This causes token data to be lost between requests.
+    // Multiple concurrent flushes are safe — flushUsageToMongo clears the dirty set
+    // atomically and writes the latest cache state.
+    flushUsageToMongo().catch(err => console.error('[Usage Sync] Vercel immediate flush failed:', err.message))
+  } else {
+    // On traditional server: debounce for efficiency (batches rapid writes)
+    if (usageSyncTimer) clearTimeout(usageSyncTimer)
+    usageSyncTimer = setTimeout(() => flushUsageToMongo(), 2000)
+  }
 }
 
 const readLeaderboard = () => {
@@ -2348,35 +2358,19 @@ app.get('/api/stats/:userId', async (req, res) => {
   // Round all monetary values to 2 decimal places (cents) before sending
   const roundCents = (v) => Math.round((v || 0) * 100) / 100
 
-  // Recalculate totalTokens and monthlyTokens from the separate input/output counters.
-  // The accumulated .totalTokens field may be inconsistent due to a mid-lifecycle change
-  // from output-only counting to full input+output counting. The separate input/output
-  // counters have always been tracked accurately, so deriving from them is always correct.
-  const recalcTotalTokens = (userUsage.totalInputTokens || 0) + (userUsage.totalOutputTokens || 0)
-  const recalcMonthlyTokens = (monthlyStats.inputTokens || 0) + (monthlyStats.outputTokens || 0)
-
-  // Fix the in-memory ORIGINAL cache object (not the spread copy above).
-  // userUsage is a shallow copy — writing to it doesn't update the actual cache.
-  // We must write to usage[userId] directly so the fix persists in the cache.
-  if (usage[userId]) {
-    const needsWrite = usage[userId].totalTokens !== recalcTotalTokens
-    if (needsWrite) {
-      usage[userId].totalTokens = recalcTotalTokens
-      const origMonthly = usage[userId].monthlyUsage?.[currentMonth]
-      if (origMonthly && origMonthly.tokens !== recalcMonthlyTokens) {
-        origMonthly.tokens = recalcMonthlyTokens
-      }
-      writeUsage(usage, userId)
-    }
-  }
+  // Derive totalTokens/monthlyTokens from the granular input/output counters.
+  // These are always accurate since they've been tracked consistently.
+  // The old .totalTokens accumulator may be stale from a previous counting method.
+  const totalTokens = (userUsage.totalInputTokens || 0) + (userUsage.totalOutputTokens || 0)
+  const monthlyTokens = (monthlyStats.inputTokens || 0) + (monthlyStats.outputTokens || 0)
 
   // Note: Query costs ($0.001/query) are included in monthlyCost but not exposed to users
   res.json({
-    totalTokens: recalcTotalTokens,
+    totalTokens: totalTokens,
     totalInputTokens: userUsage.totalInputTokens || 0,
     totalOutputTokens: userUsage.totalOutputTokens || 0,
     totalPrompts: userUsage.totalPrompts || 0,
-    monthlyTokens: recalcMonthlyTokens,
+    monthlyTokens: monthlyTokens,
     monthlyInputTokens: monthlyStats.inputTokens || 0,
     monthlyOutputTokens: monthlyStats.outputTokens || 0,
     monthlyPrompts: monthlyStats.prompts || 0,
@@ -4229,6 +4223,11 @@ app.post('/api/llm', async (req, res) => {
           
           trackUsage(userId, provider, model, inputTokens, outputTokens)
           
+          // Flush token data to MongoDB before responding (Vercel serverless persistence)
+          if (usageDirtyUsers.size > 0) {
+            await flushUsageToMongo().catch(err => console.error('[LLM] Flush failed:', err.message))
+          }
+          
           // Calculate total tokens (use API totalTokenCount if available, otherwise sum)
           const totalTokens = responseTokens?.totalTokens || (inputTokens + outputTokens)
           
@@ -4573,6 +4572,11 @@ app.post('/api/llm', async (req, res) => {
         if (userId) {
           trackUsage(userId, provider, model, inputTokens, outputTokens)
         }
+      }
+      
+      // Flush token data to MongoDB before responding (Vercel serverless persistence)
+      if (userId && usageDirtyUsers.size > 0) {
+        await flushUsageToMongo().catch(err => console.error('[LLM Gemini] Flush failed:', err.message))
       }
       
       return res.json({ 
@@ -4927,6 +4931,11 @@ app.post('/api/llm/stream', async (req, res) => {
       }
     })
 
+    // Flush token data to MongoDB before ending (Vercel may freeze instance after res.end)
+    if (userId && usageDirtyUsers.size > 0) {
+      await flushUsageToMongo().catch(err => console.error('[LLM Stream] Flush failed:', err.message))
+    }
+
     clearInterval(heartbeat)
     res.end()
 
@@ -5060,6 +5069,11 @@ app.post('/api/summary/stream', async (req, res) => {
         source: tokenSource
       }
     })
+
+    // Flush token data to MongoDB before ending (Vercel serverless persistence)
+    if (userId && usageDirtyUsers.size > 0) {
+      await flushUsageToMongo().catch(err => console.error('[Summary Stream] Flush failed:', err.message))
+    }
 
     res.end()
   } catch (error) {
@@ -7071,6 +7085,19 @@ ${rawSourcesData.formatted}`
     console.log('[RAG Pipeline] Council responses count:', councilResponses.length)
     
     console.log('[RAG Pipeline] Preparing response (no refiner — raw sources sent to models)')
+    
+    // CRITICAL: Flush all token data to MongoDB before responding.
+    // On Vercel serverless, the next request (POST /api/stats/prompt) might hit a
+    // different instance. If we don't flush here, the token data from trackUsage
+    // calls above would be lost in this instance's memory.
+    if (userId && usageDirtyUsers.size > 0) {
+      try {
+        await flushUsageToMongo()
+        console.log('[RAG Pipeline] Token data flushed to MongoDB')
+      } catch (err) {
+        console.error('[RAG Pipeline] Token flush failed:', err.message)
+      }
+    }
     
     return res.json({
       query,
