@@ -180,25 +180,32 @@ const flushUsageToMongo = async () => {
     for (const userId of usersToSync) {
       if (!usageCache[userId]) continue
       
-      // IMPORTANT: Exclude totalTokens and monthlyUsage.*.tokens from $set.
-      // These fields are now managed EXCLUSIVELY by the POST /api/stats/token-update
-      // endpoint using atomic MongoDB $inc. If we $set them here, we'd overwrite
-      // the correct $inc'd values with stale cache data from a different Vercel instance.
-      const { totalTokens: _tt, ...cacheWithoutTotalTokens } = usageCache[userId]
+      // IMPORTANT: Exclude totalTokens and monthlyUsage from $set entirely.
+      // totalTokens and monthlyUsage.*.tokens are managed EXCLUSIVELY by the
+      // POST /api/stats/token-update endpoint using atomic MongoDB $inc.
+      //
+      // Previously, we stripped .tokens from monthlyUsage entries but still $set
+      // the entire monthlyUsage object. This REPLACED the whole field in MongoDB,
+      // which DELETED the $inc'd tokens value. Now we use dot-notation $set for
+      // each monthlyUsage sub-field so the tokens field is left untouched.
+      const { totalTokens: _tt, monthlyUsage: _mu, ...cacheWithoutManagedFields } = usageCache[userId]
       
-      // Strip .tokens from each monthlyUsage entry so $set doesn't overwrite them
-      if (cacheWithoutTotalTokens.monthlyUsage) {
-        const cleanMonthly = {}
-        for (const [month, data] of Object.entries(cacheWithoutTotalTokens.monthlyUsage)) {
+      // Build dot-notation updates for monthlyUsage sub-fields (excluding .tokens)
+      const monthlyDotUpdates = {}
+      if (_mu) {
+        for (const [month, data] of Object.entries(_mu)) {
+          if (!data) continue
           const { tokens: _mt, ...monthWithoutTokens } = data
-          cleanMonthly[month] = monthWithoutTokens
+          // Set each non-tokens field individually via dot notation
+          for (const [field, value] of Object.entries(monthWithoutTokens)) {
+            monthlyDotUpdates[`monthlyUsage.${month}.${field}`] = value
+          }
         }
-        cacheWithoutTotalTokens.monthlyUsage = cleanMonthly
       }
       
       await collection.updateOne(
         { _id: userId },
-        { $set: { ...cacheWithoutTotalTokens, _id: userId, updatedAt: new Date() } },
+        { $set: { ...cacheWithoutManagedFields, ...monthlyDotUpdates, _id: userId, updatedAt: new Date() } },
         { upsert: true }
       )
       // Also sync stats to user_stats collection (aggregated totals, purchased credits)
@@ -2992,8 +2999,9 @@ app.post('/api/judge/conversation', async (req, res) => {
       outputTokens = await countTokens(responseText, 'google', judgeModel)
     }
     
-    // User sees the judge conversation response on screen — NOT pipeline
-    trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
+    // Judge is an internal model — pipeline, excluded from user-visible stats.
+    // Cost still tracked via dailyUsage.
+    trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, true)
     
     // Count this continued conversation as 1 prompt + count user's message tokens
     trackConversationPrompt(userId, userMessage)
@@ -3210,8 +3218,9 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
       }
     }
 
-    // User sees the judge conversation stream on screen — NOT pipeline
-    trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
+    // Judge is an internal model — pipeline, excluded from user-visible stats.
+    // Cost still tracked via dailyUsage.
+    trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, true)
 
     // Count this continued conversation as 1 prompt + count user's message tokens
     trackConversationPrompt(userId, userMessage)
@@ -5189,10 +5198,11 @@ app.post('/api/summary/stream', async (req, res) => {
       } catch (e) { /* skip */ }
     }
 
-    // Track usage as summary call — user sees the summary output on screen,
-    // so this is NOT pipeline (output tokens count in visible counters, counts as a prompt)
+    // Track usage as summary/judge call — pipeline, not counted in user-visible stats.
+    // The judge is an internal model (not user-selected), so its tokens should not appear
+    // in per-model stats or the main token counter. Cost is still tracked via dailyUsage.
     if (userId) {
-      trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
+      trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, true)
     }
 
     sendSSE('done', {

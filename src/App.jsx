@@ -784,10 +784,13 @@ function App() {
         }
         
         // Collect judge tokens and update token data
+        // Judge/summary tokens are pipeline — they're internal model calls the user didn't select,
+        // so they should NOT count toward the user's visible token stats.
         if (summaryTokens) {
           const directJudgeTokens = {
             modelName: 'gemini-3-flash (Judge - Finalization)',
-            tokens: summaryTokens
+            tokens: summaryTokens,
+            isPipeline: true // Exclude from stats counters — internal model, not user-selected
           }
           // Re-collect token data including the judge tokens
           tokenData = collectTokenData(directJudgeTokens)
