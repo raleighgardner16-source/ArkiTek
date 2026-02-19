@@ -49,6 +49,9 @@ function App() {
   // Determines which public page to show: 'landing', 'signin', 'signup', 'terms', 'privacy'
   const [publicPage, setPublicPage] = useState(() => {
     const path = window.location.pathname
+    const hash = window.location.hash
+    // Hash-based routes that need AuthView to render (verify-email, reset-password)
+    if (hash.startsWith('#verify-email') || hash.startsWith('#reset-password')) return 'signin'
     if (path === '/signin' || path === '/login') return 'signin'
     if (path === '/signup' || path === '/register') return 'signup'
     if (path === '/terms' || path === '/terms-of-service') return 'terms'
@@ -80,8 +83,12 @@ function App() {
       const hash = window.location.hash
       setIsAdminRoute(path === '/admin' || path === '/admin/' || hash === '#/admin')
       
+      // Hash-based routes that need AuthView (verify-email, reset-password)
+      if (hash.startsWith('#verify-email') || hash.startsWith('#reset-password')) {
+        setPublicPage('signin')
+      }
       // Update public page based on URL
-      if (path === '/signin' || path === '/login') setPublicPage('signin')
+      else if (path === '/signin' || path === '/login') setPublicPage('signin')
       else if (path === '/signup' || path === '/register') setPublicPage('signup')
       else if (path === '/terms' || path === '/terms-of-service') setPublicPage('terms')
       else if (path === '/privacy' || path === '/privacy-policy') setPublicPage('privacy')
