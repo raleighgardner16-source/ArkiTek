@@ -5213,7 +5213,7 @@ const fetchPageContent = async (url, timeout = 10000) => {
       // Extract paragraphs from the main content
       const paragraphs = mainContent.first().find('p').map((i, el) => $(el).text().trim()).get()
       // Filter out empty paragraphs and take first 3-4
-      const validParagraphs = paragraphs.filter(p => p.length > 20).slice(0, 4)
+      const validParagraphs = paragraphs.filter(p => p.length > 20).slice(0, 6)
       content = validParagraphs.join(' ')
       
       // If we didn't get enough paragraphs from <p> tags, fallback to text extraction
@@ -5223,7 +5223,7 @@ const fetchPageContent = async (url, timeout = 10000) => {
     } else {
       // Fallback to body text - try to extract paragraphs
       const paragraphs = $('body p').map((i, el) => $(el).text().trim()).get()
-      const validParagraphs = paragraphs.filter(p => p.length > 20).slice(0, 4)
+      const validParagraphs = paragraphs.filter(p => p.length > 20).slice(0, 6)
       content = validParagraphs.join(' ')
       
       // If we didn't get enough paragraphs, fallback to body text
