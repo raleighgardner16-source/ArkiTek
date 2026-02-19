@@ -865,7 +865,7 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
   const activeDate = new Date().toISOString()
   userUsage.lastActiveAt = today
 
-  writeUsage(usage)
+  writeUsage(usage, userId)
   
   // Also update users cache with last active date
   const users = readUsers()
@@ -910,7 +910,7 @@ const trackConversationPrompt = (userId, userMessage) => {
   // They are included in the full inputTokens counted by trackUsage() (which now counts input + output).
   // Adding them here would cause double-counting since the API's input token count already includes the user message.
   
-  writeUsage(usage)
+  writeUsage(usage, userId)
 }
 
 // Track usage for a user
@@ -1970,7 +1970,7 @@ app.post('/api/auth/resend-verification', async (req, res) => {
 })
 
 // Track a prompt submission
-app.post('/api/stats/prompt', (req, res) => {
+app.post('/api/stats/prompt', async (req, res) => {
   try {
     const { userId } = req.body
 
@@ -1992,6 +1992,17 @@ app.post('/api/stats/prompt', (req, res) => {
     })
     trackPrompt(userId, promptText, category, { responses, summary, facts, sources })
     console.log('[Prompt Tracking] Prompt tracking completed for user:', userId)
+    
+    // CRITICAL: Flush to MongoDB IMMEDIATELY (not debounced).
+    // On Vercel serverless, the 2-second debounced timer may never fire because
+    // the instance is frozen after the response is sent. Flushing here ensures
+    // all token/prompt data from this entire prompt lifecycle persists to MongoDB.
+    if (usageDirtyUsers.size > 0) {
+      console.log(`[Prompt Tracking] Flushing ${usageDirtyUsers.size} dirty user(s) to MongoDB immediately...`)
+      await flushUsageToMongo()
+      console.log('[Prompt Tracking] MongoDB flush complete')
+    }
+    
     res.json({ success: true, message: 'Prompt tracked' })
   } catch (error) {
     console.error('[Prompt Tracking] Error in prompt tracking endpoint:', error)
@@ -2119,8 +2130,20 @@ app.get('/api/user/model-preferences/:userId', (req, res) => {
 })
 
 // Get user statistics
-app.get('/api/stats/:userId', (req, res) => {
+app.get('/api/stats/:userId', async (req, res) => {
   const { userId } = req.params
+  
+  // CRITICAL: If there are pending writes, flush to MongoDB first.
+  // On Vercel serverless, the debounced timer may not fire between requests,
+  // so ensure data is persisted before reading it back.
+  if (usageDirtyUsers.has(userId) || usageDirtyUsers.size > 0) {
+    try {
+      await flushUsageToMongo()
+    } catch (err) {
+      console.error('[Stats] Pre-read flush failed:', err.message)
+    }
+  }
+  
   const usage = readUsage()
   const users = readUsers()
   
@@ -2332,13 +2355,19 @@ app.get('/api/stats/:userId', (req, res) => {
   const recalcTotalTokens = (userUsage.totalInputTokens || 0) + (userUsage.totalOutputTokens || 0)
   const recalcMonthlyTokens = (monthlyStats.inputTokens || 0) + (monthlyStats.outputTokens || 0)
 
-  // Also fix the in-memory accumulator so it stays consistent going forward
-  if (userUsage.totalTokens !== recalcTotalTokens) {
-    userUsage.totalTokens = recalcTotalTokens
-    if (monthlyStats.tokens !== recalcMonthlyTokens) {
-      monthlyStats.tokens = recalcMonthlyTokens
+  // Fix the in-memory ORIGINAL cache object (not the spread copy above).
+  // userUsage is a shallow copy — writing to it doesn't update the actual cache.
+  // We must write to usage[userId] directly so the fix persists in the cache.
+  if (usage[userId]) {
+    const needsWrite = usage[userId].totalTokens !== recalcTotalTokens
+    if (needsWrite) {
+      usage[userId].totalTokens = recalcTotalTokens
+      const origMonthly = usage[userId].monthlyUsage?.[currentMonth]
+      if (origMonthly && origMonthly.tokens !== recalcMonthlyTokens) {
+        origMonthly.tokens = recalcMonthlyTokens
+      }
+      writeUsage(usage, userId)
     }
-    writeUsage(usage, userId)
   }
 
   // Note: Query costs ($0.001/query) are included in monthlyCost but not exposed to users
@@ -2837,6 +2866,9 @@ app.post('/api/judge/conversation', async (req, res) => {
     // Count this continued conversation as 1 prompt + count user's message tokens
     trackConversationPrompt(userId, userMessage)
     
+    // Flush to MongoDB immediately (Vercel serverless may freeze before debounced timer fires)
+    flushUsageToMongo().catch(err => console.error('[Judge Conversation] Flush failed:', err.message))
+    
     // Summarize the response and store it (async, don't wait) - pass just the user message as originalPrompt
     storeJudgeContext(userId, responseText, userMessage).catch(err => {
       console.error('[Judge Conversation] Error storing context:', err)
@@ -3051,6 +3083,9 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
 
     // Count this continued conversation as 1 prompt + count user's message tokens
     trackConversationPrompt(userId, userMessage)
+
+    // Flush to MongoDB immediately (Vercel serverless may freeze before debounced timer fires)
+    flushUsageToMongo().catch(err => console.error('[Judge Conversation Stream] Flush failed:', err.message))
 
     // Store context async
     storeJudgeContext(userId, fullResponse, userMessage).catch(err => {
@@ -3416,6 +3451,9 @@ app.post('/api/model/conversation/stream', async (req, res) => {
     // Count this continued conversation as 1 prompt + count user's message tokens
     trackConversationPrompt(userId, userMessage)
 
+    // Flush to MongoDB immediately (Vercel serverless may freeze before debounced timer fires)
+    flushUsageToMongo().catch(err => console.error('[Model Conversation] Flush failed:', err.message))
+
     // Store context async
     storeModelContext(userId, modelName, fullResponse, userMessage).catch(err => {
       console.error(`[Model Conversation Stream] Error storing context for ${modelName}:`, err)
@@ -3647,6 +3685,9 @@ app.post('/api/model/conversation', async (req, res) => {
     
     // Count this continued conversation as 1 prompt + count user's message tokens
     trackConversationPrompt(userId, userMessage)
+    
+    // Flush to MongoDB immediately (Vercel serverless may freeze before debounced timer fires)
+    flushUsageToMongo().catch(err => console.error('[Model Conversation Non-Stream] Flush failed:', err.message))
     
     // Store response in server-side context (async, don't wait — same as judge)
     storeModelContext(userId, modelName, responseText, userMessage).catch(err => {
