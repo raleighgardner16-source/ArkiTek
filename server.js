@@ -179,9 +179,26 @@ const flushUsageToMongo = async () => {
     const collection = dbInstance.collection('usage_data')
     for (const userId of usersToSync) {
       if (!usageCache[userId]) continue
+      
+      // IMPORTANT: Exclude totalTokens and monthlyUsage.*.tokens from $set.
+      // These fields are now managed EXCLUSIVELY by the POST /api/stats/token-update
+      // endpoint using atomic MongoDB $inc. If we $set them here, we'd overwrite
+      // the correct $inc'd values with stale cache data from a different Vercel instance.
+      const { totalTokens: _tt, ...cacheWithoutTotalTokens } = usageCache[userId]
+      
+      // Strip .tokens from each monthlyUsage entry so $set doesn't overwrite them
+      if (cacheWithoutTotalTokens.monthlyUsage) {
+        const cleanMonthly = {}
+        for (const [month, data] of Object.entries(cacheWithoutTotalTokens.monthlyUsage)) {
+          const { tokens: _mt, ...monthWithoutTokens } = data
+          cleanMonthly[month] = monthWithoutTokens
+        }
+        cacheWithoutTotalTokens.monthlyUsage = cleanMonthly
+      }
+      
       await collection.updateOne(
         { _id: userId },
-        { $set: { ...usageCache[userId], _id: userId, updatedAt: new Date() } },
+        { $set: { ...cacheWithoutTotalTokens, _id: userId, updatedAt: new Date() } },
         { upsert: true }
       )
       // Also sync stats to user_stats collection (aggregated totals, purchased credits)
@@ -966,22 +983,23 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
     userUsage.dailyUsage = {}
   }
   
-  // Update user-visible stats (totals, monthly, provider) only for user-visible calls
-  // Pipeline calls (refiner, category detection, context summarization) still count towards cost via dailyUsage below
-  // Token counters (totalTokens, monthlyTokens) count FULL usage: input + output tokens.
-  // This includes the user's prompt, web source content, system formatting, AND model output.
-  // Pipeline-only calls (category detection, etc.) are excluded — they use isPipeline = true.
+  // Update user-visible stats (per-model, provider) only for user-visible calls.
+  // Pipeline calls (refiner, category detection) still count towards cost via dailyUsage below.
+  //
+  // NOTE: totalTokens and monthlyUsage.tokens are NOT updated here.
+  // They are updated ONCE per prompt via POST /api/stats/token-update, using the EXACT
+  // token total from the frontend's Token Usage Window. This avoids all the cache/flush/
+  // multi-instance issues on Vercel serverless. The frontend is the single source of truth
+  // for the user-visible token counter.
   if (!isPipeline) {
-    // Update totals — full input + output tokens count towards visible token counters
-    userUsage.totalTokens += (inputTokens + outputTokens)
+    // Track granular input/output for per-model breakdown (not used for the main counter)
     userUsage.totalInputTokens = (userUsage.totalInputTokens || 0) + inputTokens
     userUsage.totalOutputTokens = (userUsage.totalOutputTokens || 0) + outputTokens
 
-    // Update monthly usage — full input + output for the visible counter
+    // Ensure monthly sub-object exists (needed for prompts counter and per-model monthly stats)
     if (!userUsage.monthlyUsage[currentMonth]) {
       userUsage.monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
     }
-    userUsage.monthlyUsage[currentMonth].tokens += (inputTokens + outputTokens)
     userUsage.monthlyUsage[currentMonth].inputTokens = (userUsage.monthlyUsage[currentMonth].inputTokens || 0) + inputTokens
     userUsage.monthlyUsage[currentMonth].outputTokens = (userUsage.monthlyUsage[currentMonth].outputTokens || 0) + outputTokens
 
@@ -2020,6 +2038,58 @@ app.post('/api/stats/prompt', async (req, res) => {
   }
 })
 
+// Update the user-visible token counter with the EXACT total from the frontend's Token Usage Window.
+// This is the ONLY place totalTokens and monthlyUsage.tokens are incremented.
+// Called once per prompt, after all models (including judge/summary) have responded.
+// Uses MongoDB $inc for atomic updates — no cache/flush race conditions on Vercel serverless.
+app.post('/api/stats/token-update', async (req, res) => {
+  try {
+    const { userId, promptTokens } = req.body
+    if (!userId || promptTokens === undefined) {
+      return res.status(400).json({ error: 'userId and promptTokens are required' })
+    }
+    
+    const tokens = Math.max(0, Math.round(promptTokens)) // Ensure non-negative integer
+    if (tokens === 0) {
+      return res.json({ success: true, message: 'No tokens to add' })
+    }
+    
+    const currentMonth = getCurrentMonth()
+    
+    // 1. Atomic MongoDB update using $inc (no race conditions, no stale cache issues)
+    const dbInstance = await db.getDb()
+    await dbInstance.collection('usage_data').updateOne(
+      { _id: userId },
+      { 
+        $inc: { 
+          totalTokens: tokens,
+          [`monthlyUsage.${currentMonth}.tokens`]: tokens
+        },
+        $set: { updatedAt: new Date() }
+      },
+      { upsert: true }
+    )
+    
+    // 2. Also update the in-memory cache so same-instance reads are consistent
+    const usage = readUsage()
+    if (usage[userId]) {
+      usage[userId].totalTokens = (usage[userId].totalTokens || 0) + tokens
+      if (!usage[userId].monthlyUsage) usage[userId].monthlyUsage = {}
+      if (!usage[userId].monthlyUsage[currentMonth]) {
+        usage[userId].monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
+      }
+      usage[userId].monthlyUsage[currentMonth].tokens = (usage[userId].monthlyUsage[currentMonth].tokens || 0) + tokens
+    }
+    
+    console.log(`[Token Update] User ${userId}: +${tokens} tokens (total: ${usage[userId]?.totalTokens || '?'}, month: ${usage[userId]?.monthlyUsage?.[currentMonth]?.tokens || '?'})`)
+    
+    res.json({ success: true, tokens, totalTokens: usage[userId]?.totalTokens || 0 })
+  } catch (error) {
+    console.error('[Token Update] Error:', error.message)
+    res.status(500).json({ error: 'Failed to update token counter' })
+  }
+})
+
 // Update model pricing
 app.post('/api/stats/pricing', (req, res) => {
   const { userId, provider, model, pricing } = req.body
@@ -2143,15 +2213,21 @@ app.get('/api/user/model-preferences/:userId', (req, res) => {
 app.get('/api/stats/:userId', async (req, res) => {
   const { userId } = req.params
   
-  // CRITICAL: If there are pending writes, flush to MongoDB first.
-  // On Vercel serverless, the debounced timer may not fire between requests,
-  // so ensure data is persisted before reading it back.
-  if (usageDirtyUsers.has(userId) || usageDirtyUsers.size > 0) {
-    try {
-      await flushUsageToMongo()
-    } catch (err) {
-      console.error('[Stats] Pre-read flush failed:', err.message)
+  // Read totalTokens and monthlyUsage.tokens DIRECTLY from MongoDB.
+  // These are managed by atomic $inc in /api/stats/token-update and must not
+  // come from the in-memory cache (which could be stale on a different Vercel instance).
+  let mongoTotalTokens = null
+  let mongoMonthlyTokens = null
+  try {
+    const dbInstance = await db.getDb()
+    const mongoDoc = await dbInstance.collection('usage_data').findOne({ _id: userId })
+    if (mongoDoc) {
+      mongoTotalTokens = mongoDoc.totalTokens || 0
+      const currentMonthKey = getCurrentMonth()
+      mongoMonthlyTokens = mongoDoc.monthlyUsage?.[currentMonthKey]?.tokens || 0
     }
+  } catch (err) {
+    console.error('[Stats] MongoDB direct read failed:', err.message)
   }
   
   const usage = readUsage()
@@ -2358,15 +2434,12 @@ app.get('/api/stats/:userId', async (req, res) => {
   // Round all monetary values to 2 decimal places (cents) before sending
   const roundCents = (v) => Math.round((v || 0) * 100) / 100
 
-  // Use the HIGHER of the accumulated totalTokens vs the derived value from separate counters.
-  // totalTokens has the full historical data (accumulated since account creation).
-  // totalInputTokens/totalOutputTokens were added later and only have data since that code change.
-  // For established users, totalTokens > totalInputTokens + totalOutputTokens.
-  // For new data, they stay in sync. Math.max ensures we never show a lower number.
-  const derivedTotal = (userUsage.totalInputTokens || 0) + (userUsage.totalOutputTokens || 0)
-  const totalTokens = Math.max(userUsage.totalTokens || 0, derivedTotal)
-  const derivedMonthly = (monthlyStats.inputTokens || 0) + (monthlyStats.outputTokens || 0)
-  const monthlyTokens = Math.max(monthlyStats.tokens || 0, derivedMonthly)
+  // Use MongoDB values for totalTokens/monthlyTokens (updated atomically via $inc).
+  // Fall back to cache values if MongoDB read failed, using Math.max for safety.
+  const cacheTotalTokens = userUsage.totalTokens || 0
+  const totalTokens = mongoTotalTokens !== null ? Math.max(mongoTotalTokens, cacheTotalTokens) : cacheTotalTokens
+  const cacheMonthlyTokens = monthlyStats.tokens || 0
+  const monthlyTokens = mongoMonthlyTokens !== null ? Math.max(mongoMonthlyTokens, cacheMonthlyTokens) : cacheMonthlyTokens
 
   // Note: Query costs ($0.001/query) are included in monthlyCost but not exposed to users
   res.json({
