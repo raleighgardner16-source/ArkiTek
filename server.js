@@ -7159,14 +7159,14 @@ app.post('/api/rag', async (req, res) => {
       console.log(`[RAG Pipeline] Council: Preparing prompt for ${modelId}`)
       console.log(`[RAG Pipeline] Council: Raw sources count: ${rawSourcesData.sourceCount}`)
       
-      const councilPrompt = `Today's date is ${getCurrentDateString()}. Answer the user's query using your own knowledge combined with the web sources provided below. The sources are current, real-time data from the internet — use them to supplement and verify your answer, but respond naturally and thoroughly as you normally would.
+      const councilPrompt = `Today's date is ${getCurrentDateString()}.
 
-When referencing sources, refer to them by number (e.g., "source 1", "see source 3"). Do NOT question the validity of the provided sources — they contain more recent information than your training data. Ignore any irrelevant content, navigation text, or boilerplate in the raw source content.
+Web Sources (background reference material):
+${rawSourcesData.formatted}
 
-User Query: ${query}
+The above sources are from a real-time web search and may contain useful context. Use them as reference where relevant, citing by number (e.g., "source 1", "see source 3"), but answer primarily from your own knowledge and expertise. Do not limit your response to only what the sources cover.
 
-Web Sources (numbered for reference):
-${rawSourcesData.formatted}`
+User Query: ${query}`
       
       console.log(`[RAG Pipeline] Council: Prompt length: ${councilPrompt.length} chars`)
       console.log(`[RAG Pipeline] Council: Raw sources text length: ${rawSourcesData.formatted.length} chars`)
