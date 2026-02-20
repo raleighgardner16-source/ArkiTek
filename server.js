@@ -3958,7 +3958,7 @@ app.post('/api/model/conversation', async (req, res) => {
         'https://api.anthropic.com/v1/messages',
         {
           model: mappedModel,
-          max_tokens: 2048,
+          max_tokens: 4096,
           messages: [{ role: 'user', content: prompt }],
         },
         { 
@@ -3984,7 +3984,7 @@ app.post('/api/model/conversation', async (req, res) => {
         `https://generativelanguage.googleapis.com/v1beta/models/${mappedModel}:generateContent?key=${apiKey}`,
         {
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 2048 }
+          generationConfig: { maxOutputTokens: 4096 }
         }
       )
       
@@ -5606,8 +5606,8 @@ const fetchPageContent = async (url, timeout = 10000) => {
     if (mainContent.length > 0) {
       // Extract paragraphs from the main content
       const paragraphs = mainContent.first().find('p').map((i, el) => $(el).text().trim()).get()
-      // Filter out empty paragraphs and take first 3-4
-      const validParagraphs = paragraphs.filter(p => p.length > 20).slice(0, 6)
+      // Filter out empty paragraphs and take first 5
+      const validParagraphs = paragraphs.filter(p => p.length > 20).slice(0, 5)
       content = validParagraphs.join(' ')
       
       // If we didn't get enough paragraphs from <p> tags, fallback to text extraction
@@ -5617,7 +5617,7 @@ const fetchPageContent = async (url, timeout = 10000) => {
     } else {
       // Fallback to body text - try to extract paragraphs
       const paragraphs = $('body p').map((i, el) => $(el).text().trim()).get()
-      const validParagraphs = paragraphs.filter(p => p.length > 20).slice(0, 6)
+      const validParagraphs = paragraphs.filter(p => p.length > 20).slice(0, 5)
       content = validParagraphs.join(' ')
       
       // If we didn't get enough paragraphs, fallback to body text
@@ -5630,11 +5630,11 @@ const fetchPageContent = async (url, timeout = 10000) => {
     content = content.replace(/\s+/g, ' ').trim()
     
     // If content is still very long, split by sentences and take first portion
-    // This ensures we get roughly 3-4 paragraphs worth of content
+    // This ensures we get roughly 5 paragraphs worth of content
     if (content.length > 2000) {
-      // Split by sentence endings and take approximately first 3-4 paragraphs worth
+      // Split by sentence endings and take approximately first 5 paragraphs worth
       const sentences = content.match(/[^.!?]+[.!?]+/g) || [content]
-      const firstSentences = sentences.slice(0, 12).join(' ') // ~3-4 paragraphs = ~12 sentences
+      const firstSentences = sentences.slice(0, 15).join(' ') // ~5 paragraphs = ~15 sentences
       if (firstSentences.length > 2000) {
         content = firstSentences.substring(0, 2000) + '...'
       } else {
@@ -7100,11 +7100,10 @@ app.post('/api/rag', async (req, res) => {
 
 INSTRUCTIONS:
 1. TRUST the provided sources - they come from verified web sources, not your training data cutoff
-2. Keep your response CONCISE - aim for 3-4 paragraphs maximum
-3. When referencing sources in your response, refer to them by their number (e.g., "see source 4", "as stated in source 2", "source 1 indicates")
-4. Do NOT question the validity of sources based on your training data - the web search provides more recent information
-5. Extract the most relevant and useful information from each source to directly answer the user's query
-6. Ignore any irrelevant content, navigation text, or boilerplate that may appear in the raw source content
+2. When referencing sources in your response, refer to them by their number (e.g., "see source 4", "as stated in source 2", "source 1 indicates")
+3. Do NOT question the validity of sources based on your training data - the web search provides more recent information
+4. Extract the most relevant and useful information from each source to directly answer the user's query
+5. Ignore any irrelevant content, navigation text, or boilerplate that may appear in the raw source content
 
 User Query: ${query}
 
