@@ -16,9 +16,10 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
 
   if (!isOpen || !tokenData || tokenData.length === 0) return null
 
-  // Separate pipeline (category detection) items from counted items
+  // Separate pipeline (category detection), judge, and regular counted items
   const pipelineItems = tokenData.filter(item => item.isPipeline)
-  const countedItems = tokenData.filter(item => !item.isPipeline)
+  const judgeItems = tokenData.filter(item => item.isJudge)
+  const countedItems = tokenData.filter(item => !item.isPipeline && !item.isJudge)
 
   // Group COUNTED tokens by provider and aggregate totals
   const groupedByProvider = {}
@@ -54,11 +55,17 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
     })
   })
 
-  // Calculate totals (only counted items — excludes pipeline)
-  const totalInput = countedItems.reduce((sum, item) => sum + (item.tokens?.input || 0), 0)
-  const totalOutput = countedItems.reduce((sum, item) => sum + (item.tokens?.output || 0), 0)
-  const totalReasoning = countedItems.reduce((sum, item) => sum + (item.tokens?.reasoningTokens || 0), 0)
+  // Calculate totals (counted items + judge — excludes pipeline)
+  const allCountedItems = [...countedItems, ...judgeItems]
+  const totalInput = allCountedItems.reduce((sum, item) => sum + (item.tokens?.input || 0), 0)
+  const totalOutput = allCountedItems.reduce((sum, item) => sum + (item.tokens?.output || 0), 0)
+  const totalReasoning = allCountedItems.reduce((sum, item) => sum + (item.tokens?.reasoningTokens || 0), 0)
   const totalTokens = totalInput + totalOutput
+
+  // Judge totals (for separate display section)
+  const judgeTotalInput = judgeItems.reduce((sum, item) => sum + (item.tokens?.input || 0), 0)
+  const judgeTotalOutput = judgeItems.reduce((sum, item) => sum + (item.tokens?.output || 0), 0)
+  const judgeTotalTokens = judgeTotalInput + judgeTotalOutput
 
   // Pipeline totals (for display only — not counted in stats)
   const pipelineTotalInput = pipelineItems.reduce((sum, item) => sum + (item.tokens?.input || 0), 0)
@@ -526,6 +533,60 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                 </div>
               </div>
             ))}
+
+            {/* Judge Model (counted in stats but shown separately) */}
+            {judgeItems.length > 0 && (
+              <div
+                style={{
+                  background: 'rgba(168, 85, 247, 0.05)',
+                  border: '1px solid rgba(168, 85, 247, 0.2)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '16px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ color: '#a855f7', fontSize: '1rem', margin: 0, fontWeight: 'bold' }}>
+                      Judge Model
+                    </h3>
+                    <span style={{
+                      fontSize: '0.65rem',
+                      color: '#a855f7',
+                      background: 'rgba(168, 85, 247, 0.15)',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      fontWeight: '600',
+                    }}>
+                      Finalization
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', fontSize: '0.85rem' }}>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '0.7rem', marginBottom: '2px' }}>Input</div>
+                      <div style={{ color: '#fff', fontSize: '1rem', fontWeight: 'bold' }}>
+                        {judgeTotalInput.toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '0.7rem', marginBottom: '2px' }}>Output</div>
+                      <div style={{ color: '#fff', fontSize: '1rem', fontWeight: 'bold' }}>
+                        {judgeTotalOutput.toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '0.7rem', marginBottom: '2px' }}>Total</div>
+                      <div style={{ color: '#a855f7', fontSize: '1rem', fontWeight: 'bold' }}>
+                        {judgeTotalTokens.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ marginTop: '4px', fontSize: '0.68rem', color: '#888', fontStyle: 'italic' }}>
+                  The judge model synthesizes all council responses into a final summary. These tokens are counted toward your stats.
+                </div>
+              </div>
+            )}
 
             {/* Pipeline / Internal Models (not counted in stats) */}
             {pipelineItems.length > 0 && (

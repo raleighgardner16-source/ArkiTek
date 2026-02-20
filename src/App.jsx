@@ -798,8 +798,9 @@ function App() {
         // Collect judge tokens and update token data
         if (summaryTokens) {
           const directJudgeTokens = {
-            modelName: 'gemini-3-flash (Judge - Finalization)',
-            tokens: summaryTokens
+            modelName: 'Judge Model',
+            tokens: summaryTokens,
+            isJudge: true
           }
           // Re-collect token data including the judge tokens
           tokenData = collectTokenData(directJudgeTokens)
