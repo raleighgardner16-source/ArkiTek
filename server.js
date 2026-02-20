@@ -3110,7 +3110,8 @@ app.post('/api/judge/conversation', async (req, res) => {
         console.warn('[Judge Conversation] Serper API key not configured, skipping search')
       } else {
         try {
-          const serperData = await performSerperSearch(userMessage, 5)
+          const searchQuery = await reformulateSearchQuery(userMessage, userId)
+          const serperData = await performSerperSearch(searchQuery, 5)
           searchResults = (serperData?.organic || []).map(r => ({
             title: r.title,
             link: r.link,
@@ -3293,7 +3294,8 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
       const serperApiKey = API_KEYS.serper
       if (serperApiKey) {
         try {
-          const serperData = await performSerperSearch(userMessage, 5)
+          const searchQuery = await reformulateSearchQuery(userMessage, userId)
+          const serperData = await performSerperSearch(searchQuery, 5)
           searchResults = (serperData?.organic || []).map(r => ({
             title: r.title, link: r.link, snippet: r.snippet
           }))
@@ -3490,7 +3492,8 @@ app.post('/api/model/conversation/stream', async (req, res) => {
       const serperApiKey = API_KEYS.serper
       if (serperApiKey) {
         try {
-          const serperData = await performSerperSearch(userMessage, 5)
+          const searchQuery = await reformulateSearchQuery(userMessage, userId)
+          const serperData = await performSerperSearch(searchQuery, 5)
           searchResults = (serperData?.organic || []).map(r => ({
             title: r.title, link: r.link, snippet: r.snippet
           }))
@@ -3844,7 +3847,8 @@ app.post('/api/model/conversation', async (req, res) => {
       const serperApiKey = API_KEYS.serper
       if (serperApiKey) {
         try {
-          const serperData = await performSerperSearch(userMessage, 5)
+          const searchQuery = await reformulateSearchQuery(userMessage, userId)
+          const serperData = await performSerperSearch(searchQuery, 5)
           searchResults = (serperData?.organic || []).map(r => ({
             title: r.title,
             link: r.link,
@@ -5406,6 +5410,62 @@ app.post('/api/summary/stream', async (req, res) => {
   }
 })
 
+// Reformulate a conversational user prompt into an effective Google search query
+// Uses Gemini 2.5 Flash Lite for speed and cost efficiency
+async function reformulateSearchQuery(userMessage, userId = null) {
+  try {
+    const apiKey = API_KEYS.google
+    if (!apiKey) {
+      console.warn('[Query Reformulation] Google API key not configured, using raw query')
+      return userMessage
+    }
+
+    const reformulationPrompt = `Convert the following user message into a concise, effective Google search query. 
+- Remove conversational language, filler words, and self-referential pronouns (e.g. "your", "you", "my")
+- Focus on the core topic the user wants information about
+- Keep it under 10 words if possible
+- Output ONLY the search query, nothing else
+
+User message: "${userMessage}"
+
+Search query:`
+
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+      {
+        contents: [{ parts: [{ text: reformulationPrompt }] }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 50
+        }
+      }
+    )
+
+    const reformulated = response.data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+    
+    if (reformulated && reformulated.length > 3 && reformulated.length < 200) {
+      console.log(`[Query Reformulation] "${userMessage}" -> "${reformulated}"`)
+      
+      // Track tokens for reformulation (pipeline cost)
+      if (userId) {
+        const inputTokens = response.data.usageMetadata?.promptTokenCount || 0
+        const outputTokens = response.data.usageMetadata?.candidatesTokenCount || 0
+        if (inputTokens || outputTokens) {
+          trackUsage(userId, 'google', 'gemini-2.5-flash-lite', inputTokens, outputTokens)
+        }
+      }
+      
+      return reformulated
+    }
+    
+    console.warn('[Query Reformulation] Bad reformulation result, using raw query')
+    return userMessage
+  } catch (error) {
+    console.error('[Query Reformulation] Error:', error.message)
+    return userMessage // Fallback to raw query
+  }
+}
+
 // Helper function for Serper search (used by both /api/search and RAG pipeline)
 async function performSerperSearch(query, num = 10) {
   const apiKey = API_KEYS.serper
@@ -6933,11 +6993,14 @@ app.post('/api/rag', async (req, res) => {
     console.log('[RAG Pipeline] Stage 1: Performing Serper search...')
     console.log('[RAG Pipeline] Serper API key present:', !!serperApiKey, 'Length:', serperApiKey?.length)
     
+    // Reformulate the user's conversational prompt into an effective search query
+    const searchQuery = await reformulateSearchQuery(query, userId)
+    
     // Use the helper function directly instead of making an HTTP call
     let serperData
     try {
       // Request 5 results to ensure we have at least 5 parseable sources after filtering
-      serperData = await performSerperSearch(query, 5)
+      serperData = await performSerperSearch(searchQuery, 5)
       console.log('[RAG Pipeline] Serper search successful, results:', serperData?.organic?.length || 0)
     } catch (serperError) {
       console.error('[RAG Pipeline] Serper search failed:', serperError.message)
@@ -7096,18 +7159,13 @@ app.post('/api/rag', async (req, res) => {
       console.log(`[RAG Pipeline] Council: Preparing prompt for ${modelId}`)
       console.log(`[RAG Pipeline] Council: Raw sources count: ${rawSourcesData.sourceCount}`)
       
-      const councilPrompt = `Today's date is ${getCurrentDateString()}. You are reading raw content scraped from recent web search results. This data is current and up-to-date from the internet. Your job is to parse and interpret the source content yourself to answer the user's query.
+      const councilPrompt = `Today's date is ${getCurrentDateString()}. Answer the user's query using your own knowledge combined with the web sources provided below. The sources are current, real-time data from the internet — use them to supplement and verify your answer, but respond naturally and thoroughly as you normally would.
 
-INSTRUCTIONS:
-1. TRUST the provided sources - they come from verified web sources, not your training data cutoff
-2. When referencing sources in your response, refer to them by their number (e.g., "see source 4", "as stated in source 2", "source 1 indicates")
-3. Do NOT question the validity of sources based on your training data - the web search provides more recent information
-4. Extract the most relevant and useful information from each source to directly answer the user's query
-5. Ignore any irrelevant content, navigation text, or boilerplate that may appear in the raw source content
+When referencing sources, refer to them by number (e.g., "source 1", "see source 3"). Do NOT question the validity of the provided sources — they contain more recent information than your training data. Ignore any irrelevant content, navigation text, or boilerplate in the raw source content.
 
 User Query: ${query}
 
-Web Sources (numbered for easy reference):
+Web Sources (numbered for reference):
 ${rawSourcesData.formatted}`
       
       console.log(`[RAG Pipeline] Council: Prompt length: ${councilPrompt.length} chars`)
