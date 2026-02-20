@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Home, Settings, User, LogOut, Clock, X, Trophy, Sun, Moon, History, MessageSquarePlus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { MessageSquare, Settings, User, LogOut, Clock, X, Trophy, Sun, Moon, History, MessageSquarePlus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -71,23 +71,30 @@ const NavigationBar = () => {
     }
   }
 
+  const setSummaryMinimized = useStore((state) => state.setSummaryMinimized)
+
+  // When user is already on the home (chat) tab, clicking it again starts a fresh chat
   const handleNewChat = () => {
     clearResponses()
     setCurrentPrompt('')
+    // Minimize summary window
+    if (setSummaryMinimized) setSummaryMinimized(true)
+    // Clear server-side conversation context
+    if (currentUser?.id) {
+      axios.post(`${API_URL}/api/judge/clear-context`, { userId: currentUser.id }).catch(() => {})
+      axios.post(`${API_URL}/api/model/clear-context`, { userId: currentUser.id }).catch(() => {})
+    }
     setActiveTab('home')
   }
+
+  // Dynamic label/icon: show "New Chat" when already on home tab, "Chat" otherwise
+  const isOnChat = activeTab === 'home'
 
   const tabs = [
     {
       id: 'home',
-      icon: Home,
-      label: 'Home',
-    },
-    {
-      id: 'new-chat',
-      icon: MessageSquarePlus,
-      label: 'New Chat',
-      action: handleNewChat,
+      icon: isOnChat ? MessageSquarePlus : MessageSquare,
+      label: isOnChat ? 'New Chat' : 'Chat',
     },
     {
       id: 'leaderboard',
@@ -270,8 +277,9 @@ const NavigationBar = () => {
             <motion.button
               key={tab.id}
               onClick={() => {
-                if (tab.action) {
-                  tab.action()
+                // If already on chat tab, start a fresh conversation
+                if (tab.id === 'home' && activeTab === 'home') {
+                  handleNewChat()
                   return
                 }
                 // Clear any viewed profile when navigating away from statistics

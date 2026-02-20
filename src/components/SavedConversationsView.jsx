@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock } from 'lucide-react'
+import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
+import ConfirmationModal from './ConfirmationModal'
 
 // Map provider key from modelName to display info
 const PROVIDER_MAP = {
@@ -32,6 +33,9 @@ const SavedConversationsView = () => {
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
 
+  // Sub-tab state: 'history' or 'categories'
+  const [activeSubTab, setActiveSubTab] = useState('history')
+
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedConvo, setSelectedConvo] = useState(null)
@@ -44,11 +48,70 @@ const SavedConversationsView = () => {
   const [expandedSources, setExpandedSources] = useState({})
   const [expandedTitles, setExpandedTitles] = useState({})
 
+  // Categories state
+  const [categoriesData, setCategoriesData] = useState(null)
+  const [expandedCategories, setExpandedCategories] = useState({})
+  const [showClearCategoryConfirm, setShowClearCategoryConfirm] = useState(false)
+  const [categoryToClear, setCategoryToClear] = useState(null)
+
   useEffect(() => {
     if (currentUser?.id) {
       fetchHistory()
+      fetchCategories()
     }
   }, [currentUser])
+
+  // --- Categories data fetching ---
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/stats/${currentUser.id}/categories`)
+      setCategoriesData(response.data.categories || {})
+    } catch (error) {
+      console.error('Error fetching categories:', error)
+      setCategoriesData({})
+    }
+  }
+
+  const handleClearCategoryPrompts = (category, e) => {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    setCategoryToClear(category)
+    setShowClearCategoryConfirm(true)
+  }
+
+  const clearCategoryPrompts = async () => {
+    if (!currentUser?.id || !categoryToClear) return
+    try {
+      const encodedCategory = encodeURIComponent(categoryToClear)
+      await axios.delete(`${API_URL}/api/stats/${currentUser.id}/categories/${encodedCategory}/prompts`)
+      await fetchCategories()
+    } catch (error) {
+      console.error('[Clear Category] Error:', error)
+      alert(`Failed to clear category prompts: ${error.response?.data?.error || error.message || 'Unknown error'}`)
+    } finally {
+      setCategoryToClear(null)
+    }
+  }
+
+  const handleDeleteSinglePrompt = async (category, promptIndex) => {
+    if (!currentUser?.id) return
+    try {
+      const encodedCategory = encodeURIComponent(category)
+      await axios.delete(`${API_URL}/api/stats/${currentUser.id}/categories/${encodedCategory}/prompts/${promptIndex}`)
+      await fetchCategories()
+    } catch (error) {
+      console.error('[Delete Prompt] Error:', error)
+      alert(`Failed to delete prompt: ${error.response?.data?.error || error.message || 'Unknown error'}`)
+    }
+  }
+
+  const formatNumber = (num) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M'
+    if (num >= 1000) return (num / 1000).toFixed(2) + 'K'
+    return num.toLocaleString()
+  }
 
   const fetchHistory = async () => {
     setLoading(true)
@@ -130,6 +193,19 @@ const SavedConversationsView = () => {
 
   const hierarchy = buildHierarchy()
   const sortedYears = Object.keys(hierarchy).sort((a, b) => b - a)
+
+  // Auto-expand all years by default so months are visible
+  useEffect(() => {
+    if (sortedYears.length > 0) {
+      setExpandedYears(prev => {
+        const updated = { ...prev }
+        sortedYears.forEach(year => {
+          if (updated[year] === undefined) updated[year] = true
+        })
+        return updated
+      })
+    }
+  }, [history])
 
   const toggleYear = (year) => setExpandedYears(prev => ({ ...prev, [year]: !prev[year] }))
   const toggleMonth = (monthKey) => setExpandedMonths(prev => ({ ...prev, [monthKey]: !prev[monthKey] }))
@@ -478,6 +554,224 @@ const SavedConversationsView = () => {
     )
   }
 
+  // --- Categories render ---
+  const renderCategories = () => {
+    const allCategories = [
+      'Science', 'Tech', 'Business', 'Health', 'Politics/Law',
+      'History/Geography', 'Philosophy/Religion', 'Arts/Culture',
+      'Lifestyle/Self-Improvement', 'General Knowledge/Other',
+    ]
+    const allDataCategories = Object.keys(categoriesData || {})
+    const categoriesWithData = allCategories.map((category) => {
+      let categoryInfo = categoriesData?.[category]
+      if (!categoryInfo) {
+        const matchedKey = allDataCategories.find(key => key.toLowerCase() === category.toLowerCase())
+        if (matchedKey) categoryInfo = categoriesData[matchedKey]
+      }
+      const recentPrompts = categoryInfo?.recentPrompts || []
+      const count = categoryInfo?.count || (typeof categoryInfo === 'number' ? categoryInfo : 0)
+      return { category, count, recentPrompts: recentPrompts.slice(0, 5) }
+    })
+    categoriesWithData.sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count
+      return a.category.localeCompare(b.category)
+    })
+
+    return (
+      <div style={{
+        background: currentTheme.backgroundOverlay,
+        border: `1px solid ${currentTheme.borderLight}`,
+        borderRadius: '16px',
+        padding: '30px',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {categoriesWithData.map(({ category, count, recentPrompts }) => {
+            const isExpanded = expandedCategories[category]
+            const hasPrompts = recentPrompts && recentPrompts.length > 0
+
+            return (
+              <div
+                key={`${category}-${theme}`}
+                style={{
+                  background: count > 0 ? currentTheme.backgroundSecondary : currentTheme.backgroundTertiary,
+                  border: `1px solid ${currentTheme.borderLight}`,
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  opacity: count > 0 ? 1 : 0.6,
+                }}
+              >
+                {/* Category Header */}
+                <div
+                  key={`category-clickable-${category}-${theme}`}
+                  onClick={() => {
+                    setExpandedCategories((prev) => ({ ...prev, [category]: !prev[category] }))
+                  }}
+                  style={{
+                    padding: '16px 20px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = count > 0 ? currentTheme.buttonBackgroundHover : currentTheme.backgroundTertiary
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = count > 0 ? currentTheme.backgroundSecondary : currentTheme.backgroundTertiary
+                  }}
+                >
+                  <div key={`category-header-${category}-${theme}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                    {isExpanded ? (
+                      <ChevronDown size={20} color={count > 0 ? currentTheme.accent : currentTheme.textMuted} />
+                    ) : (
+                      <ChevronRight size={20} color={count > 0 ? currentTheme.accent : currentTheme.textMuted} />
+                    )}
+                    <span key={`category-title-${category}-${theme}`} style={{ color: count > 0 ? currentTheme.accent : currentTheme.textMuted, fontSize: '1.1rem', textTransform: 'capitalize', fontWeight: '500' }}>
+                      {category}
+                    </span>
+                    {hasPrompts && (
+                      <span key={`category-prompts-count-${category}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.85rem', marginLeft: '8px' }}>
+                        ({recentPrompts.length} {recentPrompts.length === 1 ? 'prompt' : 'prompts'})
+                      </span>
+                    )}
+                    {!hasPrompts && count === 0 && (
+                      <span key={`category-no-prompts-${category}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.85rem', marginLeft: '8px', fontStyle: 'italic' }}>
+                        (no prompts yet)
+                      </span>
+                    )}
+                  </div>
+                  <span
+                    key={`category-count-${category}-${theme}`}
+                    style={{
+                      fontSize: '1.2rem',
+                      fontWeight: 'bold',
+                      background: count > 0 ? currentTheme.accentGradient : 'none',
+                      WebkitBackgroundClip: count > 0 ? 'text' : 'unset',
+                      WebkitTextFillColor: count > 0 ? 'transparent' : 'unset',
+                      color: count > 0 ? currentTheme.accent : currentTheme.textMuted,
+                      display: count > 0 ? 'inline-block' : 'inline',
+                    }}
+                  >
+                    {formatNumber(count)}
+                  </span>
+                </div>
+
+                {/* Recent Prompts List */}
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      key={`category-expanded-${category}-${theme}`}
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      style={{ overflow: 'hidden' }}
+                    >
+                      <div key={`category-content-${category}-${theme}`} style={{ padding: '12px 20px 20px 40px', borderTop: `1px solid ${currentTheme.borderLight}` }}>
+                        {hasPrompts ? (
+                          <div key={`prompts-list-${category}-${theme}`} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {/* Clear button */}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                              <button
+                                onClick={(e) => handleClearCategoryPrompts(category, e)}
+                                type="button"
+                                style={{
+                                  background: 'transparent',
+                                  border: '1px solid rgba(255, 107, 107, 0.3)',
+                                  borderRadius: '6px',
+                                  padding: '6px 12px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  transition: 'all 0.2s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = 'rgba(255, 107, 107, 0.1)'
+                                  e.currentTarget.style.borderColor = 'rgba(255, 107, 107, 0.5)'
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'transparent'
+                                  e.currentTarget.style.borderColor = 'rgba(255, 107, 107, 0.3)'
+                                }}
+                                title={`Clear all prompts for ${category}`}
+                              >
+                                <X size={14} color="#ff6b6b" />
+                                <span style={{ color: '#ff6b6b', fontSize: '0.75rem' }}>Clear Prompts</span>
+                              </button>
+                            </div>
+                            {recentPrompts.slice(0, 5).map((prompt, index) => {
+                              const promptDate = new Date(prompt.timestamp)
+                              const formattedDate = promptDate.toLocaleDateString('en-US', {
+                                month: 'short', day: 'numeric', year: 'numeric',
+                                hour: '2-digit', minute: '2-digit',
+                              })
+                              return (
+                                <div
+                                  key={`${category}-prompt-${index}-${theme}`}
+                                  style={{
+                                    background: theme === 'light' ? '#ffffff' : 'rgba(20, 20, 30, 0.9)',
+                                    border: `1px solid ${currentTheme.borderLight}`,
+                                    borderRadius: '8px',
+                                    padding: '12px 16px',
+                                    boxShadow: theme === 'light'
+                                      ? '0 2px 8px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06)'
+                                      : '0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3)',
+                                    position: 'relative',
+                                  }}
+                                >
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleDeleteSinglePrompt(category, index)
+                                    }}
+                                    style={{
+                                      position: 'absolute', top: '8px', right: '8px',
+                                      background: 'transparent', border: 'none', cursor: 'pointer',
+                                      padding: '4px', borderRadius: '4px',
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      opacity: 0.4, transition: 'all 0.2s ease',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.opacity = '1'
+                                      e.currentTarget.style.background = 'rgba(255, 107, 107, 0.15)'
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.opacity = '0.4'
+                                      e.currentTarget.style.background = 'transparent'
+                                    }}
+                                    title="Delete this prompt"
+                                  >
+                                    <X size={14} color="#ff6b6b" />
+                                  </button>
+                                  <p key={`${category}-prompt-text-${index}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: '0.9rem', margin: '0 0 6px 0', lineHeight: '1.4', paddingRight: '24px' }}>
+                                    {prompt.text}
+                                  </p>
+                                  <p key={`${category}-prompt-date-${index}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0 }}>
+                                    {formattedDate}
+                                  </p>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <p key={`${category}-no-prompts-msg-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.9rem', textAlign: 'center', padding: '20px', fontStyle: 'italic' }}>
+                            No prompts in this category yet.
+                          </p>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
   // --- Main render ---
   return (
     <div style={{
@@ -498,6 +792,63 @@ const SavedConversationsView = () => {
         >
           History
         </h1>
+
+        {/* Sub-tabs: Chat History | Categories */}
+        <div style={{
+          display: 'flex',
+          gap: '0',
+          marginBottom: '24px',
+          borderBottom: `1px solid ${currentTheme.borderLight}`,
+        }}>
+          <button
+            onClick={() => { setActiveSubTab('history'); setSelectedConvo(null) }}
+            style={{
+              flex: 1,
+              padding: '12px 24px',
+              background: activeSubTab === 'history' ? currentTheme.buttonBackgroundActive : 'transparent',
+              border: 'none',
+              borderBottom: activeSubTab === 'history' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+              color: activeSubTab === 'history' ? currentTheme.accent : currentTheme.textSecondary,
+              fontSize: '1rem',
+              fontWeight: activeSubTab === 'history' ? '600' : '400',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
+          >
+            <MessageSquare size={20} />
+            Chat History
+          </button>
+          <button
+            onClick={() => { setActiveSubTab('categories'); setSelectedConvo(null) }}
+            style={{
+              flex: 1,
+              padding: '12px 24px',
+              background: activeSubTab === 'categories' ? currentTheme.buttonBackgroundActive : 'transparent',
+              border: 'none',
+              borderBottom: activeSubTab === 'categories' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+              color: activeSubTab === 'categories' ? currentTheme.accent : currentTheme.textSecondary,
+              fontSize: '1rem',
+              fontWeight: activeSubTab === 'categories' ? '600' : '400',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
+          >
+            <FolderOpen size={20} />
+            Categories
+          </button>
+        </div>
+
+        {/* Chat History Sub-Tab */}
+        {activeSubTab === 'history' && (
+          <>
         <p style={{ color: currentTheme.textSecondary, marginBottom: '24px', fontSize: '1rem' }}>
           {history.length} conversation{history.length !== 1 ? 's' : ''}
         </p>
@@ -710,7 +1061,39 @@ const SavedConversationsView = () => {
             </AnimatePresence>
           </div>
         )}
+          </>
+        )}
+
+        {/* Categories Sub-Tab */}
+        {activeSubTab === 'categories' && (
+          <motion.div
+            key="categories"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            {renderCategories()}
+          </motion.div>
+        )}
       </div>
+
+      {/* Confirmation Modal for clearing category prompts */}
+      <ConfirmationModal
+        isOpen={showClearCategoryConfirm}
+        onClose={() => {
+          setShowClearCategoryConfirm(false)
+          setCategoryToClear(null)
+        }}
+        onConfirm={clearCategoryPrompts}
+        title="Clear Category Prompts"
+        message={categoryToClear
+          ? `Are you sure you want to clear all prompts for "${categoryToClear}"? This action cannot be undone.`
+          : 'Are you sure you want to clear these prompts? This action cannot be undone.'}
+        confirmText="Clear Prompts"
+        cancelText="Cancel"
+        confirmColor="#ff6b6b"
+      />
     </div>
   )
 }

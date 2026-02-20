@@ -108,6 +108,18 @@ function App() {
       window.removeEventListener('hashchange', checkRoutes)
     }
   }, [])
+
+  // Sync user's timezone to the server on mount (for already-logged-in users)
+  // This ensures date bucketing uses the user's local timezone even if they
+  // signed up before this feature was added, or their timezone changed.
+  useEffect(() => {
+    if (!currentUser?.id) return
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (!tz) return
+    axios.post(`${API_URL}/api/auth/update-timezone`, { userId: currentUser.id, timezone: tz })
+      .catch(() => {}) // Silently ignore — not critical
+  }, [currentUser?.id])
+
   const selectedModels = useStore((state) => state.selectedModels)
   const currentPrompt = useStore((state) => state.currentPrompt)
   const setCurrentPrompt = useStore((state) => state.setCurrentPrompt)

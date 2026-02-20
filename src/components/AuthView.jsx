@@ -145,9 +145,10 @@ const AuthView = ({ initialView, onNavigate }) => {
       }
 
       const endpoint = isSignUp ? '/api/auth/signup' : '/api/auth/signin'
+      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
       const payload = isSignUp
-        ? { ...formData, plan: selectedPlan, fingerprint }
-        : formData
+        ? { ...formData, plan: selectedPlan, fingerprint, timezone: userTimezone }
+        : { ...formData, timezone: userTimezone }
       const response = await axios.post(`${API_URL}${endpoint}`, payload)
 
       if (response.data.success) {

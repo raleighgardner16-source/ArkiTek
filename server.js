@@ -251,6 +251,8 @@ const syncUserToMongo = async (userId, userData) => {
         plan: userData.plan || null,
         // Model selection preferences (persists across sessions)
         modelPreferences: userData.modelPreferences || null,
+        // User's local timezone (e.g. "America/Denver") for date bucketing
+        timezone: userData.timezone || null,
       }},
       { upsert: true }
     )
@@ -411,9 +413,14 @@ const loadCacheFromMongoDB = async () => {
       comments: p.comments || [],
     }))
     
-    // 4. Load admins list (from ADMIN database)
-    const adminsList = await adminDb.admins.getList()
-    adminsCache.admins = adminsList
+    // 4. Load admins list (from ADMIN database) — non-fatal if it fails
+    try {
+      const adminsList = await adminDb.admins.getList()
+      adminsCache.admins = adminsList
+    } catch (adminError) {
+      console.warn('[Cache] Failed to load admins (non-fatal):', adminError.message)
+      adminsCache.admins = []
+    }
     
     cacheLoaded = true
     console.log(`[Cache] Loaded ${Object.keys(usersCache).length} users, ${Object.keys(usageCache).length} usage records, ${leaderboardCache.prompts.length} leaderboard posts, ${adminsCache.admins.length} admins`)
@@ -655,6 +662,64 @@ const getCurrentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
+// ============================================================================
+// TIMEZONE-AWARE DATE HELPERS
+// ============================================================================
+// All date keys (month, day) should be computed in the user's local timezone
+// so usage is bucketed by their wall-clock date, not UTC.
+// Falls back to UTC if no timezone is stored (legacy users before this feature).
+
+const getUserLocalDate = (timezone) => {
+  const now = new Date()
+  if (!timezone) {
+    // Fallback: UTC (same behavior as before for legacy users)
+    return {
+      year: now.getUTCFullYear(),
+      month: now.getUTCMonth() + 1,
+      day: now.getUTCDate(),
+    }
+  }
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now)
+    return {
+      year: parseInt(parts.find(p => p.type === 'year').value),
+      month: parseInt(parts.find(p => p.type === 'month').value),
+      day: parseInt(parts.find(p => p.type === 'day').value),
+    }
+  } catch (err) {
+    // Invalid timezone string — fall back to UTC
+    console.warn(`[Timezone] Invalid timezone "${timezone}", falling back to UTC:`, err.message)
+    return {
+      year: now.getUTCFullYear(),
+      month: now.getUTCMonth() + 1,
+      day: now.getUTCDate(),
+    }
+  }
+}
+
+// Timezone-aware "YYYY-MM" key
+const getMonthForUser = (timezone) => {
+  const { year, month } = getUserLocalDate(timezone)
+  return `${year}-${String(month).padStart(2, '0')}`
+}
+
+// Timezone-aware "YYYY-MM-DD" key
+const getTodayForUser = (timezone) => {
+  const { year, month, day } = getUserLocalDate(timezone)
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+// Get a user's stored timezone from the users cache
+const getUserTimezone = (userId) => {
+  const users = readUsers()
+  return users[userId]?.timezone || null
+}
+
 // Track a prompt submission (one per user submission, regardless of models called)
 const trackPrompt = (userId, promptText, category, promptData = {}) => {
   const usage = readUsage()
@@ -680,8 +745,9 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
   }
 
   const userUsage = usage[userId]
-  const currentMonth = getCurrentMonth()
-  const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
+  const tz = getUserTimezone(userId)
+  const currentMonth = getMonthForUser(tz)
+  const today = getTodayForUser(tz)
 
   // Migration: Ensure totalPrompts field exists
   if (userUsage.totalPrompts === undefined) {
@@ -924,7 +990,8 @@ const trackConversationPrompt = (userId, userMessage) => {
   if (!usage[userId]) return
   
   const userUsage = usage[userId]
-  const currentMonth = getCurrentMonth()
+  const tz = getUserTimezone(userId)
+  const currentMonth = getMonthForUser(tz)
   
   // Ensure monthlyUsage exists
   if (!userUsage.monthlyUsage) userUsage.monthlyUsage = {}
@@ -972,8 +1039,9 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
   }
 
   const userUsage = usage[userId]
-  const currentMonth = getCurrentMonth()
-  const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
+  const tz = getUserTimezone(userId)
+  const currentMonth = getMonthForUser(tz)
+  const today = getTodayForUser(tz)
   const modelKey = `${provider}-${model}`
   
   // Ensure all required sub-objects exist (existing users loaded from MongoDB may lack these)
@@ -1159,7 +1227,7 @@ app.use(express.json())
 // Authentication endpoints
 app.post('/api/auth/signup', async (req, res) => {
   try {
-    const { firstName, lastName, username, email: rawEmail, password, plan, fingerprint } = req.body
+    const { firstName, lastName, username, email: rawEmail, password, plan, fingerprint, timezone } = req.body
 
     if (!firstName || !lastName || !username || !rawEmail || !password) {
       return res.status(400).json({ error: 'All fields are required' })
@@ -1244,6 +1312,7 @@ app.post('/api/auth/signup', async (req, res) => {
       deviceFingerprint: fingerprint || null,
       emailVerified: false,
       plan: isFreeTrial ? 'free_trial' : null,
+      timezone: timezone || null,
     })
     console.log('[Auth] User created in MongoDB:', userId, '| status:', initialStatus)
 
@@ -1272,6 +1341,7 @@ app.post('/api/auth/signup', async (req, res) => {
       emailVerified: false,
       signupIp,
       deviceFingerprint: fingerprint || null,
+      timezone: timezone || null,
     }
     usersCache = users
 
@@ -1394,7 +1464,7 @@ app.post('/api/auth/signup', async (req, res) => {
 
 app.post('/api/auth/signin', async (req, res) => {
   try {
-    const { username, password } = req.body
+    const { username, password, timezone } = req.body
 
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' })
@@ -1418,22 +1488,65 @@ app.post('/api/auth/signin', async (req, res) => {
     // Use the actual _id (UUID for new users, username for legacy users)
     const userId = dbUser._id
 
-    // Update last active in MongoDB
+    // Update last active and timezone in MongoDB
     const loginDate = new Date()
-    await db.users.update(userId, { lastActiveAt: loginDate })
+    const updateFields = { lastActiveAt: loginDate }
+    if (timezone) updateFields.timezone = timezone
+    await db.users.update(userId, updateFields)
     
-    // Update cache (keyed by _id)
+    // Update cache (keyed by _id) — always ensure user is in cache after login
     const users = readUsers()
-    if (users[userId]) {
+    if (!users[userId]) {
+      // User exists in MongoDB but not in cache — populate cache from DB record
+      users[userId] = {
+        id: dbUser._id,
+        firstName: dbUser.firstName,
+        lastName: dbUser.lastName,
+        username: dbUser.username,
+        email: dbUser.email,
+        canonicalEmail: dbUser.canonicalEmail || null,
+        password: dbUser.password,
+        createdAt: dbUser.createdAt?.toISOString?.() || dbUser.createdAt,
+        stripeCustomerId: dbUser.stripeCustomerId || null,
+        stripeSubscriptionId: dbUser.stripeSubscriptionId || null,
+        subscriptionStatus: dbUser.subscriptionStatus || 'inactive',
+        subscriptionRenewalDate: dbUser.subscriptionRenewalDate || null,
+        subscriptionStartedDate: dbUser.subscriptionStartedDate || null,
+        subscriptionPausedDate: dbUser.subscriptionPausedDate || null,
+        cancellationHistory: dbUser.cancellationHistory || [],
+        lastActiveAt: loginDate.toISOString(),
+        monthlyUsageCost: dbUser.monthlyUsageCost || {},
+        monthlyOverageBilled: dbUser.monthlyOverageBilled || {},
+        plan: dbUser.plan || null,
+        emailVerified: dbUser.emailVerified || false,
+        timezone: timezone || dbUser.timezone || null,
+        signupIp: dbUser.signupIp || null,
+        deviceFingerprint: dbUser.deviceFingerprint || null,
+      }
+      console.log('[Auth] Added missing user to cache:', userId)
+    } else {
       users[userId].lastActiveAt = loginDate.toISOString()
-      usersCache = users
+      if (timezone) users[userId].timezone = timezone
     }
+    usersCache = users
     
     const usage = readUsage()
-    if (usage[userId]) {
+    if (!usage[userId]) {
+      // Initialize empty usage cache for user
+      usage[userId] = {
+        totalTokens: 0, totalInputTokens: 0, totalOutputTokens: 0,
+        totalQueries: 0, totalPrompts: 0,
+        monthlyUsage: {}, dailyUsage: {},
+        providers: {}, models: {},
+        promptHistory: [], categories: {}, categoryPrompts: {},
+        ratings: {}, lastActiveAt: loginDate.toISOString(),
+        streakDays: 0, judgeConversationContext: [],
+        purchasedCredits: { total: 0, remaining: 0 },
+      }
+    } else {
       usage[userId].lastActiveAt = loginDate.toISOString()
-      usageCache = usage
     }
+    usageCache = usage
     
     console.log('[Auth] Successful sign in for user:', username, '(id:', userId, ')')
     
@@ -1459,6 +1572,28 @@ app.post('/api/auth/signin', async (req, res) => {
   } catch (error) {
     console.error('[Auth] Sign in error:', error)
     res.status(500).json({ error: 'An error occurred during sign in. Please try again.' })
+  }
+})
+
+// Update user timezone (called on app mount for already-logged-in users)
+app.post('/api/auth/update-timezone', async (req, res) => {
+  try {
+    const { userId, timezone } = req.body
+    if (!userId || !timezone) {
+      return res.status(400).json({ error: 'userId and timezone are required' })
+    }
+    // Update in MongoDB
+    await db.users.update(userId, { timezone })
+    // Update in cache
+    const users = readUsers()
+    if (users[userId]) {
+      users[userId].timezone = timezone
+      usersCache = users
+    }
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[Auth] Update timezone error:', error)
+    res.status(500).json({ error: 'Failed to update timezone' })
   }
 })
 
@@ -1828,22 +1963,45 @@ app.post('/api/auth/verify-email', async (req, res) => {
         subscriptionStartedDate: new Date(),
       })
 
-      // Update cache
+      // Update cache — ensure user is in cache even if server restarted
       const users = readUsers()
-      if (users[userId]) {
+      if (!users[userId]) {
+        users[userId] = {
+          id: dbUser._id, firstName: dbUser.firstName, lastName: dbUser.lastName,
+          username: dbUser.username, email: dbUser.email, canonicalEmail: dbUser.canonicalEmail || null,
+          password: dbUser.password, createdAt: dbUser.createdAt?.toISOString?.() || dbUser.createdAt,
+          stripeCustomerId: dbUser.stripeCustomerId || null, stripeSubscriptionId: dbUser.stripeSubscriptionId || null,
+          subscriptionStatus: 'trialing', subscriptionRenewalDate: dbUser.subscriptionRenewalDate || null,
+          subscriptionStartedDate: new Date().toISOString(), subscriptionPausedDate: null,
+          cancellationHistory: dbUser.cancellationHistory || [], lastActiveAt: null,
+          monthlyUsageCost: {}, monthlyOverageBilled: {},
+          plan: dbUser.plan || 'free_trial', emailVerified: true,
+          timezone: dbUser.timezone || null, signupIp: dbUser.signupIp || null,
+          deviceFingerprint: dbUser.deviceFingerprint || null,
+        }
+        console.log('[Auth] Added missing user to cache during verify-email:', userId)
+      } else {
         users[userId].emailVerified = true
         users[userId].subscriptionStatus = 'trialing'
         users[userId].subscriptionStartedDate = new Date().toISOString()
-        writeUsers(users, userId)
       }
+      writeUsers(users, userId)
 
       // Grant free trial credits
       const usage = readUsage()
-      if (usage[userId]) {
+      if (!usage[userId]) {
+        usage[userId] = {
+          totalTokens: 0, totalInputTokens: 0, totalOutputTokens: 0,
+          totalQueries: 0, totalPrompts: 0, monthlyUsage: {}, dailyUsage: {},
+          providers: {}, models: {}, promptHistory: [], categories: {}, categoryPrompts: {},
+          ratings: {}, lastActiveAt: null, streakDays: 0, judgeConversationContext: [],
+          purchasedCredits: { total: freeTrialCredits, remaining: freeTrialCredits },
+        }
+      } else {
         usage[userId].purchasedCredits = { total: freeTrialCredits, remaining: freeTrialCredits }
-        usageCache = usage
-        scheduleUsageSync(userId)
       }
+      usageCache = usage
+      scheduleUsageSync(userId)
 
       // Invalidate the token (single-use)
       emailVerificationTokens.delete(token)
@@ -1878,13 +2036,28 @@ app.post('/api/auth/verify-email', async (req, res) => {
         subscriptionStatus: 'inactive',
       })
 
-      // Update cache
+      // Update cache — ensure user is in cache even if server restarted
       const users = readUsers()
-      if (users[userId]) {
+      if (!users[userId]) {
+        users[userId] = {
+          id: dbUser._id, firstName: dbUser.firstName, lastName: dbUser.lastName,
+          username: dbUser.username, email: dbUser.email, canonicalEmail: dbUser.canonicalEmail || null,
+          password: dbUser.password, createdAt: dbUser.createdAt?.toISOString?.() || dbUser.createdAt,
+          stripeCustomerId: dbUser.stripeCustomerId || null, stripeSubscriptionId: dbUser.stripeSubscriptionId || null,
+          subscriptionStatus: 'inactive', subscriptionRenewalDate: dbUser.subscriptionRenewalDate || null,
+          subscriptionStartedDate: null, subscriptionPausedDate: null,
+          cancellationHistory: dbUser.cancellationHistory || [], lastActiveAt: null,
+          monthlyUsageCost: {}, monthlyOverageBilled: {},
+          plan: dbUser.plan || null, emailVerified: true,
+          timezone: dbUser.timezone || null, signupIp: dbUser.signupIp || null,
+          deviceFingerprint: dbUser.deviceFingerprint || null,
+        }
+        console.log('[Auth] Added missing user to cache during verify-email (pro):', userId)
+      } else {
         users[userId].emailVerified = true
         users[userId].subscriptionStatus = 'inactive'
-        writeUsers(users, userId)
       }
+      writeUsers(users, userId)
 
       // Invalidate the token (single-use)
       emailVerificationTokens.delete(token)
@@ -2122,7 +2295,8 @@ app.post('/api/stats/token-update', async (req, res) => {
       return res.json({ success: true, message: 'No tokens to add' })
     }
     
-    const currentMonth = getCurrentMonth()
+    const tz = getUserTimezone(userId)
+    const currentMonth = getMonthForUser(tz)
     
     // 1. Atomic MongoDB update using $inc (no race conditions, no stale cache issues)
     const dbInstance = await db.getDb()
@@ -2281,6 +2455,9 @@ app.get('/api/user/model-preferences/:userId', (req, res) => {
 app.get('/api/stats/:userId', async (req, res) => {
   const { userId } = req.params
   
+  // Use user's timezone for date calculations
+  const tz = getUserTimezone(userId)
+  
   // Read totalTokens and monthlyUsage.tokens DIRECTLY from MongoDB.
   // These are managed by atomic $inc in /api/stats/token-update and must not
   // come from the in-memory cache (which could be stale on a different Vercel instance).
@@ -2291,7 +2468,7 @@ app.get('/api/stats/:userId', async (req, res) => {
     const mongoDoc = await dbInstance.collection('usage_data').findOne({ _id: userId })
     if (mongoDoc) {
       mongoTotalTokens = mongoDoc.totalTokens || 0
-      const currentMonthKey = getCurrentMonth()
+      const currentMonthKey = getMonthForUser(tz)
       mongoMonthlyTokens = mongoDoc.monthlyUsage?.[currentMonthKey]?.tokens || 0
     }
   } catch (err) {
@@ -2326,7 +2503,7 @@ app.get('/api/stats/:userId', async (req, res) => {
     ...(usage[userId] || {}),
   }
 
-  const currentMonth = getCurrentMonth()
+  const currentMonth = getMonthForUser(tz)
   const monthlyStats = (userUsage.monthlyUsage || {})[currentMonth] || { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
 
   // Calculate provider stats with monthly breakdown
@@ -2448,11 +2625,12 @@ app.get('/api/stats/:userId', async (req, res) => {
 
   // Calculate daily usage with costs and percentages
   const dailyUsage = []
-  const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()
+  const { year: tzYear, month: tzMonth } = getUserLocalDate(tz)
+  const daysInMonth = new Date(tzYear, tzMonth, 0).getDate()
   
-  // Get all days of the current month
+  // Get all days of the current month (in user's local timezone)
   for (let day = 1; day <= daysInMonth; day++) {
-    const dateStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const dateStr = `${tzYear}-${String(tzMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     const dayData = dailyData[dateStr]
     
     if (dayData) {
@@ -5290,7 +5468,8 @@ app.post('/api/search', async (req, res) => {
       }
       
       const userUsage = usage[userId]
-      const currentMonth = getCurrentMonth()
+      const tz = getUserTimezone(userId)
+      const currentMonth = getMonthForUser(tz)
       
       // Increment total queries
       userUsage.totalQueries = (userUsage.totalQueries || 0) + 1
@@ -5307,7 +5486,7 @@ app.post('/api/search', async (req, res) => {
       userUsage.monthlyUsage[currentMonth].queries = (userUsage.monthlyUsage[currentMonth].queries || 0) + 1
       
       // Track daily query usage
-      const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
+      const today = getTodayForUser(tz)
       if (!userUsage.dailyUsage) {
         userUsage.dailyUsage = {}
       }
@@ -6804,7 +6983,8 @@ app.post('/api/rag', async (req, res) => {
       }
       
       const userUsage = usage[userId]
-      const currentMonth = getCurrentMonth()
+      const tz = getUserTimezone(userId)
+      const currentMonth = getMonthForUser(tz)
       
       // Increment total queries
       userUsage.totalQueries = (userUsage.totalQueries || 0) + 1
@@ -6821,7 +7001,7 @@ app.post('/api/rag', async (req, res) => {
       userUsage.monthlyUsage[currentMonth].queries = (userUsage.monthlyUsage[currentMonth].queries || 0) + 1
       
       // Track daily query usage
-      const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
+      const today = getTodayForUser(tz)
       if (!userUsage.dailyUsage) {
         userUsage.dailyUsage = {}
       }
