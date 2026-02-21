@@ -7505,16 +7505,18 @@ DISAGREEMENTS:
       const beforeFilter = disagreements.length
       disagreements = disagreements.filter(d => {
         const lower = d.toLowerCase()
-        // Pattern: "X omits / does not mention / does not include / leaves out / omitted by"
-        const isOmission = /\b(?:omits?|omitted|does not (?:mention|include|address|cite|reference|provide|name|specify|list)|do not (?:mention|include)|left out|leaves? out|without (?:mentioning|citing|referencing|naming)|absent from|not included|refrain(?:s)? from)\b/i.test(d)
-        // Pattern: "more detail / more specific / more structured / more informal / deeper / broader"
-        const isDetailDiff = /\b(?:more (?:detail|specific|structured|informal|clinical|conversational|comprehensive|general|predictive|neutral)|greater (?:detail|depth|specificity)|deeper|broader|level of detail|varying (?:levels?|degrees?)|different (?:tone|style|structure|framing|approach|perspective|level))\b/i.test(d)
-        // Pattern: "X adopts a ... tone" or "X is more ... while Y is more ..."
-        const isToneDiff = /\b(?:adopts?\s+(?:a\s+)?(?:more\s+)?(?:\w+\s+)?tone|(?:conversational|informal|clinical|formal|neutral|empathetic|structured|predictive)\s+tone)\b/i.test(d)
+        // Pattern: "X omits / does not mention / does not include / leaves out / omitted by / not mentioned"
+        const isOmission = /\b(?:omits?|omitted|(?:does|do|did|is|are|were?) not (?:mention|include|address|cite|reference|provide|name|specify|list)|not mentioned|not included|not referenced|not cited|not addressed|left out|leaves? out|without (?:mentioning|citing|referencing|naming)|absent from|refrain(?:s)? from|a detail (?:omitted|absent|missing|not))\b/i.test(d)
+        // Pattern: "more detail / more specific / more structured / more informal / deeper / broader / general descriptions"
+        const isDetailDiff = /\b(?:more (?:detail|detailed|specific|structured|informal|clinical|conversational|comprehensive|general|predictive|neutral|cautious|thorough|extensive)|less (?:detail|specific|thorough)|greater (?:detail|depth|specificity)|deeper|broader|level of detail|varying (?:levels?|degrees?)|different (?:tone|style|structure|framing|approach|perspective|level)|general (?:descriptions?|terms?|categories?|statements?))\b/i.test(d)
+        // Pattern: "X adopts a ... tone" or "X is more ... while Y is more ..." or "X uses ... analogy"
+        const isToneDiff = /\b(?:adopts?\s+(?:a\s+)?(?:more\s+)?(?:\w+\s+)?tone|(?:conversational|informal|clinical|formal|neutral|empathetic|structured|predictive|cautious)\s+(?:tone|style|approach)|uses?\s+(?:a\s+)?(?:\w+\s+)?analogy)\b/i.test(d)
         // Pattern: "X emphasizes ... while Y focuses on" (different focus, not contradiction)
-        const isFocusDiff = /\b(?:emphasiz(?:es?|ing)|focus(?:es|ing)?\s+(?:on|more|instead|primarily)|prioritiz(?:es?|ing)|centers?\s+on)\b.*\b(?:while|whereas|but|however)\b.*\b(?:emphasiz|focus|prioritiz|centers?|provid|takes?)\b/i.test(d)
+        const isFocusDiff = /\b(?:emphasiz(?:es?|ing)|focus(?:es|ing)?\s+(?:on|more|instead|primarily)|prioritiz(?:es?|ing)|centers?\s+on)\b.*\b(?:while|whereas|but|however)\b.*\b(?:emphasiz|focus|prioritiz|centers?|provid|takes?|us(?:es?|ing))\b/i.test(d)
+        // Pattern: "X lists specific names/figures while others do not" — naming extra details is not a contradiction
+        const isExtraDetail = /\b(?:lists?\s+specific|provides?\s+specific|names?\s+specific|cites?\s+specific|identifies?\s+specific|includes?\s+specific)\b.*\b(?:while|whereas|but)\b/i.test(d) || /\b(?:while|whereas)\b.*\b(?:the other(?:s|\s+models?)?)\b.*\b(?:do not|don'?t|refrain|avoid|only|simply|use more general)\b/i.test(d)
         
-        if (isOmission || isDetailDiff || isToneDiff || isFocusDiff) {
+        if (isOmission || isDetailDiff || isToneDiff || isFocusDiff || isExtraDetail) {
           console.log(`[Judge] Filtered out non-contradiction: "${d.substring(0, 80)}..."`)
           return false
         }
