@@ -2441,6 +2441,26 @@ app.delete('/api/auth/account', async (req, res) => {
     // Store user info for logging before deletion
     const userInfo = { username: dbUser.username, email: dbUser.email }
 
+    // Cancel Stripe subscription if active
+    if (dbUser.stripeSubscriptionId) {
+      try {
+        await stripe.subscriptions.cancel(dbUser.stripeSubscriptionId)
+        console.log(`[Account Deletion] Stripe subscription canceled for user: ${userId}`)
+      } catch (stripeError) {
+        console.error('[Account Deletion] Error canceling Stripe subscription (may already be canceled):', stripeError.message)
+      }
+    }
+
+    // Delete the Stripe customer record entirely (removes from Stripe dashboard)
+    if (dbUser.stripeCustomerId) {
+      try {
+        await stripe.customers.del(dbUser.stripeCustomerId)
+        console.log(`[Account Deletion] Stripe customer deleted for user: ${userId}`)
+      } catch (stripeError) {
+        console.error('[Account Deletion] Error deleting Stripe customer:', stripeError.message)
+      }
+    }
+
     // Delete user and ALL associated data from MongoDB (covers every collection)
     await db.users.delete(userId)
     console.log('[Account Deletion] User and all data deleted from MongoDB:', userId, userInfo)
@@ -10572,8 +10592,19 @@ app.post('/api/stripe/cancel-subscription-delete-account', async (req, res) => {
         await stripe.subscriptions.cancel(user.stripeSubscriptionId)
         console.log(`[Stripe] Subscription canceled for user: ${userId}`)
       } catch (stripeError) {
-        console.error('[Stripe] Error canceling subscription (may already be canceled):', stripeError)
+        console.error('[Stripe] Error canceling subscription (may already be canceled):', stripeError.message)
         // Continue with deletion even if subscription cancel fails
+      }
+    }
+
+    // Delete the Stripe customer record entirely (removes from Stripe dashboard)
+    if (user.stripeCustomerId) {
+      try {
+        await stripe.customers.del(user.stripeCustomerId)
+        console.log(`[Stripe] Customer deleted from Stripe for user: ${userId}`)
+      } catch (stripeError) {
+        console.error('[Stripe] Error deleting Stripe customer:', stripeError.message)
+        // Continue with deletion even if customer delete fails
       }
     }
 
