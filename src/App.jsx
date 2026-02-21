@@ -682,13 +682,9 @@ function App() {
           .map((r) => `\n--- ${r.modelName}'s response ---\n${r.text}\n`)
           .join('')
         
-        const summaryPrompt =  `You are an expert judge analyzing multiple AI model responses. Your task is to:
+        const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+        const summaryPrompt =  `Today is ${today}. This is the real, current date. You are an expert judge analyzing multiple AI model responses to a user's question.
 
-        1. Calculate a consensus score (0-100%) based on how much the models agree
-        2. Provide a summary of the council's responses
-        3. Identify where the models agree
-        4. Identify where the models DIFFER — this includes outright contradictions, but also differences in emphasis, tone, specificity, scope, framing, examples used, details included by one but omitted by another, or different perspectives on the same topic
-        
         Original User Query: "${currentPrompt}"
         
         Council Model Responses:
@@ -698,11 +694,11 @@ function App() {
         
         Consensus: [A single number from 0-100 representing the percentage of agreement between all models]
         
-        Summary: [A concise summary of what the council models collectively determined]
+        Summary: [Write a thorough, explanatory summary that synthesizes what the council collectively determined. Do not just state conclusions — explain the reasoning, key details, and context behind them. Reference specific models by name when attributing claims. The summary should give the reader a complete understanding of the topic without needing to read the individual model responses. Aim for 2-3 substantial paragraphs.]
         
-        Agreements: [List specific points where models agree, one per line, each starting with a dash or bullet]
+        Agreements: [List at least 3-5 specific, substantive points where models agree, one per line, each starting with a dash]
         
-        Disagreements: [List specific points where models differ, one per line, each starting with a dash or bullet. Look for: contradictions, different emphasis or focus areas, different levels of detail, different examples or evidence cited, different tone (optimistic vs pessimistic), topics covered by one model but omitted by another, or different framing of the same issue. You MUST find at least 2-3 differences — even when models broadly agree, they almost always differ in emphasis, specificity, or framing.]
+        Disagreements: [ONLY list factual contradictions where Model A and Model B make claims that CANNOT BOTH BE TRUE. Example: "Gemini states the date is November 7, but Claude states it is November 5 — these are contradictory." If one model mentions something another does not, that is NOT a disagreement. If models suggest different examples, products, or details, those are NOT disagreements. If models differ in tone, depth, or structure, those are NOT disagreements. If there are no factual contradictions, write: "None identified — all models are in factual agreement."]
         
         Important: Only include the section label followed by a colon, then the content. Do NOT repeat section headers within the content. Do NOT use markdown formatting like ** for section headers.`
 
@@ -833,7 +829,7 @@ function App() {
         // Remove any duplicate section markers that might appear in the content
         disagreementsText = disagreementsText.replace(/\n\s*(?:\*\*)?(?:DISAGREEMENTS|Disagreements)[:\-]?\s*\*?\*?\s*/gi, '\n')
         
-        const disagreements = disagreementsText
+        const rawDisagreements = disagreementsText
           ? disagreementsText.split('\n').filter(l => {
               const trimmed = l.trim()
               // Filter out empty lines, section headers, standalone bullets, "none identified", and instruction text
@@ -842,7 +838,7 @@ function App() {
                      !trimmed.match(/^(?:\*\*)?(?:DISAGREEMENTS|Disagreements)[:\-]?\s*\*?\*?$/i) &&
                      !trimmed.match(/^:\s*$/) &&
                      !trimmed.match(/^\(.*\)$/) && // Filter parenthesized instruction text
-                     !(trimmed.toLowerCase() === 'none identified' || trimmed.toLowerCase() === 'none identified.') &&
+                     !trimmed.toLowerCase().startsWith('none identified') &&
                      !trimmed.toLowerCase().includes('this section is mandatory') &&
                      !trimmed.toLowerCase().includes('you must') &&
                      !trimmed.toLowerCase().includes('look for:')
@@ -854,6 +850,20 @@ function App() {
               return cleaned
             }).filter(l => l && l.length >= 5) // Remove any empty or too-short strings after cleaning
           : []
+        
+        // Post-processing: Filter out "disagreements" that are actually coverage differences, not contradictions.
+        const disagreements = rawDisagreements.filter(d => {
+          const isOmission = /\b(?:omits?|omitted|(?:does|do|did|is|are|were?) not (?:mention|include|address|cite|reference|provide|name|specify|list)|not mentioned|not included|not referenced|not cited|not addressed|left out|leaves? out|without (?:mentioning|citing|referencing|naming)|absent from|refrain(?:s)? from|a detail (?:omitted|absent|missing|not))\b/i.test(d)
+          const isDetailDiff = /\b(?:more (?:detail|detailed|specific|structured|informal|clinical|conversational|comprehensive|general|predictive|neutral|cautious|thorough|extensive)|less (?:detail|specific|thorough)|greater (?:detail|depth|specificity)|deeper|broader|level of detail|varying (?:levels?|degrees?)|different (?:tone|style|structure|framing|approach|perspective|level)|general (?:descriptions?|terms?|categories?|statements?))\b/i.test(d)
+          const isToneDiff = /\b(?:adopts?\s+(?:a\s+)?(?:more\s+)?(?:\w+\s+)?tone|(?:conversational|informal|clinical|formal|neutral|empathetic|structured|predictive|cautious)\s+(?:tone|style|approach)|uses?\s+(?:a\s+)?(?:\w+\s+)?analogy)\b/i.test(d)
+          const isFocusDiff = /\b(?:emphasiz(?:es?|ing)|focus(?:es|ing)?\s+(?:on|more|instead|primarily)|prioritiz(?:es?|ing)|centers?\s+on)\b.*\b(?:while|whereas|but|however)\b.*\b(?:emphasiz|focus|prioritiz|centers?|provid|takes?|us(?:es?|ing))\b/i.test(d)
+          const isExtraDetail = /\b(?:lists?\s+specific|provides?\s+specific|names?\s+specific|cites?\s+specific|identifies?\s+specific|includes?\s+specific)\b.*\b(?:while|whereas|but)\b/i.test(d) || /\b(?:while|whereas)\b.*\b(?:the other(?:s|\s+models?)?)\b.*\b(?:do not|don'?t|refrain|avoid|only|simply|use more general)\b/i.test(d)
+          if (isOmission || isDetailDiff || isToneDiff || isFocusDiff || isExtraDetail) {
+            console.log(`[Judge Filter] Removed non-contradiction: "${d.substring(0, 80)}..."`)
+            return false
+          }
+          return true
+        })
         
         // Format the summary text using markdown for proper rendering
         let formattedSummaryText = ''
