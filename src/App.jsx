@@ -13,7 +13,7 @@ import AuthView from './components/AuthView'
 import SubscriptionGate from './components/SubscriptionGate'
 import AdminView from './components/AdminView'
 import SavedConversationsView from './components/SavedConversationsView'
-import TokenUsageWindow from './components/TokenUsageWindow'
+// TokenUsageWindow is now rendered inside ResponseComparison (council panel tab)
 import LandingPage from './components/LandingPage'
 import TermsOfService from './components/TermsOfService'
 import PrivacyPolicy from './components/PrivacyPolicy'
@@ -167,16 +167,8 @@ function App() {
   const [currentCategory, setCurrentCategory] = useState('general')
   const [queryCount, setQueryCount] = useState(0)
   const [isUserAdmin, setIsUserAdmin] = useState(false)
-  const [showTokenUsage, setShowTokenUsage] = useState(true) // Temporarily visible for debugging
   const storeResponses = useStore((state) => state.responses)
   const storeTokenData = useStore((state) => state.tokenData)
-
-  // Re-open the token usage window whenever new token data arrives
-  useEffect(() => {
-    if (storeTokenData && storeTokenData.length > 0) {
-      setShowTokenUsage(true)
-    }
-  }, [storeTokenData])
 
   // Abort controller for cancelling in-flight prompt submissions
   const abortControllerRef = useRef(null)
@@ -1158,17 +1150,7 @@ function App() {
                 {/* Summary Window - Shows on all tabs except admin */}
                 {!isAdminRoute && <SummaryWindow />}
 
-                {/* Token Usage Window - Temporarily visible for debugging */}
-                {activeTab === 'home' && (
-                  <TokenUsageWindow
-                    isOpen={showTokenUsage && (storeTokenData.length > 0 || storeResponses.length > 0)}
-                    onClose={() => setShowTokenUsage(false)}
-                    tokenData={storeTokenData.length > 0 ? storeTokenData : storeResponses.filter(r => r.tokens).map(r => ({
-                      modelName: r.modelName || r.actualModelName || 'Unknown',
-                      tokens: r.tokens,
-                    }))}
-                  />
-                )}
+                {/* Token Usage is now shown inside the Council panel (ResponseComparison) as a tab */}
 
         </>
       )}

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe } from 'lucide-react'
+import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe, Coins } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
 import { streamFetch } from '../utils/streamFetch'
 import MarkdownRenderer from './MarkdownRenderer'
+import TokenUsageWindow from './TokenUsageWindow'
 
 const ResponseComparison = () => {
   const getProviderName = (modelName) => {
@@ -65,6 +66,8 @@ const ResponseComparison = () => {
   const [searchingInConvo, setSearchingInConvo] = useState({}) // { responseId: true/false }
   const [convoSources, setConvoSources] = useState({}) // { responseId: { turnIndex: [...sources] } } — per-turn follow-up search results
   const [showConvoSources, setShowConvoSources] = useState({}) // { "responseId_turnIndex": true/false } — per-turn toggle
+  const [councilPanelTab, setCouncilPanelTab] = useState('responses') // 'responses' | 'tokens'
+  const tokenData = useStore((state) => state.tokenData)
   const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
   const lastSubmittedCategory = useStore((state) => state.lastSubmittedCategory || '')
 
@@ -1697,33 +1700,104 @@ const ResponseComparison = () => {
         paddingBottom: '20px',
       }}
     >
-      {/* Panel header */}
+      {/* Panel header with tabs */}
       <div style={{
         width: '100%',
         maxWidth: cardWidth,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        gap: '4px',
         marginBottom: '12px',
-        padding: '10px 14px',
+        padding: '4px',
         background: theme === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(10, 10, 20, 0.95)',
         border: `1px solid ${currentTheme.borderLight}`,
         borderRadius: '12px',
         backdropFilter: 'blur(12px)',
         pointerEvents: 'auto',
       }}>
-        <span style={{
-          fontSize: '0.8rem',
-          fontWeight: '600',
-          color: currentTheme.accent,
-          textTransform: 'uppercase',
-          letterSpacing: '0.5px',
-        }}>
-          Council Responses ({responses.length})
-        </span>
+        <button
+          onClick={() => setCouncilPanelTab('responses')}
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            padding: '8px 12px',
+            fontSize: '0.75rem',
+            fontWeight: '600',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            color: councilPanelTab === 'responses' ? currentTheme.accent : currentTheme.textMuted,
+            background: councilPanelTab === 'responses' ? currentTheme.buttonBackgroundActive : 'transparent',
+            border: councilPanelTab === 'responses' ? `1px solid ${currentTheme.borderLight}` : '1px solid transparent',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          Responses ({responses.length})
+        </button>
+        <button
+          onClick={() => setCouncilPanelTab('tokens')}
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            padding: '8px 12px',
+            fontSize: '0.75rem',
+            fontWeight: '600',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            color: councilPanelTab === 'tokens' ? currentTheme.accent : currentTheme.textMuted,
+            background: councilPanelTab === 'tokens' ? currentTheme.buttonBackgroundActive : 'transparent',
+            border: councilPanelTab === 'tokens' ? `1px solid ${currentTheme.borderLight}` : '1px solid transparent',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <Coins size={13} />
+          Token Usage
+        </button>
       </div>
 
-      <div
+      {/* Token Usage tab content */}
+      {councilPanelTab === 'tokens' && (
+        <div style={{
+          width: '100%',
+          maxWidth: cardWidth,
+          background: theme === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(10, 10, 20, 0.95)',
+          border: `1px solid ${currentTheme.borderLight}`,
+          borderRadius: '12px',
+          backdropFilter: 'blur(12px)',
+          pointerEvents: 'auto',
+          overflow: 'hidden',
+        }}>
+          {tokenData && tokenData.length > 0 ? (
+            <TokenUsageWindow
+              isOpen={true}
+              onClose={() => {}}
+              tokenData={tokenData}
+              inline={true}
+            />
+          ) : (
+            <div style={{
+              padding: '24px',
+              textAlign: 'center',
+              color: currentTheme.textMuted,
+              fontSize: '0.85rem',
+            }}>
+              No token data available yet. Submit a prompt to see usage.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Responses tab content */}
+      {councilPanelTab === 'responses' && <div
         style={{
           display: 'flex',
           flexDirection: 'column',
@@ -2500,7 +2574,7 @@ const ResponseComparison = () => {
             </div>
           </motion.div>
         )}
-      </div>
+      </div>}
     </motion.div>
       )}
     </AnimatePresence>
