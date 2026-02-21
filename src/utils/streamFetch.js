@@ -27,34 +27,35 @@ export async function streamFetch(url, body, { onToken, onStatus, onError, signa
     const jsonStr = line.replace('data: ', '').trim()
     if (!jsonStr) return
 
+    let parsed
     try {
-      const parsed = JSON.parse(jsonStr)
-
-      switch (parsed.type) {
-        case 'token':
-          if (parsed.content && onToken) {
-            onToken(parsed.content)
-          }
-          break
-        case 'status':
-          if (parsed.message && onStatus) {
-            onStatus(parsed.message)
-          }
-          break
-        case 'done':
-          finalData = parsed
-          break
-        case 'error':
-          if (onError) {
-            onError(parsed.message || 'Unknown streaming error')
-          }
-          throw new Error(parsed.message || 'Streaming error')
-      }
+      parsed = JSON.parse(jsonStr)
     } catch (e) {
-      if (e.message?.includes('Streaming error') || e.message?.includes('Unknown streaming error')) {
-        throw e
+      // Skip unparseable lines (malformed JSON)
+      return
+    }
+
+    switch (parsed.type) {
+      case 'token':
+        if (parsed.content && onToken) {
+          onToken(parsed.content)
+        }
+        break
+      case 'status':
+        if (parsed.message && onStatus) {
+          onStatus(parsed.message)
+        }
+        break
+      case 'done':
+        finalData = parsed
+        break
+      case 'error': {
+        const errorMsg = parsed.message || 'Unknown streaming error'
+        if (onError) {
+          try { onError(errorMsg) } catch (_) { /* callback may throw, don't swallow the SSE error */ }
+        }
+        throw new Error(errorMsg)
       }
-      // Skip unparseable lines
     }
   }
 
