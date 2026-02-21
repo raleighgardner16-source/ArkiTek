@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus, Coins } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 import { detectCategory } from '../utils/categoryDetector'
@@ -9,6 +9,7 @@ import axios from 'axios'
 import { API_URL } from '../utils/config'
 import { streamFetch } from '../utils/streamFetch'
 import MarkdownRenderer from './MarkdownRenderer'
+import TokenUsageWindow from './TokenUsageWindow'
 
 const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaused = false, subscriptionExpiring = false, subscriptionRenewalDate = null, isLoading = false, isGeneratingSummary = false, onCancelPrompt }) => {
   const selectedModels = useStore((state) => state.selectedModels)
@@ -61,6 +62,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [showClearTooltip, setShowClearTooltip] = useState(false)
   const [showPostPromptSingleTooltip, setShowPostPromptSingleTooltip] = useState(false)
   const [showSendTooltip, setShowSendTooltip] = useState(false)
+  const [showSingleTokenUsage, setShowSingleTokenUsage] = useState(false)
+  const tokenData = useStore((state) => state.tokenData)
 
   // Single-model conversation state
   const [singleModelConvoInput, setSingleModelConvoInput] = useState('')
@@ -2089,6 +2092,40 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           </div>
                         </div>
 
+                        {/* Token Usage Button (single-model only) */}
+                        {tokenData && tokenData.length > 0 && (
+                          <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
+                            <motion.button
+                              onClick={() => setShowSingleTokenUsage(true)}
+                              style={{
+                                flex: 1,
+                                padding: '4px 6px',
+                                background: currentTheme.buttonBackground,
+                                border: `1px solid ${currentTheme.borderLight}`,
+                                borderRadius: '12px',
+                                color: currentTheme.accent,
+                                fontSize: '0.7rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px',
+                                transition: 'all 0.2s ease',
+                                whiteSpace: 'nowrap',
+                                height: '28px',
+                              }}
+                              whileHover={{
+                                background: currentTheme.buttonBackgroundHover,
+                              }}
+                              whileTap={{ scale: 0.96 }}
+                            >
+                              <Coins size={12} />
+                              Token Usage
+                            </motion.button>
+                          </div>
+                        )}
+
                       </div>
                     )}
 
@@ -3341,6 +3378,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           </>
         )}
       </AnimatePresence>
+
+      {/* Token Usage modal for single-model mode */}
+      <TokenUsageWindow
+        isOpen={showSingleTokenUsage}
+        onClose={() => setShowSingleTokenUsage(false)}
+        tokenData={tokenData}
+      />
     </>
   )
 }
