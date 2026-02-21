@@ -349,6 +349,16 @@ const ResponseComparison = () => {
         })
       }
 
+      // Update main token counter with conversation tokens so stats page totalTokens/monthlyTokens stay consistent
+      if (currentUser?.id && finalData?.tokens?.total > 0) {
+        axios.post(`${API_URL}/api/stats/token-update`, {
+          userId: currentUser.id,
+          promptTokens: finalData.tokens.total,
+        }).then(() => {
+          useStore.getState().triggerStatsRefresh()
+        }).catch(err => console.error('[Token Update] Model conversation token update failed:', err.message))
+      }
+
       // Push this conversation turn to the active history entry
       const activeHistoryId = useStore.getState().currentHistoryId
       if (activeHistoryId && currentUser?.id) {

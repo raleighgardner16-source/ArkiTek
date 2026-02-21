@@ -905,6 +905,16 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         }, 500)
       }
 
+      // Update main token counter with conversation tokens so stats page totalTokens/monthlyTokens stay consistent
+      if (currentUser?.id && finalData?.tokens?.total > 0) {
+        axios.post(`${API_URL}/api/stats/token-update`, {
+          userId: currentUser.id,
+          promptTokens: finalData.tokens.total,
+        }).then(() => {
+          useStore.getState().triggerStatsRefresh()
+        }).catch(err => console.error('[Token Update] Judge conversation token update failed:', err.message))
+      }
+
       // Push this conversation turn to the active history entry
       const activeHistoryId = useStore.getState().currentHistoryId
       if (activeHistoryId && currentUser?.id) {
@@ -1006,6 +1016,16 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       if (finalData?.searchResults && finalData.searchResults.length > 0) {
         const turnIndex = singleModelConvoHistory.length
         setSingleConvoSources(prev => ({ ...prev, [turnIndex]: finalData.searchResults }))
+      }
+
+      // Update main token counter with conversation tokens so stats page totalTokens/monthlyTokens stay consistent
+      if (currentUser?.id && finalData?.tokens?.total > 0) {
+        axios.post(`${API_URL}/api/stats/token-update`, {
+          userId: currentUser.id,
+          promptTokens: finalData.tokens.total,
+        }).then(() => {
+          useStore.getState().triggerStatsRefresh()
+        }).catch(err => console.error('[Token Update] Single model conversation token update failed:', err.message))
       }
 
       // Push this conversation turn to the active history entry

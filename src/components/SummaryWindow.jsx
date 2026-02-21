@@ -224,6 +224,16 @@ const SummaryWindow = () => {
           }
         }, 500)
       }
+
+      // Update main token counter with conversation tokens so stats page totalTokens/monthlyTokens stay consistent
+      if (currentUser?.id && finalData?.tokens?.total > 0) {
+        axios.post(`${API_URL}/api/stats/token-update`, {
+          userId: currentUser.id,
+          promptTokens: finalData.tokens.total,
+        }).then(() => {
+          useStore.getState().triggerStatsRefresh()
+        }).catch(err => console.error('[Token Update] SummaryWindow conversation token update failed:', err.message))
+      }
     } catch (error) {
       console.error('[SummaryWindow] Error sending message:', error)
       // Restore the conversation input on error
