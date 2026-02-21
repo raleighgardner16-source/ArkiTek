@@ -20,7 +20,7 @@ const disposableDomains = require('disposable-email-domains')
 dotenv.config()
 
 // Version tag — used to verify which deployment is live
-const SERVER_VERSION = '2026-02-20-v3'
+const SERVER_VERSION = '2026-02-21-v1-judge-filter'
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url)
