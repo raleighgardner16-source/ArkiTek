@@ -249,7 +249,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
       <div style={{ padding: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <h3 style={{ color: '#5dade2', fontSize: '1.2rem', margin: 0, fontWeight: 'bold' }}>
-            Token Usage
+            Model Usage
           </h3>
           <button
             onClick={() => setShowExplainer(!showExplainer)}
@@ -314,7 +314,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
     )
   }
 
-  // When minimized, fully hide — user reopens via the Token Usage button
+  // When minimized, fully hide — user reopens via the Model Usage button
   if (isMinimized) {
     return null
   }
@@ -363,7 +363,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <div>
                 <h2 style={{ color: '#5dade2', fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>
-                  Token Usage
+                  Model Usage
                 </h2>
                 <p style={{ color: '#888', fontSize: '0.75rem', margin: '4px 0 0 0' }}>
                   A breakdown of how many tokens were used for this prompt

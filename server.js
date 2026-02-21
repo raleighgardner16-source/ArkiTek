@@ -3095,12 +3095,13 @@ app.post('/api/judge/conversation', async (req, res) => {
     
     // Step 1.5: Retrieve relevant past conversations via embedding memory
     let memoryContextString = ''
+    let memoryContextItems = []
     if (userId) {
       const scoreThreshold = needsContext ? 0.70 : 0.82
-      const relevantContexts = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
-      memoryContextString = formatMemoryContext(relevantContexts)
+      memoryContextItems = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
+      memoryContextString = formatMemoryContext(memoryContextItems)
       if (memoryContextString) {
-        console.log(`[Judge Conversation] Memory: Injecting ${relevantContexts.length} past conversations as context`)
+        console.log(`[Judge Conversation] Memory: Injecting ${memoryContextItems.length} past conversations as context`)
       }
     }
     
@@ -3224,17 +3225,23 @@ app.post('/api/judge/conversation', async (req, res) => {
     })
     
     // Build debug data for frontend (same structure as main RAG pipeline)
-    const debugData = needsSearch ? {
-      search: {
+    const debugData = {
+      search: needsSearch ? {
         query: userMessage,
         results: searchResults
-      },
+      } : null,
       refiner: null, // No refiner — models read raw sources directly
       categoryDetection: {
         category: category,
-        needsSearch: needsSearch
+        needsSearch: needsSearch,
+        needsContext: needsContext
+      },
+      memoryContext: {
+        items: memoryContextItems,
+        needsContextHint: needsContext,
+        injected: memoryContextItems.length > 0,
       }
-    } : null
+    }
     
     res.json({ 
       response: responseText,
@@ -3296,12 +3303,13 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
 
     // Step 1.5: Retrieve relevant past conversations via embedding memory
     let memoryContextString = ''
+    let memoryContextItems = []
     if (userId) {
       const scoreThreshold = needsContext ? 0.70 : 0.82
-      const relevantContexts = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
-      memoryContextString = formatMemoryContext(relevantContexts)
+      memoryContextItems = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
+      memoryContextString = formatMemoryContext(memoryContextItems)
       if (memoryContextString) {
-        console.log(`[Judge Conversation Stream] Memory: Injecting ${relevantContexts.length} past conversations as context`)
+        console.log(`[Judge Conversation Stream] Memory: Injecting ${memoryContextItems.length} past conversations as context`)
       }
     }
 
@@ -3457,11 +3465,16 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
     })
 
     // Build debug data
-    const debugData = needsSearch ? {
-      search: { query: userMessage, results: searchResults },
+    const debugData = {
+      search: needsSearch ? { query: userMessage, results: searchResults } : null,
       refiner: null, // No refiner — models read raw sources directly
-      categoryDetection: { category, needsSearch }
-    } : null
+      categoryDetection: { category, needsSearch, needsContext },
+      memoryContext: {
+        items: memoryContextItems,
+        needsContextHint: needsContext,
+        injected: memoryContextItems.length > 0,
+      }
+    }
 
     // Send final metadata
     sendSSE('done', {
@@ -3530,12 +3543,13 @@ app.post('/api/model/conversation/stream', async (req, res) => {
 
     // Step 1.5: Retrieve relevant past conversations via embedding memory
     let memoryContextString = ''
+    let memoryContextItems = []
     if (userId) {
       const scoreThreshold = needsContext ? 0.70 : 0.82
-      const relevantContexts = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
-      memoryContextString = formatMemoryContext(relevantContexts)
+      memoryContextItems = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
+      memoryContextString = formatMemoryContext(memoryContextItems)
       if (memoryContextString) {
-        console.log(`[Model Conversation Stream] Memory: Injecting ${relevantContexts.length} past conversations as context`)
+        console.log(`[Model Conversation Stream] Memory: Injecting ${memoryContextItems.length} past conversations as context`)
       }
     }
 
@@ -3899,12 +3913,13 @@ app.post('/api/model/conversation', async (req, res) => {
     
     // Step 1.5: Retrieve relevant past conversations via embedding memory
     let memoryContextString = ''
+    let memoryContextItems = []
     if (userId) {
       const scoreThreshold = needsContext ? 0.70 : 0.82
-      const relevantContexts = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
-      memoryContextString = formatMemoryContext(relevantContexts)
+      memoryContextItems = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
+      memoryContextString = formatMemoryContext(memoryContextItems)
       if (memoryContextString) {
-        console.log(`[Model Conversation] Memory: Injecting ${relevantContexts.length} past conversations as context`)
+        console.log(`[Model Conversation] Memory: Injecting ${memoryContextItems.length} past conversations as context`)
       }
     }
     
@@ -5554,7 +5569,7 @@ Search query:`
  * Generate a vector embedding for a piece of text using OpenAI text-embedding-3-small.
  * Returns an array of 1536 floats, or null on failure.
  */
-async function generateEmbedding(text) {
+async function generateEmbedding(text, userId = null) {
   const apiKey = API_KEYS.openai
   if (!apiKey) {
     console.warn('[Embedding] OpenAI API key not configured, skipping embedding')
@@ -5587,6 +5602,12 @@ async function generateEmbedding(text) {
 
     const tokensUsed = response.data?.usage?.total_tokens || 0
     console.log(`[Embedding] Generated ${embedding.length}-dim vector (${tokensUsed} tokens)`)
+
+    // Track embedding tokens as pipeline usage (behind-the-scenes, not shown in per-model stats)
+    if (userId && tokensUsed > 0) {
+      trackUsage(userId, 'openai', 'text-embedding-3-small', tokensUsed, 0, true) // isPipeline = true
+    }
+
     return embedding
   } catch (error) {
     console.error('[Embedding] Error generating embedding:', error.message)
@@ -5626,7 +5647,7 @@ async function findRelevantContext(userId, currentPrompt, limit = 3, scoreThresh
 
   try {
     // 1. Generate embedding for the current prompt
-    const queryEmbedding = await generateEmbedding(`User prompt: ${currentPrompt}`)
+    const queryEmbedding = await generateEmbedding(`User prompt: ${currentPrompt}`, userId)
     if (!queryEmbedding) {
       console.log('[Memory] Could not generate query embedding, skipping context retrieval')
       return []
@@ -7381,16 +7402,17 @@ app.post('/api/rag', async (req, res) => {
     
     // Stage 2.5: Memory — retrieve relevant past conversations for this user
     let memoryContextString = ''
+    let memoryContextItems = [] // Store for debug/frontend display
     if (userId) {
       // Use needsContext as a soft gate: if the detector says context IS needed, use a lower
       // threshold (0.70) to be more permissive. If context is NOT explicitly needed, use a
       // higher threshold (0.82) so only very relevant past conversations get injected.
       const scoreThreshold = needsContextHint ? 0.70 : 0.82
       console.log(`[RAG Pipeline] Stage 2.5: Retrieving relevant memory context (needsContext: ${!!needsContextHint}, threshold: ${scoreThreshold})...`)
-      const relevantContexts = await findRelevantContext(userId, query, 3, scoreThreshold)
-      memoryContextString = formatMemoryContext(relevantContexts)
+      memoryContextItems = await findRelevantContext(userId, query, 3, scoreThreshold)
+      memoryContextString = formatMemoryContext(memoryContextItems)
       if (memoryContextString) {
-        console.log(`[RAG Pipeline] Memory: Injecting ${relevantContexts.length} past conversations as context (scores: ${relevantContexts.map(c => c.score?.toFixed(3)).join(', ')})`)
+        console.log(`[RAG Pipeline] Memory: Injecting ${memoryContextItems.length} past conversations as context (scores: ${memoryContextItems.map(c => c.score?.toFixed(3)).join(', ')})`)
       } else {
         console.log('[RAG Pipeline] Memory: No relevant past conversations found above threshold')
       }
@@ -7772,6 +7794,12 @@ User Query: ${query}`
       raw_sources: {
         source_count: rawSourcesData.sourceCount,
         scraped_sources: rawSourcesData.scrapedSources,
+      },
+      memory_context: {
+        items: memoryContextItems,
+        needsContextHint: !!needsContextHint,
+        scoreThreshold: needsContextHint ? 0.70 : 0.82,
+        injected: memoryContextItems.length > 0,
       },
     })
   } catch (error) {
@@ -8249,7 +8277,7 @@ app.post('/api/history/auto-save', async (req, res) => {
     ;(async () => {
       try {
         const embeddingText = buildEmbeddingText(originalPrompt, doc.responses, doc.summary)
-        const embedding = await generateEmbedding(embeddingText)
+        const embedding = await generateEmbedding(embeddingText, userId)
         if (embedding) {
           await dbInstance.collection('conversation_history').updateOne(
             { _id: historyId },

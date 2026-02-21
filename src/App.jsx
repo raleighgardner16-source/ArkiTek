@@ -161,6 +161,7 @@ function App() {
   const setSummary = useStore((state) => state.setSummary)
   const setIsSearchingWeb = useStore((state) => state.setIsSearchingWeb)
   const setSearchSources = useStore((state) => state.setSearchSources)
+  const setRAGDebugData = useStore((state) => state.setRAGDebugData)
 
   const [isLoading, setIsLoading] = useState(false)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
@@ -298,6 +299,21 @@ function App() {
         // Track query count (1 query per RAG pipeline call)
         setQueryCount(1)
         
+        // Store debug data for PipelineDebugWindow
+        setRAGDebugData({
+          search: ragData.search_results ? {
+            query: currentPrompt,
+            results: ragData.search_results
+          } : null,
+          refiner: null,
+          categoryDetection: {
+            category: category,
+            needsSearch: needsSearch,
+            needsContext: needsContext
+          },
+          memoryContext: ragData.memory_context || null,
+        })
+
         // Store sources for display in ResponseComparison
         if (ragData.search_results && Array.isArray(ragData.search_results) && ragData.search_results.length > 0) {
           setSearchSources(ragData.search_results)
@@ -377,6 +393,20 @@ function App() {
     // No Serper query will be made - models use their training data only
     if (!needsSearch || (needsSearch && responses.length === 0)) {
       setQueryCount(0)
+      
+      // Store debug data for non-search path (no web sources, no memory context in direct calls)
+      if (!ragData) {
+        setRAGDebugData({
+          search: null,
+          refiner: null,
+          categoryDetection: {
+            category: category,
+            needsSearch: needsSearch,
+            needsContext: needsContext
+          },
+          memoryContext: null,
+        })
+      }
       
       // Phase 2 Streaming: Add placeholder responses immediately, then stream tokens into them
       const responseIds = {}

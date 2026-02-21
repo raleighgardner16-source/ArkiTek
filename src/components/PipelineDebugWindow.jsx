@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Search, FileText, ChevronDown, ChevronUp, Brain, Users, Gavel, Code, MessageSquare } from 'lucide-react'
+import { X, Search, FileText, ChevronDown, ChevronUp, Brain, Users, Gavel, Code, MessageSquare, Database } from 'lucide-react'
 import TokenUsageWindow from './TokenUsageWindow'
 import CostBreakdownWindow from './CostBreakdownWindow'
 import CategoryDetectionWindow from './CategoryDetectionWindow'
@@ -8,9 +8,9 @@ import { useStore } from '../store/useStore'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
 
-const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, tokenData, queryCount, categoryDetectionData }) => {
+const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, tokenData, queryCount, categoryDetectionData, inline = false }) => {
   const [isMinimized, setIsMinimized] = useState(false) // Start expanded by default
-  const [expandedSection, setExpandedSection] = useState('refiner') // Start with refiner expanded
+  const [expandedSection, setExpandedSection] = useState('memoryContext') // Start with memory context expanded
   const [modelContexts, setModelContexts] = useState({}) // { modelName: [contextEntries] }
   const [loadingModelContexts, setLoadingModelContexts] = useState(false)
   const [liveJudgeContext, setLiveJudgeContext] = useState(null) // live-polled judge context
@@ -71,6 +71,7 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
 
   const sections = [
     { key: 'categoryDetection', label: 'Category Detection', icon: Code, color: '#00aaff' },
+    { key: 'memoryContext', label: 'Embedded Memory (Long-Term)', icon: Database, color: '#f39c12' },
     { key: 'search', label: 'Search (Serper)', icon: Search, color: '#00ff88' },
     { key: 'refiner', label: 'Source Processing (Raw)', icon: FileText, color: '#ffaa00' },
     { key: 'council', label: 'Council Models', icon: Users, color: '#aa00ff' },
@@ -82,14 +83,15 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
   const renderCategoryDetection = () => {
     if (!debugData.categoryDetection) return null
     
-    const { prompt, response, category, needsSearch } = debugData.categoryDetection
+    const { prompt, response, category, needsSearch, needsContext } = debugData.categoryDetection
     
     return (
       <div style={{ marginBottom: '16px' }}>
         <div style={{ color: '#00aaff', fontWeight: 'bold', marginBottom: '8px' }}>Model: Gemini 2.5 Flash Lite</div>
         <div style={{ marginBottom: '12px' }}>
           <div style={{ color: '#888', fontSize: '12px', marginBottom: '4px' }}>Category: {category}</div>
-          <div style={{ color: '#888', fontSize: '12px' }}>Needs Search: {needsSearch ? 'Yes' : 'No'}</div>
+          <div style={{ color: '#888', fontSize: '12px', marginBottom: '4px' }}>Needs Search: {needsSearch ? 'Yes' : 'No'}</div>
+          <div style={{ color: '#888', fontSize: '12px' }}>Needs Context: {needsContext ? 'Yes' : 'No'}</div>
         </div>
         <div style={{ marginBottom: '12px' }}>
           <div style={{ color: '#00aaff', fontSize: '12px', marginBottom: '4px', fontWeight: 'bold' }}>Prompt Sent:</div>
@@ -512,10 +514,143 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
     )
   }
 
+  const renderMemoryContext = () => {
+    const memCtx = debugData.memoryContext
+    
+    if (!memCtx) {
+      return (
+        <div style={{ color: '#888', fontSize: '12px', fontStyle: 'italic' }}>
+          No memory context data available for this prompt.
+        </div>
+      )
+    }
+
+    return (
+      <div style={{ marginBottom: '16px' }}>
+        {/* Status Banner */}
+        <div style={{ 
+          padding: '10px 12px', 
+          backgroundColor: memCtx.injected ? 'rgba(243, 156, 18, 0.15)' : 'rgba(136, 136, 136, 0.1)', 
+          borderRadius: '8px', 
+          marginBottom: '12px',
+          border: `1px solid ${memCtx.injected ? 'rgba(243, 156, 18, 0.4)' : 'rgba(136, 136, 136, 0.3)'}`
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+            <span style={{ fontSize: '14px' }}>{memCtx.injected ? '🧠' : '💤'}</span>
+            <span style={{ color: memCtx.injected ? '#f39c12' : '#888', fontWeight: 'bold', fontSize: '12px' }}>
+              {memCtx.injected 
+                ? `${memCtx.items.length} past conversation${memCtx.items.length > 1 ? 's' : ''} injected as context` 
+                : 'No relevant past conversations found'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '16px', fontSize: '11px', color: '#aaa' }}>
+            <span>needsContext: <span style={{ color: memCtx.needsContextHint ? '#27ae60' : '#e74c3c', fontWeight: 'bold' }}>
+              {memCtx.needsContextHint ? 'true' : 'false'}
+            </span></span>
+            <span>Score threshold: <span style={{ color: '#f39c12', fontWeight: 'bold' }}>
+              {memCtx.scoreThreshold || (memCtx.needsContextHint ? '0.70' : '0.82')}
+            </span></span>
+          </div>
+        </div>
+
+        {/* Individual Memory Items */}
+        {memCtx.items && memCtx.items.length > 0 ? (
+          memCtx.items.map((item, index) => (
+            <div key={item._id || index} style={{ 
+              marginBottom: '10px', 
+              padding: '12px', 
+              backgroundColor: '#0a0a0a', 
+              borderRadius: '8px',
+              border: '1px solid rgba(243, 156, 18, 0.25)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ color: '#f39c12', fontSize: '12px', fontWeight: 'bold' }}>
+                  #{index + 1} — Score: {typeof item.score === 'number' ? item.score.toFixed(4) : 'N/A'}
+                </div>
+                {item.savedAt && (
+                  <div style={{ color: '#666', fontSize: '10px' }}>
+                    {new Date(item.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </div>
+                )}
+              </div>
+              
+              {item.originalPrompt && (
+                <div style={{ marginBottom: '8px' }}>
+                  <div style={{ color: '#ffaa00', fontSize: '10px', fontWeight: 'bold', marginBottom: '3px' }}>
+                    Original User Prompt:
+                  </div>
+                  <div style={{ 
+                    color: '#ddd', 
+                    fontSize: '11px', 
+                    fontFamily: 'monospace',
+                    whiteSpace: 'pre-wrap',
+                    padding: '6px 8px',
+                    backgroundColor: '#111',
+                    borderRadius: '4px',
+                    maxHeight: '60px',
+                    overflowY: 'auto'
+                  }}>
+                    {item.originalPrompt}
+                  </div>
+                </div>
+              )}
+              
+              {item.title && (
+                <div style={{ marginBottom: '6px' }}>
+                  <div style={{ color: '#888', fontSize: '10px', fontWeight: 'bold', marginBottom: '2px' }}>Title:</div>
+                  <div style={{ color: '#ccc', fontSize: '11px' }}>{item.title}</div>
+                </div>
+              )}
+              
+              {item.summary && (
+                <div>
+                  <div style={{ color: '#00ff88', fontSize: '10px', fontWeight: 'bold', marginBottom: '3px' }}>
+                    Summary Injected:
+                  </div>
+                  <div style={{ 
+                    color: '#ccc', 
+                    fontSize: '11px',
+                    lineHeight: '1.5',
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: 'monospace',
+                    padding: '6px 8px',
+                    backgroundColor: '#111',
+                    borderRadius: '4px',
+                    maxHeight: '120px',
+                    overflowY: 'auto'
+                  }}>
+                    {item.summary}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))
+        ) : (
+          <div style={{ 
+            padding: '12px', 
+            backgroundColor: '#0a0a0a', 
+            borderRadius: '8px', 
+            border: '1px solid #333',
+            color: '#888',
+            fontSize: '12px',
+            fontStyle: 'italic',
+            textAlign: 'center'
+          }}>
+            {memCtx.needsContextHint 
+              ? 'Context was requested but no past conversations scored above the threshold (0.70). The user may not have enough conversation history yet.'
+              : 'Context was not explicitly needed — higher threshold (0.82) applied. No past conversations were similar enough to inject.'}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const renderSectionContent = (sectionKey) => {
     switch (sectionKey) {
       case 'categoryDetection':
         return renderCategoryDetection()
+      case 'memoryContext':
+        return renderMemoryContext()
       case 'search':
         return renderSearch()
       case 'refiner':
@@ -531,6 +666,70 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
       default:
         return null
     }
+  }
+
+  // Inline mode: render without fixed positioning or outer shell
+  if (inline) {
+    return (
+      <div
+        style={{
+          padding: '16px',
+          overflowY: 'auto',
+          maxHeight: 'calc(85vh - 120px)',
+        }}
+      >
+        {sections.map((section) => {
+          const Icon = section.icon
+          const isExpanded = expandedSection === section.key
+          const alwaysShow = section.key === 'modelConversationContext' || section.key === 'conversationContext' || section.key === 'memoryContext'
+          const hasData = alwaysShow ? true : debugData[section.key]
+          
+          if (!hasData) return null
+          
+          return (
+            <div key={section.key} style={{ marginBottom: '12px' }}>
+              <button
+                onClick={() => setExpandedSection(isExpanded ? null : section.key)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  backgroundColor: isExpanded ? '#2a2a2a' : '#1a1a1a',
+                  border: `1px solid ${section.color}`,
+                  borderRadius: '8px',
+                  color: section.color,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '6px',
+                  fontWeight: 'bold',
+                  fontSize: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Icon size={14} />
+                  <span>{section.label}</span>
+                </div>
+                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+
+              {isExpanded && (
+                <div
+                  style={{
+                    padding: '12px',
+                    backgroundColor: '#0a0a0a',
+                    borderRadius: '8px',
+                    border: '1px solid #333',
+                  }}
+                >
+                  {renderSectionContent(section.key)}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
   }
 
   return (
@@ -570,7 +769,7 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Brain size={16} />
-            <span>Pipeline Debug Window (Temporary)</span>
+            <span>Pipeline Debug Window</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
@@ -678,7 +877,7 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
               const Icon = section.icon
               const isExpanded = expandedSection === section.key
               // These sections are always shown (data comes from separate live-polled APIs, not debugData)
-              const alwaysShow = section.key === 'modelConversationContext' || section.key === 'conversationContext'
+              const alwaysShow = section.key === 'modelConversationContext' || section.key === 'conversationContext' || section.key === 'memoryContext'
               const hasData = alwaysShow ? true : debugData[section.key]
               
               if (!hasData) return null

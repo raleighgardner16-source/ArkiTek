@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe, Coins } from 'lucide-react'
+import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe, Coins, Bug } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -8,6 +8,7 @@ import { API_URL } from '../utils/config'
 import { streamFetch } from '../utils/streamFetch'
 import MarkdownRenderer from './MarkdownRenderer'
 import TokenUsageWindow from './TokenUsageWindow'
+import PipelineDebugWindow from './PipelineDebugWindow'
 
 const ResponseComparison = () => {
   const getProviderName = (modelName) => {
@@ -66,10 +67,13 @@ const ResponseComparison = () => {
   const [searchingInConvo, setSearchingInConvo] = useState({}) // { responseId: true/false }
   const [convoSources, setConvoSources] = useState({}) // { responseId: { turnIndex: [...sources] } } — per-turn follow-up search results
   const [showConvoSources, setShowConvoSources] = useState({}) // { "responseId_turnIndex": true/false } — per-turn toggle
-  const [councilPanelTab, setCouncilPanelTab] = useState('responses') // 'responses' | 'tokens'
+  const [councilPanelTab, setCouncilPanelTab] = useState('responses') // 'responses' | 'tokens' | 'pipeline'
   const tokenData = useStore((state) => state.tokenData)
   const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
   const lastSubmittedCategory = useStore((state) => state.lastSubmittedCategory || '')
+  const geminiDetectionResponse = useStore((state) => state.geminiDetectionResponse)
+  const queryCount = useStore((state) => state.queryCount || 0)
+  const showPipelineDebugWindow = useStore((state) => state.showPipelineDebugWindow)
 
   // Auto-scroll conversation containers when new messages are added
   React.useEffect(() => {
@@ -1760,7 +1764,31 @@ const ResponseComparison = () => {
           }}
         >
           <Coins size={13} />
-          Token Usage
+          Model Usage
+        </button>
+        <button
+          onClick={() => setCouncilPanelTab('pipeline')}
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            padding: '8px 12px',
+            fontSize: '0.75rem',
+            fontWeight: '600',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            color: councilPanelTab === 'pipeline' ? currentTheme.accent : currentTheme.textMuted,
+            background: councilPanelTab === 'pipeline' ? currentTheme.buttonBackgroundActive : 'transparent',
+            border: councilPanelTab === 'pipeline' ? `1px solid ${currentTheme.borderLight}` : '1px solid transparent',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <Bug size={13} />
+          Pipeline
         </button>
       </div>
 
@@ -1791,6 +1819,41 @@ const ResponseComparison = () => {
               fontSize: '0.85rem',
             }}>
               No token data available yet. Submit a prompt to see usage.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Pipeline Debug tab content */}
+      {councilPanelTab === 'pipeline' && (
+        <div style={{
+          width: '100%',
+          maxWidth: cardWidth,
+          pointerEvents: 'auto',
+          overflow: 'hidden',
+        }}>
+          {ragDebugData ? (
+            <PipelineDebugWindow
+              debugData={ragDebugData}
+              onClose={() => setCouncilPanelTab('responses')}
+              geminiDetectionResponse={geminiDetectionResponse}
+              tokenData={tokenData}
+              queryCount={0}
+              categoryDetectionData={null}
+              inline={true}
+            />
+          ) : (
+            <div style={{
+              padding: '24px',
+              textAlign: 'center',
+              color: currentTheme.textMuted,
+              fontSize: '0.85rem',
+              background: theme === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(10, 10, 20, 0.95)',
+              border: `1px solid ${currentTheme.borderLight}`,
+              borderRadius: '12px',
+              backdropFilter: 'blur(12px)',
+            }}>
+              No pipeline data available yet. Submit a prompt to see the pipeline.
             </div>
           )}
         </div>

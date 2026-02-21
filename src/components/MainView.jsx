@@ -873,14 +873,15 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         }
         
         const store = useStore.getState()
-        if (finalData.debugData && finalData.usedSearch) {
+        if (finalData.debugData) {
           const existingDebugData = store.ragDebugData || {}
           store.setRAGDebugData({
             ...existingDebugData,
-            search: finalData.debugData.search,
+            search: finalData.debugData.search || existingDebugData.search,
             refiner: finalData.debugData.refiner,
-            categoryDetection: finalData.debugData.categoryDetection,
-            conversationContext: existingDebugData.conversationContext || []
+            categoryDetection: finalData.debugData.categoryDetection || existingDebugData.categoryDetection,
+            conversationContext: existingDebugData.conversationContext || [],
+            memoryContext: finalData.debugData.memoryContext || existingDebugData.memoryContext,
           })
         }
         
@@ -2121,7 +2122,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                               whileTap={{ scale: 0.96 }}
                             >
                               <Coins size={12} />
-                              Token Usage Window
+                              Model Usage Window
                             </motion.button>
                           </div>
                         )}

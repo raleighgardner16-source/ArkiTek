@@ -192,14 +192,15 @@ const SummaryWindow = () => {
         }
         
         const store = useStore.getState()
-        if (finalData.debugData && finalData.usedSearch) {
+        if (finalData.debugData) {
           const existingDebugData = store.ragDebugData || {}
           store.setRAGDebugData({
             ...existingDebugData,
-            search: finalData.debugData.search,
+            search: finalData.debugData.search || existingDebugData.search,
             refiner: finalData.debugData.refiner,
-            categoryDetection: finalData.debugData.categoryDetection,
-            conversationContext: existingDebugData.conversationContext || []
+            categoryDetection: finalData.debugData.categoryDetection || existingDebugData.categoryDetection,
+            conversationContext: existingDebugData.conversationContext || [],
+            memoryContext: finalData.debugData.memoryContext || existingDebugData.memoryContext,
           })
         }
         
