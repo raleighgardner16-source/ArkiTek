@@ -7309,10 +7309,21 @@ AGREEMENTS:
 (THIS SECTION IS MANDATORY! List at least 3-5 specific agreement points. NEVER write "None identified" unless models literally contradict each other on everything.)
 
 DISAGREEMENTS:
-- [First genuine contradiction or conflicting claim between models - explain which models and what they each said]
-(IMPORTANT: This section is ONLY for genuine contradictions and conflicting claims — where one model says X and another says Y and both cannot be true. Examples of REAL disagreements: different dates, different numbers, different factual claims, opposing recommendations, or mutually exclusive conclusions.
-Do NOT list these as disagreements: one model being more detailed than another, one model mentioning a topic another omits, different examples used to make the same point, different tone or framing of the same conclusion, or varying levels of specificity. Those are differences in coverage, not contradictions.
-If there are no genuine contradictions, write "None identified — all models are in factual agreement." This is perfectly acceptable and expected for straightforward topics.)`
+- [Only list DIRECT CONTRADICTIONS here — where two models make claims that CANNOT BOTH BE TRUE]
+(CRITICAL RULES FOR THIS SECTION:
+A "disagreement" means Model A states a FACT and Model B states the OPPOSITE FACT. Both statements cannot be true at the same time. For example:
+- REAL DISAGREEMENT: "Gemini says the election is November 7, but Grok says it is November 3" — one must be wrong.
+- REAL DISAGREEMENT: "Claude says ibuprofen should be avoided, but GPT says ibuprofen is recommended" — directly contradictory advice.
+- REAL DISAGREEMENT: "Grok claims the death toll was 500, while Gemini reports 2,000" — conflicting numbers.
+
+THE FOLLOWING ARE NOT DISAGREEMENTS — DO NOT LIST THEM:
+- One model mentioning something another model does not mention. That is an omission, not a contradiction.
+- Models recommending different products or examples. Suggesting "bacitracin" vs "benzoyl peroxide" are both valid suggestions, not a contradiction.
+- One model giving more detail or being more specific than another. More detail is not a disagreement.
+- Models using different tone, structure, or framing to express the same underlying point.
+- One model including extra advice the others left out.
+
+If no direct contradictions exist, write exactly: "None identified — all models are in factual agreement." This is the CORRECT answer for most topics. Do not force disagreements where none exist.)`
 
 
 
