@@ -646,7 +646,7 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
             textAlign: 'center'
           }}>
             {memCtx.needsContextHint 
-              ? 'Context was requested but no past conversations scored above the threshold (0.70). The user may not have enough conversation history yet.'
+              ? `Context was requested but no past conversations scored above the threshold (${memCtx.scoreThreshold || '0.70'}).${memCtx.diagnostics ? ` (${memCtx.diagnostics.totalDocs} saved convos, ${memCtx.diagnostics.docsWithEmbedding} have embeddings)` : ''} ${memCtx.diagnostics && memCtx.diagnostics.docsWithEmbedding === 0 ? '⚠️ No embeddings found — the Vector Search index may be missing or building. Check server logs.' : memCtx.diagnostics && memCtx.diagnostics.totalDocs === 0 ? 'No conversation history found yet.' : ''}`
               : 'Context was not explicitly needed — higher threshold (0.82) applied. No past conversations were similar enough to inject.'}
           </div>
         )}

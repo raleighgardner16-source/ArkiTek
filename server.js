@@ -59,10 +59,70 @@ const initDatabase = async () => {
     console.log('[Server] ✅ ADMIN DB connected successfully')
     
     console.log('[Server] 🗄️  Using MongoDB as primary data store')
+
+    // Ensure the vector search index exists for embedding-based memory retrieval
+    await ensureVectorSearchIndex()
   } catch (error) {
     console.error('[Server] ❌ MongoDB connection failed:', error.message)
     console.error('[Server] Cannot start without database connection')
     process.exit(1) // Exit if MongoDB fails - no fallback
+  }
+}
+
+/**
+ * Ensure the conversation_embedding_index exists in MongoDB Atlas.
+ * This vector search index is required for $vectorSearch (embedding-based memory).
+ * If it doesn't exist, we attempt to create it programmatically.
+ */
+async function ensureVectorSearchIndex() {
+  try {
+    const dbInstance = await db.getDb()
+    const col = dbInstance.collection('conversation_history')
+
+    // Check if the index already exists
+    const existingIndexes = await col.listSearchIndexes().toArray()
+    const hasIndex = existingIndexes.some(idx => idx.name === 'conversation_embedding_index')
+
+    if (hasIndex) {
+      console.log('[Memory] ✅ Vector search index "conversation_embedding_index" exists')
+      return
+    }
+
+    // Index doesn't exist — create it
+    console.log('[Memory] ⚠️  Vector search index not found, creating "conversation_embedding_index"...')
+    await col.createSearchIndex({
+      name: 'conversation_embedding_index',
+      type: 'vectorSearch',
+      definition: {
+        fields: [
+          {
+            type: 'vector',
+            path: 'embedding',
+            numDimensions: 1536,
+            similarity: 'cosine',
+          },
+          {
+            type: 'filter',
+            path: 'userId',
+          },
+        ],
+      },
+    })
+    console.log('[Memory] ✅ Vector search index "conversation_embedding_index" created successfully')
+    console.log('[Memory] ℹ️  Note: Atlas may take 1-2 minutes to build the index before queries work')
+  } catch (error) {
+    // Atlas free tier or shared clusters might not support programmatic index creation
+    // In that case, the user needs to create it manually in the Atlas UI
+    if (error.code === 31 || error.codeName === 'CommandNotSupported' || error.message?.includes('not supported')) {
+      console.warn('[Memory] ⚠️  Could not create vector search index programmatically.')
+      console.warn('[Memory] ⚠️  Please create it manually in MongoDB Atlas:')
+      console.warn('[Memory]     → Database: conversation_history collection')
+      console.warn('[Memory]     → Index name: conversation_embedding_index')
+      console.warn('[Memory]     → Type: vectorSearch')
+      console.warn('[Memory]     → Fields: embedding (vector, 1536 dims, cosine) + userId (filter)')
+    } else {
+      console.error('[Memory] Error checking/creating vector search index:', error.message)
+    }
   }
 }
 
@@ -5940,6 +6000,20 @@ app.post('/api/memory/retrieve', async (req, res) => {
     const memoryContextItems = await findRelevantContext(userId, prompt, 3, scoreThreshold)
     const memoryContextString = formatMemoryContext(memoryContextItems)
 
+    // Quick diagnostic: count how many docs have embeddings for this user
+    let diagnostics = null
+    if (memoryContextItems.length === 0) {
+      try {
+        const dbInstance = await db.getDb()
+        const totalDocs = await dbInstance.collection('conversation_history').countDocuments({ userId })
+        const docsWithEmbedding = await dbInstance.collection('conversation_history').countDocuments({ userId, embedding: { $exists: true, $ne: null } })
+        diagnostics = { totalDocs, docsWithEmbedding }
+        console.log(`[Memory Retrieve] Diagnostics for ${userId}: ${totalDocs} total docs, ${docsWithEmbedding} with embeddings`)
+      } catch (diagErr) {
+        console.error('[Memory Retrieve] Diagnostic check failed:', diagErr.message)
+      }
+    }
+
     if (memoryContextString) {
       console.log(`[Memory Retrieve] Found ${memoryContextItems.length} items for user ${userId} (threshold: ${scoreThreshold})`)
     } else {
@@ -5952,10 +6026,156 @@ app.post('/api/memory/retrieve', async (req, res) => {
       needsContextHint: !!needsContext,
       scoreThreshold,
       injected: memoryContextItems.length > 0,
+      diagnostics,
     })
   } catch (error) {
     console.error('[Memory Retrieve] Error:', error.message)
     res.json({ items: [], contextString: '', injected: false })
+  }
+})
+
+// ==================== MEMORY DIAGNOSTICS ====================
+// Checks embedding storage and vector search health for a user.
+app.get('/api/memory/debug/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params
+    if (!userId) return res.status(400).json({ error: 'userId required' })
+
+    const dbInstance = await db.getDb()
+    const col = dbInstance.collection('conversation_history')
+
+    // 1. Count total docs for this user
+    const totalDocs = await col.countDocuments({ userId })
+
+    // 2. Count docs with embeddings
+    const docsWithEmbedding = await col.countDocuments({ userId, embedding: { $exists: true, $ne: null } })
+
+    // 3. Sample recent docs to see if they have embeddings
+    const recentDocs = await col.find({ userId })
+      .sort({ savedAt: -1 })
+      .limit(10)
+      .project({ _id: 1, title: 1, originalPrompt: 1, savedAt: 1, embeddingText: 1, embedding: { $slice: 3 }, finalizedAt: 1 })
+      .toArray()
+
+    const docSummaries = recentDocs.map(d => ({
+      id: d._id,
+      title: d.title,
+      prompt: (d.originalPrompt || '').substring(0, 100),
+      savedAt: d.savedAt,
+      hasEmbedding: !!(d.embedding && d.embedding.length > 0),
+      embeddingDims: d.embedding ? d.embedding.length : 0,
+      embeddingTextLength: d.embeddingText ? d.embeddingText.length : 0,
+      embeddingTextPreview: d.embeddingText ? d.embeddingText.substring(0, 200) : null,
+      finalizedAt: d.finalizedAt || null,
+    }))
+
+    // 4. Attempt vector search (without userId filter to test if index exists at all)
+    let vectorSearchWorks = false
+    let vectorSearchError = null
+    let rawResults = []
+    try {
+      // Generate a test embedding
+      const testEmbedding = await generateEmbedding('test query about hunting', userId)
+      if (testEmbedding) {
+        // Try without userId filter first
+        const searchResults = await col.aggregate([
+          {
+            $vectorSearch: {
+              index: 'conversation_embedding_index',
+              path: 'embedding',
+              queryVector: testEmbedding,
+              numCandidates: 20,
+              limit: 5
+            }
+          },
+          {
+            $project: {
+              _id: 1,
+              userId: 1,
+              title: 1,
+              originalPrompt: 1,
+              score: { $meta: 'vectorSearchScore' }
+            }
+          }
+        ]).toArray()
+
+        vectorSearchWorks = true
+        rawResults = searchResults.map(r => ({
+          id: r._id,
+          userId: r.userId,
+          title: r.title,
+          prompt: (r.originalPrompt || '').substring(0, 100),
+          score: r.score,
+        }))
+
+        // 5. Try with userId filter
+        let filteredResults = []
+        try {
+          const filteredSearch = await col.aggregate([
+            {
+              $vectorSearch: {
+                index: 'conversation_embedding_index',
+                path: 'embedding',
+                queryVector: testEmbedding,
+                numCandidates: 20,
+                limit: 5,
+                filter: { userId: userId }
+              }
+            },
+            {
+              $project: {
+                _id: 1,
+                userId: 1,
+                title: 1,
+                originalPrompt: 1,
+                score: { $meta: 'vectorSearchScore' }
+              }
+            }
+          ]).toArray()
+          filteredResults = filteredSearch.map(r => ({
+            id: r._id,
+            userId: r.userId,
+            title: r.title,
+            prompt: (r.originalPrompt || '').substring(0, 100),
+            score: r.score,
+          }))
+        } catch (filterErr) {
+          filteredResults = { error: filterErr.message, code: filterErr.code, codeName: filterErr.codeName }
+        }
+
+        rawResults = {
+          withoutFilter: rawResults,
+          withUserIdFilter: filteredResults,
+        }
+      } else {
+        vectorSearchError = 'Could not generate test embedding (OpenAI API key issue?)'
+      }
+    } catch (vsErr) {
+      vectorSearchError = `${vsErr.message} (code: ${vsErr.code}, codeName: ${vsErr.codeName})`
+    }
+
+    res.json({
+      userId,
+      totalDocs,
+      docsWithEmbedding,
+      recentDocs: docSummaries,
+      vectorSearch: {
+        works: vectorSearchWorks,
+        error: vectorSearchError,
+        results: rawResults,
+      },
+      indexExpected: 'conversation_embedding_index',
+      indexRequirements: {
+        path: 'embedding',
+        numDimensions: 1536,
+        similarity: 'cosine',
+        filterFields: ['userId'],
+        note: 'The userId field MUST be defined as a "filter" type in the Atlas Search index definition for filtered $vectorSearch to work.'
+      }
+    })
+  } catch (error) {
+    console.error('[Memory Debug] Error:', error.message)
+    res.status(500).json({ error: error.message })
   }
 })
 
