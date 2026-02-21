@@ -2121,7 +2121,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                               whileTap={{ scale: 0.96 }}
                             >
                               <Coins size={12} />
-                              Token Usage
+                              Token Usage Window
                             </motion.button>
                           </div>
                         )}

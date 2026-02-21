@@ -196,41 +196,8 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
     )
   }
 
-  // Show minimized state
-  if (isMinimized && activeTab === 'home') {
-    return (
-      <motion.button
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        onClick={() => setIsMinimized(false)}
-        style={{
-          position: 'fixed',
-          bottom: '80px',
-          right: '20px',
-          background: 'rgba(93, 173, 226, 0.2)',
-          border: '1px solid rgba(93, 173, 226, 0.5)',
-          borderRadius: '12px',
-          padding: '12px 20px',
-          color: '#5dade2',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          zIndex: 140,
-          fontSize: '0.9rem',
-          fontWeight: '500',
-          boxShadow: '0 0 20px rgba(93, 173, 226, 0.3)',
-        }}
-        whileHover={{ background: 'rgba(93, 173, 226, 0.3)', scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-      >
-        <Maximize2 size={16} />
-        Token Usage ({totalTokens.toLocaleString()})
-      </motion.button>
-    )
-  }
-  
-  if (isMinimized && activeTab !== 'home') {
+  // When minimized, fully hide — user reopens via the Token Usage button
+  if (isMinimized) {
     return null
   }
 
@@ -283,6 +250,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                   onClick={(e) => {
                     e.stopPropagation()
                     setIsMinimized(true)
+                    onClose()
                   }}
                   style={{
                     background: 'rgba(93, 173, 226, 0.1)',
