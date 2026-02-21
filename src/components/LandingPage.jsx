@@ -206,7 +206,7 @@ const LandingPage = ({ onNavigate }) => {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
             <button
-              onClick={() => onNavigate('select-plan')}
+              onClick={() => onNavigate('signup')}
               style={{
                 padding: '14px 32px',
                 background: currentTheme.accentGradient,
@@ -476,7 +476,7 @@ const LandingPage = ({ onNavigate }) => {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            onClick={() => onNavigate('select-plan')}
+            onClick={() => onNavigate('signup', 'free_trial')}
             style={{
               flex: 1,
               padding: '32px',
@@ -555,7 +555,7 @@ const LandingPage = ({ onNavigate }) => {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.1 }}
-            onClick={() => onNavigate('select-plan')}
+            onClick={() => onNavigate('signup', 'pro')}
             style={{
               flex: 1,
               padding: '32px',

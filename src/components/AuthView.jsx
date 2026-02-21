@@ -9,7 +9,7 @@ import FingerprintJS from '@fingerprintjs/fingerprintjs'
 
 // Possible views: 'select-plan' | 'signin' | 'signup' | 'forgot-username' | 'forgot-password' | 'reset-password' | 'verification-pending' | 'verify-email'
 
-const AuthView = ({ initialView, onNavigate }) => {
+const AuthView = ({ initialView, initialPlan, onNavigate }) => {
   const [view, setView] = useState(initialView || 'signin')
   const [formData, setFormData] = useState({
     firstName: '',
@@ -28,7 +28,7 @@ const AuthView = ({ initialView, onNavigate }) => {
   const [showPassword, setShowPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [selectedPlan, setSelectedPlan] = useState('free_trial')
+  const [selectedPlan, setSelectedPlan] = useState(initialPlan || 'free_trial')
   const [fingerprint, setFingerprint] = useState(null)
   const [verificationEmail, setVerificationEmail] = useState('')
   const [verificationUserId, setVerificationUserId] = useState('')

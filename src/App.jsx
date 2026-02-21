@@ -59,8 +59,13 @@ function App() {
     return 'landing'
   })
 
+  // Plan pre-selected from landing page (e.g. clicking a pricing card)
+  const [landingPlan, setLandingPlan] = useState(null)
+
   // Navigate between public pages (updates URL and state)
-  const navigatePublic = (page) => {
+  // Optional `plan` param lets the landing page pre-select free_trial or pro
+  const navigatePublic = (page, plan) => {
+    if (plan) setLandingPlan(plan)
     setPublicPage(page)
     const pathMap = {
       landing: '/',
@@ -1063,7 +1068,7 @@ function App() {
     if (publicPage === 'privacy') return <PrivacyPolicy onNavigate={navigatePublic} />
     // Auth views (sign in / sign up)
     if (publicPage === 'signin' || publicPage === 'signup' || publicPage === 'select-plan') {
-      return <AuthView initialView={publicPage} onNavigate={navigatePublic} />
+      return <AuthView initialView={publicPage} initialPlan={landingPlan} onNavigate={navigatePublic} />
     }
     // Default: Landing page
     return <LandingPage onNavigate={navigatePublic} />
