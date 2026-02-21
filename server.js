@@ -183,24 +183,26 @@ const flushUsageToMongo = async () => {
     for (const userId of usersToSync) {
       if (!usageCache[userId]) continue
       
-      // IMPORTANT: Exclude totalTokens and monthlyUsage from $set entirely.
+      // IMPORTANT: Exclude totalTokens, totalPrompts, and monthlyUsage from $set entirely.
       // totalTokens and monthlyUsage.*.tokens are managed EXCLUSIVELY by the
       // POST /api/stats/token-update endpoint using atomic MongoDB $inc.
+      // totalPrompts and monthlyUsage.*.prompts are managed EXCLUSIVELY by
+      // trackPrompt() and trackConversationPrompt() using atomic MongoDB $inc.
       //
       // Previously, we stripped .tokens from monthlyUsage entries but still $set
       // the entire monthlyUsage object. This REPLACED the whole field in MongoDB,
       // which DELETED the $inc'd tokens value. Now we use dot-notation $set for
-      // each monthlyUsage sub-field so the tokens field is left untouched.
-      const { totalTokens: _tt, monthlyUsage: _mu, ...cacheWithoutManagedFields } = usageCache[userId]
+      // each monthlyUsage sub-field so the tokens/prompts fields are left untouched.
+      const { totalTokens: _tt, totalPrompts: _tp, monthlyUsage: _mu, ...cacheWithoutManagedFields } = usageCache[userId]
       
-      // Build dot-notation updates for monthlyUsage sub-fields (excluding .tokens)
+      // Build dot-notation updates for monthlyUsage sub-fields (excluding .tokens and .prompts)
       const monthlyDotUpdates = {}
       if (_mu) {
         for (const [month, data] of Object.entries(_mu)) {
           if (!data) continue
-          const { tokens: _mt, ...monthWithoutTokens } = data
-          // Set each non-tokens field individually via dot notation
-          for (const [field, value] of Object.entries(monthWithoutTokens)) {
+          const { tokens: _mt, prompts: _mp, ...monthWithoutManagedFields } = data
+          // Set each non-managed field individually via dot notation
+          for (const [field, value] of Object.entries(monthWithoutManagedFields)) {
             monthlyDotUpdates[`monthlyUsage.${month}.${field}`] = value
           }
         }
@@ -766,7 +768,7 @@ const getUserTimezone = (userId) => {
 }
 
 // Track a prompt submission (one per user submission, regardless of models called)
-const trackPrompt = (userId, promptText, category, promptData = {}) => {
+const trackPrompt = async (userId, promptText, category, promptData = {}) => {
   const usage = readUsage()
   if (!usage[userId]) {
     usage[userId] = {
@@ -1012,6 +1014,26 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
 
   writeUsage(usage, userId)
   
+  // Atomic MongoDB $inc for prompt counts (prevents race conditions on Vercel serverless).
+  // Same pattern as /api/stats/token-update uses for totalTokens.
+  try {
+    const dbInstance = await db.getDb()
+    await dbInstance.collection('usage_data').updateOne(
+      { _id: userId },
+      { 
+        $inc: { 
+          totalPrompts: 1,
+          [`monthlyUsage.${currentMonth}.prompts`]: 1
+        },
+        $set: { updatedAt: new Date() }
+      },
+      { upsert: true }
+    )
+    console.log(`[Prompt Tracking] Atomic $inc for ${userId}: totalPrompts +1, monthlyUsage.${currentMonth}.prompts +1`)
+  } catch (incErr) {
+    console.error(`[Prompt Tracking] Atomic $inc failed for ${userId}:`, incErr.message)
+  }
+  
   // Also update users cache with last active date
   const users = readUsers()
   if (users[userId]) {
@@ -1028,7 +1050,7 @@ const trackPrompt = (userId, promptText, category, promptData = {}) => {
 
 // Track a continued conversation prompt (1 per follow-up message in judge or model conversation)
 // Counts 1 prompt per follow-up message. Token counting is handled by trackUsage() separately.
-const trackConversationPrompt = (userId, userMessage) => {
+const trackConversationPrompt = async (userId, userMessage) => {
   if (!userId) return
   
   const usage = readUsage()
@@ -1047,7 +1069,7 @@ const trackConversationPrompt = (userId, userMessage) => {
     userUsage.monthlyUsage[currentMonth].prompts = 0
   }
   
-  // Count 1 prompt for this conversation follow-up
+  // Count 1 prompt for this conversation follow-up (in-memory for same-instance reads)
   userUsage.totalPrompts = (userUsage.totalPrompts || 0) + 1
   userUsage.monthlyUsage[currentMonth].prompts += 1
   console.log(`[Conversation Prompt] User ${userId}: Prompts -> ${userUsage.totalPrompts}, Monthly -> ${userUsage.monthlyUsage[currentMonth].prompts}`)
@@ -1057,6 +1079,26 @@ const trackConversationPrompt = (userId, userMessage) => {
   // Adding them here would cause double-counting since the API's input token count already includes the user message.
   
   writeUsage(usage, userId)
+  
+  // Atomic MongoDB $inc for prompt counts (prevents race conditions on Vercel serverless).
+  // Same pattern as /api/stats/token-update uses for totalTokens.
+  try {
+    const dbInstance = await db.getDb()
+    await dbInstance.collection('usage_data').updateOne(
+      { _id: userId },
+      { 
+        $inc: { 
+          totalPrompts: 1,
+          [`monthlyUsage.${currentMonth}.prompts`]: 1
+        },
+        $set: { updatedAt: new Date() }
+      },
+      { upsert: true }
+    )
+    console.log(`[Conversation Prompt] Atomic $inc for ${userId}: totalPrompts +1, monthlyUsage.${currentMonth}.prompts +1`)
+  } catch (incErr) {
+    console.error(`[Conversation Prompt] Atomic $inc failed for ${userId}:`, incErr.message)
+  }
 }
 
 // Track usage for a user
@@ -2319,7 +2361,7 @@ app.post('/api/stats/prompt', async (req, res) => {
       hasSources: !!sources,
       sourcesCount: sources?.length || 0,
     })
-    trackPrompt(userId, promptText, category, { responses, summary, facts, sources })
+    await trackPrompt(userId, promptText, category, { responses, summary, facts, sources })
     console.log('[Prompt Tracking] Prompt tracking completed for user:', userId)
     
     // CRITICAL: Flush to MongoDB IMMEDIATELY (not debounced).
@@ -2552,18 +2594,22 @@ app.get('/api/stats/:userId', async (req, res) => {
   // Use user's timezone for date calculations
   const tz = getUserTimezone(userId)
   
-  // Read totalTokens and monthlyUsage.tokens DIRECTLY from MongoDB.
-  // These are managed by atomic $inc in /api/stats/token-update and must not
-  // come from the in-memory cache (which could be stale on a different Vercel instance).
+  // Read totalTokens, totalPrompts, monthlyUsage.tokens, monthlyUsage.prompts
+  // DIRECTLY from MongoDB. These are managed by atomic $inc and must not come
+  // from the in-memory cache (which could be stale on a different Vercel instance).
   let mongoTotalTokens = null
   let mongoMonthlyTokens = null
+  let mongoTotalPrompts = null
+  let mongoMonthlyPrompts = null
   try {
     const dbInstance = await db.getDb()
     const mongoDoc = await dbInstance.collection('usage_data').findOne({ _id: userId })
     if (mongoDoc) {
       mongoTotalTokens = mongoDoc.totalTokens || 0
+      mongoTotalPrompts = mongoDoc.totalPrompts || 0
       const currentMonthKey = getMonthForUser(tz)
       mongoMonthlyTokens = mongoDoc.monthlyUsage?.[currentMonthKey]?.tokens || 0
+      mongoMonthlyPrompts = mongoDoc.monthlyUsage?.[currentMonthKey]?.prompts || 0
     }
   } catch (err) {
     console.error('[Stats] MongoDB direct read failed:', err.message)
@@ -2774,23 +2820,28 @@ app.get('/api/stats/:userId', async (req, res) => {
   // Round all monetary values to 2 decimal places (cents) before sending
   const roundCents = (v) => Math.round((v || 0) * 100) / 100
 
-  // Use MongoDB values for totalTokens/monthlyTokens (updated atomically via $inc).
-  // Fall back to cache values if MongoDB read failed, using Math.max for safety.
+  // Use MongoDB values for totalTokens/monthlyTokens/totalPrompts/monthlyPrompts
+  // (updated atomically via $inc). Fall back to cache values if MongoDB read failed,
+  // using Math.max for safety.
   const cacheTotalTokens = userUsage.totalTokens || 0
   const totalTokens = mongoTotalTokens !== null ? Math.max(mongoTotalTokens, cacheTotalTokens) : cacheTotalTokens
   const cacheMonthlyTokens = monthlyStats.tokens || 0
   const monthlyTokens = mongoMonthlyTokens !== null ? Math.max(mongoMonthlyTokens, cacheMonthlyTokens) : cacheMonthlyTokens
+  const cacheTotalPrompts = userUsage.totalPrompts || 0
+  const totalPrompts = mongoTotalPrompts !== null ? Math.max(mongoTotalPrompts, cacheTotalPrompts) : cacheTotalPrompts
+  const cacheMonthlyPrompts = monthlyStats.prompts || 0
+  const monthlyPrompts = mongoMonthlyPrompts !== null ? Math.max(mongoMonthlyPrompts, cacheMonthlyPrompts) : cacheMonthlyPrompts
 
   // Note: Query costs ($0.001/query) are included in monthlyCost but not exposed to users
   res.json({
     totalTokens: totalTokens,
     totalInputTokens: userUsage.totalInputTokens || 0,
     totalOutputTokens: userUsage.totalOutputTokens || 0,
-    totalPrompts: userUsage.totalPrompts || 0,
+    totalPrompts: totalPrompts,
     monthlyTokens: monthlyTokens,
     monthlyInputTokens: monthlyStats.inputTokens || 0,
     monthlyOutputTokens: monthlyStats.outputTokens || 0,
-    monthlyPrompts: monthlyStats.prompts || 0,
+    monthlyPrompts: monthlyPrompts,
     monthlyCost: roundCents(monthlyCost),
     remainingFreeAllocation: roundCents(remainingFreeAllocation),
     freeUsagePercentage: Math.round(freeUsagePercentage * 100) / 100,
@@ -3308,7 +3359,7 @@ app.post('/api/judge/conversation', async (req, res) => {
     trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
     
     // Count this continued conversation as 1 prompt + count user's message tokens
-    trackConversationPrompt(userId, userMessage)
+    await trackConversationPrompt(userId, userMessage)
     
     // Flush to MongoDB immediately (Vercel serverless may freeze before debounced timer fires)
     flushUsageToMongo().catch(err => console.error('[Judge Conversation] Flush failed:', err.message))
@@ -3548,7 +3599,7 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
     trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
     
     // Count this continued conversation as 1 prompt + count user's message tokens
-    trackConversationPrompt(userId, userMessage)
+    await trackConversationPrompt(userId, userMessage)
 
     // Flush to MongoDB immediately (Vercel serverless may freeze before debounced timer fires)
     flushUsageToMongo().catch(err => console.error('[Judge Conversation Stream] Flush failed:', err.message))
@@ -3937,7 +3988,7 @@ app.post('/api/model/conversation/stream', async (req, res) => {
     trackUsage(userId, provider, model, inputTokens, outputTokens)
 
     // Count this continued conversation as 1 prompt + count user's message tokens
-    trackConversationPrompt(userId, userMessage)
+    await trackConversationPrompt(userId, userMessage)
 
     // Flush to MongoDB immediately (Vercel serverless may freeze before debounced timer fires)
     flushUsageToMongo().catch(err => console.error('[Model Conversation] Flush failed:', err.message))
@@ -4190,7 +4241,7 @@ app.post('/api/model/conversation', async (req, res) => {
     trackUsage(userId, provider, model, inputTokens, outputTokens)
     
     // Count this continued conversation as 1 prompt + count user's message tokens
-    trackConversationPrompt(userId, userMessage)
+    await trackConversationPrompt(userId, userMessage)
     
     // Flush to MongoDB immediately (Vercel serverless may freeze before debounced timer fires)
     flushUsageToMongo().catch(err => console.error('[Model Conversation Non-Stream] Flush failed:', err.message))
@@ -8370,26 +8421,29 @@ app.post('/api/history/auto-save', async (req, res) => {
     await dbInstance.collection('conversation_history').insertOne(doc)
     console.log(`[History] Auto-saved conversation for user ${userId}: ${historyId}`)
 
-    // Generate embedding asynchronously (don't block the response)
-    // The embedding is stored on the same document for $vectorSearch retrieval
-    ;(async () => {
-      try {
-        const embeddingText = buildEmbeddingText(originalPrompt, doc.responses, doc.summary)
-        const embedding = await generateEmbedding(embeddingText, userId)
-        if (embedding) {
-          await dbInstance.collection('conversation_history').updateOne(
-            { _id: historyId },
-            { $set: { embedding, embeddingText } }
-          )
-          console.log(`[History] Embedding stored for ${historyId} (${embedding.length} dims)`)
-        }
-      } catch (embErr) {
-        console.error(`[History] Embedding generation failed for ${historyId}:`, embErr.message)
-        // Non-fatal — conversation is saved, embedding can be backfilled later
+    // Generate embedding BEFORE sending response.
+    // On Vercel serverless, fire-and-forget async work after res.json() is lost because
+    // the execution environment freezes once the response is sent. The embedding MUST
+    // complete before we respond, otherwise it will never be stored and memory/context
+    // retrieval will fail for this conversation.
+    let embeddingStored = false
+    try {
+      const embeddingText = buildEmbeddingText(originalPrompt, doc.responses, doc.summary)
+      const embedding = await generateEmbedding(embeddingText, userId)
+      if (embedding) {
+        await dbInstance.collection('conversation_history').updateOne(
+          { _id: historyId },
+          { $set: { embedding, embeddingText } }
+        )
+        embeddingStored = true
+        console.log(`[History] Embedding stored for ${historyId} (${embedding.length} dims)`)
       }
-    })()
+    } catch (embErr) {
+      console.error(`[History] Embedding generation failed for ${historyId}:`, embErr.message)
+      // Non-fatal — conversation is saved, embedding can be backfilled later
+    }
 
-    res.json({ success: true, historyId, title })
+    res.json({ success: true, historyId, title, embeddingStored })
   } catch (error) {
     console.error('[History] Error auto-saving:', error)
     res.status(500).json({ error: 'Failed to save conversation history' })
