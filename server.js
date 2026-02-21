@@ -7309,9 +7309,10 @@ AGREEMENTS:
 (THIS SECTION IS MANDATORY! List at least 3-5 specific agreement points. NEVER write "None identified" unless models literally contradict each other on everything.)
 
 DISAGREEMENTS:
-- [First difference between models - explain]
-- [Second difference between models - explain]
-(THIS SECTION IS MANDATORY! Look for: outright contradictions, different emphasis or focus areas, different levels of detail, different examples or evidence cited, different tone (optimistic vs pessimistic), topics covered by one model but omitted by another, or different framing of the same issue. You MUST list at least 2-3 differences — even when models broadly agree, they almost always differ in emphasis, specificity, or framing. Only write "None identified." if the responses are virtually identical word-for-word.)`
+- [First genuine contradiction or conflicting claim between models - explain which models and what they each said]
+(IMPORTANT: This section is ONLY for genuine contradictions and conflicting claims — where one model says X and another says Y and both cannot be true. Examples of REAL disagreements: different dates, different numbers, different factual claims, opposing recommendations, or mutually exclusive conclusions.
+Do NOT list these as disagreements: one model being more detailed than another, one model mentioning a topic another omits, different examples used to make the same point, different tone or framing of the same conclusion, or varying levels of specificity. Those are differences in coverage, not contradictions.
+If there are no genuine contradictions, write "None identified — all models are in factual agreement." This is perfectly acceptable and expected for straightforward topics.)`
 
 
 
