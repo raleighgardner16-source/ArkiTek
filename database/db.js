@@ -376,8 +376,7 @@ const users = {
       db.collection('judge_context').deleteOne({ _id: userId }),
       db.collection('usage_data').deleteOne({ _id: userId }),
       db.collection('user_stats').deleteOne({ _id: userId }),
-      db.collection('saved_individual').deleteMany({ userId }),
-      db.collection('saved_sessions').deleteMany({ userId }),
+      // (saved_individual and saved_sessions removed — superseded by conversation_history)
       db.collection('leaderboard_posts').deleteMany({ userId }),
       db.collection('conversation_history').deleteMany({ userId }),
       db.collection('daily_usage').deleteMany({ userId }),
