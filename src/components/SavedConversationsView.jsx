@@ -506,22 +506,84 @@ const SavedConversationsView = () => {
           </div>
         )}
 
-        {/* Model Responses */}
-        {selectedConvo.responses && selectedConvo.responses.length > 0 && (
-          <div style={{ marginBottom: '20px' }}>
-            <h3 style={{ fontSize: '1rem', color: currentTheme.text, marginBottom: '12px' }}>
-              {selectedConvo.responses.length > 1 ? `Council Responses (${selectedConvo.responses.length} models)` : 'Model Response'}
-            </h3>
-            {selectedConvo.responses.map((resp, idx) => (
-              <ExpandableResponse
-                key={idx}
-                resp={resp}
-                idx={idx}
-                currentTheme={currentTheme}
-              />
-            ))}
-          </div>
-        )}
+        {/* Model Responses + Continued Conversations (grouped per model) */}
+        {selectedConvo.responses && selectedConvo.responses.length > 0 && (() => {
+          // Group conversation turns by modelName so they appear under their model
+          const turnsByModel = {}
+          const judgeTurns = []
+          ;(selectedConvo.conversationTurns || []).forEach(turn => {
+            if (turn.type === 'judge') {
+              judgeTurns.push(turn)
+            } else {
+              const key = turn.modelName || 'Unknown'
+              if (!turnsByModel[key]) turnsByModel[key] = []
+              turnsByModel[key].push(turn)
+            }
+          })
+
+          // Sort: models that have continued conversations come first
+          const sortedResponses = [...selectedConvo.responses].sort((a, b) => {
+            const aName = a.modelName || a.actualModelName || ''
+            const bName = b.modelName || b.actualModelName || ''
+            const aHasTurns = turnsByModel[aName] ? 1 : 0
+            const bHasTurns = turnsByModel[bName] ? 1 : 0
+            return bHasTurns - aHasTurns
+          })
+
+          return (
+            <div style={{ marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '1rem', color: currentTheme.text, marginBottom: '12px' }}>
+                {selectedConvo.responses.length > 1 ? `Council Responses (${selectedConvo.responses.length} models)` : 'Model Response'}
+              </h3>
+              {sortedResponses.map((resp, idx) => {
+                const modelName = resp.modelName || resp.actualModelName || `Model ${idx + 1}`
+                const modelTurns = turnsByModel[modelName] || []
+                return (
+                  <ExpandableResponse
+                    key={idx}
+                    resp={resp}
+                    idx={idx}
+                    currentTheme={currentTheme}
+                    conversationTurns={modelTurns}
+                  />
+                )
+              })}
+
+              {/* Judge conversation turns (if any) — shown after all model sections */}
+              {judgeTurns.length > 0 && judgeTurns.map((turn, idx) => (
+                <div key={`judge-turn-${idx}`} style={{ marginTop: '16px' }}>
+                  {/* User message */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                    <div style={{
+                      maxWidth: '80%',
+                      padding: '10px 14px',
+                    }}>
+                      <div style={{
+                        fontSize: '0.65rem', fontWeight: '600', color: currentTheme.accent,
+                        marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px',
+                      }}>You</div>
+                      <p style={{ color: currentTheme.text, margin: 0, lineHeight: '1.5', fontSize: '0.9rem', whiteSpace: 'pre-wrap' }}>
+                        {turn.user}
+                      </p>
+                    </div>
+                  </div>
+                  {/* Judge response */}
+                  {turn.assistant && (
+                    <div style={{ padding: '0 0 12px 0' }}>
+                      <div style={{
+                        fontSize: '0.75rem', fontWeight: '600', color: '#60a5fa',
+                        marginBottom: '8px', textDecoration: 'underline', textUnderlineOffset: '4px',
+                      }}>
+                        Judge (Summary)
+                      </div>
+                      <MarkdownRenderer content={turn.assistant} theme={currentTheme} fontSize="0.9rem" lineHeight="1.6" />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
+        })()}
 
         {/* Summary / Judge */}
         {selectedConvo.summary && selectedConvo.summary.text && (
@@ -529,79 +591,6 @@ const SavedConversationsView = () => {
             summary={selectedConvo.summary}
             currentTheme={currentTheme}
           />
-        )}
-
-        {/* Continued Conversation Turns */}
-        {selectedConvo.conversationTurns && selectedConvo.conversationTurns.length > 0 && (
-          <div style={{ marginBottom: '20px' }}>
-            <h3 style={{ fontSize: '1rem', color: currentTheme.text, marginBottom: '12px' }}>
-              Follow-up Conversation ({selectedConvo.conversationTurns.length} {selectedConvo.conversationTurns.length === 1 ? 'turn' : 'turns'})
-            </h3>
-            {selectedConvo.conversationTurns.map((turn, idx) => (
-              <div key={`turn-${idx}`} style={{ marginBottom: '12px' }}>
-                {/* User message */}
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  marginBottom: '8px',
-                }}>
-                  <div style={{
-                    maxWidth: '80%',
-                    background: currentTheme.buttonBackground,
-                    border: `1px solid ${currentTheme.borderLight}`,
-                    borderRadius: '16px 16px 4px 16px',
-                    padding: '10px 14px',
-                  }}>
-                    <div style={{
-                      fontSize: '0.65rem',
-                      fontWeight: '600',
-                      color: currentTheme.accent,
-                      marginBottom: '4px',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                    }}>
-                      You
-                    </div>
-                    <p style={{
-                      color: currentTheme.text,
-                      margin: 0,
-                      lineHeight: '1.5',
-                      fontSize: '0.9rem',
-                      whiteSpace: 'pre-wrap',
-                    }}>
-                      {turn.user}
-                    </p>
-                  </div>
-                </div>
-                {/* Assistant response */}
-                {turn.assistant && (
-                  <div style={{
-                    background: currentTheme.backgroundOverlayLight || currentTheme.buttonBackground,
-                    border: `1px solid ${currentTheme.borderLight}`,
-                    borderRadius: '12px',
-                    padding: '12px 16px',
-                  }}>
-                    <div style={{
-                      fontSize: '0.65rem',
-                      fontWeight: '600',
-                      color: turn.type === 'judge' ? '#60a5fa' : currentTheme.textSecondary,
-                      marginBottom: '6px',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                    }}>
-                      {turn.modelName || (turn.type === 'judge' ? 'Judge (Summary)' : 'Model')}
-                    </div>
-                    <MarkdownRenderer
-                      content={turn.assistant}
-                      theme={currentTheme}
-                      fontSize="0.9rem"
-                      lineHeight="1.6"
-                    />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
         )}
 
         {/* Sources */}
@@ -1180,21 +1169,26 @@ const ExpandableSummary = ({ summary, currentTheme }) => {
     : 'Judge Summary'
 
   return (
-    <div style={{
-      background: currentTheme.buttonBackground,
-      border: `1px solid ${currentTheme.borderLight}`,
-      borderRadius: '12px', marginBottom: '16px', overflow: 'hidden',
-    }}>
+    <div style={{ marginBottom: '16px' }}>
       <button
         onClick={() => setExpanded(!expanded)}
         style={{
-          width: '100%', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', padding: '14px 16px',
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '0 0 6px 0', marginBottom: '8px',
           background: 'none', border: 'none', cursor: 'pointer', color: currentTheme.text,
+          borderBottom: '1.5px solid rgba(96, 165, 250, 0.3)',
+          width: '100%',
         }}
       >
-        <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>{label}</span>
-        {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <span style={{
+          fontWeight: '600', fontSize: '0.9rem',
+          textDecoration: 'underline',
+          textDecorationColor: '#60a5fa',
+          textUnderlineOffset: '4px',
+        }}>{label}</span>
+        <span style={{ marginLeft: 'auto' }}>
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </span>
       </button>
       <AnimatePresence>
         {expanded && (
@@ -1204,7 +1198,7 @@ const ExpandableSummary = ({ summary, currentTheme }) => {
             exit={{ height: 0, opacity: 0 }}
             style={{ overflow: 'hidden' }}
           >
-            <div style={{ padding: '0 16px 16px 16px' }}>
+            <div style={{ padding: '0 0 8px 0' }}>
               <MarkdownRenderer content={summary.text} theme={currentTheme} fontSize="0.9rem" lineHeight="1.6" />
             </div>
           </motion.div>
@@ -1215,39 +1209,46 @@ const ExpandableSummary = ({ summary, currentTheme }) => {
 }
 
 // Expandable model response for detail view
-const ExpandableResponse = ({ resp, idx, currentTheme }) => {
+const ExpandableResponse = ({ resp, idx, currentTheme, conversationTurns = [] }) => {
   const [expanded, setExpanded] = useState(false)
   const providerKey = getProviderFromModelName(resp.modelName || resp.actualModelName)
   const providerInfo = PROVIDER_MAP[providerKey] || { name: providerKey, color: '#888' }
+  const modelName = resp.modelName || resp.actualModelName || `Model ${idx + 1}`
 
   return (
-    <div style={{
-      background: currentTheme.buttonBackground,
-      border: `1px solid ${currentTheme.borderLight}`,
-      borderRadius: '12px', marginBottom: '10px', overflow: 'hidden',
-    }}>
+    <div style={{ marginBottom: '16px' }}>
+      {/* Model name header — underlined, clickable to expand */}
       <button
         onClick={() => setExpanded(!expanded)}
         style={{
-          width: '100%', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', padding: '14px 16px',
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '0 0 6px 0', marginBottom: '8px',
           background: 'none', border: 'none', cursor: 'pointer', color: currentTheme.text,
+          borderBottom: `1.5px solid ${providerInfo.color}40`,
+          width: '100%',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{
-            width: '8px', height: '8px', borderRadius: '50%',
-            background: providerInfo.color, flexShrink: 0,
-          }} />
-          <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>
-            {resp.modelName || resp.actualModelName || `Model ${idx + 1}`}
-          </span>
-          {resp.error && (
-            <span style={{ fontSize: '0.7rem', color: '#ff6b6b', fontWeight: '500' }}>Error</span>
-          )}
-        </div>
-        {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <div style={{
+          width: '8px', height: '8px', borderRadius: '50%',
+          background: providerInfo.color, flexShrink: 0,
+        }} />
+        <span style={{
+          fontWeight: '600', fontSize: '0.9rem',
+          textDecoration: 'underline',
+          textDecorationColor: providerInfo.color,
+          textUnderlineOffset: '4px',
+        }}>
+          {modelName}
+        </span>
+        {resp.error && (
+          <span style={{ fontSize: '0.7rem', color: '#ff6b6b', fontWeight: '500' }}>Error</span>
+        )}
+        <span style={{ marginLeft: 'auto' }}>
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </span>
       </button>
+
+      {/* Response text — no border container */}
       <AnimatePresence>
         {expanded && (
           <motion.div
@@ -1256,7 +1257,7 @@ const ExpandableResponse = ({ resp, idx, currentTheme }) => {
             exit={{ height: 0, opacity: 0 }}
             style={{ overflow: 'hidden' }}
           >
-            <div style={{ padding: '0 16px 16px 16px' }}>
+            <div style={{ padding: '0 0 8px 0' }}>
               <MarkdownRenderer
                 content={resp.text || resp.modelResponse || (resp.error ? 'This model encountered an error.' : 'No response.')}
                 theme={currentTheme}
@@ -1264,6 +1265,50 @@ const ExpandableResponse = ({ resp, idx, currentTheme }) => {
                 lineHeight="1.6"
               />
             </div>
+
+            {/* Continued conversation turns for this model */}
+            {conversationTurns.length > 0 && (
+              <div style={{ marginTop: '8px' }}>
+                {conversationTurns.map((turn, tIdx) => (
+                  <div key={`convo-${tIdx}`} style={{ marginBottom: '12px' }}>
+                    {/* User follow-up message */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                      <div style={{ maxWidth: '80%', padding: '10px 14px' }}>
+                        <div style={{
+                          fontSize: '0.65rem', fontWeight: '600', color: currentTheme.accent,
+                          marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px',
+                        }}>You</div>
+                        <p style={{
+                          color: currentTheme.text, margin: 0, lineHeight: '1.5',
+                          fontSize: '0.9rem', whiteSpace: 'pre-wrap',
+                        }}>{turn.user}</p>
+                      </div>
+                    </div>
+                    {/* Model follow-up response */}
+                    {turn.assistant && (
+                      <div style={{ padding: '0 0 8px 0' }}>
+                        <div style={{
+                          fontSize: '0.7rem', fontWeight: '600',
+                          color: providerInfo.color,
+                          marginBottom: '6px',
+                          textDecoration: 'underline',
+                          textDecorationColor: `${providerInfo.color}60`,
+                          textUnderlineOffset: '3px',
+                        }}>
+                          {modelName}
+                        </div>
+                        <MarkdownRenderer
+                          content={turn.assistant}
+                          theme={currentTheme}
+                          fontSize="0.9rem"
+                          lineHeight="1.6"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
