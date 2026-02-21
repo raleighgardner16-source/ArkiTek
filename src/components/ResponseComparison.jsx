@@ -6,6 +6,7 @@ import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
 import { streamFetch } from '../utils/streamFetch'
+import MarkdownRenderer from './MarkdownRenderer'
 
 const ResponseComparison = () => {
   const getProviderName = (modelName) => {
@@ -705,18 +706,7 @@ const ResponseComparison = () => {
                 borderRadius: '12px',
               }}
             >
-              <p
-                key={`single-response-maximized-text-${theme}`}
-                style={{
-                  color: currentTheme.textSecondary,
-                  lineHeight: '1.8',
-                  fontSize: '1rem',
-                  whiteSpace: 'pre-wrap',
-                  margin: 0,
-                }}
-              >
-                {responseText}
-              </p>
+              <MarkdownRenderer content={responseText} theme={currentTheme} fontSize="1rem" lineHeight="1.8" />
             </div>
 
             {/* Initial Sources — shown with the first prompt+response pair */}
@@ -863,13 +853,8 @@ const ResponseComparison = () => {
                           </span>
                         </div>
                         <div style={{
-                          color: currentTheme.textSecondary,
-                          lineHeight: '1.8',
-                          fontSize: '0.9rem',
-                          whiteSpace: 'pre-wrap',
-                          margin: 0,
                         }}>
-                          {exchange.assistant}
+                          <MarkdownRenderer content={exchange.assistant} theme={currentTheme} fontSize="0.9rem" lineHeight="1.8" />
                         </div>
                       </div>
                       {/* Per-turn Sources Tab (maximized) */}
@@ -1190,18 +1175,7 @@ const ResponseComparison = () => {
             borderRadius: '12px',
           }}
         >
-          <p
-            key={`single-response-text-${theme}`}
-            style={{
-              color: currentTheme.textSecondary,
-              lineHeight: '1.8',
-              fontSize: '1rem',
-              whiteSpace: 'pre-wrap',
-              margin: 0,
-            }}
-          >
-            {responseText}
-          </p>
+          <MarkdownRenderer content={responseText} theme={currentTheme} fontSize="1rem" lineHeight="1.8" />
         </div>
 
         {/* Rating */}
@@ -1346,16 +1320,7 @@ const ResponseComparison = () => {
             </h3>
           </div>
 
-          <p
-            style={{
-              color: currentTheme.textSecondary,
-              lineHeight: '1.8',
-              fontSize: '1.1rem',
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {responseText}
-          </p>
+          <MarkdownRenderer content={responseText} theme={currentTheme} fontSize="1.1rem" lineHeight="1.8" />
 
           {/* Initial Sources — shown with the first prompt+response pair */}
           {(() => {
@@ -1499,14 +1464,8 @@ const ResponseComparison = () => {
                           {formatModelName(response.modelName)}
                         </span>
                       </div>
-                      <div style={{
-                        color: currentTheme.textSecondary,
-                        lineHeight: '1.85',
-                        fontSize: '1.05rem',
-                        whiteSpace: 'pre-wrap',
-                        margin: 0,
-                      }}>
-                        {exchange.assistant}
+                      <div>
+                        <MarkdownRenderer content={exchange.assistant} theme={currentTheme} fontSize="1.05rem" lineHeight="1.85" />
                       </div>
                     </div>
                     {/* Per-turn Sources Tab (non-maximized) */}
@@ -2335,23 +2294,21 @@ const ResponseComparison = () => {
                   maxHeight: isExpanded ? '400px' : 'auto',
                   overflowY: isExpanded ? 'auto' : 'visible',
                   marginBottom: '12px',
+                  userSelect: 'text',
+                  WebkitUserSelect: 'text',
+                  cursor: 'text',
+                  wordBreak: 'break-word',
                 }}
               >
-                <p
-                  style={{
+                {response.isStreaming ? (
+                  <p style={{
                     color: currentTheme.textSecondary,
                     lineHeight: '1.5',
                     fontSize: '0.9rem',
                     whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
                     margin: 0,
-                    userSelect: 'text', // Allow text selection for copying
-                    WebkitUserSelect: 'text',
-                    cursor: 'text',
-                  }}
-                >
-                  {displayText || (response.isStreaming ? '' : displayText)}
-                  {response.isStreaming && (
+                  }}>
+                    {displayText}
                     <span style={{
                       display: 'inline-block',
                       width: '6px',
@@ -2361,8 +2318,10 @@ const ResponseComparison = () => {
                       animation: 'blink 1s step-end infinite',
                       verticalAlign: 'text-bottom',
                     }} />
-                  )}
-                </p>
+                  </p>
+                ) : (
+                  <MarkdownRenderer content={displayText} theme={currentTheme} fontSize="0.9rem" />
+                )}
               </div>
 
               {!response.isStreaming && (

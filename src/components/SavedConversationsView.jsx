@@ -6,6 +6,7 @@ import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
 import ConfirmationModal from './ConfirmationModal'
+import MarkdownRenderer from './MarkdownRenderer'
 
 // Map provider key from modelName to display info
 const PROVIDER_MAP = {
@@ -1131,9 +1132,7 @@ const ExpandableSummary = ({ summary, currentTheme }) => {
             style={{ overflow: 'hidden' }}
           >
             <div style={{ padding: '0 16px 16px 16px' }}>
-              <p style={{ color: currentTheme.textSecondary, margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>
-                {summary.text}
-              </p>
+              <MarkdownRenderer content={summary.text} theme={currentTheme} fontSize="0.9rem" lineHeight="1.6" />
             </div>
           </motion.div>
         )}
@@ -1185,9 +1184,12 @@ const ExpandableResponse = ({ resp, idx, currentTheme }) => {
             style={{ overflow: 'hidden' }}
           >
             <div style={{ padding: '0 16px 16px 16px' }}>
-              <p style={{ color: currentTheme.textSecondary, margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>
-                {resp.text || resp.modelResponse || (resp.error ? 'This model encountered an error.' : 'No response.')}
-              </p>
+              <MarkdownRenderer
+                content={resp.text || resp.modelResponse || (resp.error ? 'This model encountered an error.' : 'No response.')}
+                theme={currentTheme}
+                fontSize="0.9rem"
+                lineHeight="1.6"
+              />
             </div>
           </motion.div>
         )}

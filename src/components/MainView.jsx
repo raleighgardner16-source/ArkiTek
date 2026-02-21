@@ -8,6 +8,7 @@ import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
 import { streamFetch } from '../utils/streamFetch'
+import MarkdownRenderer from './MarkdownRenderer'
 
 const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaused = false, subscriptionExpiring = false, subscriptionRenewalDate = null, isLoading = false, isGeneratingSummary = false, onCancelPrompt }) => {
   const selectedModels = useStore((state) => state.selectedModels)
@@ -1227,14 +1228,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       </div>
                       
                     </div>
-                    <div style={{
-                      color: currentTheme.textSecondary,
-                      lineHeight: '1.85',
-                      fontSize: '1rem',
-                      whiteSpace: 'pre-wrap',
-                      margin: 0,
-                    }}>
-                      {inlineResponseText}
+                    <div>
+                      <MarkdownRenderer content={inlineResponseText} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
                     </div>
                   </div>
                 )}
@@ -1376,14 +1371,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             Response
                           </span>
                         </div>
-                        <div style={{
-                          color: currentTheme.textSecondary,
-                          lineHeight: '1.85',
-                          fontSize: '1rem',
-                          whiteSpace: 'pre-wrap',
-                          margin: 0,
-                        }}>
-                          {exchange.assistant || exchange.judge}
+                        <div>
+                          <MarkdownRenderer content={exchange.assistant || exchange.judge} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
                         </div>
                       </div>
                       {/* Per-turn Sources Tab (inline summary convo) */}
@@ -1827,15 +1816,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             {inlineResponseLabel || 'Response'}
                           </span>
           </div>
-                        <div style={{
-                          color: currentTheme.textSecondary,
-                          lineHeight: '1.85',
-                          fontSize: '1rem',
-                          whiteSpace: 'pre-wrap',
-                          margin: 0,
-                        }}>
-                          {exchange.assistant}
-        </div>
+                        <div>
+                          <MarkdownRenderer content={exchange.assistant} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
+                        </div>
                       </div>
                       {/* Per-turn Sources Tab (inline single-model convo) */}
                       {(() => {
@@ -3095,16 +3078,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           </button>
                           {postActiveTab === 'summary' && (
                             <div style={{ padding: '12px', borderTop: `1px solid ${currentTheme.borderLight}`, maxHeight: '200px', overflowY: 'auto' }}>
-                              <p style={{
-                                color: currentTheme.textSecondary,
-                                fontSize: '0.85rem',
-                                margin: 0,
-                                lineHeight: '1.5',
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                              }}>
-                                {typeof summary === 'string' ? summary : (summary.text || summary.initialSummary || '')}
-                              </p>
+                              <MarkdownRenderer
+                                content={typeof summary === 'string' ? summary : (summary.text || summary.initialSummary || '')}
+                                theme={currentTheme}
+                                fontSize="0.85rem"
+                                lineHeight="1.5"
+                              />
                             </div>
                           )}
                         </div>
@@ -3140,16 +3119,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           </button>
                           {postActiveTab === idx && (
                             <div style={{ padding: '12px', borderTop: `1px solid ${currentTheme.borderLight}`, maxHeight: '200px', overflowY: 'auto' }}>
-                              <p style={{
-                                color: currentTheme.textSecondary,
-                                fontSize: '0.85rem',
-                                margin: 0,
-                                lineHeight: '1.5',
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                              }}>
-                                {r.text || 'No response text'}
-                              </p>
+                              <MarkdownRenderer
+                                content={r.text || 'No response text'}
+                                theme={currentTheme}
+                                fontSize="0.85rem"
+                                lineHeight="1.5"
+                              />
                             </div>
                           )}
                         </div>
