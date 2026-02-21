@@ -510,11 +510,8 @@ const SavedConversationsView = () => {
         {selectedConvo.responses && selectedConvo.responses.length > 0 && (() => {
           // Group conversation turns by modelName so they appear under their model
           const turnsByModel = {}
-          const judgeTurns = []
           ;(selectedConvo.conversationTurns || []).forEach(turn => {
-            if (turn.type === 'judge') {
-              judgeTurns.push(turn)
-            } else {
+            if (turn.type !== 'judge') {
               const key = turn.modelName || 'Unknown'
               if (!turnsByModel[key]) turnsByModel[key] = []
               turnsByModel[key].push(turn)
@@ -548,48 +545,16 @@ const SavedConversationsView = () => {
                   />
                 )
               })}
-
-              {/* Judge conversation turns (if any) — shown after all model sections */}
-              {judgeTurns.length > 0 && judgeTurns.map((turn, idx) => (
-                <div key={`judge-turn-${idx}`} style={{ marginTop: '16px' }}>
-                  {/* User message */}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
-                    <div style={{
-                      maxWidth: '80%',
-                      padding: '10px 14px',
-                    }}>
-                      <div style={{
-                        fontSize: '0.65rem', fontWeight: '600', color: currentTheme.accent,
-                        marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px',
-                      }}>You</div>
-                      <p style={{ color: currentTheme.text, margin: 0, lineHeight: '1.5', fontSize: '0.9rem', whiteSpace: 'pre-wrap' }}>
-                        {turn.user}
-                      </p>
-                    </div>
-                  </div>
-                  {/* Judge response */}
-                  {turn.assistant && (
-                    <div style={{ padding: '0 0 12px 0' }}>
-                      <div style={{
-                        fontSize: '0.75rem', fontWeight: '600', color: '#60a5fa',
-                        marginBottom: '8px', textDecoration: 'underline', textUnderlineOffset: '4px',
-                      }}>
-                        Judge (Summary)
-                      </div>
-                      <MarkdownRenderer content={turn.assistant} theme={currentTheme} fontSize="0.9rem" lineHeight="1.6" />
-                    </div>
-                  )}
-                </div>
-              ))}
             </div>
           )
         })()}
 
-        {/* Summary / Judge */}
+        {/* Summary / Judge — includes judge conversation turns inside */}
         {selectedConvo.summary && selectedConvo.summary.text && (
           <ExpandableSummary
             summary={selectedConvo.summary}
             currentTheme={currentTheme}
+            judgeTurns={(selectedConvo.conversationTurns || []).filter(t => t.type === 'judge')}
           />
         )}
 
@@ -1162,11 +1127,12 @@ const SavedConversationsView = () => {
 }
 
 // Expandable summary/judge for detail view
-const ExpandableSummary = ({ summary, currentTheme }) => {
+const ExpandableSummary = ({ summary, currentTheme, judgeTurns = [] }) => {
   const [expanded, setExpanded] = useState(false)
   const label = summary.singleModel
     ? `${summary.modelName || 'Model'} Response`
     : 'Judge Summary'
+  const turnCount = judgeTurns.length
 
   return (
     <div style={{ marginBottom: '16px' }}>
@@ -1186,6 +1152,11 @@ const ExpandableSummary = ({ summary, currentTheme }) => {
           textDecorationColor: '#60a5fa',
           textUnderlineOffset: '4px',
         }}>{label}</span>
+        {turnCount > 0 && (
+          <span style={{ fontSize: '0.7rem', color: currentTheme.textMuted, fontWeight: '500' }}>
+            ({turnCount} follow-up{turnCount !== 1 ? 's' : ''})
+          </span>
+        )}
         <span style={{ marginLeft: 'auto' }}>
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
@@ -1198,9 +1169,54 @@ const ExpandableSummary = ({ summary, currentTheme }) => {
             exit={{ height: 0, opacity: 0 }}
             style={{ overflow: 'hidden' }}
           >
+            {/* Initial summary text */}
             <div style={{ padding: '0 0 8px 0' }}>
               <MarkdownRenderer content={summary.text} theme={currentTheme} fontSize="0.9rem" lineHeight="1.6" />
             </div>
+
+            {/* Continued conversation turns with the judge */}
+            {judgeTurns.length > 0 && (
+              <div style={{ marginTop: '8px' }}>
+                {judgeTurns.map((turn, tIdx) => (
+                  <div key={`judge-convo-${tIdx}`} style={{ marginBottom: '12px' }}>
+                    {/* User message */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                      <div style={{ maxWidth: '80%', padding: '10px 14px' }}>
+                        <div style={{
+                          fontSize: '0.65rem', fontWeight: '600', color: currentTheme.accent,
+                          marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px',
+                        }}>You</div>
+                        <p style={{
+                          color: currentTheme.text, margin: 0, lineHeight: '1.5',
+                          fontSize: '0.9rem', whiteSpace: 'pre-wrap',
+                        }}>{turn.user}</p>
+                      </div>
+                    </div>
+                    {/* Judge follow-up response */}
+                    {turn.assistant && (
+                      <div style={{ padding: '0 0 8px 0' }}>
+                        <div style={{
+                          fontSize: '0.7rem', fontWeight: '600',
+                          color: '#60a5fa',
+                          marginBottom: '6px',
+                          textDecoration: 'underline',
+                          textDecorationColor: 'rgba(96, 165, 250, 0.4)',
+                          textUnderlineOffset: '3px',
+                        }}>
+                          Judge (Summary)
+                        </div>
+                        <MarkdownRenderer
+                          content={turn.assistant}
+                          theme={currentTheme}
+                          fontSize="0.9rem"
+                          lineHeight="1.6"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
