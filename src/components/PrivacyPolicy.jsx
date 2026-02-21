@@ -99,7 +99,7 @@ const PrivacyPolicy = ({ onNavigate }) => {
           <div style={sectionStyle}>
             <h2 style={headingStyle}>1. Introduction</h2>
             <p style={paragraphStyle}>
-              ArkitekAI ("we," "us," or "our") is committed to protecting your privacy. This Privacy Policy 
+              ArkitekAI is committed to protecting your privacy. This Privacy Policy 
               explains how we collect, use, store, and share your information when you use the ArkitekAI 
               platform ("the Service"). By using the Service, you consent to the practices described in this policy.
             </p>

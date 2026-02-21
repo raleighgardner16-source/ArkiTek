@@ -114,6 +114,20 @@ function App() {
     }
   }, [])
 
+  // Handle #verify-email links even when a user is already logged in.
+  // This fixes the case where the user opens a verification link on a device
+  // that still has an old/different account cached in localStorage.
+  // We sign out the stale session so AuthView can process the verification token.
+  useEffect(() => {
+    const hash = window.location.hash
+    if (hash.startsWith('#verify-email') && currentUser) {
+      console.log('[App] Verification link detected while logged in — signing out stale session to process verification')
+      clearCurrentUser()
+      // publicPage will be set to 'signin' by the route checker, which renders AuthView
+      // AuthView's own useEffect will pick up the #verify-email hash and call handleVerifyEmail
+    }
+  }, []) // Run once on mount
+
   // Sync user's timezone to the server on mount (for already-logged-in users)
   // This ensures date bucketing uses the user's local timezone even if they
   // signed up before this feature was added, or their timezone changed.

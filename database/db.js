@@ -379,6 +379,9 @@ const users = {
       db.collection('saved_individual').deleteMany({ userId }),
       db.collection('saved_sessions').deleteMany({ userId }),
       db.collection('leaderboard_posts').deleteMany({ userId }),
+      db.collection('conversation_history').deleteMany({ userId }),
+      db.collection('daily_usage').deleteMany({ userId }),
+      db.collection('email_verifications').deleteMany({ userId }),
     ])
     
     // Also scrub user's likes, comments, and replies from OTHER users' leaderboard posts

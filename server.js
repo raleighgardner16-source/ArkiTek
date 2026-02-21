@@ -2172,6 +2172,9 @@ app.post('/api/auth/check-verification', async (req, res) => {
     // Email is verified — return full user data for auto-login
     console.log('[Auth] Verification poll: user', userId, 'is verified, returning user data for auto-login')
 
+    // Ensure user is in cache for subsequent API calls (important for Vercel cold starts)
+    await ensureUserInCache(userId)
+
     // Update last active
     const loginDate = new Date()
     await db.users.update(userId, { lastActiveAt: loginDate })

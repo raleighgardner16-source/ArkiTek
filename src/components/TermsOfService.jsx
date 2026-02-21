@@ -100,8 +100,7 @@ const TermsOfService = ({ onNavigate }) => {
             <h2 style={headingStyle}>1. Acceptance of Terms</h2>
             <p style={paragraphStyle}>
               By accessing or using ArkitekAI ("the Service"), you agree to be bound by these Terms of Service. 
-              If you do not agree to these terms, you may not use the Service. ArkitekAI is operated by ArkitekAI 
-              ("we," "us," or "our").
+              If you do not agree to these terms, you may not use the Service.
             </p>
           </div>
 
@@ -131,15 +130,16 @@ const TermsOfService = ({ onNavigate }) => {
           </div>
 
           <div style={sectionStyle}>
-            <h2 style={headingStyle}>4. Subscription & Billing</h2>
+            <h2 style={headingStyle}>4. Plans & Billing</h2>
             <p style={paragraphStyle}>
-              ArkitekAI requires a paid subscription to access the Service.
+              ArkitekAI offers both a free tier and a paid Pro subscription.
             </p>
             <ul style={listStyle}>
-              <li><strong>Price:</strong> $19.95 per month</li>
-              <li><strong>Usage Credits:</strong> Each subscription includes $7.50 per month in usage credits toward AI model API costs</li>
-              <li><strong>Billing:</strong> Your subscription is billed monthly via Stripe. By subscribing, you authorize us to charge your payment method on a recurring basis</li>
-              <li><strong>Cancellation:</strong> You may cancel or pause your subscription at any time. Upon cancellation or pausing, you will retain full access to the Service until the end of your current billing period</li>
+              <li><strong>Free Tier:</strong> All users can access the Service with limited usage at no cost</li>
+              <li><strong>Pro Subscription:</strong> $19.95 per month, which includes increased usage limits and additional features</li>
+              <li><strong>Usage Credits:</strong> Each Pro subscription includes $7.50 per month in usage credits toward AI model API costs</li>
+              <li><strong>Billing:</strong> Pro subscriptions are billed monthly via Stripe. By subscribing, you authorize us to charge your payment method on a recurring basis</li>
+              <li><strong>Cancellation:</strong> You may cancel or pause your Pro subscription at any time. Upon cancellation or pausing, you will retain full access until the end of your current billing period</li>
               <li><strong>Refunds:</strong> Subscription fees are non-refundable except as required by applicable law. If you cancel before the end of your billing period, you will not be charged for the next period</li>
             </ul>
             <p style={paragraphStyle}>

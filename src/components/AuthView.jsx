@@ -89,36 +89,65 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
 
   // Poll for email verification status when on verification-pending view
   // This auto-detects when the user verifies on another device (e.g. phone)
+  const [pollFailed, setPollFailed] = useState(false)
+  const [manualChecking, setManualChecking] = useState(false)
+
+  const checkVerificationStatus = async () => {
+    try {
+      const response = await axios.post(`${API_URL}/api/auth/check-verification`, {
+        userId: verificationUserId,
+      })
+
+      if (response.data.success && response.data.verified && response.data.user) {
+        console.log('[Auth] Email verified — auto-logging in')
+        const user = response.data.user
+
+        // New user — clear model prefs so MainView sets Auto Smart defaults
+        clearSelectedModels()
+        setAutoSmartProviders({})
+        localStorage.removeItem('arktek-models-initialized')
+
+        setCurrentUser(user)
+        setActiveTab('home')
+        setShowWelcome(false)
+        return true // verified
+      }
+      return false // not yet verified
+    } catch (err) {
+      console.warn('[Auth] Verification poll error:', err.message)
+      return false
+    }
+  }
+
   useEffect(() => {
     if (view !== 'verification-pending' || !verificationUserId) return
 
+    let failCount = 0
+
     const pollInterval = setInterval(async () => {
-      try {
-        const response = await axios.post(`${API_URL}/api/auth/check-verification`, {
-          userId: verificationUserId,
-        })
-
-        if (response.data.success && response.data.verified && response.data.user) {
-          clearInterval(pollInterval)
-          console.log('[Auth] Email verified (detected via polling) — auto-logging in')
-          const user = response.data.user
-
-          // New user — clear model prefs so MainView sets Auto Smart defaults
-          clearSelectedModels()
-          setAutoSmartProviders({})
-          localStorage.removeItem('arktek-models-initialized')
-
-          setCurrentUser(user)
-          setActiveTab('home')
-          setShowWelcome(false)
+      const verified = await checkVerificationStatus()
+      if (verified) {
+        clearInterval(pollInterval)
+      } else {
+        failCount++
+        // After 12 failed polls (60 seconds), show a manual check button
+        if (failCount >= 12) {
+          setPollFailed(true)
         }
-      } catch (err) {
-        // Silently ignore polling errors — will retry on next interval
       }
     }, 5000) // Check every 5 seconds
 
     return () => clearInterval(pollInterval)
   }, [view, verificationUserId])
+
+  const handleManualCheck = async () => {
+    setManualChecking(true)
+    const verified = await checkVerificationStatus()
+    if (!verified) {
+      setError('Email not verified yet. Please check your inbox and click the verification link.')
+    }
+    setManualChecking(false)
+  }
 
 
   const handleChange = (e) => {
@@ -1591,13 +1620,40 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
               <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.85rem', lineHeight: 1.5, margin: 0 }}>
                 Click the link in your email to verify your account. The link expires in 24 hours.
               </p>
-              <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                <Loader size={14} style={{ color: 'rgba(93, 173, 226, 0.6)', animation: 'spin 1s linear infinite' }} />
-                <p style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '0.8rem', margin: 0 }}>
-                  Waiting for verification — this page will update automatically
-                </p>
-                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-              </div>
+              {!pollFailed && (
+                <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <Loader size={14} style={{ color: 'rgba(93, 173, 226, 0.6)', animation: 'spin 1s linear infinite' }} />
+                  <p style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '0.8rem', margin: 0 }}>
+                    Waiting for verification — this page will update automatically
+                  </p>
+                  <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                </div>
+              )}
+
+              {pollFailed && (
+                <div style={{ marginTop: '16px' }}>
+                  <motion.button
+                    type="button"
+                    onClick={handleManualCheck}
+                    disabled={manualChecking}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    style={{
+                      padding: '10px 24px',
+                      background: 'rgba(72, 201, 176, 0.15)',
+                      border: '1px solid rgba(72, 201, 176, 0.3)',
+                      borderRadius: '8px',
+                      color: '#48c9b0',
+                      fontSize: '0.9rem',
+                      fontWeight: 600,
+                      cursor: manualChecking ? 'not-allowed' : 'pointer',
+                      opacity: manualChecking ? 0.6 : 1,
+                    }}
+                  >
+                    {manualChecking ? 'Checking...' : "I've verified my email — check now"}
+                  </motion.button>
+                </div>
+              )}
             </div>
 
             <div style={{
