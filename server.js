@@ -8624,6 +8624,17 @@ const getPricingData = () => {
   }
 }
 
+// Get model pricing information (PUBLIC - used by CostBreakdownWindow for all users)
+app.get('/api/pricing', (req, res) => {
+  try {
+    const pricing = getPricingData()
+    res.json(pricing)
+  } catch (error) {
+    console.error('[Pricing] Error fetching pricing:', error)
+    res.status(500).json({ error: 'Failed to fetch pricing' })
+  }
+})
+
 // Get model pricing information (PROTECTED - requires admin)
 app.get('/api/admin/pricing', requireAdmin, (req, res) => {
   try {

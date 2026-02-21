@@ -15,7 +15,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
   useEffect(() => {
     const fetchPricing = async () => {
       try {
-        const response = await axios.get(`${API_URL}/api/admin/pricing`)
+        const response = await axios.get(`${API_URL}/api/pricing`)
         setPricingData(response.data)
       } catch (error) {
         console.error('Error fetching pricing data:', error)
