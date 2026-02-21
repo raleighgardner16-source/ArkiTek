@@ -19,6 +19,9 @@ const disposableDomains = require('disposable-email-domains')
 
 dotenv.config()
 
+// Version tag — used to verify which deployment is live
+const SERVER_VERSION = '2026-02-20-v3'
+
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -1265,6 +1268,16 @@ app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }))
 
 // JSON parsing for all other routes
 app.use(express.json())
+
+// Health/version check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    version: SERVER_VERSION, 
+    cacheUsers: Object.keys(usersCache).length,
+    cacheUsage: Object.keys(usageCache).length,
+    timestamp: new Date().toISOString()
+  })
+})
 
 // Authentication endpoints
 app.post('/api/auth/signup', async (req, res) => {
@@ -10995,11 +11008,12 @@ let _serverlessInitialized = false
 export const initializeForServerless = async () => {
   if (_serverlessInitialized) return
   _serverlessInitialized = true
+  console.log(`[Server] 🚀 Initializing serverless (version: ${SERVER_VERSION})`)
   await initDatabase()
   console.log('[Server] Loading data from MongoDB...')
   await loadCacheFromMongoDB()
   await cleanupOldDailyUsage()
-  console.log('[Server] ✅ Serverless initialization complete')
+  console.log(`[Server] ✅ Serverless initialization complete (${Object.keys(usersCache).length} users in cache)`)
 }
 
 // Export Express app for Vercel serverless functions
