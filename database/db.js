@@ -129,33 +129,67 @@ const users = {
   
   /**
    * Get user by canonical email (normalized for alias detection)
+   * Also checks used_trials for deleted accounts that had free trials.
    * @param {string} canonicalEmail 
    * @returns {Promise<Object|null>}
    */
   async getByCanonicalEmail(canonicalEmail) {
     const db = await getDb()
-    return db.collection('users').findOne({ canonicalEmail })
+    // Check active users first
+    const activeUser = await db.collection('users').findOne({ canonicalEmail })
+    if (activeUser) return activeUser
+    // Check deleted accounts that used a free trial
+    return db.collection('used_trials').findOne({ canonicalEmail })
   },
   
   /**
    * Count free trial signups from a specific IP address
+   * Includes both active users and deleted accounts.
    * @param {string} ip 
    * @returns {Promise<number>}
    */
   async countFreeTrialsByIp(ip) {
     const db = await getDb()
-    return db.collection('users').countDocuments({ signupIp: ip, plan: 'free_trial' })
+    const activeCount = await db.collection('users').countDocuments({ signupIp: ip, plan: 'free_trial' })
+    const deletedCount = await db.collection('used_trials').countDocuments({ signupIp: ip })
+    return activeCount + deletedCount
   },
   
   /**
    * Check if a device fingerprint has already been used for a free trial
+   * Includes both active users and deleted accounts.
    * @param {string} fingerprint 
    * @returns {Promise<Object|null>}
    */
   async getFreeTrialByFingerprint(fingerprint) {
     const db = await getDb()
     if (!fingerprint) return null
-    return db.collection('users').findOne({ deviceFingerprint: fingerprint, plan: 'free_trial' })
+    const activeUser = await db.collection('users').findOne({ deviceFingerprint: fingerprint, plan: 'free_trial' })
+    if (activeUser) return activeUser
+    return db.collection('used_trials').findOne({ deviceFingerprint: fingerprint })
+  },
+  
+  /**
+   * Record a used free trial so abuse prevention survives account deletion.
+   * Called BEFORE deleting a free trial user's account.
+   * @param {Object} trialData - { canonicalEmail, signupIp, deviceFingerprint, email }
+   */
+  async recordUsedTrial(trialData) {
+    const db = await getDb()
+    try {
+      await db.collection('used_trials').insertOne({
+        ...trialData,
+        recordedAt: new Date(),
+      })
+      console.log(`[DB] Recorded used trial for ${trialData.email || trialData.canonicalEmail}`)
+    } catch (error) {
+      // If duplicate, that's fine — the trial is already recorded
+      if (error.code === 11000) {
+        console.log(`[DB] Used trial already recorded for ${trialData.email || trialData.canonicalEmail}`)
+      } else {
+        console.error('[DB] Error recording used trial:', error.message)
+      }
+    }
   },
   
   /**

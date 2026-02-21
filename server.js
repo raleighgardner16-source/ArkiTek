@@ -2444,6 +2444,17 @@ app.delete('/api/auth/account', async (req, res) => {
     // Store user info for logging before deletion
     const userInfo = { username: dbUser.username, email: dbUser.email }
 
+    // Preserve free trial abuse prevention data before deletion
+    if (dbUser.plan === 'free_trial') {
+      await db.users.recordUsedTrial({
+        canonicalEmail: dbUser.canonicalEmail || dbUser.email,
+        email: dbUser.email,
+        signupIp: dbUser.signupIp || null,
+        deviceFingerprint: dbUser.deviceFingerprint || null,
+      })
+      console.log(`[Account Deletion] Recorded used free trial for abuse prevention: ${dbUser.email}`)
+    }
+
     // Cancel Stripe subscription if active
     if (dbUser.stripeSubscriptionId) {
       try {
@@ -10368,6 +10379,17 @@ app.post('/api/stripe/cancel-subscription-delete-account', async (req, res) => {
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' })
+    }
+
+    // Preserve free trial abuse prevention data before deletion
+    if (user.plan === 'free_trial') {
+      await db.users.recordUsedTrial({
+        canonicalEmail: user.canonicalEmail || user.email,
+        email: user.email,
+        signupIp: user.signupIp || null,
+        deviceFingerprint: user.deviceFingerprint || null,
+      })
+      console.log(`[Stripe] Recorded used free trial for abuse prevention: ${user.email}`)
     }
 
     // Cancel subscription in Stripe if it exists
