@@ -715,7 +715,7 @@ const AuthView = ({ initialView, onNavigate }) => {
                   ))}
                 </div>
                 <div style={{
-                  marginTop: '24px',
+                  marginTop: 'auto',
                   padding: '12px 0',
                   width: '100%',
                   background: 'rgba(93, 173, 226, 0.12)',
@@ -795,7 +795,7 @@ const AuthView = ({ initialView, onNavigate }) => {
                   ))}
                 </div>
                 <div style={{
-                  marginTop: '24px',
+                  marginTop: 'auto',
                   padding: '12px 0',
                   width: '100%',
                   background: 'rgba(72, 201, 176, 0.12)',

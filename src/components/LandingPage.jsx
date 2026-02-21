@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Zap, Brain, Globe, Trophy, Shield, CreditCard, 
   ArrowRight, ChevronDown, ChevronUp, MessageSquare, BarChart3, 
-  Search, Users, Check 
+  Search, Users, Check, CheckCircle 
 } from 'lucide-react'
 import { getTheme } from '../utils/theme'
 
@@ -72,24 +72,14 @@ const LandingPage = ({ onNavigate }) => {
   ]
 
   const freePlanFeatures = [
-    'Limited free usage to start',
-    'Access to all available models on ArkitekAI',
-    'AI Judge consensus summaries',
-    'Prompt Feed access',
+    'Limited free usage',
+    'Access to all models',
   ]
 
   const proPlanFeatures = [
-    'Full usage included with subscription',
-    'Access to all available models on ArkitekAI',
-    'ChatGPT, Claude, Gemini & Grok — side by side',
-    'Unlimited prompts',
-    'Web search on every prompt',
-    'AI Judge consensus summaries',
-    'Smart Auto model selection',
-    'Unlimited follow-up conversations',
-    'Save & revisit past conversations',
-    'Prompt Feed access',
-    'Rewards & achievements',
+    '15x more usage',
+    'All models & features',
+    'Monthly rewards: usage bonuses, badges & collectible icons',
   ]
 
   return (
@@ -475,103 +465,87 @@ const LandingPage = ({ onNavigate }) => {
         </motion.div>
 
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          display: 'flex',
+          flexDirection: 'row',
           gap: '24px',
+          maxWidth: '700px',
+          margin: '0 auto',
         }}>
           {/* Free Plan */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
+            onClick={() => onNavigate('select-plan')}
             style={{
-              padding: '40px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '20px',
+              flex: 1,
+              padding: '32px',
+              background: 'rgba(93, 173, 226, 0.05)',
+              border: '1px solid rgba(93, 173, 226, 0.2)',
+              borderRadius: '16px',
+              cursor: 'pointer',
+              textAlign: 'center',
+              transition: 'all 0.2s',
               display: 'flex',
               flexDirection: 'column',
+              alignItems: 'center',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#5dade2'
+              e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
+              e.currentTarget.style.transform = 'translateY(-4px)'
+              e.currentTarget.style.boxShadow = '0 8px 30px rgba(93, 173, 226, 0.15)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(93, 173, 226, 0.2)'
+              e.currentTarget.style.background = 'rgba(93, 173, 226, 0.05)'
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow = 'none'
             }}
           >
-            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-              <div style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 16px',
-                background: 'rgba(255, 255, 255, 0.08)',
-                borderRadius: '100px',
-                fontSize: '0.85rem',
-                color: 'rgba(255, 255, 255, 0.6)',
-                marginBottom: '20px',
-              }}>
-                Free Trial
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: '4px' }}>
-                <span style={{ fontSize: '3.5rem', fontWeight: 800 }}>Free</span>
-                <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '1.1rem' }}>/month</span>
-              </div>
+            <span style={{
+              display: 'inline-block',
+              padding: '6px 16px',
+              background: 'rgba(93, 173, 226, 0.15)',
+              borderRadius: '100px',
+              fontSize: '0.85rem',
+              color: '#5dade2',
+              fontWeight: 600,
+              marginBottom: '20px',
+            }}>
+              Free Trial
+            </span>
+            <div style={{ marginBottom: '20px' }}>
+              <span style={{ fontSize: '2.8rem', fontWeight: 800, color: '#fff' }}>Free</span>
             </div>
-
             <div style={{
               borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-              paddingTop: '24px',
-              marginBottom: '32px',
-              flex: 1,
+              paddingTop: '20px',
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              textAlign: 'left',
             }}>
               {freePlanFeatures.map((feature, idx) => (
-                <div key={idx} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '10px 0',
-                }}>
-                  <Check size={18} style={{ color: 'rgba(255, 255, 255, 0.4)', flexShrink: 0 }} />
-                  <span style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.95rem' }}>
-                    {feature}
-                  </span>
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <CheckCircle size={16} style={{ color: '#5dade2', flexShrink: 0 }} />
+                  <span style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.9rem' }}>{feature}</span>
                 </div>
               ))}
             </div>
-
-            <button
-              onClick={() => onNavigate('select-plan')}
-              style={{
-                width: '100%',
-                padding: '16px',
-                background: 'transparent',
-                border: `1px solid ${currentTheme.border}`,
-                borderRadius: '12px',
-                color: '#fff',
-                fontSize: '1.1rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                transition: 'all 0.2s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = currentTheme.accent
-                e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = currentTheme.border
-                e.currentTarget.style.background = 'transparent'
-              }}
-            >
-              Try It Free
-            </button>
-
-            <p style={{
-              textAlign: 'center',
-              color: 'rgba(255, 255, 255, 0.3)',
-              fontSize: '0.8rem',
-              marginTop: '16px',
+            <div style={{
+              marginTop: 'auto',
+              padding: '12px 0',
+              width: '100%',
+              background: 'rgba(93, 173, 226, 0.12)',
+              borderRadius: '10px',
+              color: '#5dade2',
+              fontWeight: 600,
+              fontSize: '0.95rem',
             }}>
-              No credit card required. Upgrade to Pro when you're ready.
-            </p>
+              Get Started Free
+            </div>
           </motion.div>
 
           {/* Pro Plan */}
@@ -580,89 +554,78 @@ const LandingPage = ({ onNavigate }) => {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.1 }}
+            onClick={() => onNavigate('select-plan')}
             style={{
-              padding: '40px',
-              background: 'rgba(93, 173, 226, 0.04)',
-              border: '1px solid rgba(93, 173, 226, 0.2)',
-              borderRadius: '20px',
+              flex: 1,
+              padding: '32px',
+              background: 'rgba(72, 201, 176, 0.05)',
+              border: '1px solid rgba(72, 201, 176, 0.2)',
+              borderRadius: '16px',
+              cursor: 'pointer',
+              textAlign: 'center',
+              transition: 'all 0.2s',
               display: 'flex',
               flexDirection: 'column',
+              alignItems: 'center',
+              position: 'relative',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#48c9b0'
+              e.currentTarget.style.background = 'rgba(72, 201, 176, 0.1)'
+              e.currentTarget.style.transform = 'translateY(-4px)'
+              e.currentTarget.style.boxShadow = '0 8px 30px rgba(72, 201, 176, 0.15)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(72, 201, 176, 0.2)'
+              e.currentTarget.style.background = 'rgba(72, 201, 176, 0.05)'
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow = 'none'
             }}
           >
-            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-              <div style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 16px',
-                background: 'rgba(93, 173, 226, 0.15)',
-                borderRadius: '100px',
-                fontSize: '0.85rem',
-                color: currentTheme.accent,
-                marginBottom: '20px',
-              }}>
-                <CreditCard size={14} />
-                Pro
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: '4px' }}>
-                <span style={{ fontSize: '3.5rem', fontWeight: 800 }}>$19.95</span>
-                <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '1.1rem' }}>/month</span>
-              </div>
+            <span style={{
+              display: 'inline-block',
+              padding: '6px 16px',
+              background: 'rgba(72, 201, 176, 0.15)',
+              borderRadius: '100px',
+              fontSize: '0.85rem',
+              color: '#48c9b0',
+              fontWeight: 600,
+              marginBottom: '20px',
+            }}>
+              Pro
+            </span>
+            <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+              <span style={{ fontSize: '2.8rem', fontWeight: 800, color: '#fff' }}>$19.95</span>
+              <span style={{ fontSize: '1rem', color: 'rgba(255, 255, 255, 0.4)' }}>/mo</span>
             </div>
-
             <div style={{
               borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-              paddingTop: '24px',
-              marginBottom: '32px',
-              flex: 1,
+              paddingTop: '20px',
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              textAlign: 'left',
             }}>
               {proPlanFeatures.map((feature, idx) => (
-                <div key={idx} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '10px 0',
-                }}>
-                  <Check size={18} style={{ color: currentTheme.accentSecondary, flexShrink: 0 }} />
-                  <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.95rem' }}>
-                    {feature}
-                  </span>
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <CheckCircle size={16} style={{ color: '#48c9b0', flexShrink: 0 }} />
+                  <span style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.9rem' }}>{feature}</span>
                 </div>
               ))}
             </div>
-
-            <button
-              onClick={() => onNavigate('select-plan')}
-              style={{
-                width: '100%',
-                padding: '16px',
-                background: currentTheme.accentGradient,
-                border: 'none',
-                borderRadius: '12px',
-                color: '#fff',
-                fontSize: '1.1rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                transition: 'all 0.2s',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
-              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-            >
-              Sign Up <ArrowRight size={20} />
-            </button>
-
-            <p style={{
-              textAlign: 'center',
-              color: 'rgba(255, 255, 255, 0.3)',
-              fontSize: '0.8rem',
-              marginTop: '16px',
+            <div style={{
+              marginTop: 'auto',
+              padding: '12px 0',
+              width: '100%',
+              background: 'rgba(72, 201, 176, 0.12)',
+              borderRadius: '10px',
+              color: '#48c9b0',
+              fontWeight: 600,
+              fontSize: '0.95rem',
             }}>
-              Cancel or pause anytime. Access continues until end of billing period.
-            </p>
+              Subscribe to Pro
+            </div>
           </motion.div>
         </div>
       </section>
