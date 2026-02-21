@@ -7,6 +7,7 @@ export const detectCategory = async (prompt, selectedProviders = []) => {
     return { 
       category: 'General Knowledge/Other', 
       needsSearch: false,
+      needsContext: false,
       recommendedModelType: 'versatile',
       recommendedModels: {},
       tokens: null // No tokens when prompt is empty
@@ -30,6 +31,7 @@ export const detectCategory = async (prompt, selectedProviders = []) => {
   let jsonStructure = `{
   "category": "CategoryName",
   "needsSearch": false,
+  "needsContext": false,
   "recommendedModelType": "versatile"`
   
   if (selectedProviders.length > 0) {
@@ -47,6 +49,7 @@ export const detectCategory = async (prompt, selectedProviders = []) => {
 
 Classify the user prompt into EXACTLY ONE category from the list below.
 Determine if a web search would genuinely help answer the query. Recommend a SINGLE model type for ALL providers.
+Determine if the user's prompt might benefit from context of their previous conversations (memory).
 
 needsSearch = true when:
 - The query asks about current events, recent news, or real-time information
@@ -64,6 +67,16 @@ needsSearch = false ONLY when:
 - The query is about well-established historical knowledge that does NOT change (e.g. "when was the French Revolution", "what is the speed of light")
 
 IMPORTANT: When in doubt, set needsSearch = true. It is much better to search unnecessarily than to miss providing current information. If the topic is even slightly time-sensitive or involves entities that change over time, set needsSearch = true.
+
+needsContext = true when:
+- The query references something previously discussed (e.g. "going back to what we talked about", "remember when I asked about", "like I said before")
+- The query is a follow-up or continuation of a topic the user likely discussed before (e.g. "what else should I know about investing" — implies prior investing discussion)
+- The query uses pronouns that reference a past topic without naming it (e.g. "tell me more about that", "can you expand on it")
+
+needsContext = false when:
+- The query is completely self-contained and does not reference any prior conversation
+- The query is a brand new topic with no indication the user has discussed it before
+- The query is purely creative or standalone (e.g. "write me a poem about the ocean", "what is 2+2")
 
 CRITICAL: The recommendedModelType you choose will be applied to EVERY provider. Choose ONE type.
 
@@ -112,6 +125,7 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
       return { 
         category: 'General Knowledge/Other', 
         needsSearch: false,
+        needsContext: false,
         recommendedModelType: 'versatile',
         recommendedModels: {},
         rawResponse: `API Error: ${response.statusText}`,
@@ -141,6 +155,7 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
         const parsed = JSON.parse(jsonMatch[0])
         const category = parsed.category || parsed.Category || ''
         const needsSearch = parsed.needsSearch !== undefined ? parsed.needsSearch : false
+        const needsContext = parsed.needsContext !== undefined ? parsed.needsContext : false
         const recommendedModelType = parsed.recommendedModelType || 'versatile'
         const recommendedModels = parsed.recommendedModels || {}
 
@@ -167,6 +182,7 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
           return { 
             category: matchedCategory, 
             needsSearch: Boolean(needsSearch),
+            needsContext: Boolean(needsContext),
             recommendedModelType: recommendedModelType.toLowerCase() || 'versatile',
             recommendedModels,
             rawResponse: rawResponse, // Include raw response for debugging
@@ -216,10 +232,13 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
                        lowerResponse.includes('needsSearch: true') ||
                        lowerResponse.includes('needs search: true') ||
                        lowerResponse.includes('yes') && (lowerResponse.includes('search') || lowerResponse.includes('web') || lowerResponse.includes('internet'))
+    const needsContext = lowerResponse.includes('"needsContext":true') || 
+                        lowerResponse.includes('needsContext: true')
 
     return {
       category: matchedCategory || 'General Knowledge/Other',
       needsSearch: Boolean(needsSearch),
+      needsContext: Boolean(needsContext),
       recommendedModelType: 'versatile',
       recommendedModels: {},
       rawResponse: categoryResponse || 'No response received',
@@ -231,6 +250,7 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
     return { 
       category: 'General Knowledge/Other', 
       needsSearch: false,
+      needsContext: false,
       recommendedModelType: 'versatile',
       recommendedModels: {},
       rawResponse: `Error: ${error.message}`,

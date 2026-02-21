@@ -252,12 +252,14 @@ function App() {
     // This is the FIRST step - Gemini 2.5 Flash Lite determines if a query is needed
     let category = 'General Knowledge/Other'
     let needsSearch = false
+    let needsContext = false
     let detectionResult = null // Declare outside try block so it's accessible later
     let categoryDetectionTokens = null // Store tokens from category detection - declared outside try block
     try {
       detectionResult = await detectCategory(currentPrompt)
       category = detectionResult.category || 'General Knowledge/Other'
       needsSearch = detectionResult.needsSearch || false
+      needsContext = detectionResult.needsContext || false
       categoryDetectionTokens = detectionResult.tokens || null
       
       // Store raw response for display
@@ -287,7 +289,8 @@ function App() {
         const ragResponse = await axios.post(`${API_URL}/api/rag`, {
           query: currentPrompt,
           selectedModels: modelsToUse,
-          userId: userId
+          userId: userId,
+          needsContext: needsContext
         }, { signal: abortController.signal })
 
         ragData = ragResponse.data

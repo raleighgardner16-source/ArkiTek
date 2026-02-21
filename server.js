@@ -2918,6 +2918,7 @@ const detectCategoryForJudge = async (prompt, userId = null) => {
 
 Classify the user prompt into EXACTLY ONE category from the list below.
 Determine if a web search would genuinely help answer the query.
+Determine if the user's prompt might benefit from context of their previous conversations (memory).
 
 needsSearch = true when:
 - The query asks about current events, recent news, or real-time information
@@ -2936,10 +2937,21 @@ needsSearch = false ONLY when:
 
 IMPORTANT: When in doubt, set needsSearch = true. It is much better to search unnecessarily than to miss providing current information. If the topic is even slightly time-sensitive or involves entities that change over time, set needsSearch = true.
 
+needsContext = true when:
+- The query references something previously discussed (e.g. "going back to what we talked about", "remember when I asked about", "like I said before", "as we discussed")
+- The query is a follow-up or continuation of a topic the user likely discussed before (e.g. "what else should I know about investing" — implies prior investing discussion)
+- The query uses pronouns that reference a past topic without naming it (e.g. "tell me more about that", "can you expand on it")
+
+needsContext = false when:
+- The query is completely self-contained and does not reference any prior conversation
+- The query is a brand new topic with no indication the user has discussed it before
+- The query is purely creative or standalone (e.g. "write me a poem about the ocean", "what is 2+2")
+
 Output ONLY this JSON:
 {
   "category": "CategoryName",
-  "needsSearch": false
+  "needsSearch": false,
+  "needsContext": false
 }
 
 Categories:
@@ -2992,6 +3004,7 @@ User prompt:
 
     // Parse JSON response
     let needsSearch = false
+    let needsContext = false
     let category = 'General Knowledge/Other'
 
     try {
@@ -3004,12 +3017,15 @@ User prompt:
       
       const parsed = JSON.parse(jsonContent)
       needsSearch = parsed.needsSearch === true
+      needsContext = parsed.needsContext === true
       category = parsed.category || 'General Knowledge/Other'
     } catch (parseError) {
       // Fallback: check for keywords
       needsSearch = lowerResponse.includes('"needsSearch":true') || 
                    lowerResponse.includes('needsSearch: true') ||
                    (lowerResponse.includes('yes') && (lowerResponse.includes('search') || lowerResponse.includes('web')))
+      needsContext = lowerResponse.includes('"needsContext":true') || 
+                    lowerResponse.includes('needsContext: true')
       
       // Determine category from keywords
       if (lowerResponse.includes('science')) category = 'Science'
@@ -3023,10 +3039,10 @@ User prompt:
       else if (lowerResponse.includes('lifestyle') || lowerResponse.includes('self-improvement')) category = 'Lifestyle/Self-Improvement'
     }
 
-    return { category, needsSearch }
+    return { category, needsSearch, needsContext }
   } catch (error) {
     console.error('[Category Detection] Error:', error)
-    return { category: 'General Knowledge/Other', needsSearch: false }
+    return { category: 'General Knowledge/Other', needsSearch: false, needsContext: false }
   }
 }
 
@@ -3039,10 +3055,11 @@ app.post('/api/detect-search-needed', async (req, res) => {
       return res.status(400).json({ error: 'query is required' })
     }
     
-    const { category, needsSearch } = await detectCategoryForJudge(query, userId)
+    const { category, needsSearch, needsContext } = await detectCategoryForJudge(query, userId)
     
     res.json({ 
       needsSearch, 
+      needsContext,
       category 
     })
   } catch (error) {
@@ -5545,7 +5562,7 @@ function buildEmbeddingText(originalPrompt, responses, summary) {
  * Uses MongoDB Atlas $vectorSearch on the conversation_history collection.
  * Returns an array of { title, originalPrompt, summarySnippet } objects.
  */
-async function findRelevantContext(userId, currentPrompt, limit = 3) {
+async function findRelevantContext(userId, currentPrompt, limit = 3, scoreThreshold = 0.75) {
   if (!userId || !currentPrompt) return []
 
   try {
@@ -5565,7 +5582,7 @@ async function findRelevantContext(userId, currentPrompt, limit = 3) {
           path: 'embedding',
           queryVector: queryEmbedding,
           numCandidates: 50,
-          limit: limit + 5, // Fetch extra so we can filter
+          limit: limit + 5, // Fetch extra so we can filter by score
           filter: { userId: userId }
         }
       },
@@ -5588,25 +5605,48 @@ async function findRelevantContext(userId, currentPrompt, limit = 3) {
       return []
     }
 
-    // 3. Format results into concise context snippets
-    const contexts = results.slice(0, limit).map(r => {
-      let snippet = ''
-      if (r.summary?.text) {
-        snippet = r.summary.text.substring(0, 300)
-      } else if (r.responses?.[0]?.text) {
-        snippet = r.responses[0].text.substring(0, 300)
-      }
+    // 3. Filter by score threshold and format into concise context snippets
+    const contexts = results
+      .filter(r => r.score >= scoreThreshold)
+      .slice(0, limit)
+      .map(r => {
+        // Extract just the SUMMARY section from the judge output (skip CONSENSUS/AGREEMENTS/DISAGREEMENTS)
+        let snippet = ''
+        if (r.summary?.text) {
+          const summaryText = r.summary.text
+          // Try to extract the SUMMARY section between "## SUMMARY" and "## AGREEMENTS"
+          const summaryStart = summaryText.indexOf('## SUMMARY')
+          const agreementsStart = summaryText.indexOf('## AGREEMENTS')
+          if (summaryStart !== -1 && agreementsStart !== -1) {
+            snippet = summaryText.substring(summaryStart + 10, agreementsStart).trim()
+          } else if (summaryStart !== -1) {
+            snippet = summaryText.substring(summaryStart + 10).trim()
+          } else {
+            // Fallback: skip the CONSENSUS line and take the rest
+            const lines = summaryText.split('\n').filter(l => l.trim() && !l.startsWith('**CONSENSUS'))
+            snippet = lines.join(' ').trim()
+          }
+          // Cap at 300 chars
+          snippet = snippet.substring(0, 300)
+        } else if (r.responses?.[0]?.text) {
+          snippet = r.responses[0].text.substring(0, 300)
+        }
 
-      return {
-        title: r.title || r.originalPrompt?.substring(0, 80),
-        originalPrompt: r.originalPrompt,
-        summarySnippet: snippet,
-        score: r.score,
-        savedAt: r.savedAt,
-      }
-    })
+        return {
+          title: r.title || r.originalPrompt?.substring(0, 80),
+          originalPrompt: r.originalPrompt,
+          summarySnippet: snippet,
+          score: r.score,
+          savedAt: r.savedAt,
+        }
+      })
 
-    console.log(`[Memory] Found ${contexts.length} relevant past conversations for user ${userId} (scores: ${contexts.map(c => c.score?.toFixed(3)).join(', ')})`)
+    if (contexts.length === 0) {
+      console.log(`[Memory] All ${results.length} results below score threshold (${scoreThreshold}) for user ${userId} (best score: ${results[0]?.score?.toFixed(3)})`)
+      return []
+    }
+
+    console.log(`[Memory] Found ${contexts.length} relevant past conversations for user ${userId} (scores: ${contexts.map(c => c.score?.toFixed(3)).join(', ')}, threshold: ${scoreThreshold})`)
     return contexts
   } catch (error) {
     // Gracefully handle cases where the vector search index doesn't exist yet
@@ -7135,9 +7175,9 @@ app.post('/api/rag', async (req, res) => {
   console.log('[RAG Pipeline] ===== ENDPOINT HIT =====')
   console.log('[RAG Pipeline] Request body:', JSON.stringify(req.body, null, 2))
   try {
-    const { query, selectedModels, userId } = req.body
+    const { query, selectedModels, userId, needsContext: needsContextHint } = req.body
     
-    console.log('[RAG Pipeline] Parsed request:', { query, selectedModels, userId })
+    console.log('[RAG Pipeline] Parsed request:', { query, selectedModels, userId, needsContextHint })
     
     if (!query || !query.trim()) {
       console.log('[RAG Pipeline] Error: Missing query')
@@ -7283,13 +7323,17 @@ app.post('/api/rag', async (req, res) => {
     // Stage 2.5: Memory — retrieve relevant past conversations for this user
     let memoryContextString = ''
     if (userId) {
-      console.log('[RAG Pipeline] Stage 2.5: Retrieving relevant memory context...')
-      const relevantContexts = await findRelevantContext(userId, query, 3)
+      // Use needsContext as a soft gate: if the detector says context IS needed, use a lower
+      // threshold (0.70) to be more permissive. If context is NOT explicitly needed, use a
+      // higher threshold (0.82) so only very relevant past conversations get injected.
+      const scoreThreshold = needsContextHint ? 0.70 : 0.82
+      console.log(`[RAG Pipeline] Stage 2.5: Retrieving relevant memory context (needsContext: ${!!needsContextHint}, threshold: ${scoreThreshold})...`)
+      const relevantContexts = await findRelevantContext(userId, query, 3, scoreThreshold)
       memoryContextString = formatMemoryContext(relevantContexts)
       if (memoryContextString) {
-        console.log(`[RAG Pipeline] Memory: Injecting ${relevantContexts.length} past conversations as context`)
+        console.log(`[RAG Pipeline] Memory: Injecting ${relevantContexts.length} past conversations as context (scores: ${relevantContexts.map(c => c.score?.toFixed(3)).join(', ')})`)
       } else {
-        console.log('[RAG Pipeline] Memory: No relevant past conversations found')
+        console.log('[RAG Pipeline] Memory: No relevant past conversations found above threshold')
       }
     }
 
