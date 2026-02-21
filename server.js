@@ -3723,36 +3723,49 @@ app.post('/api/model/conversation/stream', async (req, res) => {
       }
     }
 
-    // Step 3: Build prompt (same as non-streaming)
+    // Step 3: Build multi-turn messages (proper conversation format so models understand context)
     const usageData = readUsage()
     const userUsage = usageData[userId] || {}
     const allModelContexts = userUsage.modelConversationContext || {}
     const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
 
-    let prompt = `Today's date is ${getCurrentDateString()}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data.\n\n`
+    // System message: instructions, memory context, and search results
+    let systemMessage = `Today's date is ${getCurrentDateString()}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data.`
 
     if (memoryContextString) {
-      prompt += memoryContextString + '\n'
-    }
-
-    if (contextSummaries.length > 0) {
-      const contextString = contextSummaries.map((ctx, idx) => {
-        const promptPart = ctx.originalPrompt ? `User asked: ${ctx.originalPrompt}\n` : ''
-        const responsePart = ctx.isFull && ctx.response
-          ? `Your response: ${ctx.response}`
-          : `Your response (summary): ${ctx.summary}`
-        return `${idx + 1}. ${promptPart}${responsePart}`
-      }).join('\n\n')
-      prompt += `Here is context from your recent conversation with this user (most recent first — prioritize the latest context):\n\n${contextString}\n\n`
-    } else if (originalResponse && originalResponse.trim()) {
-      prompt += `Your previous response that the user wants to continue discussing:\n${originalResponse.substring(0, 2000)}${originalResponse.length > 2000 ? '...' : ''}\n\n`
+      systemMessage += '\n\n' + memoryContextString
     }
 
     if (rawSourcesData && rawSourcesData.sourceCount > 0) {
-      prompt += `Here is raw content from recent web sources that may help answer the user's question:\n\n${rawSourcesData.formatted}\n\n`
+      systemMessage += `\n\nHere is raw content from recent web sources that may help answer the user's question:\n\n${rawSourcesData.formatted}`
     }
 
-    prompt += `User: ${userMessage}`
+    // Build proper multi-turn conversation messages from stored context.
+    // contextSummaries is ordered most-recent-first, so reverse for chronological order.
+    const conversationMessages = []
+    if (contextSummaries.length > 0) {
+      const chronological = [...contextSummaries].reverse()
+      for (const ctx of chronological) {
+        if (ctx.originalPrompt) {
+          conversationMessages.push({ role: 'user', content: ctx.originalPrompt })
+        }
+        const assistantText = ctx.isFull && ctx.response ? ctx.response : ctx.summary
+        if (assistantText) {
+          conversationMessages.push({ role: 'assistant', content: assistantText })
+        }
+      }
+    } else if (originalResponse && originalResponse.trim()) {
+      // First follow-up with no server-stored context yet: use the original response
+      conversationMessages.push({ role: 'assistant', content: originalResponse.substring(0, 4000) })
+    }
+
+    // Add current user message as the final turn
+    conversationMessages.push({ role: 'user', content: userMessage })
+
+    // Also build a flat prompt string for token estimation (used as fallback)
+    const prompt = systemMessage + '\n\n' + conversationMessages.map(m => `${m.role}: ${m.content}`).join('\n')
+
+    console.log(`[Model Conversation Stream] Built ${conversationMessages.length} conversation messages (${contextSummaries.length} context entries)`)
 
     // Step 4: Model mapping
     const modelMappings = {
@@ -5911,6 +5924,40 @@ function formatMemoryContext(contexts) {
 
   return `Relevant context from this user's previous conversations (use as background knowledge if helpful):\n\n${formatted}\n\n`
 }
+
+// ==================== MEMORY CONTEXT RETRIEVAL ====================
+// Standalone endpoint to retrieve embedding-based memory context.
+// Called by the frontend when needsContext=true but needsSearch=false,
+// so that models in the direct (non-RAG) path still get memory injected.
+app.post('/api/memory/retrieve', async (req, res) => {
+  try {
+    const { userId, prompt, needsContext } = req.body
+    if (!userId || !prompt) {
+      return res.status(400).json({ error: 'userId and prompt are required' })
+    }
+
+    const scoreThreshold = needsContext ? 0.70 : 0.82
+    const memoryContextItems = await findRelevantContext(userId, prompt, 3, scoreThreshold)
+    const memoryContextString = formatMemoryContext(memoryContextItems)
+
+    if (memoryContextString) {
+      console.log(`[Memory Retrieve] Found ${memoryContextItems.length} items for user ${userId} (threshold: ${scoreThreshold})`)
+    } else {
+      console.log(`[Memory Retrieve] No relevant context for user ${userId} (threshold: ${scoreThreshold})`)
+    }
+
+    res.json({
+      items: memoryContextItems,
+      contextString: memoryContextString,
+      needsContextHint: !!needsContext,
+      scoreThreshold,
+      injected: memoryContextItems.length > 0,
+    })
+  } catch (error) {
+    console.error('[Memory Retrieve] Error:', error.message)
+    res.json({ items: [], contextString: '', injected: false })
+  }
+})
 
 // Helper function for Serper search (used by both /api/search and RAG pipeline)
 async function performSerperSearch(query, num = 10) {

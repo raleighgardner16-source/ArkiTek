@@ -89,10 +89,11 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
       <div style={{ marginBottom: '16px' }}>
         <div style={{ color: '#00aaff', fontWeight: 'bold', marginBottom: '8px' }}>Model: Gemini 2.5 Flash Lite</div>
         <div style={{ marginBottom: '12px' }}>
-          <div style={{ color: '#888', fontSize: '12px', marginBottom: '4px' }}>Category: {category}</div>
+          <div style={{ color: '#888', fontSize: '12px', marginBottom: '4px' }}>Category: {category || 'N/A'}</div>
           <div style={{ color: '#888', fontSize: '12px', marginBottom: '4px' }}>Needs Search: {needsSearch ? 'Yes' : 'No'}</div>
           <div style={{ color: '#888', fontSize: '12px' }}>Needs Context: {needsContext ? 'Yes' : 'No'}</div>
         </div>
+        {prompt && (
         <div style={{ marginBottom: '12px' }}>
           <div style={{ color: '#00aaff', fontSize: '12px', marginBottom: '4px', fontWeight: 'bold' }}>Prompt Sent:</div>
           <div style={{ 
@@ -106,9 +107,11 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
             fontFamily: 'monospace',
             whiteSpace: 'pre-wrap'
           }}>
-            {prompt.substring(0, 500)}...
+            {(prompt || '').substring(0, 500)}...
           </div>
         </div>
+        )}
+        {response && (
         <div>
           <div style={{ color: '#00ff88', fontSize: '12px', marginBottom: '4px', fontWeight: 'bold' }}>Response:</div>
           <div style={{ 
@@ -125,6 +128,12 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
             {response}
           </div>
         </div>
+        )}
+        {!prompt && !response && (
+          <div style={{ color: '#888', fontSize: '12px', fontStyle: 'italic' }}>
+            Category detection prompt and response details are available in the RAG pipeline path only.
+          </div>
+        )}
       </div>
     )
   }

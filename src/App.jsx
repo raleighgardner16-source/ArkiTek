@@ -339,7 +339,9 @@ function App() {
           categoryDetection: {
             category: category,
             needsSearch: needsSearch,
-            needsContext: needsContext
+            needsContext: needsContext,
+            prompt: detectionResult?.prompt || null,
+            response: detectionResult?.rawResponse || null,
           },
           memoryContext: ragData.memory_context || null,
         })
@@ -424,7 +426,30 @@ function App() {
     if (!needsSearch || (needsSearch && responses.length === 0)) {
       setQueryCount(0)
       
-      // Store debug data for non-search path (no web sources, no memory context in direct calls)
+      // Retrieve memory context for the non-search path when needsContext is true.
+      // In the RAG pipeline path, this is done inside the pipeline. For direct LLM calls,
+      // we need to do it here so models still get relevant past conversation context.
+      let memoryContextData = null
+      let memoryPrefix = ''
+      if (needsContext && currentUser?.id) {
+        try {
+          console.log('[Memory] Retrieving embedded context for non-search prompt...')
+          const memResponse = await axios.post(`${API_URL}/api/memory/retrieve`, {
+            userId: currentUser.id,
+            prompt: currentPrompt,
+            needsContext: true
+          })
+          memoryContextData = memResponse.data
+          memoryPrefix = memResponse.data?.contextString || ''
+          if (memoryPrefix) {
+            console.log(`[Memory] Injecting ${memResponse.data.items.length} past conversations into direct LLM prompts`)
+          }
+        } catch (memErr) {
+          console.error('[Memory] Error retrieving context:', memErr.message)
+        }
+      }
+
+      // Store debug data for non-search path (includes memory context if retrieved)
       if (!ragData) {
         setRAGDebugData({
           search: null,
@@ -432,12 +457,19 @@ function App() {
           categoryDetection: {
             category: category,
             needsSearch: needsSearch,
-            needsContext: needsContext
+            needsContext: needsContext,
+            prompt: detectionResult?.prompt || null,
+            response: detectionResult?.rawResponse || null,
           },
-          memoryContext: null,
+          memoryContext: memoryContextData || null,
         })
       }
       
+      // Build the prompt with memory context prepended (if available)
+      const enhancedPrompt = memoryPrefix
+        ? `${memoryPrefix}\n${currentPrompt}`
+        : currentPrompt
+
       // Phase 2 Streaming: Add placeholder responses immediately, then stream tokens into them
       const responseIds = {}
       modelsToUse.forEach((modelId) => {
@@ -482,7 +514,7 @@ function App() {
         
         try {
           const userId = currentUser?.id || null
-          const llmResponse = await callLLMStream(providerKey, model, currentPrompt, userId, false, (token) => {
+          const llmResponse = await callLLMStream(providerKey, model, enhancedPrompt, userId, false, (token) => {
             // Update the response text incrementally as tokens arrive
             updateResponse(responseId, {
               text: (useStore.getState().responses.find(r => r.id === responseId)?.text || '') + token,
