@@ -768,31 +768,31 @@ function App() {
             }).filter(l => l && l.length >= 5) // Remove any empty or too-short strings after cleaning
           : []
         
-        // Format the summary text
+        // Format the summary text using markdown for proper rendering
         let formattedSummaryText = ''
         
         // Consensus score at the top
         if (consensus !== null && consensus !== undefined) {
-          formattedSummaryText += `CONSENSUS: ${consensus}%\n\n`
+          formattedSummaryText += `**CONSENSUS: ${consensus}%**\n\n`
         }
         
         // Summary section
         if (parsedSummary) {
-          formattedSummaryText += `SUMMARY:\n${parsedSummary}\n\n`
+          formattedSummaryText += `## SUMMARY\n${parsedSummary}\n\n`
         }
         
         // Agreements section
         if (agreements && agreements.length > 0) {
-          formattedSummaryText += `AGREEMENTS:\n${agreements.map(a => `• ${a}`).join('\n')}\n\n`
+          formattedSummaryText += `## AGREEMENTS\n${agreements.map(a => `- ${a}`).join('\n')}\n\n`
         } else {
-          formattedSummaryText += `AGREEMENTS:\nNone identified.\n\n`
+          formattedSummaryText += `## AGREEMENTS\nNone identified.\n\n`
         }
         
         // Disagreements section
         if (disagreements && disagreements.length > 0) {
-          formattedSummaryText += `DISAGREEMENTS:\n${disagreements.map(d => `• ${d}`).join('\n')}`
+          formattedSummaryText += `## DISAGREEMENTS\n${disagreements.map(d => `- ${d}`).join('\n')}`
         } else {
-          formattedSummaryText += `DISAGREEMENTS:\nNone identified.`
+          formattedSummaryText += `## DISAGREEMENTS\nNone identified.`
         }
         
         // Collect judge tokens and update token data
