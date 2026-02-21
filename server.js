@@ -7288,7 +7288,7 @@ const judgeFinalization = async (query, councilResponses, userId = null) => {
     .map((r, idx) => `\n--- Response ${idx + 1}: ${getFriendlyModelName(r.model_name)} ---\n${r.response}\n`)
     .join('')
   
-  const judgePrompt = `Today's date is ${getCurrentDateString()}. You are a judge analyzing responses from multiple AI models.
+  const judgePrompt = `Today is ${getCurrentDateString()}. This is the real, current date — not hypothetical or simulated. You are a judge analyzing responses from multiple AI models to a user's question.
 
 Original User Query: "${query}"
 
@@ -7300,30 +7300,16 @@ RESPOND WITH EXACTLY THESE 4 SECTIONS IN THIS EXACT FORMAT:
 CONSENSUS: [number]%
 
 SUMMARY:
-[Write a comprehensive summary of what the council collectively determined. Use the model names exactly as shown above (ChatGPT, Claude, Gemini, Grok, etc.) when attributing statements like "Gemini states...", "ChatGPT and Claude agree that...". Include source citations from the models like [source 2] if they cited sources.]
+[Write a thorough, explanatory summary that synthesizes what the council collectively determined. Do not just state conclusions — explain the reasoning, key details, and context behind them. Use the model names exactly as shown above (ChatGPT, Claude, Gemini, Grok, etc.) when attributing specific claims, like "Gemini explains that..." or "ChatGPT and Claude both emphasize...". If models cited sources, include those citations like [source 2]. The summary should give the reader a complete understanding of the topic without needing to read the individual model responses. Aim for 2-3 substantial paragraphs.]
 
 AGREEMENTS:
-- [First specific point all/most models agree on - name which models]
+- [First specific point all/most models agree on
 - [Second point they agree on - name which models]
 - [Third point of agreement - name which models]
 (THIS SECTION IS MANDATORY! List at least 3-5 specific agreement points. NEVER write "None identified" unless models literally contradict each other on everything.)
 
 DISAGREEMENTS:
-- [Only list DIRECT CONTRADICTIONS here — where two models make claims that CANNOT BOTH BE TRUE]
-(CRITICAL RULES FOR THIS SECTION:
-A "disagreement" means Model A states a FACT and Model B states the OPPOSITE FACT. Both statements cannot be true at the same time. For example:
-- REAL DISAGREEMENT: "Gemini says the election is November 7, but Grok says it is November 3" — one must be wrong.
-- REAL DISAGREEMENT: "Claude says ibuprofen should be avoided, but GPT says ibuprofen is recommended" — directly contradictory advice.
-- REAL DISAGREEMENT: "Grok claims the death toll was 500, while Gemini reports 2,000" — conflicting numbers.
-
-THE FOLLOWING ARE NOT DISAGREEMENTS — DO NOT LIST THEM:
-- One model mentioning something another model does not mention. That is an omission, not a contradiction.
-- Models recommending different products or examples. Suggesting "bacitracin" vs "benzoyl peroxide" are both valid suggestions, not a contradiction.
-- One model giving more detail or being more specific than another. More detail is not a disagreement.
-- Models using different tone, structure, or framing to express the same underlying point.
-- One model including extra advice the others left out.
-
-If no direct contradictions exist, write exactly: "None identified — all models are in factual agreement." This is the CORRECT answer for most topics. Do not force disagreements where none exist.)`
+[ONLY list factual contradictions where Model A and Model B make claims that CANNOT BOTH BE TRUE. Example: "Gemini states the date is November 7, but Claude states it is November 5 — these are contradictory." If one model mentions something another does not, that is NOT a disagreement. If models suggest different examples, products, or details, those are NOT disagreements. If models differ in tone, depth, or structure, those are NOT disagreements. If there are no factual contradictions, write: "None identified — all models are in factual agreement."]`
 
 
 
@@ -7508,10 +7494,35 @@ If no direct contradictions exist, write exactly: "None identified — all model
                                     l.toLowerCase().includes('you must list') ||
                                     l.toLowerCase().includes('only write "none')
           const isEmpty = !l || l.length < 5
-          const isNone = l.toLowerCase() === 'none identified' || l.toLowerCase() === 'none identified.'
+          const isNone = l.toLowerCase().startsWith('none identified')
           const isGarbage = l.match(/^\*+:?$/) || l.match(/^\(.*\)$/)
           return !isInstructionText && !isEmpty && !isNone && !isGarbage
         })
+
+      // Post-processing: Filter out "disagreements" that are actually coverage differences, not contradictions.
+      // The judge model sometimes lists omissions, tone differences, and detail differences as disagreements
+      // despite being told not to. This catches those patterns as a safety net.
+      const beforeFilter = disagreements.length
+      disagreements = disagreements.filter(d => {
+        const lower = d.toLowerCase()
+        // Pattern: "X omits / does not mention / does not include / leaves out / omitted by"
+        const isOmission = /\b(?:omits?|omitted|does not (?:mention|include|address|cite|reference|provide|name|specify|list)|do not (?:mention|include)|left out|leaves? out|without (?:mentioning|citing|referencing|naming)|absent from|not included|refrain(?:s)? from)\b/i.test(d)
+        // Pattern: "more detail / more specific / more structured / more informal / deeper / broader"
+        const isDetailDiff = /\b(?:more (?:detail|specific|structured|informal|clinical|conversational|comprehensive|general|predictive|neutral)|greater (?:detail|depth|specificity)|deeper|broader|level of detail|varying (?:levels?|degrees?)|different (?:tone|style|structure|framing|approach|perspective|level))\b/i.test(d)
+        // Pattern: "X adopts a ... tone" or "X is more ... while Y is more ..."
+        const isToneDiff = /\b(?:adopts?\s+(?:a\s+)?(?:more\s+)?(?:\w+\s+)?tone|(?:conversational|informal|clinical|formal|neutral|empathetic|structured|predictive)\s+tone)\b/i.test(d)
+        // Pattern: "X emphasizes ... while Y focuses on" (different focus, not contradiction)
+        const isFocusDiff = /\b(?:emphasiz(?:es?|ing)|focus(?:es|ing)?\s+(?:on|more|instead|primarily)|prioritiz(?:es?|ing)|centers?\s+on)\b.*\b(?:while|whereas|but|however)\b.*\b(?:emphasiz|focus|prioritiz|centers?|provid|takes?)\b/i.test(d)
+        
+        if (isOmission || isDetailDiff || isToneDiff || isFocusDiff) {
+          console.log(`[Judge] Filtered out non-contradiction: "${d.substring(0, 80)}..."`)
+          return false
+        }
+        return true
+      })
+      if (beforeFilter !== disagreements.length) {
+        console.log(`[Judge] Post-filter: ${beforeFilter} → ${disagreements.length} disagreements (removed ${beforeFilter - disagreements.length} coverage differences)`)
+      }
       console.log('[Judge] Extracted disagreements:', disagreements.length, disagreements)
     } else {
       console.log('[Judge] No disagreements section matched!')
