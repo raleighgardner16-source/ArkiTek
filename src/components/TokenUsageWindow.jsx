@@ -1,10 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Minimize2, Maximize2, Eye } from 'lucide-react'
+import { X, Minimize2, Maximize2, Eye, HelpCircle, ChevronDown, ChevronUp, Info, Zap, Send, Globe, Settings, Brain, Gavel, Workflow } from 'lucide-react'
 import { useStore } from '../store/useStore'
+
+// Friendly provider name mapping
+const providerDisplayName = (provider) => {
+  const map = {
+    openai: 'ChatGPT (OpenAI)',
+    anthropic: 'Claude (Anthropic)',
+    google: 'Gemini (Google)',
+    xai: 'Grok (xAI)',
+    mistral: 'Mistral',
+  }
+  return map[provider] || provider.charAt(0).toUpperCase() + provider.slice(1)
+}
 
 const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
   const [isMinimized, setIsMinimized] = useState(false)
+  const [showExplainer, setShowExplainer] = useState(false)
   const activeTab = useStore((state) => state.activeTab)
 
   // Reset minimized state when window is closed
@@ -109,25 +122,103 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
         fontSize: '0.7rem',
       }}>
         <div style={{ color: '#888', fontWeight: '600', marginBottom: '6px', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          Input Breakdown (estimated)
+          Input Breakdown
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
           <div>
-            <div style={{ color: '#48c9b0', marginBottom: '2px' }}>Your Prompt</div>
+            <div style={{ color: '#48c9b0', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <Send size={9} /> Your Prompt
+            </div>
             <div style={{ color: '#fff' }}>~{(breakdown.userPrompt || 0).toLocaleString()}</div>
           </div>
           <div>
-            <div style={{ color: '#e67e22', marginBottom: '2px' }}>Web Sources</div>
+            <div style={{ color: '#e67e22', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <Globe size={9} /> Web Sources
+            </div>
             <div style={{ color: '#fff' }}>~{(breakdown.sourceContext || 0).toLocaleString()}</div>
           </div>
           <div>
-            <div style={{ color: '#888', marginBottom: '2px' }}>System</div>
+            <div style={{ color: '#888', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <Settings size={9} /> System Instructions
+            </div>
             <div style={{ color: '#fff' }}>~{(breakdown.systemOverhead || 0).toLocaleString()}</div>
           </div>
         </div>
       </div>
     )
   }
+
+  // The "What are tokens?" explainer component
+  const renderTokenExplainer = () => (
+    <motion.div
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: 'auto', opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      style={{
+        background: 'rgba(93, 173, 226, 0.04)',
+        border: '1px solid rgba(93, 173, 226, 0.15)',
+        borderRadius: '10px',
+        padding: '14px 16px',
+        marginBottom: '16px',
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ fontSize: '0.78rem', color: '#ccc', lineHeight: '1.65' }}>
+        <div style={{ color: '#5dade2', fontWeight: '700', fontSize: '0.82rem', marginBottom: '10px' }}>
+          What are tokens?
+        </div>
+        <p style={{ margin: '0 0 10px 0' }}>
+          Tokens are the units AI models use to read and write text. Think of them like word fragments — 
+          the word <span style={{ color: '#48c9b0', fontWeight: '600' }}>"hello"</span> is 1 token, 
+          but <span style={{ color: '#48c9b0', fontWeight: '600' }}>"capabilities"</span> might be 2-3 tokens. 
+          On average, <strong style={{ color: '#fff' }}>1 token ≈ ¾ of a word</strong>.
+        </p>
+
+        <div style={{ color: '#5dade2', fontWeight: '700', fontSize: '0.82rem', marginBottom: '8px', marginTop: '14px' }}>
+          Why does "hey there" use 100+ input tokens?
+        </div>
+        <p style={{ margin: '0 0 8px 0' }}>
+          Your actual message is only a few tokens, but every prompt sent to an AI model also includes behind-the-scenes context:
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginLeft: '4px', marginBottom: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+            <Settings size={13} color="#888" style={{ marginTop: '2px', flexShrink: 0 }} />
+            <span><strong style={{ color: '#fff' }}>System instructions</strong> — tells the model the current date, how to format its answer, and general behavior guidelines.</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+            <Globe size={13} color="#e67e22" style={{ marginTop: '2px', flexShrink: 0 }} />
+            <span><strong style={{ color: '#e67e22' }}>Web sources</strong> — if a search was performed, scraped web content is included so the model can reference real-time information. This is often the largest chunk.</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+            <Send size={13} color="#48c9b0" style={{ marginTop: '2px', flexShrink: 0 }} />
+            <span><strong style={{ color: '#48c9b0' }}>Your prompt</strong> — the actual text you typed, usually only a small fraction of the total.</span>
+          </div>
+        </div>
+        <p style={{ margin: '0 0 0 0', color: '#999', fontSize: '0.72rem' }}>
+          This is the same way ChatGPT, Claude, and every other AI app works — they all send system instructions behind the scenes. We just show you the breakdown for full transparency.
+        </p>
+
+        <div style={{ color: '#5dade2', fontWeight: '700', fontSize: '0.82rem', marginBottom: '8px', marginTop: '14px' }}>
+          Input vs. Output vs. Reasoning
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginLeft: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+            <span style={{ color: '#5dade2', fontWeight: '700', minWidth: '52px' }}>Input</span>
+            <span>— everything sent <em>to</em> the model (your prompt + system instructions + web sources).</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+            <span style={{ color: '#48c9b0', fontWeight: '700', minWidth: '52px' }}>Output</span>
+            <span>— the model's response back to you.</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+            <span style={{ color: '#FFD700', fontWeight: '700', minWidth: '52px' }}>Reasoning</span>
+            <span>— some models "think" before answering. These internal thinking tokens are separate from the visible response.</span>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  )
 
   // If inline mode, render without modal overlay
   if (inline) {
@@ -156,9 +247,36 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
 
     return (
       <div style={{ padding: '16px' }}>
-        <h3 style={{ color: '#5dade2', fontSize: '1.2rem', margin: '0 0 16px 0', fontWeight: 'bold' }}>
-          Token Usage by Model/Provider
-        </h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <h3 style={{ color: '#5dade2', fontSize: '1.2rem', margin: 0, fontWeight: 'bold' }}>
+            Token Usage
+          </h3>
+          <button
+            onClick={() => setShowExplainer(!showExplainer)}
+            style={{
+              background: showExplainer ? 'rgba(93, 173, 226, 0.15)' : 'rgba(93, 173, 226, 0.08)',
+              border: '1px solid rgba(93, 173, 226, 0.25)',
+              borderRadius: '8px',
+              padding: '5px 10px',
+              color: '#5dade2',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              fontSize: '0.72rem',
+              fontWeight: '600',
+              transition: 'all 0.2s',
+            }}
+          >
+            <HelpCircle size={13} />
+            {showExplainer ? 'Hide Guide' : 'What are tokens?'}
+          </button>
+        </div>
+
+        <AnimatePresence>
+          {showExplainer && renderTokenExplainer()}
+        </AnimatePresence>
+
         <div style={{ marginBottom: '16px' }}>
           <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
             <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
@@ -173,7 +291,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
           {Object.entries(inlineGrouped).map(([provider, data]) => (
             <div key={provider} style={{ marginBottom: '20px', padding: '12px', background: 'rgba(93, 173, 226, 0.05)', borderRadius: '8px', border: '1px solid rgba(93, 173, 226, 0.2)' }}>
               <h4 style={{ color: '#5dade2', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
-                {provider === 'openai' ? 'Chatgpt' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
+                {providerDisplayName(provider)}
               </h4>
               <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', fontSize: '0.85rem', color: '#aaaaaa' }}>
                 <div><strong style={{ color: '#5dade2' }}>Input:</strong> {data.totalInput.toLocaleString()}</div>
@@ -241,10 +359,16 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
               boxShadow: '0 8px 32px rgba(93, 173, 226, 0.3)',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ color: '#5dade2', fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>
-                Token Usage
-              </h2>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <div>
+                <h2 style={{ color: '#5dade2', fontSize: '1.5rem', margin: 0, fontWeight: 'bold' }}>
+                  Token Usage
+                </h2>
+                <p style={{ color: '#888', fontSize: '0.75rem', margin: '4px 0 0 0' }}>
+                  A breakdown of how many tokens were used for this prompt
+                </p>
+              </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <button
                   onClick={(e) => {
@@ -293,6 +417,36 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
               </div>
             </div>
 
+            {/* "What are tokens?" toggle */}
+            <button
+              onClick={() => setShowExplainer(!showExplainer)}
+              style={{
+                background: showExplainer ? 'rgba(93, 173, 226, 0.12)' : 'rgba(93, 173, 226, 0.06)',
+                border: '1px solid rgba(93, 173, 226, 0.2)',
+                borderRadius: '8px',
+                padding: '8px 14px',
+                color: '#5dade2',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.78rem',
+                fontWeight: '600',
+                transition: 'all 0.2s',
+                marginBottom: '16px',
+                width: '100%',
+                justifyContent: 'center',
+              }}
+            >
+              <HelpCircle size={14} />
+              {showExplainer ? 'Hide Guide' : 'What are tokens? Why is my count higher than expected?'}
+              {showExplainer ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+
+            <AnimatePresence>
+              {showExplainer && renderTokenExplainer()}
+            </AnimatePresence>
+
             {/* Token breakdown — shows what makes up input tokens */}
             {hasAnyBreakdown ? (
               <div style={{
@@ -302,32 +456,55 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                 padding: '14px',
                 marginBottom: '16px',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
                   <Eye size={14} color="#5dade2" />
                   <span style={{ color: '#5dade2', fontWeight: '700', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    What's In Your Token Count
+                    Where Your Tokens Went
                   </span>
                 </div>
+                <div style={{ fontSize: '0.68rem', color: '#777', marginBottom: '10px', lineHeight: '1.4' }}>
+                  Every prompt includes more than just your message. Here's the full picture:
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#aaa' }}>Your Prompt</span>
-                    <span style={{ color: '#fff', fontWeight: '600' }}>~{singleUserPromptEstimate.toLocaleString()}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#aaa', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Send size={11} color="#48c9b0" />
+                      Your Prompt
+                      <span style={{ color: '#666', fontSize: '0.65rem' }}>— what you typed</span>
+                    </span>
+                    <span style={{ color: '#48c9b0', fontWeight: '600' }}>~{singleUserPromptEstimate.toLocaleString()}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#aaa' }}>Web Sources</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#aaa', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Globe size={11} color="#e67e22" />
+                      Web Sources
+                      <span style={{ color: '#666', fontSize: '0.65rem' }}>— scraped search results</span>
+                    </span>
                     <span style={{ color: '#e67e22', fontWeight: '600' }}>~{totalSourceContext.toLocaleString()}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#aaa' }}>System / Formatting</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#aaa', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Settings size={11} color="#888" />
+                      System Instructions
+                      <span style={{ color: '#666', fontSize: '0.65rem' }}>— date, formatting rules</span>
+                    </span>
                     <span style={{ color: '#fff', fontWeight: '600' }}>~{totalSystemOverhead.toLocaleString()}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#aaa' }}>Model Output</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#aaa', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Zap size={11} color="#48c9b0" />
+                      Model Response
+                      <span style={{ color: '#666', fontSize: '0.65rem' }}>— the AI's answer</span>
+                    </span>
                     <span style={{ color: '#fff', fontWeight: '600' }}>{totalOutput.toLocaleString()}</span>
                   </div>
                   {totalReasoning > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#aaa' }}>Reasoning</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#aaa', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <Brain size={11} color="#FFD700" />
+                        Reasoning
+                        <span style={{ color: '#666', fontSize: '0.65rem' }}>— model's internal thinking</span>
+                      </span>
                       <span style={{ color: '#FFD700', fontWeight: '600' }}>{totalReasoning.toLocaleString()}</span>
                     </div>
                   )}
@@ -337,7 +514,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                   </div>
                 </div>
                 <div style={{ marginTop: '10px', fontSize: '0.68rem', color: '#777', lineHeight: '1.4' }}>
-                  <span style={{ color: '#e67e22', fontWeight: '600' }}>Not included:</span> Internal pipeline tokens (category detection, search query generation) are not counted toward your stats.
+                  <span style={{ color: '#e67e22', fontWeight: '600' }}>Not included above:</span> Internal pipeline tokens (like category detection and search query generation) run behind the scenes and are not counted toward your stats.
                 </div>
               </div>
             ) : (
@@ -345,14 +522,21 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
               <div style={{
                 background: 'rgba(93, 173, 226, 0.06)',
                 border: '1px solid rgba(93, 173, 226, 0.2)',
-                borderRadius: '8px',
-                padding: '10px 14px',
+                borderRadius: '10px',
+                padding: '12px 14px',
                 marginBottom: '16px',
-                fontSize: '0.75rem',
+                fontSize: '0.78rem',
                 color: '#ccc',
-                lineHeight: '1.4',
+                lineHeight: '1.5',
               }}>
-                <span style={{ color: '#5dade2', fontWeight: '600' }}>Note:</span> No web sources were used for this prompt. Your token count includes your prompt, system formatting, and model output. Internal pipeline tokens (category detection) are not counted.
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <Info size={13} color="#5dade2" />
+                  <span style={{ color: '#5dade2', fontWeight: '600' }}>No web sources used</span>
+                </div>
+                <p style={{ margin: 0 }}>
+                  Your token count includes your prompt, system instructions (date, formatting rules sent with every request), and the model's response. 
+                  Even a short message like "hey there" will use 100+ input tokens because of these behind-the-scenes instructions — this is normal and how all AI apps work.
+                </p>
               </div>
             )}
 
@@ -366,38 +550,63 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                 marginBottom: '20px',
               }}
             >
-              <h3 style={{ color: '#5dade2', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: 'bold' }}>
-                Total API Usage
+              <h3 style={{ color: '#5dade2', fontSize: '1rem', margin: '0 0 4px 0', fontWeight: 'bold' }}>
+                Total Usage
               </h3>
+              <p style={{ color: '#777', fontSize: '0.7rem', margin: '0 0 12px 0' }}>
+                Combined tokens across all models for this prompt
+              </p>
               <div style={{ display: 'grid', gridTemplateColumns: totalReasoning > 0 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '12px' }}>
                 <div>
-                  <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '4px' }}>Input Tokens</div>
+                  <div style={{ color: '#888', fontSize: '0.78rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    Sent to AI
+                  </div>
                   <div style={{ color: '#fff', fontSize: '1.2rem', fontWeight: 'bold' }}>
                     {totalInput.toLocaleString()}
                   </div>
+                  <div style={{ color: '#666', fontSize: '0.6rem' }}>input tokens</div>
                 </div>
                 <div>
-                  <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '4px' }}>Output Tokens</div>
+                  <div style={{ color: '#888', fontSize: '0.78rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    AI Response
+                  </div>
                   <div style={{ color: '#fff', fontSize: '1.2rem', fontWeight: 'bold' }}>
                     {totalOutput.toLocaleString()}
                   </div>
+                  <div style={{ color: '#666', fontSize: '0.6rem' }}>output tokens</div>
                 </div>
                 {totalReasoning > 0 && (
                   <div>
-                    <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '4px' }}>Reasoning Tokens</div>
+                    <div style={{ color: '#888', fontSize: '0.78rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      Thinking
+                    </div>
                     <div style={{ color: '#FFD700', fontSize: '1.2rem', fontWeight: 'bold' }}>
                       {totalReasoning.toLocaleString()}
                     </div>
+                    <div style={{ color: '#666', fontSize: '0.6rem' }}>reasoning tokens</div>
                   </div>
                 )}
                 <div>
-                  <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '4px' }}>Total Tokens</div>
+                  <div style={{ color: '#5dade2', fontSize: '0.78rem', marginBottom: '4px', fontWeight: '600' }}>
+                    Grand Total
+                  </div>
                   <div style={{ color: '#5dade2', fontSize: '1.2rem', fontWeight: 'bold' }}>
                     {totalTokens.toLocaleString()}
                   </div>
+                  <div style={{ color: '#666', fontSize: '0.6rem' }}>tokens</div>
                 </div>
               </div>
             </div>
+
+            {/* Per-Model Breakdown heading */}
+            {Object.keys(groupedByProvider).length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+                <span style={{ color: '#888', fontSize: '0.75rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Per-Model Breakdown
+                </span>
+                <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
+              </div>
+            )}
 
             {/* By Provider */}
             {Object.entries(groupedByProvider).map(([provider, providerData]) => (
@@ -412,8 +621,8 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h3 style={{ color: '#5dade2', fontSize: '1rem', margin: 0, fontWeight: 'bold', textTransform: 'capitalize' }}>
-                    {provider}
+                  <h3 style={{ color: '#5dade2', fontSize: '1rem', margin: 0, fontWeight: 'bold' }}>
+                    {providerDisplayName(provider)}
                   </h3>
                   <div style={{ display: 'grid', gridTemplateColumns: providerData.totalReasoning > 0 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '12px', fontSize: '0.85rem' }}>
                     <div>
@@ -467,7 +676,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                           padding: '2px 6px',
                           borderRadius: '4px',
                         }}>
-                          {modelData.source === 'api_response' ? 'API Reported' : 'Estimated'}
+                          {modelData.source === 'api_response' ? 'Exact (from API)' : 'Estimated'}
                         </div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: modelData.reasoning > 0 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '6px', fontSize: '0.75rem' }}>
@@ -513,8 +722,9 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                   marginBottom: '16px',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Gavel size={16} color="#a855f7" />
                     <h3 style={{ color: '#a855f7', fontSize: '1rem', margin: 0, fontWeight: 'bold' }}>
                       Judge Model
                     </h3>
@@ -526,7 +736,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                       borderRadius: '4px',
                       fontWeight: '600',
                     }}>
-                      Finalization
+                      Counted
                     </span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', fontSize: '0.85rem' }}>
@@ -550,8 +760,8 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                     </div>
                   </div>
                 </div>
-                <div style={{ marginTop: '4px', fontSize: '0.68rem', color: '#888', fontStyle: 'italic' }}>
-                  The judge model synthesizes all council responses into a final summary. These tokens are counted toward your stats.
+                <div style={{ fontSize: '0.72rem', color: '#999', lineHeight: '1.4' }}>
+                  When you use multiple models, a judge model reads all their responses and creates the summary, agreements, and disagreements. These tokens are part of your total usage.
                 </div>
               </div>
             )}
@@ -567,10 +777,11 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                   marginBottom: '16px',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Workflow size={16} color="#ffaa00" />
                     <h3 style={{ color: '#ffaa00', fontSize: '1rem', margin: 0, fontWeight: 'bold' }}>
-                      Pipeline (Not Counted)
+                      Behind the Scenes
                     </h3>
                     <span style={{
                       fontSize: '0.65rem',
@@ -580,7 +791,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                       borderRadius: '4px',
                       fontWeight: '600',
                     }}>
-                      Internal
+                      Not Counted
                     </span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', fontSize: '0.85rem' }}>
@@ -603,6 +814,9 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                       </div>
                     </div>
                   </div>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#999', lineHeight: '1.4', marginBottom: '10px' }}>
+                  These small AI calls happen automatically to figure out what kind of question you asked and generate better search queries. They're free — not counted toward your token stats.
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {pipelineItems.map((item, index) => (
@@ -627,7 +841,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                           padding: '2px 6px',
                           borderRadius: '4px',
                         }}>
-                          Not Counted
+                          Free
                         </div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', fontSize: '0.75rem' }}>
@@ -649,9 +863,6 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                     </div>
                   ))}
                 </div>
-                <div style={{ marginTop: '8px', fontSize: '0.68rem', color: '#888', fontStyle: 'italic' }}>
-                  These tokens are used internally for category detection and query classification. They are not counted toward your token stats.
-                </div>
               </div>
             )}
           </motion.div>
@@ -662,3 +873,4 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
 }
 
 export default TokenUsageWindow
+

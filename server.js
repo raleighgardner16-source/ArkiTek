@@ -5466,6 +5466,173 @@ Search query:`
   }
 }
 
+// ============================================================================
+// EMBEDDING & MEMORY SYSTEM
+// Uses OpenAI text-embedding-3-small to generate vector embeddings of
+// conversations, stored in conversation_history alongside the original data.
+// At query time, $vectorSearch finds the 3 most relevant past conversations
+// for the current user and injects them as memory context.
+// ============================================================================
+
+/**
+ * Generate a vector embedding for a piece of text using OpenAI text-embedding-3-small.
+ * Returns an array of 1536 floats, or null on failure.
+ */
+async function generateEmbedding(text) {
+  const apiKey = API_KEYS.openai
+  if (!apiKey) {
+    console.warn('[Embedding] OpenAI API key not configured, skipping embedding')
+    return null
+  }
+
+  try {
+    // Truncate to ~8000 tokens worth of text (~32000 chars) to stay within model limits
+    const truncated = text.length > 32000 ? text.substring(0, 32000) : text
+
+    const response = await axios.post(
+      'https://api.openai.com/v1/embeddings',
+      {
+        model: 'text-embedding-3-small',
+        input: truncated,
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    )
+
+    const embedding = response.data?.data?.[0]?.embedding
+    if (!embedding || !Array.isArray(embedding)) {
+      console.error('[Embedding] Unexpected response shape')
+      return null
+    }
+
+    const tokensUsed = response.data?.usage?.total_tokens || 0
+    console.log(`[Embedding] Generated ${embedding.length}-dim vector (${tokensUsed} tokens)`)
+    return embedding
+  } catch (error) {
+    console.error('[Embedding] Error generating embedding:', error.message)
+    return null
+  }
+}
+
+/**
+ * Build a concise text representation of a conversation for embedding.
+ * Combines the user's prompt with a brief summary of the response(s).
+ */
+function buildEmbeddingText(originalPrompt, responses, summary) {
+  let text = `User prompt: ${originalPrompt}`
+
+  // Add summary if available (council mode)
+  if (summary && summary.text) {
+    // Use first 500 chars of the summary
+    text += `\nSummary: ${summary.text.substring(0, 500)}`
+  } else if (responses && responses.length > 0) {
+    // Single model — use first 500 chars of the response
+    const firstResponse = responses[0]?.text || responses[0]?.modelResponse || ''
+    if (firstResponse) {
+      text += `\nResponse: ${firstResponse.substring(0, 500)}`
+    }
+  }
+
+  return text
+}
+
+/**
+ * Find the top N most relevant past conversations for a user, given a new prompt.
+ * Uses MongoDB Atlas $vectorSearch on the conversation_history collection.
+ * Returns an array of { title, originalPrompt, summarySnippet } objects.
+ */
+async function findRelevantContext(userId, currentPrompt, limit = 3) {
+  if (!userId || !currentPrompt) return []
+
+  try {
+    // 1. Generate embedding for the current prompt
+    const queryEmbedding = await generateEmbedding(`User prompt: ${currentPrompt}`)
+    if (!queryEmbedding) {
+      console.log('[Memory] Could not generate query embedding, skipping context retrieval')
+      return []
+    }
+
+    // 2. Run $vectorSearch against conversation_history
+    const dbInstance = await db.getDb()
+    const results = await dbInstance.collection('conversation_history').aggregate([
+      {
+        $vectorSearch: {
+          index: 'conversation_embedding_index',
+          path: 'embedding',
+          queryVector: queryEmbedding,
+          numCandidates: 50,
+          limit: limit + 5, // Fetch extra so we can filter
+          filter: { userId: userId }
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          title: 1,
+          originalPrompt: 1,
+          'summary.text': 1,
+          'summary.consensus': 1,
+          'responses.text': { $slice: ['$responses.text', 1] },
+          savedAt: 1,
+          score: { $meta: 'vectorSearchScore' }
+        }
+      }
+    ]).toArray()
+
+    if (!results || results.length === 0) {
+      console.log(`[Memory] No relevant past conversations found for user ${userId}`)
+      return []
+    }
+
+    // 3. Format results into concise context snippets
+    const contexts = results.slice(0, limit).map(r => {
+      let snippet = ''
+      if (r.summary?.text) {
+        snippet = r.summary.text.substring(0, 300)
+      } else if (r.responses?.[0]?.text) {
+        snippet = r.responses[0].text.substring(0, 300)
+      }
+
+      return {
+        title: r.title || r.originalPrompt?.substring(0, 80),
+        originalPrompt: r.originalPrompt,
+        summarySnippet: snippet,
+        score: r.score,
+        savedAt: r.savedAt,
+      }
+    })
+
+    console.log(`[Memory] Found ${contexts.length} relevant past conversations for user ${userId} (scores: ${contexts.map(c => c.score?.toFixed(3)).join(', ')})`)
+    return contexts
+  } catch (error) {
+    // Gracefully handle cases where the vector search index doesn't exist yet
+    if (error.codeName === 'InvalidPipelineOperator' || error.message?.includes('vectorSearch') || error.code === 40324) {
+      console.warn('[Memory] Vector Search index not found — skipping context retrieval. Create the index in Atlas to enable memory.')
+    } else {
+      console.error('[Memory] Error finding relevant context:', error.message)
+    }
+    return []
+  }
+}
+
+/**
+ * Format relevant context into a string for injection into the council prompt.
+ */
+function formatMemoryContext(contexts) {
+  if (!contexts || contexts.length === 0) return ''
+
+  const formatted = contexts.map((ctx, i) => {
+    const date = ctx.savedAt ? new Date(ctx.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'
+    return `${i + 1}. [${date}] User asked: "${ctx.originalPrompt}"\n   Summary: ${ctx.summarySnippet}${ctx.summarySnippet.length >= 298 ? '...' : ''}`
+  }).join('\n\n')
+
+  return `Relevant context from this user's previous conversations (use as background knowledge if helpful):\n\n${formatted}\n\n`
+}
+
 // Helper function for Serper search (used by both /api/search and RAG pipeline)
 async function performSerperSearch(query, num = 10) {
   const apiKey = API_KEYS.serper
@@ -7113,6 +7280,19 @@ app.post('/api/rag', async (req, res) => {
       rawSourcesData = { formatted: '', sourceCount: 0, scrapedSources: [] }
     }
     
+    // Stage 2.5: Memory — retrieve relevant past conversations for this user
+    let memoryContextString = ''
+    if (userId) {
+      console.log('[RAG Pipeline] Stage 2.5: Retrieving relevant memory context...')
+      const relevantContexts = await findRelevantContext(userId, query, 3)
+      memoryContextString = formatMemoryContext(relevantContexts)
+      if (memoryContextString) {
+        console.log(`[RAG Pipeline] Memory: Injecting ${relevantContexts.length} past conversations as context`)
+      } else {
+        console.log('[RAG Pipeline] Memory: No relevant past conversations found')
+      }
+    }
+
     // Stage 3: Council (parallel processing) — models receive raw source content directly
     console.log(`[RAG Pipeline] Stage 3: Council processing with ${selectedModels.length} models...`)
     const councilPromises = selectedModels.map(async (modelId) => {
@@ -7160,7 +7340,7 @@ app.post('/api/rag', async (req, res) => {
       console.log(`[RAG Pipeline] Council: Raw sources count: ${rawSourcesData.sourceCount}`)
       
       const councilPrompt = `Today's date is ${getCurrentDateString()}.
-
+${memoryContextString ? `\n${memoryContextString}` : ''}
 Web Sources (background reference material):
 ${rawSourcesData.formatted}
 
@@ -7960,6 +8140,26 @@ app.post('/api/history/auto-save', async (req, res) => {
 
     await dbInstance.collection('conversation_history').insertOne(doc)
     console.log(`[History] Auto-saved conversation for user ${userId}: ${historyId}`)
+
+    // Generate embedding asynchronously (don't block the response)
+    // The embedding is stored on the same document for $vectorSearch retrieval
+    ;(async () => {
+      try {
+        const embeddingText = buildEmbeddingText(originalPrompt, doc.responses, doc.summary)
+        const embedding = await generateEmbedding(embeddingText)
+        if (embedding) {
+          await dbInstance.collection('conversation_history').updateOne(
+            { _id: historyId },
+            { $set: { embedding, embeddingText } }
+          )
+          console.log(`[History] Embedding stored for ${historyId} (${embedding.length} dims)`)
+        }
+      } catch (embErr) {
+        console.error(`[History] Embedding generation failed for ${historyId}:`, embErr.message)
+        // Non-fatal — conversation is saved, embedding can be backfilled later
+      }
+    })()
+
     res.json({ success: true, historyId, title })
   } catch (error) {
     console.error('[History] Error auto-saving:', error)
