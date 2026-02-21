@@ -3747,14 +3747,16 @@ app.post('/api/model/conversation/stream', async (req, res) => {
     console.log(`[Model Conversation Stream] Category: ${category}, Needs Search: ${needsSearch}, Needs Context: ${needsContext}`)
 
     // Step 1.5: Retrieve relevant past conversations via embedding memory
+    //   Pass modelName so the memory system extracts THIS model's specific past response
+    //   instead of the generic judge summary — gives the model its own context for consistency.
     let memoryContextString = ''
     let memoryContextItems = []
     if (userId) {
       const scoreThreshold = needsContext ? 0.70 : 0.82
-      memoryContextItems = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
+      memoryContextItems = await findRelevantContext(userId, userMessage, 3, scoreThreshold, modelName)
       memoryContextString = formatMemoryContext(memoryContextItems)
       if (memoryContextString) {
-        console.log(`[Model Conversation Stream] Memory: Injecting ${memoryContextItems.length} past conversations as context`)
+        console.log(`[Model Conversation Stream] Memory: Injecting ${memoryContextItems.length} past conversations as context (model-specific: ${modelName})`)
       }
     }
 
@@ -4130,14 +4132,16 @@ app.post('/api/model/conversation', async (req, res) => {
     console.log(`[Model Conversation] Category: ${category}, Needs Search: ${needsSearch}, Needs Context: ${needsContext}`)
     
     // Step 1.5: Retrieve relevant past conversations via embedding memory
+    //   Pass modelName so the memory system extracts THIS model's specific past response
+    //   instead of the generic judge summary — gives the model its own context for consistency.
     let memoryContextString = ''
     let memoryContextItems = []
     if (userId) {
       const scoreThreshold = needsContext ? 0.70 : 0.82
-      memoryContextItems = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
+      memoryContextItems = await findRelevantContext(userId, userMessage, 3, scoreThreshold, modelName)
       memoryContextString = formatMemoryContext(memoryContextItems)
       if (memoryContextString) {
-        console.log(`[Model Conversation] Memory: Injecting ${memoryContextItems.length} past conversations as context`)
+        console.log(`[Model Conversation] Memory: Injecting ${memoryContextItems.length} past conversations as context (model-specific: ${modelName})`)
       }
     }
     
@@ -5874,7 +5878,7 @@ function buildEmbeddingText(originalPrompt, responses, summary, conversationTurn
  * Uses MongoDB Atlas $vectorSearch on the conversation_history collection.
  * Returns an array of { title, originalPrompt, summarySnippet } objects.
  */
-async function findRelevantContext(userId, currentPrompt, limit = 3, scoreThreshold = 0.75) {
+async function findRelevantContext(userId, currentPrompt, limit = 3, scoreThreshold = 0.75, targetModel = null) {
   if (!userId || !currentPrompt) return []
 
   try {
@@ -5886,6 +5890,7 @@ async function findRelevantContext(userId, currentPrompt, limit = 3, scoreThresh
     }
 
     // 2. Run $vectorSearch against conversation_history
+    //    Return full responses (modelName + text) so we can extract per-model context
     const dbInstance = await db.getDb()
     const results = await dbInstance.collection('conversation_history').aggregate([
       {
@@ -5905,7 +5910,9 @@ async function findRelevantContext(userId, currentPrompt, limit = 3, scoreThresh
           originalPrompt: 1,
           'summary.text': 1,
           'summary.consensus': 1,
-          'responses.text': { $slice: ['$responses.text', 1] },
+          'responses.modelName': 1,
+          'responses.actualModelName': 1,
+          'responses.text': 1,
           savedAt: 1,
           score: { $meta: 'vectorSearchScore' }
         }
@@ -5922,26 +5929,99 @@ async function findRelevantContext(userId, currentPrompt, limit = 3, scoreThresh
       .filter(r => r.score >= scoreThreshold)
       .slice(0, limit)
       .map(r => {
-        // Extract just the SUMMARY section from the judge output (skip CONSENSUS/AGREEMENTS/DISAGREEMENTS)
         let snippet = ''
-        if (r.summary?.text) {
+
+        // --- Model-aware extraction ---
+        // When continuing a conversation with a specific model, find THAT model's
+        // past response instead of the generic judge summary. This gives the model
+        // its own previous context for consistency.
+        if (targetModel && r.responses && r.responses.length > 0) {
+          const modelResponse = r.responses.find(resp => 
+            resp.modelName === targetModel || resp.actualModelName === targetModel
+          )
+          if (modelResponse && modelResponse.text) {
+            snippet = modelResponse.text.substring(0, 800)
+            console.log(`[Memory] Using ${targetModel}'s specific response for context (${snippet.length} chars)`)
+          }
+          // Fall through to summary extraction if model not found in responses
+        }
+
+        // --- Council/general extraction (improved) ---
+        if (!snippet && r.summary?.text) {
           const summaryText = r.summary.text
-          // Try to extract the SUMMARY section between "## SUMMARY" and "## AGREEMENTS"
+
+          // Extract SUMMARY section
           const summaryStart = summaryText.indexOf('## SUMMARY')
           const agreementsStart = summaryText.indexOf('## AGREEMENTS')
-          if (summaryStart !== -1 && agreementsStart !== -1) {
-            snippet = summaryText.substring(summaryStart + 10, agreementsStart).trim()
-          } else if (summaryStart !== -1) {
-            snippet = summaryText.substring(summaryStart + 10).trim()
+          const disagreementsStart = summaryText.indexOf('## DISAGREEMENTS')
+          let summarySection = ''
+          if (summaryStart !== -1) {
+            const summaryEnd = agreementsStart !== -1 ? agreementsStart : summaryText.length
+            summarySection = summaryText.substring(summaryStart + 10, summaryEnd).trim()
           } else {
-            // Fallback: skip the CONSENSUS line and take the rest
+            // Fallback: skip the CONSENSUS line
             const lines = summaryText.split('\n').filter(l => l.trim() && !l.startsWith('**CONSENSUS'))
-            snippet = lines.join(' ').trim()
+            summarySection = lines.join(' ').trim()
           }
-          // Cap at 300 chars
-          snippet = snippet.substring(0, 300)
-        } else if (r.responses?.[0]?.text) {
-          snippet = r.responses[0].text.substring(0, 300)
+
+          // Strip boilerplate meta-commentary (e.g. "All models state they have no memory...")
+          // These patterns remove sentences about models lacking memory, requesting context, etc.
+          // Applied repeatedly to catch multiple consecutive boilerplate sentences.
+          const boilerplatePatterns = [
+            // "All four models state they do not have / have no / cannot recall / lack memory..."
+            /^all\s+(?:four\s+|three\s+|two\s+)?(?:council\s+)?models?\s+(?:unanimously\s+)?(?:state|agree|clarify|acknowledge|note|confirm|indicate|explain|emphasize)\s+(?:that\s+)?they\s+(?:do\s+not|don't|cannot|can\s*not|lack|have\s+no)\s+[^.]*(?:memory|recall|access|history|past\s+(?:conversations?|interactions?))[^.]*\.\s*/i,
+            /^the\s+(?:council\s+)?models?\s+(?:unanimously\s+)?(?:state|agree|clarify|confirm|note)\s+(?:that\s+)?they\s+(?:do\s+not|don't|cannot|have\s+no|lack)[^.]*\.\s*/i,
+            // "Each session is treated as a new start..."
+            /^each\s+(?:model|session)\s+(?:is\s+)?(?:treated|started|considered)\s+as\s+[^.]*\.\s*/i,
+            // "They all invite/request the user to provide..."
+            /^they\s+(?:all\s+)?(?:collectively\s+)?(?:invite|request|encourage|ask)\s+the\s+user\s+to\s+(?:provide|share|give)[^.]*\.\s*/i,
+            /^every\s+model\s+(?:requests?|asks?)\s+(?:that\s+)?the\s+user\s+provide[^.]*\.\s*/i,
+            // "Despite this limitation..."  "However, all models express willingness..."
+            /^despite\s+this\s+(?:limitation|constraint)[^.]*\.\s*/i,
+            /^however,?\s+(?:all\s+)?(?:every\s+)?(?:each\s+)?(?:the\s+)?models?\s+(?:express|show|demonstrate)[^.]*willingness[^.]*\.\s*/i,
+            // Lines starting with "- All models lack/confirm/state they have no..."
+            /^-\s*all\s+models?\s+(?:lack|confirm|state|agree|note)\s+(?:they\s+)?(?:have\s+no|lack|cannot|do\s+not\s+have)\s+[^.\n]*(?:memory|access|history|recall|past\s+(?:conversations?|interactions?))[^.\n]*\.?\s*/im,
+            /^-\s*each\s+(?:session|model)\s+is\s+(?:treated|started)\s+as\s+[^.\n]*\.?\s*/im,
+            /^-\s*(?:all|every)\s+models?\s+(?:express|request|invite|ask)[^.\n]*(?:provide|context|summary|details)[^.\n]*\.?\s*/im,
+          ]
+          // Run multiple passes — removing one boilerplate sentence can expose the next
+          for (let pass = 0; pass < 3; pass++) {
+            const before = summarySection
+            for (const pattern of boilerplatePatterns) {
+              summarySection = summarySection.replace(pattern, '').trim()
+            }
+            if (summarySection === before) break // No more changes
+          }
+
+          // Extract AGREEMENTS section for concrete factual points
+          let agreementsSection = ''
+          if (agreementsStart !== -1) {
+            const agreementsEnd = disagreementsStart !== -1 ? disagreementsStart : summaryText.length
+            agreementsSection = summaryText.substring(agreementsStart + 14, agreementsEnd).trim()
+            // Also strip boilerplate from agreements (multiple passes)
+            for (let pass = 0; pass < 3; pass++) {
+              const before = agreementsSection
+              for (const pattern of boilerplatePatterns) {
+                agreementsSection = agreementsSection.replace(pattern, '').trim()
+              }
+              if (agreementsSection === before) break
+            }
+          }
+
+          // Combine summary + agreements up to 800 chars total
+          if (summarySection && agreementsSection) {
+            snippet = `${summarySection.substring(0, 400)}\nKey points: ${agreementsSection.substring(0, 400)}`
+          } else if (summarySection) {
+            snippet = summarySection
+          } else if (agreementsSection) {
+            snippet = agreementsSection
+          }
+          snippet = snippet.substring(0, 800)
+        }
+
+        // Fallback: use first response text
+        if (!snippet && r.responses?.[0]?.text) {
+          snippet = r.responses[0].text.substring(0, 800)
         }
 
         return {
@@ -5958,7 +6038,7 @@ async function findRelevantContext(userId, currentPrompt, limit = 3, scoreThresh
       return []
     }
 
-    console.log(`[Memory] Found ${contexts.length} relevant past conversations for user ${userId} (scores: ${contexts.map(c => c.score?.toFixed(3)).join(', ')}, threshold: ${scoreThreshold})`)
+    console.log(`[Memory] Found ${contexts.length} relevant past conversations for user ${userId} (scores: ${contexts.map(c => c.score?.toFixed(3)).join(', ')}, threshold: ${scoreThreshold}${targetModel ? `, targetModel: ${targetModel}` : ''})`)
     return contexts
   } catch (error) {
     // Gracefully handle cases where the vector search index doesn't exist yet
@@ -5979,7 +6059,8 @@ function formatMemoryContext(contexts) {
 
   const formatted = contexts.map((ctx, i) => {
     const date = ctx.savedAt ? new Date(ctx.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'
-    return `${i + 1}. [${date}] User asked: "${ctx.originalPrompt}"\n   Summary: ${ctx.summarySnippet}${ctx.summarySnippet.length >= 298 ? '...' : ''}`
+    const ellipsis = ctx.summarySnippet.length >= 795 ? '...' : ''
+    return `${i + 1}. [${date}] User asked: "${ctx.originalPrompt}"\n   Context: ${ctx.summarySnippet}${ellipsis}`
   }).join('\n\n')
 
   return `Relevant context from this user's previous conversations (use as background knowledge if helpful):\n\n${formatted}\n\n`
@@ -5991,13 +6072,13 @@ function formatMemoryContext(contexts) {
 // so that models in the direct (non-RAG) path still get memory injected.
 app.post('/api/memory/retrieve', async (req, res) => {
   try {
-    const { userId, prompt, needsContext } = req.body
+    const { userId, prompt, needsContext, targetModel } = req.body
     if (!userId || !prompt) {
       return res.status(400).json({ error: 'userId and prompt are required' })
     }
 
     const scoreThreshold = needsContext ? 0.70 : 0.82
-    const memoryContextItems = await findRelevantContext(userId, prompt, 3, scoreThreshold)
+    const memoryContextItems = await findRelevantContext(userId, prompt, 3, scoreThreshold, targetModel || null)
     const memoryContextString = formatMemoryContext(memoryContextItems)
 
     // Quick diagnostic: count how many docs have embeddings for this user
