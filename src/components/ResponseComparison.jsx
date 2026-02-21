@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe, Coins, Bug } from 'lucide-react'
+import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe, Coins, Bug, DollarSign } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -8,6 +8,7 @@ import { API_URL } from '../utils/config'
 import { streamFetch } from '../utils/streamFetch'
 import MarkdownRenderer from './MarkdownRenderer'
 import TokenUsageWindow from './TokenUsageWindow'
+import CostBreakdownWindow from './CostBreakdownWindow'
 import PipelineDebugWindow from './PipelineDebugWindow'
 
 const ResponseComparison = () => {
@@ -67,7 +68,9 @@ const ResponseComparison = () => {
   const [searchingInConvo, setSearchingInConvo] = useState({}) // { responseId: true/false }
   const [convoSources, setConvoSources] = useState({}) // { responseId: { turnIndex: [...sources] } } — per-turn follow-up search results
   const [showConvoSources, setShowConvoSources] = useState({}) // { "responseId_turnIndex": true/false } — per-turn toggle
-  const [councilPanelTab, setCouncilPanelTab] = useState('responses') // 'responses' | 'tokens' | 'pipeline'
+  const [showTokenUsageModal, setShowTokenUsageModal] = useState(false)
+  const [showCostModal, setShowCostModal] = useState(false)
+  const [showPipelineModal, setShowPipelineModal] = useState(false)
   const tokenData = useStore((state) => state.tokenData)
   const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
   const lastSubmittedCategory = useStore((state) => state.lastSubmittedCategory || '')
@@ -1704,163 +1707,96 @@ const ResponseComparison = () => {
         paddingBottom: '20px',
       }}
     >
-      {/* Panel header with tabs */}
-      <div style={{
-        width: '100%',
-        maxWidth: cardWidth,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '4px',
-        marginBottom: '12px',
-        padding: '4px',
-        background: theme === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(10, 10, 20, 0.95)',
-        border: `1px solid ${currentTheme.borderLight}`,
-        borderRadius: '12px',
-        backdropFilter: 'blur(12px)',
-        pointerEvents: 'auto',
-      }}>
-        <button
-          onClick={() => setCouncilPanelTab('responses')}
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            padding: '8px 12px',
-            fontSize: '0.75rem',
-            fontWeight: '600',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            color: councilPanelTab === 'responses' ? currentTheme.accent : currentTheme.textMuted,
-            background: councilPanelTab === 'responses' ? currentTheme.buttonBackgroundActive : 'transparent',
-            border: councilPanelTab === 'responses' ? `1px solid ${currentTheme.borderLight}` : '1px solid transparent',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          Responses ({responses.length})
-        </button>
-        <button
-          onClick={() => setCouncilPanelTab('tokens')}
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            padding: '8px 12px',
-            fontSize: '0.75rem',
-            fontWeight: '600',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            color: councilPanelTab === 'tokens' ? currentTheme.accent : currentTheme.textMuted,
-            background: councilPanelTab === 'tokens' ? currentTheme.buttonBackgroundActive : 'transparent',
-            border: councilPanelTab === 'tokens' ? `1px solid ${currentTheme.borderLight}` : '1px solid transparent',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          <Coins size={13} />
-          Model Usage
-        </button>
-        <button
-          onClick={() => setCouncilPanelTab('pipeline')}
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            padding: '8px 12px',
-            fontSize: '0.75rem',
-            fontWeight: '600',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            color: councilPanelTab === 'pipeline' ? currentTheme.accent : currentTheme.textMuted,
-            background: councilPanelTab === 'pipeline' ? currentTheme.buttonBackgroundActive : 'transparent',
-            border: councilPanelTab === 'pipeline' ? `1px solid ${currentTheme.borderLight}` : '1px solid transparent',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          <Bug size={13} />
-          Pipeline
-        </button>
-      </div>
-
-      {/* Token Usage tab content */}
-      {councilPanelTab === 'tokens' && (
-        <div style={{
-          width: '100%',
-          maxWidth: cardWidth,
-          background: theme === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(10, 10, 20, 0.95)',
-          border: `1px solid ${currentTheme.borderLight}`,
-          borderRadius: '12px',
-          backdropFilter: 'blur(12px)',
-          pointerEvents: 'auto',
-          overflow: 'hidden',
-        }}>
-          {tokenData && tokenData.length > 0 ? (
-            <TokenUsageWindow
-              isOpen={true}
-              onClose={() => {}}
-              tokenData={tokenData}
-              inline={true}
-            />
-          ) : (
-            <div style={{
-              padding: '24px',
-              textAlign: 'center',
-              color: currentTheme.textMuted,
-              fontSize: '0.85rem',
-            }}>
-              No token data available yet. Submit a prompt to see usage.
-            </div>
-          )}
-        </div>
+      {/* Token Usage Modal */}
+      {showTokenUsageModal && tokenData && tokenData.length > 0 && (
+        <TokenUsageWindow
+          isOpen={true}
+          onClose={() => setShowTokenUsageModal(false)}
+          tokenData={tokenData}
+        />
       )}
 
-      {/* Pipeline Debug tab content */}
-      {councilPanelTab === 'pipeline' && (
-        <div style={{
-          width: '100%',
-          maxWidth: cardWidth,
-          pointerEvents: 'auto',
-          overflow: 'hidden',
-        }}>
-          {ragDebugData ? (
+      {/* Cost Breakdown Modal */}
+      {showCostModal && tokenData && tokenData.length > 0 && (
+        <CostBreakdownWindow
+          isOpen={true}
+          onClose={() => setShowCostModal(false)}
+          tokenData={tokenData}
+          queryCount={0}
+        />
+      )}
+
+      {/* Pipeline Debug Modal */}
+      {showPipelineModal && ragDebugData && (
+        <div
+          onClick={() => setShowPipelineModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 300,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: theme === 'light' ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.7)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <motion.div
+            onClick={(e) => e.stopPropagation()}
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            style={{
+              background: theme === 'light' ? '#ffffff' : 'rgba(20, 20, 35, 0.98)',
+              border: `1px solid ${currentTheme.borderLight}`,
+              borderRadius: '16px',
+              width: '90%',
+              maxWidth: '900px',
+              maxHeight: '80vh',
+              overflowY: 'auto',
+              position: 'relative',
+              boxShadow: theme === 'light'
+                ? '0 8px 40px rgba(0, 0, 0, 0.2)'
+                : '0 8px 40px rgba(0, 0, 0, 0.6)',
+            }}
+          >
+            <button
+              onClick={() => setShowPipelineModal(false)}
+              style={{
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                background: currentTheme.buttonBackground,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '8px',
+                padding: '6px',
+                cursor: 'pointer',
+                color: currentTheme.text,
+                zIndex: 10,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <X size={18} />
+            </button>
             <PipelineDebugWindow
               debugData={ragDebugData}
-              onClose={() => setCouncilPanelTab('responses')}
+              onClose={() => setShowPipelineModal(false)}
               geminiDetectionResponse={geminiDetectionResponse}
               tokenData={tokenData}
               queryCount={0}
               categoryDetectionData={null}
               inline={true}
             />
-          ) : (
-            <div style={{
-              padding: '24px',
-              textAlign: 'center',
-              color: currentTheme.textMuted,
-              fontSize: '0.85rem',
-              background: theme === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(10, 10, 20, 0.95)',
-              border: `1px solid ${currentTheme.borderLight}`,
-              borderRadius: '12px',
-              backdropFilter: 'blur(12px)',
-            }}>
-              No pipeline data available yet. Submit a prompt to see the pipeline.
-            </div>
-          )}
+          </motion.div>
         </div>
       )}
 
-      {/* Responses tab content */}
-      {councilPanelTab === 'responses' && <div
+      {/* Response cards (always visible) */}
+      <div
         style={{
           display: 'flex',
           flexDirection: 'column',
@@ -2558,7 +2494,190 @@ const ResponseComparison = () => {
           </motion.div>
         )}
 
-        {/* Clear All Response Windows Button - Underneath minimized windows */}
+        {/* Token Usage Card - clickable tab like a model response */}
+        {tokenData && tokenData.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{
+              width: '100%',
+              minWidth: cardWidth,
+              maxWidth: cardWidth,
+              background: theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)',
+              border: `1px solid ${theme === 'light' ? currentTheme.borderLight : 'rgba(93, 173, 226, 0.2)'}`,
+              borderRadius: '8px',
+              padding: '0',
+              boxShadow: 'none',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+              position: 'relative',
+              zIndex: 1000,
+              transition: 'all 0.2s ease',
+            }}
+            onClick={() => setShowTokenUsageModal(true)}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = currentTheme.borderActive
+              e.currentTarget.style.background = theme === 'light' ? currentTheme.buttonBackgroundHover : 'rgba(93, 173, 226, 0.3)'
+              e.currentTarget.style.boxShadow = `0 0 15px ${currentTheme.shadow}, 0 0 30px ${currentTheme.shadowLight}`
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = theme === 'light' ? currentTheme.borderLight : 'rgba(93, 173, 226, 0.2)'
+              e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)'
+              e.currentTarget.style.boxShadow = 'none'
+            }}
+          >
+            <div
+              style={{
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Coins size={16} color={currentTheme.accent} />
+                <h3
+                  style={{
+                    fontSize: '0.9rem',
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    color: currentTheme.accent,
+                    margin: 0,
+                    fontWeight: '500',
+                  }}
+                >
+                  Token Usage
+                </h3>
+              </div>
+              <ChevronRight size={16} color={currentTheme.accent} style={{ marginRight: '20px' }} />
+            </div>
+          </motion.div>
+        )}
+
+        {/* Cost Breakdown Card - clickable tab like a model response */}
+        {tokenData && tokenData.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{
+              width: '100%',
+              minWidth: cardWidth,
+              maxWidth: cardWidth,
+              background: theme === 'light' ? '#ffffff' : 'rgba(255, 215, 0, 0.03)',
+              border: `1px solid ${theme === 'light' ? currentTheme.borderLight : 'rgba(255, 215, 0, 0.15)'}`,
+              borderRadius: '8px',
+              padding: '0',
+              boxShadow: 'none',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+              position: 'relative',
+              zIndex: 1000,
+              transition: 'all 0.2s ease',
+            }}
+            onClick={() => setShowCostModal(true)}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(255, 215, 0, 0.5)'
+              e.currentTarget.style.background = theme === 'light' ? 'rgba(255, 215, 0, 0.08)' : 'rgba(255, 215, 0, 0.15)'
+              e.currentTarget.style.boxShadow = '0 0 15px rgba(255, 215, 0, 0.15), 0 0 30px rgba(255, 215, 0, 0.08)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = theme === 'light' ? currentTheme.borderLight : 'rgba(255, 215, 0, 0.15)'
+              e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(255, 215, 0, 0.03)'
+              e.currentTarget.style.boxShadow = 'none'
+            }}
+          >
+            <div
+              style={{
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <DollarSign size={16} color="#FFD700" />
+                <h3
+                  style={{
+                    fontSize: '0.9rem',
+                    background: 'linear-gradient(90deg, #FFD700, #FFA500)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    color: '#FFD700',
+                    margin: 0,
+                    fontWeight: '500',
+                  }}
+                >
+                  Cost Breakdown
+                </h3>
+              </div>
+              <ChevronRight size={16} color="#FFD700" style={{ marginRight: '20px' }} />
+            </div>
+          </motion.div>
+        )}
+
+        {/* Pipeline Debug Card - clickable tab like a model response */}
+        {ragDebugData && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{
+              width: '100%',
+              minWidth: cardWidth,
+              maxWidth: cardWidth,
+              background: theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)',
+              border: `1px solid ${theme === 'light' ? currentTheme.borderLight : 'rgba(93, 173, 226, 0.2)'}`,
+              borderRadius: '8px',
+              padding: '0',
+              boxShadow: 'none',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+              position: 'relative',
+              zIndex: 1000,
+              transition: 'all 0.2s ease',
+            }}
+            onClick={() => setShowPipelineModal(true)}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = currentTheme.borderActive
+              e.currentTarget.style.background = theme === 'light' ? currentTheme.buttonBackgroundHover : 'rgba(93, 173, 226, 0.3)'
+              e.currentTarget.style.boxShadow = `0 0 15px ${currentTheme.shadow}, 0 0 30px ${currentTheme.shadowLight}`
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = theme === 'light' ? currentTheme.borderLight : 'rgba(93, 173, 226, 0.2)'
+              e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)'
+              e.currentTarget.style.boxShadow = 'none'
+            }}
+          >
+            <div
+              style={{
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Bug size={16} color={currentTheme.accent} />
+                <h3
+                  style={{
+                    fontSize: '0.9rem',
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    color: currentTheme.accent,
+                    margin: 0,
+                    fontWeight: '500',
+                  }}
+                >
+                  Pipeline
+                </h3>
+              </div>
+              <ChevronRight size={16} color={currentTheme.accent} style={{ marginRight: '20px' }} />
+            </div>
+          </motion.div>
+        )}
+
+        {/* Clear All Response Windows Button - Underneath all cards */}
         {responses.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -2637,7 +2756,7 @@ const ResponseComparison = () => {
             </div>
           </motion.div>
         )}
-      </div>}
+      </div>
     </motion.div>
       )}
     </AnimatePresence>
