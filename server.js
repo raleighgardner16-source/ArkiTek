@@ -454,6 +454,48 @@ const writeUsers = (users, changedUserId = null) => {
   }
 }
 
+// Fallback: if a user isn't in cache (common on Vercel cold starts), load from MongoDB
+const ensureUserInCache = async (userId) => {
+  if (usersCache[userId]) return usersCache[userId]
+
+  // Try loading from MongoDB
+  try {
+    const dbUser = await db.users.get(userId)
+    if (!dbUser) return null
+
+    usersCache[userId] = {
+      id: dbUser._id,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      username: dbUser.username,
+      email: dbUser.email,
+      canonicalEmail: dbUser.canonicalEmail || null,
+      password: dbUser.password,
+      createdAt: dbUser.createdAt?.toISOString?.() || dbUser.createdAt,
+      stripeCustomerId: dbUser.stripeCustomerId || null,
+      stripeSubscriptionId: dbUser.stripeSubscriptionId || null,
+      subscriptionStatus: dbUser.subscriptionStatus || 'inactive',
+      subscriptionRenewalDate: dbUser.subscriptionRenewalDate || null,
+      subscriptionStartedDate: dbUser.subscriptionStartedDate || null,
+      subscriptionPausedDate: dbUser.subscriptionPausedDate || null,
+      cancellationHistory: dbUser.cancellationHistory || [],
+      lastActiveAt: dbUser.lastActiveAt || null,
+      monthlyUsageCost: dbUser.monthlyUsageCost || {},
+      monthlyOverageBilled: dbUser.monthlyOverageBilled || {},
+      plan: dbUser.plan || null,
+      emailVerified: dbUser.emailVerified || false,
+      timezone: dbUser.timezone || null,
+      signupIp: dbUser.signupIp || null,
+      deviceFingerprint: dbUser.deviceFingerprint || null,
+    }
+    console.log(`[Cache Fallback] Loaded user ${userId} from MongoDB into cache`)
+    return usersCache[userId]
+  } catch (err) {
+    console.error(`[Cache Fallback] Failed to load user ${userId} from MongoDB:`, err.message)
+    return null
+  }
+}
+
 const readUsage = () => {
   return usageCache
 }
@@ -1582,6 +1624,8 @@ app.post('/api/auth/update-timezone', async (req, res) => {
     if (!userId || !timezone) {
       return res.status(400).json({ error: 'userId and timezone are required' })
     }
+    // Ensure user is in cache (handles Vercel cold start)
+    await ensureUserInCache(userId)
     // Update in MongoDB
     await db.users.update(userId, { timezone })
     // Update in cache
@@ -2418,6 +2462,7 @@ app.put('/api/user/model-preferences', async (req, res) => {
     const { userId, selectedModels, autoSmartProviders } = req.body
     if (!userId) return res.status(400).json({ error: 'userId is required' })
 
+    await ensureUserInCache(userId)
     const users = readUsers()
     if (!users[userId]) return res.status(404).json({ error: 'User not found' })
 
@@ -2437,9 +2482,10 @@ app.put('/api/user/model-preferences', async (req, res) => {
 })
 
 // Load model preferences
-app.get('/api/user/model-preferences/:userId', (req, res) => {
+app.get('/api/user/model-preferences/:userId', async (req, res) => {
   try {
     const { userId } = req.params
+    await ensureUserInCache(userId)
     const users = readUsers()
     if (!users[userId]) return res.status(404).json({ error: 'User not found' })
 
@@ -2454,6 +2500,7 @@ app.get('/api/user/model-preferences/:userId', (req, res) => {
 // Get user statistics
 app.get('/api/stats/:userId', async (req, res) => {
   const { userId } = req.params
+  await ensureUserInCache(userId)
   
   // Use user's timezone for date calculations
   const tz = getUserTimezone(userId)
@@ -4391,7 +4438,7 @@ const buildTokenBreakdown = (userQuery, sourceContent, totalInputTokens) => {
 }
 
 // Helper function to check if user has active subscription
-const checkSubscriptionStatus = (userId) => {
+const checkSubscriptionStatus = async (userId) => {
   if (!userId) {
     console.log('[Subscription Check] No user ID provided')
     return { hasAccess: false, reason: 'No user ID provided' }
@@ -4403,6 +4450,7 @@ const checkSubscriptionStatus = (userId) => {
     return { hasAccess: true }
   }
 
+  await ensureUserInCache(userId)
   const users = readUsers()
   const user = users[userId]
 
@@ -4449,7 +4497,7 @@ const checkSubscriptionStatus = (userId) => {
 
 // Async version that syncs with Stripe before denying access
 const checkSubscriptionStatusAsync = async (userId) => {
-  const result = checkSubscriptionStatus(userId)
+  const result = await checkSubscriptionStatus(userId)
   
   // If access is granted, return immediately
   if (result.hasAccess) return result
@@ -7243,7 +7291,7 @@ app.post('/api/rag', async (req, res) => {
   // Check subscription status
   const { userId } = req.body || {}
   if (userId) {
-    const subscriptionCheck = checkSubscriptionStatus(userId)
+    const subscriptionCheck = await checkSubscriptionStatus(userId)
     if (!subscriptionCheck.hasAccess) {
       return res.status(403).json({ 
         error: 'Active subscription required. Please subscribe to use this service.',
@@ -8104,13 +8152,14 @@ app.get('/api/admin/pricing', requireAdmin, (req, res) => {
 })
 
 // Check if user is admin
-app.get('/api/admin/check', (req, res) => {
+app.get('/api/admin/check', async (req, res) => {
   try {
     const { userId } = req.query
     if (!userId) {
       return res.status(400).json({ error: 'userId is required' })
     }
     
+    await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
     
@@ -8136,6 +8185,7 @@ app.post('/api/admin/add', requireAdmin, async (req, res) => {
     }
     
     // Verify user exists
+    await ensureUserInCache(userId)
     const users = readUsers()
     if (!users[userId]) {
       return res.status(404).json({ error: 'User not found' })
@@ -8230,6 +8280,7 @@ app.post('/api/history/auto-save', async (req, res) => {
       return res.status(400).json({ error: 'userId and originalPrompt are required' })
     }
 
+    await ensureUserInCache(userId)
     const users = readUsers()
     if (!users[userId]) {
       return res.status(404).json({ error: 'User not found' })
@@ -8420,6 +8471,7 @@ app.post('/api/conversations/save', async (req, res) => {
       return res.status(400).json({ error: 'userId and valid type ("individual" or "full") are required' })
     }
 
+    await ensureUserInCache(userId)
     const users = readUsers()
     if (!users[userId]) {
       return res.status(404).json({ error: 'User not found' })
@@ -8635,6 +8687,7 @@ app.post('/api/leaderboard/submit', async (req, res) => {
       return res.status(400).json({ error: 'userId and promptText are required' })
     }
     
+    await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
     
@@ -8994,9 +9047,10 @@ app.get('/api/leaderboard/user-stats/:userId', (req, res) => {
 })
 
 // Get a user's public profile (visible to other users)
-app.get('/api/profile/:userId', (req, res) => {
+app.get('/api/profile/:userId', async (req, res) => {
   try {
     const { userId } = req.params
+    await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
 
@@ -9317,6 +9371,7 @@ app.get('/api/stripe/payment-method', async (req, res) => {
       return res.status(400).json({ error: 'userId is required' })
     }
     
+    await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
     
@@ -9382,6 +9437,7 @@ app.post('/api/stripe/setup-card', async (req, res) => {
       return res.status(400).json({ error: 'userId is required' })
     }
     
+    await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
     
@@ -9444,6 +9500,7 @@ app.get('/api/stripe/saved-cards', async (req, res) => {
       return res.status(400).json({ error: 'userId is required' })
     }
 
+    await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
     if (!user || !user.stripeCustomerId) {
@@ -9482,6 +9539,7 @@ app.post('/api/stripe/charge-saved-card', async (req, res) => {
       return res.status(400).json({ error: 'Amount must be between $1 and $500' })
     }
     
+    await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
     if (!user || !user.stripeCustomerId) {
@@ -9578,6 +9636,7 @@ app.post('/api/stripe/create-usage-intent', async (req, res) => {
       return res.status(400).json({ error: 'Amount must be between $1 and $500' })
     }
 
+    await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
 
@@ -9748,6 +9807,7 @@ app.post('/api/stripe/confirm-usage-purchase', async (req, res) => {
 const syncSubscriptionFromStripe = async (userId, retries = 3) => {
   for (let attempt = 1; attempt <= retries; attempt++) {
   try {
+    await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
     
@@ -9904,6 +9964,7 @@ app.get('/api/stripe/subscription-status', async (req, res) => {
       return res.status(400).json({ error: 'userId is required' })
     }
 
+    await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
 
@@ -9973,6 +10034,7 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
       return res.status(500).json({ error: 'Stripe price ID not configured' })
     }
 
+    await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
 
