@@ -177,6 +177,7 @@ export const useStore = create(
       // Full token data (all models including refiner, category detection, judge)
       tokenData: [],
       setTokenData: (data) => set({ tokenData: data }),
+      appendTokenData: (entry) => set((state) => ({ tokenData: [...state.tokenData, entry] })),
       clearTokenData: () => set({ tokenData: [] }),
 
       // Facts window visibility

@@ -359,6 +359,26 @@ const ResponseComparison = () => {
         }).catch(err => console.error('[Token Update] Model conversation token update failed:', err.message))
       }
 
+      // Append conversation token data to the token usage display so it updates in real-time
+      if (finalData?.tokens) {
+        const provider = modelName.substring(0, modelName.indexOf('-')) || 'unknown'
+        const model = modelName.substring(modelName.indexOf('-') + 1)
+        useStore.getState().appendTokenData({
+          modelName: `${modelName} (follow-up)`,
+          tokens: {
+            input: finalData.tokens.input || 0,
+            output: finalData.tokens.output || 0,
+            inputTokens: finalData.tokens.input || 0,
+            outputTokens: finalData.tokens.output || 0,
+            total: finalData.tokens.total || 0,
+            provider,
+            model,
+            source: 'conversation',
+          },
+          isFollowUp: true,
+        })
+      }
+
       // Push this conversation turn to the active history entry
       const activeHistoryId = useStore.getState().currentHistoryId
       if (activeHistoryId && currentUser?.id) {
