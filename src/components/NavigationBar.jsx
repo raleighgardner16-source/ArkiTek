@@ -75,6 +75,14 @@ const NavigationBar = () => {
 
   // When user is already on the home (chat) tab, clicking it again starts a fresh chat
   const handleNewChat = () => {
+    // Finalize the active history entry before clearing (regenerates embedding with full conversation)
+    const activeHistoryId = useStore.getState().currentHistoryId
+    if (activeHistoryId && currentUser?.id) {
+      axios.post(`${API_URL}/api/history/finalize`, {
+        historyId: activeHistoryId,
+        userId: currentUser.id,
+      }).catch(err => console.error('[History] Error finalizing:', err.message))
+    }
     clearResponses()
     setCurrentPrompt('')
     // Minimize summary window

@@ -348,6 +348,21 @@ const ResponseComparison = () => {
           return { ...prev, [responseId]: { ...existing, [turnIndex]: finalData.searchResults } }
         })
       }
+
+      // Push this conversation turn to the active history entry
+      const activeHistoryId = useStore.getState().currentHistoryId
+      if (activeHistoryId && currentUser?.id) {
+        axios.post(`${API_URL}/api/history/update-conversation`, {
+          historyId: activeHistoryId,
+          turn: {
+            type: 'model',
+            modelName: modelName,
+            user: input,
+            assistant: finalData?.response || '',
+            sources: finalData?.searchResults || [],
+          }
+        }).catch(err => console.error('[History] Error updating model conversation turn:', err.message))
+      }
     } catch (error) {
       console.error('[ResponseComparison] Error sending conversation message:', error)
       // Remove the placeholder on error
@@ -584,6 +599,14 @@ const ResponseComparison = () => {
               pointerEvents: 'auto',
             }}
             onClick={() => {
+              // Finalize the active history entry before clearing
+              const activeHistoryId = useStore.getState().currentHistoryId
+              if (activeHistoryId && currentUser?.id) {
+                axios.post(`${API_URL}/api/history/finalize`, {
+                  historyId: activeHistoryId,
+                  userId: currentUser.id,
+                }).catch(err => console.error('[History] Error finalizing:', err.message))
+              }
               clearResponses()
               clearLastSubmittedPrompt()
               // Clear judge and model conversation context
@@ -1145,6 +1168,14 @@ const ResponseComparison = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation()
+                // Finalize the active history entry before clearing
+                const activeHistoryId = useStore.getState().currentHistoryId
+                if (activeHistoryId && currentUser?.id) {
+                  axios.post(`${API_URL}/api/history/finalize`, {
+                    historyId: activeHistoryId,
+                    userId: currentUser.id,
+                  }).catch(err => console.error('[History] Error finalizing:', err.message))
+                }
                 clearResponses()
                 clearLastSubmittedPrompt()
                 // Clear judge and model conversation context
@@ -2699,6 +2730,14 @@ const ResponseComparison = () => {
               try {
                 e.preventDefault()
                 e.stopPropagation()
+                // Finalize the active history entry before clearing
+                const activeHistoryId = useStore.getState().currentHistoryId
+                if (activeHistoryId && currentUser?.id) {
+                  axios.post(`${API_URL}/api/history/finalize`, {
+                    historyId: activeHistoryId,
+                    userId: currentUser.id,
+                  }).catch(err => console.error('[History] Error finalizing:', err.message))
+                }
                 // Clear all responses and related data (summary, debug data, etc.)
                 clearResponses()
                 clearLastSubmittedPrompt()

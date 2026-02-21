@@ -34,6 +34,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const setShowCouncilPanel = useStore((state) => state.setShowCouncilPanel)
   const toggleCouncilPanel = useStore((state) => state.toggleCouncilPanel)
   const setActiveTab = useStore((state) => state.setActiveTab)
+  const currentHistoryId = useStore((state) => state.currentHistoryId)
   const currentTheme = getTheme(theme)
   // Combined lock: either fully restricted (expired) or paused (voluntary)
   const isPromptLocked = subscriptionRestricted || subscriptionPaused
@@ -903,6 +904,25 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           }
         }, 500)
       }
+
+      // Push this conversation turn to the active history entry
+      const activeHistoryId = useStore.getState().currentHistoryId
+      if (activeHistoryId && currentUser?.id) {
+        const latestSummary = useStore.getState().summary
+        const latestTurn = latestSummary?.conversationHistory?.slice(-1)[0]
+        if (latestTurn && latestTurn.assistant) {
+          axios.post(`${API_URL}/api/history/update-conversation`, {
+            historyId: activeHistoryId,
+            turn: {
+              type: 'judge',
+              modelName: 'Judge (Summary)',
+              user: userMsg,
+              assistant: latestTurn.assistant,
+              sources: finalData?.searchResults || [],
+            }
+          }).catch(err => console.error('[History] Error updating judge conversation turn:', err.message))
+        }
+      }
     } catch (error) {
       // If aborted, just remove the pending message silently
       if (error.name === 'AbortError') {
@@ -986,6 +1006,21 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       if (finalData?.searchResults && finalData.searchResults.length > 0) {
         const turnIndex = singleModelConvoHistory.length
         setSingleConvoSources(prev => ({ ...prev, [turnIndex]: finalData.searchResults }))
+      }
+
+      // Push this conversation turn to the active history entry
+      const activeHistoryId = useStore.getState().currentHistoryId
+      if (activeHistoryId && currentUser?.id) {
+        axios.post(`${API_URL}/api/history/update-conversation`, {
+          historyId: activeHistoryId,
+          turn: {
+            type: 'model',
+            modelName: modelName,
+            user: userMsg,
+            assistant: finalData?.response || '',
+            sources: finalData?.searchResults || [],
+          }
+        }).catch(err => console.error('[History] Error updating single model conversation turn:', err.message))
       }
     } catch (error) {
       // If aborted, just remove the pending message silently
@@ -1508,6 +1543,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
                         <motion.button
                           onClick={() => {
+                            // Finalize the active history entry before clearing
+                            if (currentHistoryId && currentUser?.id) {
+                              axios.post(`${API_URL}/api/history/finalize`, {
+                                historyId: currentHistoryId,
+                                userId: currentUser.id,
+                              }).catch(err => console.error('[History] Error finalizing:', err.message))
+                            }
                             clearResponses()
                             clearLastSubmittedPrompt()
                             // Clear judge and model conversation context
@@ -1957,6 +1999,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
                         <motion.button
                           onClick={() => {
+                            // Finalize the active history entry before clearing
+                            if (currentHistoryId && currentUser?.id) {
+                              axios.post(`${API_URL}/api/history/finalize`, {
+                                historyId: currentHistoryId,
+                                userId: currentUser.id,
+                              }).catch(err => console.error('[History] Error finalizing:', err.message))
+                            }
                             clearResponses()
                             clearLastSubmittedPrompt()
                             if (currentUser?.id) {

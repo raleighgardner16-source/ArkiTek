@@ -69,6 +69,7 @@ export const useStore = create(
         set({ tokenData: [] })
         set({ showFactsWindow: true }) // Reset to default state
         set({ showPipelineDebugWindow: true }) // Reset to default state
+        set({ currentHistoryId: null }) // Clear active history entry
         // Note: lastSubmittedPrompt is NOT cleared here - it's managed by handlePromptSubmit
         // It will be set before clearResponses is called, so it persists for the voting button
       },
@@ -194,6 +195,11 @@ export const useStore = create(
       // Navigation bar expanded state
       isNavExpanded: false,
       setNavExpanded: (expanded) => set({ isNavExpanded: expanded }),
+
+      // Active history entry ID (tracks the current conversation for live updates)
+      currentHistoryId: null,
+      setCurrentHistoryId: (id) => set({ currentHistoryId: id }),
+      clearCurrentHistoryId: () => set({ currentHistoryId: null }),
 
       // Council responses panel visibility
       showCouncilPanel: false,

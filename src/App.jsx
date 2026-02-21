@@ -181,6 +181,8 @@ function App() {
   const setIsSearchingWeb = useStore((state) => state.setIsSearchingWeb)
   const setSearchSources = useStore((state) => state.setSearchSources)
   const setRAGDebugData = useStore((state) => state.setRAGDebugData)
+  const currentHistoryId = useStore((state) => state.currentHistoryId)
+  const setCurrentHistoryId = useStore((state) => state.setCurrentHistoryId)
 
   const [isLoading, setIsLoading] = useState(false)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
@@ -254,6 +256,15 @@ function App() {
     abortControllerRef.current = abortController
 
     setIsLoading(true)
+
+    // Finalize the previous history entry before clearing (regenerates embedding with full conversation)
+    if (currentHistoryId && currentUser?.id) {
+      axios.post(`${API_URL}/api/history/finalize`, {
+        historyId: currentHistoryId,
+        userId: currentUser.id,
+      }).catch(err => console.error('[History] Error finalizing previous entry:', err.message))
+    }
+
     clearResponses()
     
     // Clear judge and model conversation context when starting a new prompt from main page
@@ -941,7 +952,7 @@ function App() {
         const currentResponses = useStore.getState().responses || responses
         const searchSrcs = useStore.getState().searchSources
         
-        await axios.post(`${API_URL}/api/history/auto-save`, {
+        const autoSaveResponse = await axios.post(`${API_URL}/api/history/auto-save`, {
           userId: currentUser.id,
           originalPrompt: savedPrompt,
           category: category || 'General',
@@ -963,7 +974,13 @@ function App() {
           sources: searchSrcs || (ragData?.search_results) || [],
           facts: [], // No refiner — models read raw sources directly
         })
-        console.log('[History] Auto-saved conversation to history')
+        // Store the historyId so follow-up conversations can update this entry
+        if (autoSaveResponse.data?.historyId) {
+          setCurrentHistoryId(autoSaveResponse.data.historyId)
+          console.log('[History] Auto-saved conversation to history, tracking:', autoSaveResponse.data.historyId)
+        } else {
+          console.log('[History] Auto-saved conversation to history')
+        }
       } catch (error) {
         console.error('[History] Error auto-saving:', error.message)
       }

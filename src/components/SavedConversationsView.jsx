@@ -531,6 +531,79 @@ const SavedConversationsView = () => {
           />
         )}
 
+        {/* Continued Conversation Turns */}
+        {selectedConvo.conversationTurns && selectedConvo.conversationTurns.length > 0 && (
+          <div style={{ marginBottom: '20px' }}>
+            <h3 style={{ fontSize: '1rem', color: currentTheme.text, marginBottom: '12px' }}>
+              Follow-up Conversation ({selectedConvo.conversationTurns.length} {selectedConvo.conversationTurns.length === 1 ? 'turn' : 'turns'})
+            </h3>
+            {selectedConvo.conversationTurns.map((turn, idx) => (
+              <div key={`turn-${idx}`} style={{ marginBottom: '12px' }}>
+                {/* User message */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  marginBottom: '8px',
+                }}>
+                  <div style={{
+                    maxWidth: '80%',
+                    background: currentTheme.buttonBackground,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '16px 16px 4px 16px',
+                    padding: '10px 14px',
+                  }}>
+                    <div style={{
+                      fontSize: '0.65rem',
+                      fontWeight: '600',
+                      color: currentTheme.accent,
+                      marginBottom: '4px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      You
+                    </div>
+                    <p style={{
+                      color: currentTheme.text,
+                      margin: 0,
+                      lineHeight: '1.5',
+                      fontSize: '0.9rem',
+                      whiteSpace: 'pre-wrap',
+                    }}>
+                      {turn.user}
+                    </p>
+                  </div>
+                </div>
+                {/* Assistant response */}
+                {turn.assistant && (
+                  <div style={{
+                    background: currentTheme.backgroundOverlayLight || currentTheme.buttonBackground,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '12px',
+                    padding: '12px 16px',
+                  }}>
+                    <div style={{
+                      fontSize: '0.65rem',
+                      fontWeight: '600',
+                      color: turn.type === 'judge' ? '#60a5fa' : currentTheme.textSecondary,
+                      marginBottom: '6px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      {turn.modelName || (turn.type === 'judge' ? 'Judge (Summary)' : 'Model')}
+                    </div>
+                    <MarkdownRenderer
+                      content={turn.assistant}
+                      theme={currentTheme}
+                      fontSize="0.9rem"
+                      lineHeight="1.6"
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Sources */}
         {renderSourcesSection(selectedConvo.sources, 'detail_sources', 'Sources')}
 

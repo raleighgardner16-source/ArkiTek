@@ -5765,7 +5765,7 @@ async function generateEmbedding(text, userId = null) {
  * Build a concise text representation of a conversation for embedding.
  * Combines the user's prompt with a brief summary of the response(s).
  */
-function buildEmbeddingText(originalPrompt, responses, summary) {
+function buildEmbeddingText(originalPrompt, responses, summary, conversationTurns) {
   let text = `User prompt: ${originalPrompt}`
 
   // Add summary if available (council mode)
@@ -5777,6 +5777,19 @@ function buildEmbeddingText(originalPrompt, responses, summary) {
     const firstResponse = responses[0]?.text || responses[0]?.modelResponse || ''
     if (firstResponse) {
       text += `\nResponse: ${firstResponse.substring(0, 500)}`
+    }
+  }
+
+  // Include follow-up conversation turns (captures the full thread of discussion)
+  if (conversationTurns && conversationTurns.length > 0) {
+    text += '\nFollow-up conversation:'
+    for (const turn of conversationTurns) {
+      text += `\nUser: ${(turn.user || '').substring(0, 200)}`
+      text += `\n${turn.modelName || 'Assistant'}: ${(turn.assistant || '').substring(0, 300)}`
+    }
+    // Cap total embedding text at ~4000 chars to stay within embedding model limits
+    if (text.length > 4000) {
+      text = text.substring(0, 4000)
     }
   }
 
@@ -8450,6 +8463,103 @@ app.post('/api/history/auto-save', async (req, res) => {
   }
 })
 
+// ==================== UPDATE HISTORY WITH CONTINUED CONVERSATION ====================
+// Appends a follow-up conversation turn to an existing history entry.
+// Called after each model/judge follow-up message completes.
+app.post('/api/history/update-conversation', async (req, res) => {
+  try {
+    const { historyId, turn } = req.body
+
+    if (!historyId || !turn) {
+      return res.status(400).json({ error: 'historyId and turn are required' })
+    }
+
+    const dbInstance = await db.getDb()
+
+    const conversationTurn = {
+      type: turn.type || 'model', // 'judge' or 'model'
+      modelName: turn.modelName || 'Unknown',
+      user: turn.user || '',
+      assistant: turn.assistant || '',
+      timestamp: new Date(),
+      sources: turn.sources || [],
+    }
+
+    const result = await dbInstance.collection('conversation_history').updateOne(
+      { _id: historyId },
+      {
+        $push: { conversationTurns: conversationTurn },
+        $set: { updatedAt: new Date() }
+      }
+    )
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'History entry not found' })
+    }
+
+    console.log(`[History] Updated conversation for ${historyId}: +1 ${conversationTurn.type} turn with ${conversationTurn.modelName}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[History] Error updating conversation:', error)
+    res.status(500).json({ error: 'Failed to update conversation history' })
+  }
+})
+
+// ==================== FINALIZE HISTORY ENTRY ====================
+// Called when user starts a new chat or navigates away.
+// Regenerates the embedding using the full conversation (original + all follow-up turns).
+app.post('/api/history/finalize', async (req, res) => {
+  try {
+    const { historyId, userId } = req.body
+
+    if (!historyId) {
+      return res.status(400).json({ error: 'historyId is required' })
+    }
+
+    const dbInstance = await db.getDb()
+    const doc = await dbInstance.collection('conversation_history').findOne({ _id: historyId })
+
+    if (!doc) {
+      return res.status(404).json({ error: 'History entry not found' })
+    }
+
+    // Only regenerate embedding if there are conversation turns (otherwise initial embedding is fine)
+    const turns = doc.conversationTurns || []
+    if (turns.length === 0) {
+      console.log(`[History] Finalize ${historyId}: no conversation turns, skipping embedding regen`)
+      return res.json({ success: true, embeddingUpdated: false })
+    }
+
+    // Regenerate embedding with full conversation context
+    let embeddingUpdated = false
+    try {
+      const embeddingText = buildEmbeddingText(
+        doc.originalPrompt,
+        doc.responses,
+        doc.summary,
+        turns
+      )
+      const embedding = await generateEmbedding(embeddingText, userId || doc.userId)
+      if (embedding) {
+        await dbInstance.collection('conversation_history').updateOne(
+          { _id: historyId },
+          { $set: { embedding, embeddingText, finalizedAt: new Date() } }
+        )
+        embeddingUpdated = true
+        console.log(`[History] Finalized ${historyId}: embedding regenerated with ${turns.length} conversation turns (${embedding.length} dims)`)
+      }
+    } catch (embErr) {
+      console.error(`[History] Finalize embedding failed for ${historyId}:`, embErr.message)
+      // Non-fatal — conversation data is already saved
+    }
+
+    res.json({ success: true, embeddingUpdated })
+  } catch (error) {
+    console.error('[History] Error finalizing:', error)
+    res.status(500).json({ error: 'Failed to finalize history entry' })
+  }
+})
+
 // Get full detail of a single history entry
 // NOTE: This route MUST be defined BEFORE /api/history/:userId to avoid Express matching "detail" as a userId
 app.get('/api/history/detail/:historyId', async (req, res) => {
@@ -8473,6 +8583,7 @@ app.get('/api/history/detail/:historyId', async (req, res) => {
         summary: doc.summary || null,
         sources: doc.sources || [],
         facts: doc.facts || [],
+        conversationTurns: doc.conversationTurns || [],
       }
     })
   } catch (error) {
