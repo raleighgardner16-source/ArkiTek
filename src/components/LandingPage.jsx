@@ -521,6 +521,7 @@ const LandingPage = ({ onNavigate }) => {
             <div style={{
               borderTop: '1px solid rgba(255, 255, 255, 0.08)',
               paddingTop: '20px',
+              paddingBottom: '24px',
               width: '100%',
               display: 'flex',
               flexDirection: 'column',
@@ -601,6 +602,7 @@ const LandingPage = ({ onNavigate }) => {
             <div style={{
               borderTop: '1px solid rgba(255, 255, 255, 0.08)',
               paddingTop: '20px',
+              paddingBottom: '24px',
               width: '100%',
               display: 'flex',
               flexDirection: 'column',
