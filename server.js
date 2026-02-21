@@ -3090,8 +3090,19 @@ app.post('/api/judge/conversation', async (req, res) => {
     console.log('[Judge Conversation] Processing message with Gemini 3 Flash (conversational mode, with RAG support)')
     
     // Step 1: Detect category and determine if search is needed (using same model as main page)
-    const { category, needsSearch } = await detectCategoryForJudge(userMessage, userId)
-    console.log(`[Judge Conversation] Category: ${category}, Needs Search: ${needsSearch}`)
+    const { category, needsSearch, needsContext } = await detectCategoryForJudge(userMessage, userId)
+    console.log(`[Judge Conversation] Category: ${category}, Needs Search: ${needsSearch}, Needs Context: ${needsContext}`)
+    
+    // Step 1.5: Retrieve relevant past conversations via embedding memory
+    let memoryContextString = ''
+    if (userId) {
+      const scoreThreshold = needsContext ? 0.70 : 0.82
+      const relevantContexts = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
+      memoryContextString = formatMemoryContext(relevantContexts)
+      if (memoryContextString) {
+        console.log(`[Judge Conversation] Memory: Injecting ${relevantContexts.length} past conversations as context`)
+      }
+    }
     
     // Get last 5 summaries from context — use frontend-provided context only if non-empty
     const usage = readUsage()
@@ -3102,8 +3113,11 @@ app.post('/api/judge/conversation', async (req, res) => {
     // Build context string with the user's recent conversation history
     // Position 0 is full response (most recent, highest priority), positions 1-4 are summarized
     let contextString = ''
+    if (memoryContextString) {
+      contextString += memoryContextString + '\n'
+    }
     if (contextSummaries.length > 0) {
-      contextString = `Here is context from your recent conversation with this user (most recent first — prioritize the latest context):\n\n${contextSummaries.map((ctx, idx) => {
+      contextString += `Here is context from your recent conversation with this user (most recent first — prioritize the latest context):\n\n${contextSummaries.map((ctx, idx) => {
           const promptPart = ctx.originalPrompt ? `User asked: ${ctx.originalPrompt}\n` : ''
           const responsePart = ctx.isFull && ctx.response 
             ? `Your response: ${ctx.response}`
@@ -3111,7 +3125,7 @@ app.post('/api/judge/conversation', async (req, res) => {
           return `${idx + 1}. ${promptPart}${responsePart}`
         }).join('\n\n')}\n\n`
     } else if (originalSummaryText && originalSummaryText.trim()) {
-      contextString = `Your previous summary response that the user wants to continue discussing:\n${originalSummaryText.substring(0, 3000)}${originalSummaryText.length > 3000 ? '...' : ''}\n\n`
+      contextString += `Your previous summary response that the user wants to continue discussing:\n${originalSummaryText.substring(0, 3000)}${originalSummaryText.length > 3000 ? '...' : ''}\n\n`
     }
     
     let judgePrompt = ''
@@ -3277,8 +3291,19 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
 
     // Step 1: Category detection
     sendSSE('status', { message: 'Analyzing query...' })
-    const { category, needsSearch } = await detectCategoryForJudge(userMessage, userId)
-    console.log(`[Judge Conversation Stream] Category: ${category}, Needs Search: ${needsSearch}`)
+    const { category, needsSearch, needsContext } = await detectCategoryForJudge(userMessage, userId)
+    console.log(`[Judge Conversation Stream] Category: ${category}, Needs Search: ${needsSearch}, Needs Context: ${needsContext}`)
+
+    // Step 1.5: Retrieve relevant past conversations via embedding memory
+    let memoryContextString = ''
+    if (userId) {
+      const scoreThreshold = needsContext ? 0.70 : 0.82
+      const relevantContexts = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
+      memoryContextString = formatMemoryContext(relevantContexts)
+      if (memoryContextString) {
+        console.log(`[Judge Conversation Stream] Memory: Injecting ${relevantContexts.length} past conversations as context`)
+      }
+    }
 
     // Get context summaries — use frontend-provided context only if non-empty, otherwise fall back to server-stored context
     const usage = readUsage()
@@ -3287,9 +3312,12 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
       : (usage[userId]?.judgeConversationContext || []).slice(0, 5)
     
     let contextString = ''
+    if (memoryContextString) {
+      contextString += memoryContextString + '\n'
+    }
     if (contextSummaries.length > 0) {
       // Build context with newest first (index 0 = most recent, highest priority)
-      contextString = `Here is context from your recent conversation with this user (most recent first — prioritize the latest context):\n\n${contextSummaries.map((ctx, idx) => {
+      contextString += `Here is context from your recent conversation with this user (most recent first — prioritize the latest context):\n\n${contextSummaries.map((ctx, idx) => {
           const promptPart = ctx.originalPrompt ? `User asked: ${ctx.originalPrompt}\n` : ''
           const responsePart = ctx.isFull && ctx.response
             ? `Your response: ${ctx.response}`
@@ -3298,7 +3326,7 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
         }).join('\n\n')}\n\n`
     } else if (originalSummaryText && originalSummaryText.trim()) {
       // Fallback: use the original summary text when no stored context exists yet
-      contextString = `Your previous summary response that the user wants to continue discussing:\n${originalSummaryText.substring(0, 3000)}${originalSummaryText.length > 3000 ? '...' : ''}\n\n`
+      contextString += `Your previous summary response that the user wants to continue discussing:\n${originalSummaryText.substring(0, 3000)}${originalSummaryText.length > 3000 ? '...' : ''}\n\n`
     }
 
     let judgePrompt = ''
@@ -3497,8 +3525,19 @@ app.post('/api/model/conversation/stream', async (req, res) => {
 
     // Step 1: Category detection
     sendSSE('status', { message: 'Analyzing query...' })
-    const { category, needsSearch } = await detectCategoryForJudge(userMessage, userId)
-    console.log(`[Model Conversation Stream] Category: ${category}, Needs Search: ${needsSearch}`)
+    const { category, needsSearch, needsContext } = await detectCategoryForJudge(userMessage, userId)
+    console.log(`[Model Conversation Stream] Category: ${category}, Needs Search: ${needsSearch}, Needs Context: ${needsContext}`)
+
+    // Step 1.5: Retrieve relevant past conversations via embedding memory
+    let memoryContextString = ''
+    if (userId) {
+      const scoreThreshold = needsContext ? 0.70 : 0.82
+      const relevantContexts = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
+      memoryContextString = formatMemoryContext(relevantContexts)
+      if (memoryContextString) {
+        console.log(`[Model Conversation Stream] Memory: Injecting ${relevantContexts.length} past conversations as context`)
+      }
+    }
 
     // Step 2: Search + scrape raw sources (no refiner)
     let rawSourcesData = null
@@ -3532,6 +3571,10 @@ app.post('/api/model/conversation/stream', async (req, res) => {
     const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
 
     let prompt = `Today's date is ${getCurrentDateString()}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data.\n\n`
+
+    if (memoryContextString) {
+      prompt += memoryContextString + '\n'
+    }
 
     if (contextSummaries.length > 0) {
       const contextString = contextSummaries.map((ctx, idx) => {
@@ -3851,8 +3894,19 @@ app.post('/api/model/conversation', async (req, res) => {
     const model = parts.slice(1).join('-')
     
     // Step 1: Detect category and determine if web search is needed (same as judge conversation)
-    const { category, needsSearch } = await detectCategoryForJudge(userMessage, userId)
-    console.log(`[Model Conversation] Category: ${category}, Needs Search: ${needsSearch}`)
+    const { category, needsSearch, needsContext } = await detectCategoryForJudge(userMessage, userId)
+    console.log(`[Model Conversation] Category: ${category}, Needs Search: ${needsSearch}, Needs Context: ${needsContext}`)
+    
+    // Step 1.5: Retrieve relevant past conversations via embedding memory
+    let memoryContextString = ''
+    if (userId) {
+      const scoreThreshold = needsContext ? 0.70 : 0.82
+      const relevantContexts = await findRelevantContext(userId, userMessage, 3, scoreThreshold)
+      memoryContextString = formatMemoryContext(relevantContexts)
+      if (memoryContextString) {
+        console.log(`[Model Conversation] Memory: Injecting ${relevantContexts.length} past conversations as context`)
+      }
+    }
     
     // Step 2: If search is needed, run search + refiner pipeline
     let rawSourcesData = null
@@ -3896,6 +3950,11 @@ app.post('/api/model/conversation', async (req, res) => {
     
     // Build context string from server-stored context (position 0 = full, 1-4 = summarized)
     let prompt = `Today's date is ${getCurrentDateString()}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data.\n\n`
+    
+    if (memoryContextString) {
+      prompt += memoryContextString + '\n'
+    }
+    
     if (contextSummaries.length > 0) {
       const contextString = contextSummaries.map((ctx, idx) => {
         const promptPart = ctx.originalPrompt ? `User asked: ${ctx.originalPrompt}\n` : ''
