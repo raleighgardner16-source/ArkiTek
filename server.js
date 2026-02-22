@@ -1115,6 +1115,7 @@ const trackPrompt = async (userId, promptText, category, promptData = {}) => {
   // Also update users cache with last active date
   const users = readUsers()
   if (users[userId]) {
+    const activeDate = new Date().toISOString()
     users[userId].lastActiveAt = activeDate
     
     try {

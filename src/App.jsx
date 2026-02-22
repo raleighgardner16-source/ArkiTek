@@ -821,7 +821,7 @@ function App() {
         // Remove any duplicate section markers that might appear in the content
         agreementsText = agreementsText.replace(/\n\s*(?:\*\*)?(?:AGREEMENTS|Agreements)[:\-]?\s*\*?\*?\s*/gi, '\n')
         
-        const agreements = agreementsText
+        let agreements = agreementsText
           ? agreementsText.split('\n').filter(l => {
               const trimmed = l.trim()
               // Filter out empty lines, section headers, standalone bullets, and "none identified"
@@ -893,7 +893,7 @@ function App() {
           : []
 
         // Post-processing: Filter out "disagreements" that are actually coverage differences, not contradictions.
-        const disagreements = rawDisagreements.filter(d => {
+        let disagreements = rawDisagreements.filter(d => {
           const isOmission = /\b(?:omits?|omitted|(?:does|do|did|is|are|were?) not (?:mention|include|address|cite|reference|provide|name|specify|list)|not mentioned|not included|not referenced|not cited|not addressed|left out|leaves? out|without (?:mentioning|citing|referencing|naming)|absent from|refrain(?:s)? from|a detail (?:omitted|absent|missing|not))\b/i.test(d)
           const isDetailDiff = /\b(?:more (?:detail|detailed|specific|structured|informal|clinical|conversational|comprehensive|general|predictive|neutral|cautious|thorough|extensive)|less (?:detail|specific|thorough)|greater (?:detail|depth|specificity)|deeper|broader|level of detail|varying (?:levels?|degrees?)|different (?:tone|style|structure|framing|approach|perspective|level)|general (?:descriptions?|terms?|categories?|statements?))\b/i.test(d)
           const isToneDiff = /\b(?:adopts?\s+(?:a\s+)?(?:more\s+)?(?:\w+\s+)?tone|(?:conversational|informal|clinical|formal|neutral|empathetic|structured|predictive|cautious)\s+(?:tone|style|approach)|uses?\s+(?:a\s+)?(?:\w+\s+)?analogy)\b/i.test(d)
