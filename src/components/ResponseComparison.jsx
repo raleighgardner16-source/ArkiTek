@@ -2485,8 +2485,8 @@ const ResponseComparison = () => {
               width: '100%',
               minWidth: cardWidth,
               maxWidth: cardWidth,
-              background: theme === 'light' ? '#ffffff' : 'rgba(255, 215, 0, 0.03)',
-              border: `1px solid ${theme === 'light' ? currentTheme.borderLight : 'rgba(255, 215, 0, 0.15)'}`,
+              background: theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)',
+              border: `1px solid ${theme === 'light' ? currentTheme.borderLight : 'rgba(93, 173, 226, 0.2)'}`,
               borderRadius: '8px',
               padding: '0',
               boxShadow: 'none',
@@ -2498,13 +2498,13 @@ const ResponseComparison = () => {
             }}
             onClick={() => setShowCostModal(true)}
             onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(255, 215, 0, 0.5)'
-              e.currentTarget.style.background = theme === 'light' ? 'rgba(255, 215, 0, 0.08)' : 'rgba(255, 215, 0, 0.15)'
-              e.currentTarget.style.boxShadow = '0 0 15px rgba(255, 215, 0, 0.15), 0 0 30px rgba(255, 215, 0, 0.08)'
+              e.currentTarget.style.borderColor = currentTheme.borderActive
+              e.currentTarget.style.background = theme === 'light' ? currentTheme.buttonBackgroundHover : 'rgba(93, 173, 226, 0.3)'
+              e.currentTarget.style.boxShadow = `0 0 15px ${currentTheme.shadow}, 0 0 30px ${currentTheme.shadowLight}`
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = theme === 'light' ? currentTheme.borderLight : 'rgba(255, 215, 0, 0.15)'
-              e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(255, 215, 0, 0.03)'
+              e.currentTarget.style.borderColor = theme === 'light' ? currentTheme.borderLight : 'rgba(93, 173, 226, 0.2)'
+              e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)'
               e.currentTarget.style.boxShadow = 'none'
             }}
           >
@@ -2517,14 +2517,14 @@ const ResponseComparison = () => {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <DollarSign size={16} color="#FFD700" />
+                <DollarSign size={16} color={currentTheme.accent} />
                 <h3
                   style={{
                     fontSize: '0.9rem',
-                    background: 'linear-gradient(90deg, #FFD700, #FFA500)',
+                    background: currentTheme.accentGradient,
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
-                    color: '#FFD700',
+                    color: currentTheme.accent,
                     margin: 0,
                     fontWeight: '500',
                   }}
@@ -2532,7 +2532,7 @@ const ResponseComparison = () => {
                   Cost Breakdown
                 </h3>
               </div>
-              <ChevronRight size={16} color="#FFD700" style={{ marginRight: '20px' }} />
+              <ChevronRight size={16} color={currentTheme.accent} style={{ marginRight: '20px' }} />
             </div>
           </motion.div>
         )}

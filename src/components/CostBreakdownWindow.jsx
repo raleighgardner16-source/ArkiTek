@@ -115,7 +115,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
   if (inline) {
     return (
       <div style={{ padding: '16px' }}>
-        <h3 style={{ color: '#FFD700', fontSize: '1.2rem', margin: '0 0 16px 0', fontWeight: 'bold' }}>
+        <h3 style={{ color: '#5dade2', fontSize: '1.2rem', margin: '0 0 16px 0', fontWeight: 'bold' }}>
           Cost Breakdown
         </h3>
         {loading ? (
@@ -125,7 +125,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
             <div style={{ marginBottom: '16px' }}>
               <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
                 <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
-                  <strong style={{ color: '#FFD700' }}>Total Cost:</strong> ${totalCost.toFixed(4)}
+                  <strong style={{ color: '#5dade2' }}>Total Cost:</strong> ${totalCost.toFixed(4)}
                 </div>
                 <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
                   <strong style={{ color: '#5dade2' }}>Model Cost:</strong> ${totalModelCost.toFixed(4)}
@@ -137,12 +137,12 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                 )}
               </div>
               {Object.entries(groupedByProvider).map(([provider, data]) => (
-                <div key={provider} style={{ marginBottom: '20px', padding: '12px', background: 'rgba(255, 215, 0, 0.05)', borderRadius: '8px', border: '1px solid rgba(255, 215, 0, 0.2)' }}>
-                  <h4 style={{ color: '#FFD700', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
+                <div key={provider} style={{ marginBottom: '20px', padding: '12px', background: 'rgba(93, 173, 226, 0.05)', borderRadius: '8px', border: '1px solid rgba(93, 173, 226, 0.2)' }}>
+                  <h4 style={{ color: '#5dade2', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
                     {provider === 'openai' ? 'Chatgpt' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
                   </h4>
                   <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', fontSize: '0.85rem', color: '#aaaaaa' }}>
-                    <div><strong style={{ color: '#FFD700' }}>Total Cost:</strong> ${data.totalCost.toFixed(4)}</div>
+                    <div><strong style={{ color: '#5dade2' }}>Total Cost:</strong> ${data.totalCost.toFixed(4)}</div>
                     <div><strong style={{ color: '#5dade2' }}>Tokens:</strong> {data.totalTokens.toLocaleString()}</div>
                   </div>
                   {data.models.map((item, idx) => (
@@ -187,7 +187,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
             onClick={(e) => e.stopPropagation()}
             style={{
               background: 'rgba(0, 0, 0, 0.95)',
-              border: '1px solid rgba(255, 215, 0, 0.3)',
+              border: '2px solid #5dade2',
               borderRadius: '16px',
               padding: '30px',
               maxWidth: '900px',
@@ -195,20 +195,19 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
               maxHeight: '85vh',
               overflowY: 'auto',
               position: 'relative',
-              boxShadow: '0 0 40px rgba(255, 215, 0, 0.4)',
+              boxShadow: '0 8px 32px rgba(93, 173, 226, 0.3)',
             }}
           >
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <DollarSign size={28} color="#FFD700" />
+                <DollarSign size={28} color="#5dade2" />
                 <h2
                   style={{
                     fontSize: '1.8rem',
                     margin: 0,
-                    background: 'linear-gradient(90deg, #FFD700, #FFA500)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
+                    color: '#5dade2',
+                    fontWeight: 'bold',
                   }}
                 >
                   Cost Breakdown
@@ -245,8 +244,8 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                 {/* Total Cost Summary */}
                 <div
                   style={{
-                    background: 'rgba(255, 215, 0, 0.1)',
-                    border: '1px solid rgba(255, 215, 0, 0.3)',
+                    background: 'rgba(93, 173, 226, 0.1)',
+                    border: '1px solid rgba(93, 173, 226, 0.3)',
                     borderRadius: '12px',
                     padding: '20px',
                     marginBottom: '24px',
@@ -256,7 +255,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                     <span style={{ color: '#ffffff', fontSize: '1.1rem', fontWeight: '600' }}>Total Cost</span>
                     <span
                       style={{
-                        color: '#FFD700',
+                        color: '#5dade2',
                         fontSize: '1.8rem',
                         fontWeight: 'bold',
                       }}
@@ -275,8 +274,8 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                   <div
                     key={provider}
                     style={{
-                      background: 'rgba(255, 215, 0, 0.05)',
-                      border: '1px solid rgba(255, 215, 0, 0.2)',
+                      background: 'rgba(93, 173, 226, 0.05)',
+                      border: '1px solid rgba(93, 173, 226, 0.2)',
                       borderRadius: '12px',
                       padding: '20px',
                       marginBottom: '16px',
@@ -284,7 +283,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                   >
                     <h3
                       style={{
-                        color: '#FFD700',
+                        color: '#5dade2',
                         fontSize: '1.2rem',
                         margin: '0 0 16px 0',
                         textTransform: 'capitalize',
@@ -301,11 +300,11 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                         alignItems: 'center',
                         marginBottom: '12px',
                         paddingBottom: '12px',
-                        borderBottom: '1px solid rgba(255, 215, 0, 0.2)',
+                        borderBottom: '1px solid rgba(93, 173, 226, 0.2)',
                       }}
                     >
                       <span style={{ color: '#ffffff', fontWeight: '600' }}>Provider Total</span>
-                      <span style={{ color: '#FFD700', fontWeight: 'bold', fontSize: '1.1rem' }}>
+                      <span style={{ color: '#5dade2', fontWeight: 'bold', fontSize: '1.1rem' }}>
                         ${providerData.totalCost.toFixed(4)}
                       </span>
                     </div>
@@ -323,7 +322,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                           <span style={{ color: '#ffffff', fontWeight: '600' }}>{item.modelName}</span>
-                          <span style={{ color: '#FFD700', fontWeight: 'bold' }}>
+                          <span style={{ color: '#5dade2', fontWeight: 'bold' }}>
                             ${item.totalCost.toFixed(4)}
                           </span>
                         </div>
@@ -349,8 +348,8 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                           </div>
                           {item.reasoningTokens > 0 && (
                             <div>
-                              <div style={{ color: '#FFD700', marginBottom: '4px', fontWeight: '500' }}>Reasoning Tokens</div>
-                              <div style={{ color: '#FFD700', fontWeight: 'bold' }}>
+                              <div style={{ color: '#5dade2', marginBottom: '4px', fontWeight: '500' }}>Reasoning Tokens</div>
+                              <div style={{ color: '#5dade2', fontWeight: 'bold' }}>
                                 {item.reasoningTokens.toLocaleString()} tokens
                               </div>
                               <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: '2px', fontStyle: 'italic' }}>
@@ -368,14 +367,14 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                 {queryCount > 0 && (
                   <div
                     style={{
-                      background: 'rgba(255, 215, 0, 0.05)',
-                      border: '1px solid rgba(255, 215, 0, 0.2)',
+                      background: 'rgba(93, 173, 226, 0.05)',
+                      border: '1px solid rgba(93, 173, 226, 0.2)',
                       borderRadius: '12px',
                       padding: '20px',
                       marginTop: '16px',
                     }}
                   >
-                    <h3 style={{ color: '#FFD700', fontSize: '1.2rem', margin: '0 0 12px 0' }}>
+                    <h3 style={{ color: '#5dade2', fontSize: '1.2rem', margin: '0 0 12px 0' }}>
                       Serper Search Queries
                     </h3>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -387,7 +386,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                           @ $1.00 per 1,000 queries
                         </div>
                       </div>
-                      <span style={{ color: '#FFD700', fontWeight: 'bold', fontSize: '1.2rem' }}>
+                      <span style={{ color: '#5dade2', fontWeight: 'bold', fontSize: '1.2rem' }}>
                         ${queryCost.toFixed(4)}
                       </span>
                     </div>
