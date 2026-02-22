@@ -761,7 +761,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                   </div>
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#999', lineHeight: '1.4' }}>
-                  When you use multiple models, a judge model reads all their responses and creates the summary, agreements, and disagreements. These tokens are part of your total usage.
+                  When you use multiple models, a judge model reads all their responses and creates the summary, agreements, and contradictions. These tokens are part of your total usage.
                 </div>
               </div>
             )}

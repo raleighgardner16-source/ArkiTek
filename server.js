@@ -39,12 +39,12 @@ process.on('unhandledRejection', (reason) => {
 // ============================================================================
 const getCurrentDateString = () => {
   const now = new Date()
-  const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }
+  const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/New_York' }
   return now.toLocaleDateString('en-US', options) // e.g. "Wednesday, February 12, 2026"
 }
 const getCurrentMonthYear = () => {
   const now = new Date()
-  return `${now.toLocaleString('en-US', { month: 'long' })} ${now.getFullYear()}` // e.g. "February 2026"
+  return `${now.toLocaleString('en-US', { month: 'long', timeZone: 'America/New_York' })} ${now.getFullYear()}` // e.g. "February 2026"
 }
 
 // ============================================================================
@@ -3591,7 +3591,7 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
     sendSSE('status', { message: 'Generating response...' })
 
     // Prepend system instruction into the user prompt for Gemini (Gemini uses systemInstruction or inline)
-    const systemPrefix = 'You are a helpful conversational AI assistant. Respond directly and naturally to the user\'s follow-up questions. Do NOT format your response as a council summary — no CONSENSUS, SUMMARY, AGREEMENTS, or DISAGREEMENTS sections. Just answer conversationally as a single assistant. Use the conversation context provided to maintain continuity.\n\n'
+    const systemPrefix = 'You are a helpful conversational AI assistant. Respond directly and naturally to the user\'s follow-up questions. Do NOT format your response as a council summary — no CONSENSUS, SUMMARY, AGREEMENTS, or CONTRADICTIONS sections. Just answer conversationally as a single assistant. Use the conversation context provided to maintain continuity.\n\n'
 
     const streamResponse = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/${judgeModelApi}:streamGenerateContent?key=${apiKey}&alt=sse`,
@@ -5953,7 +5953,8 @@ async function findRelevantContext(userId, currentPrompt, limit = 3, scoreThresh
           // Extract SUMMARY section
           const summaryStart = summaryText.indexOf('## SUMMARY')
           const agreementsStart = summaryText.indexOf('## AGREEMENTS')
-          const disagreementsStart = summaryText.indexOf('## DISAGREEMENTS')
+          const contradictionsStart = summaryText.indexOf('## CONTRADICTIONS')
+          const disagreementsStart = contradictionsStart !== -1 ? contradictionsStart : summaryText.indexOf('## DISAGREEMENTS')
           let summarySection = ''
           if (summaryStart !== -1) {
             const summaryEnd = agreementsStart !== -1 ? agreementsStart : summaryText.length
@@ -7308,8 +7309,8 @@ AGREEMENTS:
 - [Third point of agreement - name which models]
 (THIS SECTION IS MANDATORY! List at least 3-5 specific agreement points. NEVER write "None identified" unless models literally contradict each other on everything.)
 
-DISAGREEMENTS:
-[ONLY list factual contradictions where Model A and Model B make claims that CANNOT BOTH BE TRUE. Example: "Gemini states the date is November 7, but Claude states it is November 5 — these are contradictory." If one model mentions something another does not, that is NOT a disagreement. If models suggest different examples, products, or details, those are NOT disagreements. If models differ in tone, depth, or structure, those are NOT disagreements. If there are no factual contradictions, write: "None identified — all models are in factual agreement."]`
+CONTRADICTIONS:
+[ONLY list factual contradictions where Model A and Model B make claims that CANNOT BOTH BE TRUE. Example: "Gemini states the date is November 7, but Claude states it is November 5 — these are contradictory." If one model mentions something another does not, that is NOT a contradiction. If models suggest different examples, products, or details, those are NOT contradictions. If models differ in tone, depth, or structure, those are NOT contradictions. If there are no factual contradictions, write: "None identified — all models are in factual agreement."]`
 
 
 
@@ -7375,8 +7376,8 @@ DISAGREEMENTS:
     // More robust section extraction - look for section headers with various formats
     // Handles: "SUMMARY:", "**SUMMARY**:", "Summary:", "2. SUMMARY:", "LIST AGREEMENTS", "AGREEMENTS:", etc.
     const summaryMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?SUMMARY(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\d+\.\s*)?(?:LIST\s+)?(?:\*\*)?AGREEMENTS|$)/im)
-    const agreementsMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:LIST\s+)?(?:\*\*)?AGREEMENTS(?:\*\*)?[:\-]?(?:\s*-[^\n]*)?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?DISAGREEMENTS|$)/im)
-    const disagreementsMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?DISAGREEMENTS(?:\*\*)?[:\-]?\s*\n?([\s\S]+)$/im)
+    const agreementsMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:LIST\s+)?(?:\*\*)?AGREEMENTS(?:\*\*)?[:\-]?(?:\s*-[^\n]*)?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?(?:CONTRADICTIONS|DISAGREEMENTS)|$)/im)
+    const disagreementsMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?(?:CONTRADICTIONS|DISAGREEMENTS)(?:\*\*)?[:\-]?\s*\n?([\s\S]+)$/im)
     
     // Extract consensus score (0-100)
     let consensus = null
@@ -7414,7 +7415,7 @@ DISAGREEMENTS:
       hasConsensus: !!consensusMatch,
       hasSummary: !!summaryMatch,
       hasAgreements: !!agreementsMatch,
-      hasDisagreements: !!disagreementsMatch
+      hasContradictions: !!disagreementsMatch
     })
     
     // Extract summary - if no explicit summary section, try to extract everything between consensus and agreements
@@ -7443,11 +7444,11 @@ DISAGREEMENTS:
       // Remove embedded SUMMARY headers
       .replace(/[-•*]\s*\*?\*?SUMMARY\*?\*?[:\-]?\s*/gi, '')
       // Remove embedded AGREEMENTS sections (various formats)
-      .replace(/[-•]\s*(?:\d+\.\s*)?(?:LIST\s+)?\*?\*?AGREEMENTS\*?\*?[:\-]?\s*[\s\S]*?(?=[-•]\s*(?:\d+\.\s*)?\*?\*?DISAGREEMENTS|$)/gi, '')
-      .replace(/(?:\d+\.\s*)?(?:LIST\s+)?\*?\*?AGREEMENTS\*?\*?[:\-]?\s*[\s\S]*?(?=(?:\d+\.\s*)?\*?\*?DISAGREEMENTS|$)/gi, '')
-      // Remove embedded DISAGREEMENTS sections
-      .replace(/[-•]\s*(?:\d+\.\s*)?\*?\*?DISAGREEMENTS\*?\*?[:\-]?\s*[\s\S]*/gi, '')
-      .replace(/(?:\d+\.\s*)?\*?\*?DISAGREEMENTS\*?\*?[:\-]?\s*[\s\S]*/gi, '')
+      .replace(/[-•]\s*(?:\d+\.\s*)?(?:LIST\s+)?\*?\*?AGREEMENTS\*?\*?[:\-]?\s*[\s\S]*?(?=[-•]\s*(?:\d+\.\s*)?\*?\*?(?:CONTRADICTIONS|DISAGREEMENTS)|$)/gi, '')
+      .replace(/(?:\d+\.\s*)?(?:LIST\s+)?\*?\*?AGREEMENTS\*?\*?[:\-]?\s*[\s\S]*?(?=(?:\d+\.\s*)?\*?\*?(?:CONTRADICTIONS|DISAGREEMENTS)|$)/gi, '')
+      // Remove embedded CONTRADICTIONS/DISAGREEMENTS sections
+      .replace(/[-•]\s*(?:\d+\.\s*)?\*?\*?(?:CONTRADICTIONS|DISAGREEMENTS)\*?\*?[:\-]?\s*[\s\S]*/gi, '')
+      .replace(/(?:\d+\.\s*)?\*?\*?(?:CONTRADICTIONS|DISAGREEMENTS)\*?\*?[:\-]?\s*[\s\S]*/gi, '')
       // Clean up any remaining artifacts
       .replace(/^[-•*]\s*/, '') // Remove leading bullets
       .replace(/\n\s*\n\s*\n/g, '\n\n') // Collapse multiple newlines
@@ -7488,6 +7489,8 @@ DISAGREEMENTS:
         .filter(l => {
           // Skip instruction-like text and empty/garbage entries
           const isInstructionText = l.toLowerCase().includes('if no disagreements') || 
+                                    l.toLowerCase().includes('if no contradictions') ||
+                                    l.toLowerCase().includes('if there are no factual') ||
                                     l.toLowerCase().includes('write "none') ||
                                     l.toLowerCase().includes('this section is mandatory') ||
                                     l.toLowerCase().includes('look for:') ||

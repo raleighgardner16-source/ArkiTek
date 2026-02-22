@@ -285,7 +285,7 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
             )}
             {disagreements && disagreements.length > 0 && (
               <div>
-                <div style={{ color: '#ff4444', fontSize: '11px', fontWeight: 'bold', marginBottom: '4px' }}>Disagreements:</div>
+                <div style={{ color: '#ff4444', fontSize: '11px', fontWeight: 'bold', marginBottom: '4px' }}>Contradictions:</div>
                 {disagreements.map((disagreement, idx) => (
                   <div key={idx} style={{ color: '#ccc', fontSize: '10px', marginLeft: '12px' }}>• {disagreement}</div>
                 ))}

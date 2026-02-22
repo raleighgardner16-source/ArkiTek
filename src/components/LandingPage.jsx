@@ -52,7 +52,7 @@ const LandingPage = ({ onNavigate }) => {
     {
       icon: <MessageSquare size={32} />,
       title: 'AI Judge',
-      description: 'An AI judge analyzes all council responses and delivers a consensus summary — highlighting agreements, disagreements, and key insights.',
+      description: 'An AI judge analyzes all council responses and delivers a consensus summary — highlighting agreements, contradictions, and key insights.',
     },
     {
       icon: <Trophy size={32} />,
@@ -398,7 +398,7 @@ const LandingPage = ({ onNavigate }) => {
             {
               step: '3',
               title: 'Get the Prompt Consensus',
-              description: 'An AI judge will analyze the Council of LLMs\'s responses and deliver a consensus summary of model agreements, disagreements, and key insights.',
+              description: 'An AI judge will analyze the Council of LLMs\'s responses and deliver a consensus summary of model agreements, contradictions, and key insights.',
             },
           ].map((item, idx) => (
             <motion.div
