@@ -240,23 +240,13 @@ const SummaryWindow = () => {
         }).catch(err => console.error('[Token Update] SummaryWindow conversation token update failed:', err.message))
       }
 
-      // Append conversation token data to the token usage display so it updates in real-time
+      // Merge follow-up token data into the existing judge entry so there's one combined row
       if (finalData?.tokens) {
-        useStore.getState().appendTokenData({
-          modelName: 'Judge (follow-up)',
-          tokens: {
-            input: finalData.tokens.input || 0,
-            output: finalData.tokens.output || 0,
-            inputTokens: finalData.tokens.input || 0,
-            outputTokens: finalData.tokens.output || 0,
-            total: finalData.tokens.total || 0,
-            provider: 'google',
-            model: 'gemini-3-flash',
-            source: 'conversation',
-          },
-          isJudge: true,
-          isFollowUp: true,
-        })
+        useStore.getState().mergeTokenData('Judge Model', {
+          input: finalData.tokens.input || 0,
+          output: finalData.tokens.output || 0,
+          total: finalData.tokens.total || 0,
+        }, true)
       }
     } catch (error) {
       console.error('[SummaryWindow] Error sending message:', error)

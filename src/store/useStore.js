@@ -179,6 +179,32 @@ export const useStore = create(
       tokenData: [],
       setTokenData: (data) => set({ tokenData: data }),
       appendTokenData: (entry) => set((state) => ({ tokenData: [...state.tokenData, entry] })),
+      // Merge follow-up token data into the existing entry for the same model
+      // instead of creating a separate "(follow-up)" row
+      mergeTokenData: (modelName, newTokens, isJudge = false) => set((state) => {
+        const tokenData = [...state.tokenData]
+        // Find the existing entry for this model (match by modelName or tokens.model)
+        const idx = tokenData.findIndex(item => {
+          if (isJudge) return item.isJudge
+          return item.modelName === modelName || item.tokens?.model === modelName
+        })
+        if (idx !== -1) {
+          // Merge: add new tokens to existing entry
+          const existing = { ...tokenData[idx] }
+          existing.tokens = {
+            ...existing.tokens,
+            input: (existing.tokens?.input || 0) + (newTokens.input || 0),
+            output: (existing.tokens?.output || 0) + (newTokens.output || 0),
+            inputTokens: (existing.tokens?.inputTokens || 0) + (newTokens.input || 0),
+            outputTokens: (existing.tokens?.outputTokens || 0) + (newTokens.output || 0),
+            total: (existing.tokens?.total || 0) + (newTokens.total || 0),
+          }
+          tokenData[idx] = existing
+          return { tokenData }
+        }
+        // Fallback: if no matching entry found, append as new (shouldn't happen normally)
+        return { tokenData: [...state.tokenData, { modelName, tokens: newTokens, isJudge }] }
+      }),
       clearTokenData: () => set({ tokenData: [] }),
 
       // Search query count (Serper queries for this prompt)

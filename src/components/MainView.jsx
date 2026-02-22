@@ -920,23 +920,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         }).catch(err => console.error('[Token Update] Judge conversation token update failed:', err.message))
       }
 
-      // Append conversation token data to the token usage display so it updates in real-time
+      // Merge follow-up token data into the existing judge entry so there's one combined row
       if (finalData?.tokens) {
-        useStore.getState().appendTokenData({
-          modelName: 'Judge (follow-up)',
-          tokens: {
-            input: finalData.tokens.input || 0,
-            output: finalData.tokens.output || 0,
-            inputTokens: finalData.tokens.input || 0,
-            outputTokens: finalData.tokens.output || 0,
-            total: finalData.tokens.total || 0,
-            provider: 'google',
-            model: 'gemini-3-flash',
-            source: 'conversation',
-          },
-          isJudge: true,
-          isFollowUp: true,
-        })
+        useStore.getState().mergeTokenData('Judge Model', {
+          input: finalData.tokens.input || 0,
+          output: finalData.tokens.output || 0,
+          total: finalData.tokens.total || 0,
+        }, true)
       }
 
       // Push this conversation turn to the active history entry
@@ -1057,24 +1047,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         }).catch(err => console.error('[Token Update] Single model conversation token update failed:', err.message))
       }
 
-      // Append conversation token data to the token usage display so it updates in real-time
+      // Merge follow-up token data into the existing model entry so there's one combined row
       if (finalData?.tokens) {
-        const provider = modelName.substring(0, modelName.indexOf('-')) || 'unknown'
-        const model = modelName.substring(modelName.indexOf('-') + 1)
-        useStore.getState().appendTokenData({
-          modelName: `${modelName} (follow-up)`,
-          tokens: {
-            input: finalData.tokens.input || 0,
-            output: finalData.tokens.output || 0,
-            inputTokens: finalData.tokens.input || 0,
-            outputTokens: finalData.tokens.output || 0,
-            total: finalData.tokens.total || 0,
-            provider,
-            model,
-            source: 'conversation',
-          },
-          isFollowUp: true,
-        })
+        useStore.getState().mergeTokenData(modelName, {
+          input: finalData.tokens.input || 0,
+          output: finalData.tokens.output || 0,
+          total: finalData.tokens.total || 0,
+        }, false)
       }
 
       // Push this conversation turn to the active history entry
