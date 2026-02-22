@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { X, FileText, Move, Minimize2, Maximize2, ChevronRight, ChevronDown, Send, Search, Globe } from 'lucide-react'
+import { X, FileText, Move, Maximize2, ChevronRight, ChevronDown, Send, Search, Globe } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -523,7 +523,6 @@ const SummaryWindow = () => {
         }}
         onClick={() => {
           setIsMaximized(false)
-          setSummaryMinimized(true) // Return to minimized state
         }}
       >
         <motion.div
@@ -547,26 +546,25 @@ const SummaryWindow = () => {
           <button
             onClick={() => {
               setIsMaximized(false)
-              setSummaryMinimized(true) // Return to minimized state
             }}
             style={{
               position: 'absolute',
               top: '20px',
               right: '20px',
-              background: currentTheme.buttonBackground,
-              border: `1px solid ${currentTheme.borderLight}`,
+              background: 'rgba(255, 0, 0, 0.1)',
+              border: '1px solid rgba(255, 0, 0, 0.3)',
               borderRadius: '8px',
               padding: '8px',
-              color: currentTheme.accent,
+              color: '#ff6b6b',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: 10,
             }}
-            title="Minimize"
+            title="Close"
           >
-            <Minimize2 size={20} />
+            <X size={20} />
           </button>
 
           <div style={{ marginBottom: '24px', paddingRight: '40px' }}>
@@ -1064,28 +1062,6 @@ const SummaryWindow = () => {
             title="Maximize"
           >
             <Maximize2 size={20} />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setSummaryMinimized(true)
-            }}
-            onMouseDown={(e) => e.stopPropagation()} // Prevent dragging when clicking minimize button
-            style={{
-              background: currentTheme.buttonBackground,
-              border: `1px solid ${currentTheme.borderLight}`,
-              borderRadius: '8px',
-              padding: '8px',
-              color: currentTheme.accent,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 10,
-            }}
-            title="Minimize"
-          >
-            <Minimize2 size={20} />
           </button>
           <button
             onClick={(e) => {

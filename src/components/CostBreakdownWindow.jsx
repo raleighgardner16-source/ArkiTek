@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Minimize2, Maximize2, DollarSign } from 'lucide-react'
+import { X, DollarSign } from 'lucide-react'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
-import { useStore } from '../store/useStore'
 
 const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inline = false }) => {
-  const [isMinimized, setIsMinimized] = useState(false)
   const [pricingData, setPricingData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const activeTab = useStore((state) => state.activeTab)
 
   // Fetch pricing data
   useEffect(() => {
@@ -26,13 +23,6 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
     
     if (isOpen) {
       fetchPricing()
-    }
-  }, [isOpen])
-
-  // Reset minimized state when window is closed
-  useEffect(() => {
-    if (!isOpen) {
-      setIsMinimized(false)
     }
   }, [isOpen])
 
@@ -169,47 +159,6 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
     )
   }
 
-  // Show minimized state
-  // Stacked above Token Usage window (60px offset for button height + gap)
-  // Only show on home tab
-  if (isMinimized && activeTab === 'home') {
-    return (
-      <motion.button
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        onClick={() => setIsMinimized(false)}
-        style={{
-          position: 'fixed',
-          bottom: '140px',
-          right: '20px', // Position in bottom-right, stacked above token usage
-          background: 'rgba(255, 215, 0, 0.2)',
-          border: '1px solid rgba(255, 215, 0, 0.5)',
-          borderRadius: '12px',
-          padding: '12px 20px',
-          color: '#FFD700',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          zIndex: 140,
-          fontSize: '0.9rem',
-          fontWeight: '500',
-          boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)',
-        }}
-        whileHover={{ background: 'rgba(255, 215, 0, 0.3)', scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-      >
-        <Maximize2 size={16} />
-        Cost Breakdown (${totalCost.toFixed(4)})
-      </motion.button>
-    )
-  }
-  
-  // Don't show anything if minimized and not on home tab
-  if (isMinimized && activeTab !== 'home') {
-    return null
-  }
-
   return (
     <AnimatePresence>
       {isOpen && (
@@ -265,48 +214,26 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                   Cost Breakdown
                 </h2>
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setIsMinimized(true)
-                  }}
-                  style={{
-                    background: 'rgba(255, 215, 0, 0.1)',
-                    border: '1px solid rgba(255, 215, 0, 0.3)',
-                    borderRadius: '8px',
-                    padding: '8px',
-                    color: '#FFD700',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                  title="Minimize"
-                >
-                  <Minimize2 size={20} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onClose()
-                  }}
-                  style={{
-                    background: 'rgba(255, 0, 0, 0.1)',
-                    border: '1px solid rgba(255, 0, 0, 0.3)',
-                    borderRadius: '8px',
-                    padding: '8px',
-                    color: '#FF0000',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                  title="Close"
-                >
-                  <X size={20} />
-                </button>
-              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onClose()
+                }}
+                style={{
+                  background: 'rgba(255, 0, 0, 0.1)',
+                  border: '1px solid rgba(255, 0, 0, 0.3)',
+                  borderRadius: '8px',
+                  padding: '8px',
+                  color: '#FF0000',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                title="Close"
+              >
+                <X size={20} />
+              </button>
             </div>
 
             {loading ? (

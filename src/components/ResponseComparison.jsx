@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, Minimize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe, Coins, Bug, DollarSign } from 'lucide-react'
+import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe, Coins, Bug, DollarSign } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -555,76 +555,13 @@ const ResponseComparison = () => {
       setIsDraggingSingleResponse(true)
     }
 
-    // Show minimized card if minimized
-    if (singleResponseMinimized) {
-      return (
-        <div
-          style={{
-            position: 'fixed',
-            top: 'calc(50% - 44px)', // Position after Summary spot
-            left: '75px',
-            zIndex: 200,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '15px',
-            pointerEvents: 'none',
-          }}
-        >
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            style={{
-              width: cardWidth,
-              cursor: 'pointer',
-              pointerEvents: 'auto',
-            }}
-            onClick={() => {
-              setSingleResponseMinimized(false)
-              setSingleResponseMaximized(true) // Re-open in maximized view
-            }}
-          >
-            <div
-              style={{
-                background: currentTheme.backgroundOverlayLight,
-                border: `1px solid ${currentTheme.borderLight}`,
-                borderRadius: '12px',
-                boxShadow: `0 4px 12px ${currentTheme.shadowLight}`,
-                padding: '12px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <h3
-                key={`single-response-title-${theme}`}
-                style={{
-                  fontSize: '0.9rem',
-                  background: currentTheme.accentGradient,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  color: currentTheme.accent,
-                  margin: 0,
-                  fontWeight: '500',
-                }}
-              >
-                {formatModelName(response.modelName)}
-              </h3>
-              <ChevronRight size={16} color={currentTheme.accent} style={{ marginRight: '20px' }} />
-            </div>
-          </motion.div>
-
-          {/* Clear All removed per user request */}
-        </div>
-      )
-    }
-
     // Show MAXIMIZED view (full-screen overlay) by default
     if (singleResponseMaximized) {
       return (
         <div
           onClick={() => {
             setSingleResponseMaximized(false)
-            setSingleResponseMinimized(true)
+            setHiddenCards(prev => ({ ...prev, [response.id]: true }))
           }}
           style={{
             position: 'fixed',
@@ -657,30 +594,30 @@ const ResponseComparison = () => {
             boxShadow: `0 0 40px ${currentTheme.shadow}`,
           }}
         >
-            {/* Minimize button */}
+            {/* Close button */}
             <button
               onClick={() => {
                 setSingleResponseMaximized(false)
-                setSingleResponseMinimized(true)
+                setHiddenCards(prev => ({ ...prev, [response.id]: true }))
               }}
               style={{
                 position: 'absolute',
                 top: '20px',
                 right: '20px',
-                background: currentTheme.buttonBackground,
-                border: `1px solid ${currentTheme.borderLight}`,
+                background: 'rgba(255, 0, 0, 0.1)',
+                border: '1px solid rgba(255, 0, 0, 0.3)',
                 borderRadius: '8px',
                 padding: '8px',
-                color: currentTheme.accent,
+                color: '#ff6b6b',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 zIndex: 10,
               }}
-              title="Minimize"
+              title="Close"
             >
-              <Minimize2 size={20} />
+              <X size={20} />
             </button>
 
             <div style={{ marginBottom: '24px', paddingRight: '40px' }}>
@@ -1116,23 +1053,23 @@ const ResponseComparison = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                setSingleResponseMinimized(true)
+                setHiddenCards(prev => ({ ...prev, [response.id]: true }))
               }}
               onMouseDown={(e) => e.stopPropagation()}
               style={{
-                background: currentTheme.buttonBackground,
-                border: `1px solid ${currentTheme.borderLight}`,
+                background: 'rgba(255, 0, 0, 0.1)',
+                border: '1px solid rgba(255, 0, 0, 0.3)',
                 borderRadius: '8px',
                 padding: '8px',
-                color: currentTheme.accent,
+                color: '#ff6b6b',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
-              title="Minimize"
+              title="Close"
             >
-              <Minimize2 size={18} />
+              <X size={18} />
             </button>
             <button
               onClick={(e) => {
@@ -1293,26 +1230,24 @@ const ResponseComparison = () => {
         >
           <button
             onClick={() => {
+              const cardId = maximizedCard
               setMaximizedCard(null)
-              // Return card to minimized state
-              setMinimizedCards((prev) => ({
-                ...prev,
-                [maximizedCard]: true
-              }))
+              setHiddenCards(prev => ({ ...prev, [cardId]: true }))
             }}
             style={{
               position: 'absolute',
               top: '20px',
               right: '20px',
-              background: currentTheme.buttonBackground,
-              border: `1px solid ${currentTheme.borderLight}`,
+              background: 'rgba(255, 0, 0, 0.1)',
+              border: '1px solid rgba(255, 0, 0, 0.3)',
               borderRadius: '8px',
               padding: '8px',
-              color: currentTheme.accent,
+              color: '#ff6b6b',
               cursor: 'pointer',
             }}
+            title="Close"
           >
-            <Minimize2 size={20} />
+            <X size={20} />
           </button>
 
           <div style={{ marginBottom: '20px' }}>
@@ -2313,20 +2248,6 @@ const ResponseComparison = () => {
                     title="Hide response"
                   >
                     <X size={14} />
-                  </button>
-                  <button
-                    onClick={(e) => toggleMinimizeCard(response.id, e)}
-                    style={{
-                      background: currentTheme.buttonBackground,
-                      border: `1px solid ${currentTheme.borderLight}`,
-                      borderRadius: '4px',
-                      padding: '4px',
-                      color: currentTheme.text,
-                      cursor: 'pointer',
-                    }}
-                    title="Minimize"
-                  >
-                    <Minimize2 size={14} />
                   </button>
                   <button
                     onClick={(e) => toggleMaximize(response.id, e)}

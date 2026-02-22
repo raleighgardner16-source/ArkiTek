@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Minimize2, Maximize2, Eye, HelpCircle, ChevronDown, ChevronUp, Info, Zap, Send, Globe, Settings, Brain, Gavel, Workflow } from 'lucide-react'
-import { useStore } from '../store/useStore'
+import { X, Eye, HelpCircle, ChevronDown, ChevronUp, Info, Zap, Send, Globe, Settings, Brain, Gavel, Workflow } from 'lucide-react'
 
 // Friendly provider name mapping
 const providerDisplayName = (provider) => {
@@ -16,16 +15,7 @@ const providerDisplayName = (provider) => {
 }
 
 const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
-  const [isMinimized, setIsMinimized] = useState(false)
   const [showExplainer, setShowExplainer] = useState(false)
-  const activeTab = useStore((state) => state.activeTab)
-
-  // Reset minimized state when window is closed
-  useEffect(() => {
-    if (!isOpen) {
-      setIsMinimized(false)
-    }
-  }, [isOpen])
 
   if (!isOpen || !tokenData || tokenData.length === 0) return null
 
@@ -314,11 +304,6 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
     )
   }
 
-  // When minimized, fully hide — user reopens via the Model Usage button
-  if (isMinimized) {
-    return null
-  }
-
   return (
     <AnimatePresence>
       {isOpen && (
@@ -369,52 +354,26 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
                   A breakdown of how many tokens were used for this prompt
                 </p>
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setIsMinimized(true)
-                    onClose()
-                  }}
-                  style={{
-                    background: 'rgba(93, 173, 226, 0.1)',
-                    border: '1px solid rgba(93, 173, 226, 0.3)',
-                    borderRadius: '8px',
-                    padding: '8px',
-                    color: '#5dade2',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'background 0.2s',
-                  }}
-                  onMouseEnter={(e) => e.target.style.background = 'rgba(93, 173, 226, 0.2)'}
-                  onMouseLeave={(e) => e.target.style.background = 'rgba(93, 173, 226, 0.1)'}
-                  title="Minimize"
-                >
-                  <Minimize2 size={20} />
-                </button>
-                <button
-                  onClick={onClose}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#ff6b6b',
-                    cursor: 'pointer',
-                    padding: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: '8px',
-                    transition: 'background 0.2s',
-                  }}
-                  onMouseEnter={(e) => e.target.style.background = 'rgba(255, 107, 107, 0.2)'}
-                  onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                  title="Close"
-                >
-                  <X size={24} />
-                </button>
-              </div>
+              <button
+                onClick={onClose}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#ff6b6b',
+                  cursor: 'pointer',
+                  padding: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '8px',
+                  transition: 'background 0.2s',
+                }}
+                onMouseEnter={(e) => e.target.style.background = 'rgba(255, 107, 107, 0.2)'}
+                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                title="Close"
+              >
+                <X size={24} />
+              </button>
             </div>
 
             {/* "What are tokens?" toggle */}
