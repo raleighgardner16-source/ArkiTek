@@ -152,7 +152,7 @@ function App() {
   const clearAllWindows = () => {
     try {
       clearResponses()
-      setQueryCount(0)
+      // queryCount is now cleared automatically by clearResponses() in the store
       // Minimize summary window (summary is already cleared by clearResponses)
       const setSummaryMinimized = useStore.getState().setSummaryMinimized
       if (setSummaryMinimized) {
@@ -183,11 +183,11 @@ function App() {
   const setRAGDebugData = useStore((state) => state.setRAGDebugData)
   const currentHistoryId = useStore((state) => state.currentHistoryId)
   const setCurrentHistoryId = useStore((state) => state.setCurrentHistoryId)
+  const setQueryCount = useStore((state) => state.setQueryCount)
 
   const [isLoading, setIsLoading] = useState(false)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const [currentCategory, setCurrentCategory] = useState('general')
-  const [queryCount, setQueryCount] = useState(0)
   const [isUserAdmin, setIsUserAdmin] = useState(false)
   const storeResponses = useStore((state) => state.responses)
   const storeTokenData = useStore((state) => state.tokenData)

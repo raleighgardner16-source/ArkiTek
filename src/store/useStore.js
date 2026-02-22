@@ -67,6 +67,7 @@ export const useStore = create(
         set({ ragDebugData: null })
         set({ searchSources: null })
         set({ tokenData: [] })
+        set({ queryCount: 0 })
         set({ showFactsWindow: true }) // Reset to default state
         set({ showPipelineDebugWindow: true }) // Reset to default state
         set({ currentHistoryId: null }) // Clear active history entry
@@ -179,6 +180,11 @@ export const useStore = create(
       setTokenData: (data) => set({ tokenData: data }),
       appendTokenData: (entry) => set((state) => ({ tokenData: [...state.tokenData, entry] })),
       clearTokenData: () => set({ tokenData: [] }),
+
+      // Search query count (Serper queries for this prompt)
+      queryCount: 0,
+      setQueryCount: (count) => set({ queryCount: count }),
+      incrementQueryCount: () => set((state) => ({ queryCount: state.queryCount + 1 })),
 
       // Facts window visibility
       showFactsWindow: true,

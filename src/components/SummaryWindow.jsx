@@ -191,6 +191,11 @@ const SummaryWindow = () => {
           setConvoSources(prev => ({ ...prev, [turnIndex]: finalData.searchResults }))
         }
         
+        // Increment query count if a web search was performed during this follow-up
+        if (finalData?.usedSearch) {
+          useStore.getState().incrementQueryCount()
+        }
+        
         const store = useStore.getState()
         if (finalData.debugData) {
           const existingDebugData = store.ragDebugData || {}

@@ -349,6 +349,11 @@ const ResponseComparison = () => {
         })
       }
 
+      // Increment query count if a web search was performed during this follow-up
+      if (finalData?.usedSearch) {
+        useStore.getState().incrementQueryCount()
+      }
+
       // Update main token counter with conversation tokens so stats page totalTokens/monthlyTokens stay consistent
       if (currentUser?.id && finalData?.tokens?.total > 0) {
         axios.post(`${API_URL}/api/stats/token-update`, {
@@ -1728,7 +1733,7 @@ const ResponseComparison = () => {
           isOpen={true}
           onClose={() => setShowCostModal(false)}
           tokenData={tokenData}
-          queryCount={0}
+          queryCount={queryCount}
         />
       )}
 
@@ -1793,7 +1798,7 @@ const ResponseComparison = () => {
               onClose={() => setShowPipelineModal(false)}
               geminiDetectionResponse={geminiDetectionResponse}
               tokenData={tokenData}
-              queryCount={0}
+              queryCount={queryCount}
               categoryDetectionData={null}
               inline={true}
             />

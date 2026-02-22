@@ -873,6 +873,11 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           setSummaryConvoSources(prev => ({ ...prev, [turnIndex]: finalData.searchResults }))
         }
         
+        // Increment query count if a web search was performed during this follow-up
+        if (finalData?.usedSearch) {
+          useStore.getState().incrementQueryCount()
+        }
+        
         const store = useStore.getState()
         if (finalData.debugData) {
           const existingDebugData = store.ragDebugData || {}
@@ -1035,6 +1040,11 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       if (finalData?.searchResults && finalData.searchResults.length > 0) {
         const turnIndex = singleModelConvoHistory.length
         setSingleConvoSources(prev => ({ ...prev, [turnIndex]: finalData.searchResults }))
+      }
+
+      // Increment query count if a web search was performed during this follow-up
+      if (finalData?.usedSearch) {
+        useStore.getState().incrementQueryCount()
       }
 
       // Update main token counter with conversation tokens so stats page totalTokens/monthlyTokens stay consistent
