@@ -7301,7 +7301,7 @@ RESPOND WITH EXACTLY THESE 4 SECTIONS IN THIS EXACT FORMAT:
 CONSENSUS: [number]%
 
 SUMMARY:
-[Write a thorough, explanatory summary that synthesizes what the council collectively determined. Do not just state conclusions — explain the reasoning, key details, and context behind them. Use the model names exactly as shown above (ChatGPT, Claude, Gemini, Grok, etc.) when attributing specific claims, like "Gemini explains that..." or "ChatGPT and Claude both emphasize...". If models cited sources, include those citations like [source 2]. The summary should give the reader a complete understanding of the topic without needing to read the individual model responses. Aim for 2-3 substantial paragraphs.]
+[Write a thorough, explanatory summary that synthesizes what the council collectively determined. Do not just state conclusions — explain the reasoning, key details, and context behind them. When referencing models, use ONLY their short names: ChatGPT, Claude, Gemini, Grok. Do NOT use version numbers or full model identifiers like "GPT-4.1" or "Claude 4.5 Sonnet" or "Gemini 3 Flash" or "Grok 4-1 Fast". If models cited sources, include those citations like [source 2]. The summary should give the reader a complete understanding of the topic without needing to read the individual model responses. Aim for 2-3 substantial paragraphs.]
 
 AGREEMENTS:
 - [First specific point all/most models agree on
@@ -7533,6 +7533,31 @@ CONTRADICTIONS:
       console.log('[Judge] No disagreements section matched!')
     }
     
+    // Post-process: replace any full model names with short friendly names
+    const shortenModelNames = (text) => {
+      if (!text) return text
+      return text
+        .replace(/GPT[-\s]?4\.1/gi, 'ChatGPT')
+        .replace(/GPT[-\s]?4o[-\s]?mini/gi, 'ChatGPT')
+        .replace(/GPT[-\s]?5\.2/gi, 'ChatGPT')
+        .replace(/GPT[-\s]?5[-\s]?mini/gi, 'ChatGPT')
+        .replace(/OpenAI[-\s]?gpt[-\s]?[\d.]+[-\w]*/gi, 'ChatGPT')
+        .replace(/Claude\s+4\.5\s+Sonnet/gi, 'Claude')
+        .replace(/Claude\s+4\.5\s+Opus/gi, 'Claude')
+        .replace(/Claude\s+4\s+Sonnet/gi, 'Claude')
+        .replace(/anthropic[-\s]claude[-\s][\d.]+[-\w]*/gi, 'Claude')
+        .replace(/Gemini\s+3\s+Flash/gi, 'Gemini')
+        .replace(/Gemini\s+3\s+Pro/gi, 'Gemini')
+        .replace(/Gemini\s+2\.5\s+Flash[-\s]?Lite/gi, 'Gemini')
+        .replace(/google[-\s]gemini[-\s][\d.]+[-\w]*/gi, 'Gemini')
+        .replace(/Grok\s+4[-\s]?1[-\s]?fast[-\s]?(?:non[-\s]?)?reasoning/gi, 'Grok')
+        .replace(/Grok[-\s]?4[-\s]?1[-\s]?fast/gi, 'Grok')
+        .replace(/xai[-\s]grok[-\s][\d.]+[-\w]*/gi, 'Grok')
+    }
+    summary = shortenModelNames(summary)
+    agreements = agreements.map(a => shortenModelNames(a))
+    disagreements = disagreements.map(d => shortenModelNames(d))
+
     return {
       consensus: consensus,
       summary: summary,

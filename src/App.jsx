@@ -24,6 +24,20 @@ import { getTheme } from './utils/theme'
 import axios from 'axios'
 import { API_URL } from './utils/config'
 
+// Map full API model names to short friendly names for the judge summary
+const getShortModelName = (modelName) => {
+  if (!modelName) return modelName
+  const lower = modelName.toLowerCase()
+  if (lower.includes('openai') || lower.includes('gpt') || lower.includes('o3') || lower.includes('o4')) return 'ChatGPT'
+  if (lower.includes('claude') || lower.includes('anthropic')) return 'Claude'
+  if (lower.includes('gemini') || lower.includes('google')) return 'Gemini'
+  if (lower.includes('grok') || lower.includes('xai')) return 'Grok'
+  if (lower.includes('llama') || lower.includes('meta')) return 'Llama'
+  if (lower.includes('mistral')) return 'Mistral'
+  if (lower.includes('deepseek')) return 'DeepSeek'
+  return modelName
+}
+
 function App() {
   // Track store hydration from localStorage — prevents flash of wrong page on load
   const [hasHydrated, setHasHydrated] = useState(useStore.persist.hasHydrated())
@@ -678,8 +692,9 @@ function App() {
       setIsGeneratingSummary(true)
       try {
         // Build the summary prompt (matches judge finalization prompt)
+        // Use short friendly names (ChatGPT, Claude, Gemini, Grok) so the judge summary reads cleanly
         const responsesText = validResponses
-          .map((r) => `\n--- ${r.modelName}'s response ---\n${r.text}\n`)
+          .map((r) => `\n--- ${getShortModelName(r.modelName)}'s response ---\n${r.text}\n`)
           .join('')
         
         const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
@@ -694,7 +709,7 @@ function App() {
         
         Consensus: [A single number from 0-100 representing the percentage of agreement between all models]
         
-        Summary: [Write a thorough, explanatory summary that synthesizes what the council collectively determined. Do not just state conclusions — explain the reasoning, key details, and context behind them. Reference specific models by name when attributing claims. The summary should give the reader a complete understanding of the topic without needing to read the individual model responses. Aim for 2-3 substantial paragraphs.]
+        Summary: [Write a thorough, explanatory summary that synthesizes what the council collectively determined. Do not just state conclusions — explain the reasoning, key details, and context behind them. When referencing models, use ONLY their short names: ChatGPT, Claude, Gemini, Grok. Do NOT use version numbers or full model identifiers like "GPT-4.1" or "Claude 4.5 Sonnet" or "Gemini 3 Flash" or "Grok 4-1 Fast". The summary should give the reader a complete understanding of the topic without needing to read the individual model responses. Aim for 2-3 substantial paragraphs.]
         
         Agreements: [List at least 3-5 specific, substantive points where models agree, one per line, each starting with a dash]
         
@@ -865,6 +880,36 @@ function App() {
           return true
         })
         
+        // Post-process: replace any full model names with short friendly names
+        const shortenModelNames = (text) => {
+          if (!text) return text
+          return text
+            // OpenAI variants
+            .replace(/GPT[-\s]?4\.1/gi, 'ChatGPT')
+            .replace(/GPT[-\s]?4o[-\s]?mini/gi, 'ChatGPT')
+            .replace(/GPT[-\s]?5\.2/gi, 'ChatGPT')
+            .replace(/GPT[-\s]?5[-\s]?mini/gi, 'ChatGPT')
+            .replace(/OpenAI[-\s]?gpt[-\s]?[\d.]+[-\w]*/gi, 'ChatGPT')
+            .replace(/openai[-\s]gpt[-\s][\d.]+/gi, 'ChatGPT')
+            // Anthropic variants
+            .replace(/Claude\s+4\.5\s+Sonnet/gi, 'Claude')
+            .replace(/Claude\s+4\.5\s+Opus/gi, 'Claude')
+            .replace(/Claude\s+4\s+Sonnet/gi, 'Claude')
+            .replace(/anthropic[-\s]claude[-\s][\d.]+[-\w]*/gi, 'Claude')
+            // Google variants
+            .replace(/Gemini\s+3\s+Flash/gi, 'Gemini')
+            .replace(/Gemini\s+3\s+Pro/gi, 'Gemini')
+            .replace(/Gemini\s+2\.5\s+Flash[-\s]?Lite/gi, 'Gemini')
+            .replace(/google[-\s]gemini[-\s][\d.]+[-\w]*/gi, 'Gemini')
+            // xAI variants
+            .replace(/Grok\s+4[-\s]?1[-\s]?fast[-\s]?(?:non[-\s]?)?reasoning/gi, 'Grok')
+            .replace(/Grok[-\s]?4[-\s]?1[-\s]?fast/gi, 'Grok')
+            .replace(/xai[-\s]grok[-\s][\d.]+[-\w]*/gi, 'Grok')
+        }
+        parsedSummary = shortenModelNames(parsedSummary)
+        agreements = agreements.map(a => shortenModelNames(a))
+        disagreements = disagreements.map(d => shortenModelNames(d))
+
         // Format the summary text using markdown for proper rendering
         let formattedSummaryText = ''
         
