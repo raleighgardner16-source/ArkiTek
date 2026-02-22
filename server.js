@@ -7319,7 +7319,7 @@ Original User Query: "${query}"
 Council Model Responses:
 ${responsesText}
 
-RESPOND WITH EXACTLY THESE 4 SECTIONS IN THIS EXACT FORMAT:
+RESPOND WITH EXACTLY THESE 5 SECTIONS IN THIS EXACT FORMAT:
 
 CONSENSUS: [number]%
 
@@ -7333,7 +7333,10 @@ AGREEMENTS:
 (THIS SECTION IS MANDATORY! List at least 3-5 specific agreement points. NEVER write "None identified" unless models literally contradict each other on everything.)
 
 CONTRADICTIONS:
-[ONLY list factual contradictions where Model A and Model B make claims that CANNOT BOTH BE TRUE. Example: "Gemini states the date is November 7, but Claude states it is November 5 — these are contradictory." If one model mentions something another does not, that is NOT a contradiction. If models suggest different examples, products, or details, those are NOT contradictions. If models differ in tone, depth, or structure, those are NOT contradictions. If there are no factual contradictions, write: "None identified — all models are in factual agreement."]`
+[ONLY list factual contradictions where Model A and Model B make claims that CANNOT BOTH BE TRUE. Example: "Gemini states the date is November 7, but Claude states it is November 5 — these are contradictory." If one model mentions something another does not, that is NOT a contradiction. If models suggest different examples, products, or details, those are NOT contradictions. If models differ in tone, depth, or structure, those are NOT contradictions. If there are no factual contradictions, write: "None identified — all models are in factual agreement."]
+
+DIFFERENCES:
+[List notable differences in how the models responded. This includes: details or topics one model covered that others omitted, different examples or recommendations given, varying levels of depth or specificity, different tones or approaches, and any unique angles or perspectives. These are NOT contradictions — just interesting variations worth noting. Each difference should start with a dash and name which models are involved.]`
 
 
 
@@ -7400,7 +7403,8 @@ CONTRADICTIONS:
     // Handles: "SUMMARY:", "**SUMMARY**:", "Summary:", "2. SUMMARY:", "LIST AGREEMENTS", "AGREEMENTS:", etc.
     const summaryMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?SUMMARY(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\d+\.\s*)?(?:LIST\s+)?(?:\*\*)?AGREEMENTS|$)/im)
     const agreementsMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:LIST\s+)?(?:\*\*)?AGREEMENTS(?:\*\*)?[:\-]?(?:\s*-[^\n]*)?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?(?:CONTRADICTIONS|DISAGREEMENTS)|$)/im)
-    const disagreementsMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?(?:CONTRADICTIONS|DISAGREEMENTS)(?:\*\*)?[:\-]?\s*\n?([\s\S]+)$/im)
+    const disagreementsMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?(?:CONTRADICTIONS|DISAGREEMENTS)(?:\*\*)?[:\-]?\s*\n?([\s\S]+?)(?=(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?DIFFERENCES|$)/im)
+    const differencesMatch = content.match(/(?:^|\n)\s*(?:\d+\.\s*)?(?:\*\*)?DIFFERENCES(?:\*\*)?[:\-]?\s*\n?([\s\S]+)$/im)
     
     // Extract consensus score (0-100)
     let consensus = null
@@ -7438,7 +7442,8 @@ CONTRADICTIONS:
       hasConsensus: !!consensusMatch,
       hasSummary: !!summaryMatch,
       hasAgreements: !!agreementsMatch,
-      hasContradictions: !!disagreementsMatch
+      hasContradictions: !!disagreementsMatch,
+      hasDifferences: !!differencesMatch
     })
     
     // Extract summary - if no explicit summary section, try to extract everything between consensus and agreements
@@ -7467,11 +7472,14 @@ CONTRADICTIONS:
       // Remove embedded SUMMARY headers
       .replace(/[-•*]\s*\*?\*?SUMMARY\*?\*?[:\-]?\s*/gi, '')
       // Remove embedded AGREEMENTS sections (various formats)
-      .replace(/[-•]\s*(?:\d+\.\s*)?(?:LIST\s+)?\*?\*?AGREEMENTS\*?\*?[:\-]?\s*[\s\S]*?(?=[-•]\s*(?:\d+\.\s*)?\*?\*?(?:CONTRADICTIONS|DISAGREEMENTS)|$)/gi, '')
-      .replace(/(?:\d+\.\s*)?(?:LIST\s+)?\*?\*?AGREEMENTS\*?\*?[:\-]?\s*[\s\S]*?(?=(?:\d+\.\s*)?\*?\*?(?:CONTRADICTIONS|DISAGREEMENTS)|$)/gi, '')
+      .replace(/[-•]\s*(?:\d+\.\s*)?(?:LIST\s+)?\*?\*?AGREEMENTS\*?\*?[:\-]?\s*[\s\S]*?(?=[-•]\s*(?:\d+\.\s*)?\*?\*?(?:CONTRADICTIONS|DISAGREEMENTS|DIFFERENCES)|$)/gi, '')
+      .replace(/(?:\d+\.\s*)?(?:LIST\s+)?\*?\*?AGREEMENTS\*?\*?[:\-]?\s*[\s\S]*?(?=(?:\d+\.\s*)?\*?\*?(?:CONTRADICTIONS|DISAGREEMENTS|DIFFERENCES)|$)/gi, '')
       // Remove embedded CONTRADICTIONS/DISAGREEMENTS sections
-      .replace(/[-•]\s*(?:\d+\.\s*)?\*?\*?(?:CONTRADICTIONS|DISAGREEMENTS)\*?\*?[:\-]?\s*[\s\S]*/gi, '')
-      .replace(/(?:\d+\.\s*)?\*?\*?(?:CONTRADICTIONS|DISAGREEMENTS)\*?\*?[:\-]?\s*[\s\S]*/gi, '')
+      .replace(/[-•]\s*(?:\d+\.\s*)?\*?\*?(?:CONTRADICTIONS|DISAGREEMENTS)\*?\*?[:\-]?\s*[\s\S]*?(?=[-•]\s*(?:\d+\.\s*)?\*?\*?DIFFERENCES|$)/gi, '')
+      .replace(/(?:\d+\.\s*)?\*?\*?(?:CONTRADICTIONS|DISAGREEMENTS)\*?\*?[:\-]?\s*[\s\S]*?(?=(?:\d+\.\s*)?\*?\*?DIFFERENCES|$)/gi, '')
+      // Remove embedded DIFFERENCES sections
+      .replace(/[-•]\s*(?:\d+\.\s*)?\*?\*?DIFFERENCES\*?\*?[:\-]?\s*[\s\S]*/gi, '')
+      .replace(/(?:\d+\.\s*)?\*?\*?DIFFERENCES\*?\*?[:\-]?\s*[\s\S]*/gi, '')
       // Clean up any remaining artifacts
       .replace(/^[-•*]\s*/, '') // Remove leading bullets
       .replace(/\n\s*\n\s*\n/g, '\n\n') // Collapse multiple newlines
@@ -7556,6 +7564,26 @@ CONTRADICTIONS:
       console.log('[Judge] No disagreements section matched!')
     }
     
+    // Extract differences
+    let differences = []
+    if (differencesMatch) {
+      const rawDifferences = differencesMatch[1]
+      console.log('[Judge] Raw differences section:', rawDifferences.substring(0, 500))
+      differences = rawDifferences
+        .split('\n')
+        .filter(l => l.trim() && !l.match(/^[-•*]\s*$/))
+        .map(l => l.replace(/^[-•*\[\]]\s*/, '').replace(/^\d+\.\s*/, '').trim())
+        .filter(l => {
+          const isEmpty = !l || l.length < 5
+          const isNone = l.toLowerCase().startsWith('none identified') || l.toLowerCase().startsWith('no notable')
+          const isGarbage = l.match(/^\*+:?$/) || l.match(/^\(.*\)$/)
+          return !isEmpty && !isNone && !isGarbage
+        })
+      console.log('[Judge] Extracted differences:', differences.length, differences)
+    } else {
+      console.log('[Judge] No differences section matched!')
+    }
+    
     // Post-process: replace any full model names with short friendly names
     const shortenModelNames = (text) => {
       if (!text) return text
@@ -7580,12 +7608,14 @@ CONTRADICTIONS:
     summary = shortenModelNames(summary)
     agreements = agreements.map(a => shortenModelNames(a))
     disagreements = disagreements.map(d => shortenModelNames(d))
+    differences = differences.map(d => shortenModelNames(d))
 
     return {
       consensus: consensus,
       summary: summary,
       agreements: agreements,
       disagreements: disagreements,
+      differences: differences,
       prompt: judgePrompt,
       response: content,
       tokens: judgeTokenInfo
@@ -7597,6 +7627,7 @@ CONTRADICTIONS:
       summary: `Error analyzing responses: ${error.message}`,
       agreements: [],
       disagreements: [],
+      differences: [],
       prompt: judgePrompt,
       response: `Error: ${error.message}`
     }

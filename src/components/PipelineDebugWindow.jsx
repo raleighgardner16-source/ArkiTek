@@ -234,7 +234,7 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
   const renderJudgeFinalization = () => {
     if (!debugData.judgeFinalization) return null
     
-    const { prompt, response, summary, agreements, disagreements } = debugData.judgeFinalization
+    const { prompt, response, summary, agreements, disagreements, differences } = debugData.judgeFinalization
     
     return (
       <div style={{ marginBottom: '16px' }}>
@@ -288,6 +288,14 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
                 <div style={{ color: '#ff4444', fontSize: '11px', fontWeight: 'bold', marginBottom: '4px' }}>Contradictions:</div>
                 {disagreements.map((disagreement, idx) => (
                   <div key={idx} style={{ color: '#ccc', fontSize: '10px', marginLeft: '12px' }}>• {disagreement}</div>
+                ))}
+              </div>
+            )}
+            {differences && differences.length > 0 && (
+              <div>
+                <div style={{ color: '#88aaff', fontSize: '11px', fontWeight: 'bold', marginBottom: '4px' }}>Differences:</div>
+                {differences.map((diff, idx) => (
+                  <div key={idx} style={{ color: '#ccc', fontSize: '10px', marginLeft: '12px' }}>• {diff}</div>
                 ))}
               </div>
             )}

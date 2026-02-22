@@ -705,7 +705,7 @@ function App() {
         Council Model Responses:
         ${responsesText}
         
-        Please analyze these responses and provide ONLY these four sections in this exact format (do NOT include section headers in the content itself):
+        Please analyze these responses and provide ONLY these five sections in this exact format (do NOT include section headers in the content itself):
         
         Consensus: [A single number from 0-100 representing the percentage of agreement between all models]
         
@@ -714,6 +714,8 @@ function App() {
         Agreements: [List at least 3-5 specific, substantive points where models agree, one per line, each starting with a dash]
         
         Contradictions: [ONLY list factual contradictions where Model A and Model B make claims that CANNOT BOTH BE TRUE. Example: "Gemini states the date is November 7, but Claude states it is November 5 — these are contradictory." If one model mentions something another does not, that is NOT a contradiction. If models suggest different examples, products, or details, those are NOT contradictions. If models differ in tone, depth, or structure, those are NOT contradictions. If there are no factual contradictions, write: "None identified — all models are in factual agreement."]
+        
+        Differences: [List notable differences in how the models responded. This includes: details or topics one model covered that others omitted, different examples or recommendations given, varying levels of depth or specificity, different tones or approaches, and any unique angles or perspectives. These are NOT contradictions — just interesting variations. Each difference should start with a dash and name which models are involved.]
         
         Important: Only include the section label followed by a colon, then the content. Do NOT repeat section headers within the content. Do NOT use markdown formatting like ** for section headers.`
 
@@ -762,14 +764,15 @@ function App() {
         // Split the text by section headers to get clean boundaries
         // First, normalize the text to handle markdown formatting
         const normalizedText = rawSummaryText
-          .replace(/\*\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|CONSENSUS|Consensus)\*\*[:\-]?/gi, '\n$1:')
-          .replace(/\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|CONSENSUS|Consensus)\*[:\-]?/gi, '\n$1:')
+          .replace(/\*\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*\*[:\-]?/gi, '\n$1:')
+          .replace(/\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*[:\-]?/gi, '\n$1:')
         
         // Extract sections using more robust patterns with greedy capture up to next section
         // Use [\s\S] instead of . to match across newlines
-        const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:AGREEMENTS|Agreements)[:\-]|\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|$)/i)
-        const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|$)/i)
-        const disagreementsMatch = normalizedText.match(/(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*([\s\S]+)$/i)
+        const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:AGREEMENTS|Agreements)[:\-]|\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
+        const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
+        const disagreementsMatch = normalizedText.match(/(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
+        const differencesMatch = normalizedText.match(/(?:DIFFERENCES|Differences)[:\-]?\s*([\s\S]+)$/i)
         
         // Extract consensus score (0-100)
         let consensus = null
@@ -866,6 +869,29 @@ function App() {
             }).filter(l => l && l.length >= 5) // Remove any empty or too-short strings after cleaning
           : []
         
+        // Extract differences section
+        let differencesText = differencesMatch ? differencesMatch[1].trim() : ''
+        differencesText = differencesText
+          .replace(/^(?:\*\*)?(?:DIFFERENCES|Differences)[:\-]?\s*\*?\*?\s*/i, '')
+          .trim()
+        differencesText = differencesText.replace(/\n\s*(?:\*\*)?(?:DIFFERENCES|Differences)[:\-]?\s*\*?\*?\s*/gi, '\n')
+        
+        let differences = differencesText
+          ? differencesText.split('\n').filter(l => {
+              const trimmed = l.trim()
+              return trimmed && 
+                     !trimmed.match(/^[-•*•]\s*$/) && 
+                     !trimmed.match(/^(?:\*\*)?(?:DIFFERENCES|Differences)[:\-]?\s*\*?\*?$/i) &&
+                     !trimmed.match(/^:\s*$/) &&
+                     !trimmed.toLowerCase().startsWith('none identified') &&
+                     !trimmed.toLowerCase().startsWith('no notable')
+            }).map(l => {
+              let cleaned = l.replace(/^[-•*•]\s*[-•*•]\s*/, '').replace(/^[-•*•]\s*/, '').trim()
+              cleaned = cleaned.replace(/\*\*/g, '').replace(/\*/g, '')
+              return cleaned
+            }).filter(l => l && l.length >= 5)
+          : []
+
         // Post-processing: Filter out "disagreements" that are actually coverage differences, not contradictions.
         const disagreements = rawDisagreements.filter(d => {
           const isOmission = /\b(?:omits?|omitted|(?:does|do|did|is|are|were?) not (?:mention|include|address|cite|reference|provide|name|specify|list)|not mentioned|not included|not referenced|not cited|not addressed|left out|leaves? out|without (?:mentioning|citing|referencing|naming)|absent from|refrain(?:s)? from|a detail (?:omitted|absent|missing|not))\b/i.test(d)
@@ -909,6 +935,7 @@ function App() {
         parsedSummary = shortenModelNames(parsedSummary)
         agreements = agreements.map(a => shortenModelNames(a))
         disagreements = disagreements.map(d => shortenModelNames(d))
+        differences = differences.map(d => shortenModelNames(d))
 
         // Format the summary text using markdown for proper rendering
         let formattedSummaryText = ''
@@ -932,9 +959,14 @@ function App() {
         
         // Contradictions section
         if (disagreements && disagreements.length > 0) {
-          formattedSummaryText += `## CONTRADICTIONS\n${disagreements.map(d => `- ${d}`).join('\n')}`
+          formattedSummaryText += `## CONTRADICTIONS\n${disagreements.map(d => `- ${d}`).join('\n')}\n\n`
         } else {
-          formattedSummaryText += `## CONTRADICTIONS\nNone identified — all models are in factual agreement.`
+          formattedSummaryText += `## CONTRADICTIONS\nNone identified — all models are in factual agreement.\n\n`
+        }
+        
+        // Differences section
+        if (differences && differences.length > 0) {
+          formattedSummaryText += `## DIFFERENCES\n${differences.map(d => `- ${d}`).join('\n')}`
         }
         
         // Collect judge tokens and update token data
@@ -954,6 +986,7 @@ function App() {
           consensus: consensus,
           agreements: agreements,
           disagreements: disagreements,
+          differences: differences,
           timestamp: Date.now(),
           singleModel: false,
           prompt: summaryPrompt, // Include the prompt sent to Gemini
