@@ -1048,29 +1048,47 @@ const trackPrompt = async (userId, promptText, category, promptData = {}) => {
     }
   }
 
-  // Update streak
-  if (userUsage.lastActiveAt) {
-    const lastDate = new Date(userUsage.lastActiveAt)
-    const todayDate = new Date(today)
-    const diffTime = todayDate - lastDate
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
-    
-    if (diffDays === 0) {
-      // Same day, streak continues
-      // No change needed
-    } else if (diffDays === 1) {
-      // Consecutive day, increment streak
-      userUsage.streakDays = (userUsage.streakDays || 0) + 1
+  // Update streak — compare YYYY-MM-DD date strings directly (no timezone confusion)
+  // Normalize lastActiveAt to YYYY-MM-DD in case it was stored as a full ISO timestamp (from login)
+  let lastActiveDate = userUsage.lastActiveAt
+  if (lastActiveDate && lastActiveDate.length > 10) {
+    // It's a full ISO timestamp like "2026-02-21T19:00:00.000Z" — extract just the date portion
+    // using the user's timezone so the date is correct for their locale
+    const parsed = new Date(lastActiveDate)
+    if (!isNaN(parsed.getTime())) {
+      if (tz) {
+        lastActiveDate = parsed.toLocaleDateString('en-CA', { timeZone: tz }) // en-CA gives YYYY-MM-DD
+      } else {
+        lastActiveDate = parsed.toISOString().substring(0, 10)
+      }
+    }
+  }
+
+  if (lastActiveDate && lastActiveDate.length === 10) {
+    // Compare YYYY-MM-DD strings directly — both are in the user's local timezone
+    if (lastActiveDate === today) {
+      // Same day, streak continues — no change needed
     } else {
-      // Streak broken, reset to 1
-      userUsage.streakDays = 1
+      // Calculate day difference using date-only strings (avoid UTC time-of-day issues)
+      const lastParts = lastActiveDate.split('-').map(Number)
+      const todayParts = today.split('-').map(Number)
+      const lastMs = Date.UTC(lastParts[0], lastParts[1] - 1, lastParts[2])
+      const todayMs = Date.UTC(todayParts[0], todayParts[1] - 1, todayParts[2])
+      const diffDays = Math.round((todayMs - lastMs) / (1000 * 60 * 60 * 24))
+
+      if (diffDays === 1) {
+        // Consecutive day, increment streak
+        userUsage.streakDays = (userUsage.streakDays || 0) + 1
+      } else {
+        // Streak broken (or future date edge case), reset to 1
+        userUsage.streakDays = 1
+      }
     }
   } else {
-    // First time, start streak at 1
+    // First time ever, start streak at 1
     userUsage.streakDays = 1
   }
-  const activeDate = new Date().toISOString()
-  userUsage.lastActiveAt = today
+  userUsage.lastActiveAt = today // Always store as YYYY-MM-DD (user's local date)
 
   writeUsage(usage, userId)
   
@@ -1687,6 +1705,11 @@ app.post('/api/auth/signin', async (req, res) => {
     }
     usersCache = users
     
+    // Use the user's local date (YYYY-MM-DD) for lastActiveAt in usage tracking
+    // This ensures streak calculations compare apples-to-apples (no UTC vs local confusion)
+    const userTz = timezone || dbUser.timezone || null
+    const loginDateStr = getTodayForUser(userTz)
+
     const usage = readUsage()
     if (!usage[userId]) {
       // Initialize empty usage cache for user
@@ -1696,12 +1719,12 @@ app.post('/api/auth/signin', async (req, res) => {
         monthlyUsage: {}, dailyUsage: {},
         providers: {}, models: {},
         promptHistory: [], categories: {}, categoryPrompts: {},
-        ratings: {}, lastActiveAt: loginDate.toISOString(),
+        ratings: {}, lastActiveAt: loginDateStr,
         streakDays: 0, judgeConversationContext: [],
         purchasedCredits: { total: 0, remaining: 0 },
       }
     } else {
-      usage[userId].lastActiveAt = loginDate.toISOString()
+      usage[userId].lastActiveAt = loginDateStr
     }
     usageCache = usage
     
@@ -8590,6 +8613,7 @@ const getPricingData = () => {
         'gpt-4.1': { input: 2.00, cachedInput: null, output: 8.00, note: 'Versatile model' },
         'gpt-4o-mini': { input: 0.15, cachedInput: null, output: 0.60, note: 'Fast model' },
         'gpt-5o-mini': { input: 0.25, cachedInput: null, output: 2.00, note: 'Fast model' },
+        'text-embedding-3-small': { input: 0.02, cachedInput: null, output: 0.00, note: 'Embedding model (memory/context)' },
       },
     },
     anthropic: {
