@@ -1116,6 +1116,32 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const showConversationInput = summary && !summary.singleModel
   const showSingleModelConvoInput = !summary && responses.length === 1 && !responses[0].error && lastSubmittedPrompt
 
+  // ---- Helper: get short provider name from model ID ---- //
+  const getProviderDisplayName = (modelName) => {
+    const name = (modelName || '').toLowerCase()
+    if (name.includes('gpt') || name.includes('openai') || name.includes('o3') || name.includes('o4')) return 'ChatGPT'
+    if (name.includes('claude') || name.includes('anthropic')) return 'Claude'
+    if (name.includes('gemini') || name.includes('google')) return 'Gemini'
+    if (name.includes('grok') || name.includes('xai')) return 'Grok'
+    if (name.includes('llama') || name.includes('meta')) return 'Llama'
+    if (name.includes('deepseek')) return 'DeepSeek'
+    if (name.includes('mistral')) return 'Mistral'
+    return 'Model'
+  }
+
+  // ---- Phase detection for council streaming view ---- //
+  const responsesWithText = responses.filter(r => r.text?.length > 0 && !r.error)
+  const isSingleModel = responses.length <= 1
+  const summaryStreamStarted = summary && (summary.isStreaming || (summary.text?.length > 0))
+  // Detect the brief gap between isLoading=false and isGeneratingSummary=true
+  const inTransitionGap = !isLoading && !isGeneratingSummary && responsesWithText.length >= 2 && !summary
+
+  const showCouncilLoading = isLoading && responsesWithText.length === 0
+  const showCouncilColumns = !isSingleModel && responsesWithText.length > 0 && !summaryStreamStarted && (isLoading || isGeneratingSummary || inTransitionGap)
+  const showSingleModelStreamingPhase = isSingleModel && isLoading && responsesWithText.length > 0
+  const showSummaryStreamingPhase = (isGeneratingSummary || (summary && summary.isStreaming)) && summaryStreamStarted
+  const showProcessingView = showCouncilLoading || showCouncilColumns || showSingleModelStreamingPhase || showSummaryStreamingPhase
+
   // Scroll to show the response when it first appears (after a new prompt)
   useEffect(() => {
     if (!hasActiveConversation || !inlineResponseText || !chatAreaRef.current) return
@@ -1245,11 +1271,324 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         style={{
             flex: 1,
             overflowY: 'auto',
-            padding: '100px 40px 20px',
+            padding: showProcessingView ? '0' : '100px 40px 20px',
           display: 'flex',
           flexDirection: 'column',
           }}
         >
+
+          {/* ===== COUNCIL PROCESSING VIEW ===== */}
+          {showProcessingView && (
+            <div style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: showCouncilLoading ? 'center' : 'flex-start',
+              width: '100%',
+              height: '100%',
+              position: 'relative',
+              padding: showCouncilLoading ? '0' : '80px 20px 20px',
+            }}>
+              {/* Cancel button - floating top right */}
+              <motion.button
+                onClick={() => { if (onCancelPrompt) onCancelPrompt() }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                style={{
+                  position: 'absolute',
+                  top: '20px',
+                  right: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 16px',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '10px',
+                  color: '#ef4444',
+                  fontSize: '0.8rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  zIndex: 50,
+                }}
+                whileHover={{ scale: 1.05, background: 'rgba(239, 68, 68, 0.25)' }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Square size={12} fill="#ef4444" />
+                Cancel
+              </motion.button>
+
+              {/* Phase 1: Loading Council of LLMs - centered spinner */}
+              {showCouncilLoading && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '24px',
+                  }}
+                >
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                    style={{
+                      width: '56px',
+                      height: '56px',
+                      border: `3px solid ${currentTheme.borderLight}`,
+                      borderTop: `3px solid ${currentTheme.accent}`,
+                      borderRadius: '50%',
+                    }}
+                  />
+                  <span style={{
+                    fontSize: '1.2rem',
+                    fontWeight: '500',
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  }}>
+                    {selectedModels.length === 1
+                      ? `Loading ${allModels.find(m => m.id === selectedModels[0])?.providerName || 'model'}'s response...`
+                      : 'Loading Council of LLMs...'}
+                  </span>
+                  {isSearchingWeb && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Search size={14} color={currentTheme.accent} />
+                      <span style={{ color: currentTheme.accent, fontSize: '0.85rem', fontWeight: '500' }}>Searching the web</span>
+                      <motion.span
+                        animate={{ opacity: [1, 0.3, 1] }}
+                        transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                        style={{ color: currentTheme.accent, fontSize: '0.85rem' }}
+                      >...</motion.span>
+                    </motion.div>
+                  )}
+                </motion.div>
+              )}
+
+              {/* Phase 2: Council Columns - multi-model streaming responses */}
+              {showCouncilColumns && (
+                <>
+                  {/* Loading Summary indicator at top center */}
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      marginBottom: '30px',
+                      padding: '10px 24px',
+                      background: currentTheme.buttonBackground,
+                      borderRadius: '12px',
+                      border: `1px solid ${currentTheme.borderLight}`,
+                    }}
+                  >
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        border: `2px solid ${currentTheme.borderLight}`,
+                        borderTop: `2px solid ${currentTheme.accent}`,
+                        borderRadius: '50%',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{
+                      fontSize: '0.9rem',
+                      fontWeight: '500',
+                      background: currentTheme.accentGradient,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                    }}>
+                      Loading Summary...
+                    </span>
+                  </motion.div>
+
+                  {/* Council Response Columns */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    width: '100%',
+                    maxWidth: responsesWithText.length <= 2 ? '800px' : responsesWithText.length === 3 ? '1000px' : '1200px',
+                    flex: 1,
+                    minHeight: 0,
+                    gap: '0',
+                  }}>
+                    {responses.filter(r => !r.error).map((response, index, arr) => (
+                      <React.Fragment key={response.id}>
+                        {index > 0 && (
+                          <div style={{
+                            width: '1px',
+                            background: 'rgba(255, 255, 255, 0.15)',
+                            flexShrink: 0,
+                            alignSelf: 'stretch',
+                          }} />
+                        )}
+                        <div style={{
+                          flex: 1,
+                          padding: '0 16px',
+                          overflowY: 'auto',
+                          minWidth: 0,
+                          maxWidth: arr.length === 1 ? '800px' : 'none',
+                        }}>
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                          >
+                            <div style={{
+                              fontSize: '0.75rem',
+                              fontWeight: '700',
+                              color: currentTheme.accent,
+                              marginBottom: '12px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.8px',
+                              paddingBottom: '8px',
+                              borderBottom: `1px solid ${currentTheme.borderLight}`,
+                            }}>
+                              {getProviderDisplayName(response.modelName)}
+                            </div>
+                            <div style={{
+                              fontSize: arr.length > 3 ? '0.8rem' : '0.85rem',
+                              color: currentTheme.textSecondary,
+                              lineHeight: '1.7',
+                            }}>
+                              {response.text ? (
+                                <MarkdownRenderer content={response.text} theme={currentTheme} fontSize={arr.length > 3 ? '0.8rem' : '0.85rem'} lineHeight="1.7" />
+                              ) : (
+                                <motion.div
+                                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0' }}
+                                >
+                                  <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                                    style={{
+                                      width: '14px',
+                                      height: '14px',
+                                      border: `2px solid ${currentTheme.borderLight}`,
+                                      borderTop: `2px solid ${currentTheme.accent}`,
+                                      borderRadius: '50%',
+                                    }}
+                                  />
+                                  <span style={{ fontSize: '0.8rem', color: currentTheme.textMuted, fontStyle: 'italic' }}>
+                                    Waiting for response...
+                                  </span>
+                                </motion.div>
+                              )}
+                              {response.isStreaming && response.text && (
+                                <motion.span
+                                  animate={{ opacity: [1, 0.3, 1] }}
+                                  transition={{ duration: 0.8, repeat: Infinity }}
+                                  style={{ color: currentTheme.accent, fontSize: '1.1rem' }}
+                                >▌</motion.span>
+                              )}
+                            </div>
+                          </motion.div>
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Phase 2b: Single model streaming - show as normal flowing response */}
+              {showSingleModelStreamingPhase && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  style={{ maxWidth: '800px', width: '100%', padding: '0 20px' }}
+                >
+                  {/* User prompt bubble */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '24px' }}>
+                    <div style={{
+                      maxWidth: '75%',
+                      background: currentTheme.buttonBackground,
+                      border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '16px 16px 4px 16px',
+                      padding: '12px 18px',
+                    }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: '600', color: currentTheme.text, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>You</div>
+                      <p style={{ color: currentTheme.text, lineHeight: '1.6', fontSize: '1rem', whiteSpace: 'pre-wrap', margin: 0 }}>
+                        {lastSubmittedPrompt}
+                      </p>
+                    </div>
+                  </div>
+                  {/* Model name label */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                    <FileText size={16} color={currentTheme.accent} />
+                    <span style={{ color: currentTheme.accent, fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      {getProviderDisplayName(responsesWithText[0]?.modelName)}
+                    </span>
+                  </div>
+                  {/* Streaming response */}
+                  <div>
+                    <MarkdownRenderer content={responsesWithText[0]?.text || ''} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
+                    {responsesWithText[0]?.isStreaming && (
+                      <motion.span
+                        animate={{ opacity: [1, 0.3, 1] }}
+                        transition={{ duration: 0.8, repeat: Infinity }}
+                        style={{ color: currentTheme.accent, fontSize: '1.1rem' }}
+                      >▌</motion.span>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Phase 3: Summary streaming - replaces council columns */}
+              {showSummaryStreamingPhase && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  style={{ maxWidth: '800px', width: '100%', padding: '0 20px' }}
+                >
+                  {/* User prompt bubble */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '24px' }}>
+                    <div style={{
+                      maxWidth: '75%',
+                      background: currentTheme.buttonBackground,
+                      border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '16px 16px 4px 16px',
+                      padding: '12px 18px',
+                    }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: '600', color: currentTheme.text, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>You</div>
+                      <p style={{ color: currentTheme.text, lineHeight: '1.6', fontSize: '1rem', whiteSpace: 'pre-wrap', margin: 0 }}>
+                        {lastSubmittedPrompt}
+                      </p>
+                    </div>
+                  </div>
+                  {/* Summary label */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                    <FileText size={16} color={currentTheme.accent} />
+                    <span style={{ color: currentTheme.accent, fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Summary
+                    </span>
+                  </div>
+                  {/* Summary streaming text */}
+                  <div>
+                    <MarkdownRenderer content={summary?.text || ''} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
+                    {summary?.isStreaming && (
+                      <motion.span
+                        animate={{ opacity: [1, 0.3, 1] }}
+                        transition={{ duration: 0.8, repeat: Infinity }}
+                        style={{ color: currentTheme.accent, fontSize: '1.1rem' }}
+                      >▌</motion.span>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          )}
+
+          {/* ===== NORMAL CONVERSATION VIEW ===== */}
+          {!showProcessingView && (
           <div style={{ maxWidth: '800px', width: '100%', margin: '0 auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
             
             {/* Welcome header removed - title now lives in provider tab */}
@@ -2294,9 +2633,11 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
             <div ref={chatEndRef} />
           </div>
+          )}
         </div>
 
         {/* ===== BOTTOM INPUT BAR ===== */}
+        {!showProcessingView && (
         <div style={bottomBarStyle}>
           <div style={{ maxWidth: '1100px', width: '100%', margin: '0 auto' }}>
             {/* Streak & Searching indicator row - above prompt area */}
@@ -2779,6 +3120,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Provider Models Dropdowns - rendered at top level to avoid transform containing block issues */}
