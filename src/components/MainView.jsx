@@ -1556,13 +1556,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                   </span>
                                 </motion.div>
                               )}
-                              {response.isStreaming && response.text && (
-                                <motion.span
-                                  animate={{ opacity: [1, 0.3, 1] }}
-                                  transition={{ duration: 0.8, repeat: Infinity }}
-                                  style={{ color: currentTheme.accent, fontSize: '1.1rem' }}
-                                >▌</motion.span>
-                              )}
                             </div>
                           </motion.div>
                         </div>
@@ -1604,13 +1597,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   {/* Streaming response */}
                   <div>
                     <MarkdownRenderer content={primaryResponse?.text || ''} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
-                    {primaryResponse?.isStreaming && (
-                      <motion.span
-                        animate={{ opacity: [1, 0.3, 1] }}
-                        transition={{ duration: 0.8, repeat: Infinity }}
-                        style={{ color: currentTheme.accent, fontSize: '1.1rem' }}
-                      >▌</motion.span>
-                    )}
                   </div>
                 </motion.div>
               )}
@@ -1647,13 +1633,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   {/* Summary streaming text */}
                   <div>
                     <MarkdownRenderer content={summary?.text || ''} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
-                    {summary?.isStreaming && (
-                      <motion.span
-                        animate={{ opacity: [1, 0.3, 1] }}
-                        transition={{ duration: 0.8, repeat: Infinity }}
-                        style={{ color: currentTheme.accent, fontSize: '1.1rem' }}
-                      >▌</motion.span>
-                    )}
                   </div>
                 </motion.div>
               )}
