@@ -19,6 +19,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
   const lastSubmittedCategory = useStore((state) => state.lastSubmittedCategory || '')
   const triggerSubmit = useStore((state) => state.triggerSubmit)
+  const triggerGenerateSummary = useStore((state) => state.triggerGenerateSummary)
   const responses = useStore((state) => state.responses || [])
   const clearResponses = useStore((state) => state.clearResponses)
   const clearLastSubmittedPrompt = useStore((state) => state.clearLastSubmittedPrompt)
@@ -542,6 +543,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       if (tagName === 'input' || tagName === 'textarea') {
         return
       }
+
+      // If council responses are ready, Enter triggers summary generation.
+      if (canGenerateSummary) {
+        e.preventDefault()
+        triggerGenerateSummary()
+        return
+      }
       
       // Check if there's a prompt to send
       if (!currentPrompt.trim()) return
@@ -560,7 +568,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     
     window.addEventListener('keydown', handleGlobalKeyDown)
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [currentPrompt, selectedModels, autoSmartProviders])
+  }, [currentPrompt, selectedModels, autoSmartProviders, canGenerateSummary, triggerGenerateSummary])
   
   // Ref to always have the latest handleSubmit function
   const handleSubmitRef = useRef(null)
@@ -1145,6 +1153,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const showSingleModelStreamingPhase = isSingleModel && isLoading && responses.length > 0
   const showSummaryStreamingPhase = hasSummaryTokens && (isGeneratingSummary || (summary && summary.isStreaming))
   const showProcessingView = showCouncilLoading || showCouncilColumns || showSingleModelStreamingPhase || showSummaryStreamingPhase
+  const canGenerateSummary = !showProcessingView && !isLoading && !isGeneratingSummary && !summary && responses.filter(r => !r.error && r.text).length >= 2
 
   // Scroll to show the response when it first appears (after a new prompt)
   useEffect(() => {
@@ -1268,6 +1277,61 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           zIndex: 10,
         }}
       >
+        {canGenerateSummary && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{
+              position: 'absolute',
+              top: '74px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 30,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <motion.button
+              onClick={() => triggerGenerateSummary()}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                borderRadius: '12px',
+                border: `1px solid ${currentTheme.borderLight}`,
+                background: currentTheme.buttonBackground,
+                color: currentTheme.accent,
+                fontSize: '0.85rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                boxShadow: `0 6px 20px ${currentTheme.shadow}`,
+              }}
+              title="Generate summary from the current council responses"
+            >
+              <Sparkles size={16} />
+              Generate Summary
+            </motion.button>
+            <span
+              style={{
+                fontSize: '0.72rem',
+                color: currentTheme.textMuted,
+                textAlign: 'center',
+                background: currentTheme.backgroundOverlay,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '999px',
+                padding: '3px 10px',
+              }}
+            >
+              Press Enter to generate instead of clicking
+            </span>
+          </motion.div>
+        )}
+
         {/* ===== SCROLLABLE CHAT AREA ===== */}
       <div
           ref={chatAreaRef}

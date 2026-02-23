@@ -134,6 +134,9 @@ export const useStore = create(
       shouldSubmit: false,
       triggerSubmit: () => set({ shouldSubmit: true }),
       clearSubmit: () => set({ shouldSubmit: false }),
+      shouldGenerateSummary: false,
+      triggerGenerateSummary: () => set({ shouldGenerateSummary: true }),
+      clearGenerateSummary: () => set({ shouldGenerateSummary: false }),
 
       // Summary
       summary: null,

@@ -155,6 +155,7 @@ function App() {
 
   const selectedModels = useStore((state) => state.selectedModels)
   const currentPrompt = useStore((state) => state.currentPrompt)
+  const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
   const setCurrentPrompt = useStore((state) => state.setCurrentPrompt)
   const setLastSubmittedPrompt = useStore((state) => state.setLastSubmittedPrompt)
   const setLastSubmittedCategory = useStore((state) => state.setLastSubmittedCategory)
@@ -191,6 +192,8 @@ function App() {
   const setCategory = useStore((state) => state.setCategory)
   const shouldSubmit = useStore((state) => state.shouldSubmit)
   const clearSubmit = useStore((state) => state.clearSubmit)
+  const shouldGenerateSummary = useStore((state) => state.shouldGenerateSummary)
+  const clearGenerateSummary = useStore((state) => state.clearGenerateSummary)
   const setSummary = useStore((state) => state.setSummary)
   const setIsSearchingWeb = useStore((state) => state.setIsSearchingWeb)
   const setSearchSources = useStore((state) => state.setSearchSources)
@@ -223,6 +226,125 @@ function App() {
     setCurrentPrompt('')
     setLastSubmittedPrompt('')
     setLastSubmittedCategory('')
+    clearGenerateSummary()
+  }
+
+  // Manual summary generation: user chooses when to trigger summary after reviewing council responses.
+  const handleGenerateSummary = async () => {
+    if (isLoading || isGeneratingSummary) return
+
+    const responsesForSummary = (useStore.getState().responses || []).filter((r) => !r.error && r.text)
+    if (responsesForSummary.length < 2) return
+
+    const promptForSummary = lastSubmittedPrompt || useStore.getState().lastSubmittedPrompt || ''
+    if (!promptForSummary.trim()) return
+
+    setIsGeneratingSummary(true)
+    try {
+      const responsesText = responsesForSummary
+        .map((r) => `\n--- ${getShortModelName(r.modelName)}'s response ---\n${r.text}\n`)
+        .join('')
+
+      const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+      const summaryPrompt = `Today is ${today}. This is the real, current date. You are an expert judge analyzing multiple AI model responses to a user's question.
+
+Original User Query: "${promptForSummary}"
+
+Council Model Responses:
+${responsesText}
+
+Please analyze these responses and provide ONLY these five sections in this exact format:
+
+Consensus: [0-100]
+Summary: [2-3 substantial paragraphs]
+Agreements: [3-5 bullet points]
+Contradictions: [only factual contradictions, or "None identified — all models are in factual agreement."]
+Differences: [notable non-contradictory differences]
+
+Important: Only include each section label followed by a colon and content.`
+
+      const userId = currentUser?.id || null
+
+      setSummary({
+        text: '',
+        summary: '',
+        consensus: null,
+        agreements: [],
+        disagreements: [],
+        differences: [],
+        timestamp: Date.now(),
+        singleModel: false,
+        prompt: summaryPrompt,
+        originalPrompt: promptForSummary,
+        isStreaming: true,
+      })
+
+      const setSummaryMinimizedEarly = useStore.getState().setSummaryMinimized
+      if (setSummaryMinimizedEarly) setSummaryMinimizedEarly(false)
+
+      const summaryFinalData = await streamFetch(`${API_URL}/api/summary/stream`, {
+        prompt: summaryPrompt,
+        userId,
+      }, {
+        onToken: (token) => {
+          useStore.getState().appendSummaryText(token)
+        },
+        onStatus: () => {},
+        onError: (message) => {
+          console.error('[Summary Stream] Error:', message)
+        },
+      })
+
+      const rawSummaryText = summaryFinalData?.text || useStore.getState().summary?.text || ''
+      const summaryTokens = summaryFinalData?.tokens || null
+
+      setSummary((prev) => ({
+        ...(prev || {}),
+        text: rawSummaryText,
+        summary: rawSummaryText,
+        timestamp: Date.now(),
+        singleModel: false,
+        prompt: summaryPrompt,
+        originalPrompt: promptForSummary,
+      }))
+
+      // Merge judge tokens into the token table and backend totals.
+      if (summaryTokens) {
+        useStore.getState().mergeTokenData('Judge Model', {
+          input: summaryTokens.input || 0,
+          output: summaryTokens.output || 0,
+          total: summaryTokens.total || ((summaryTokens.input || 0) + (summaryTokens.output || 0)),
+        }, true)
+
+        if (currentUser?.id && (summaryTokens.total || 0) > 0) {
+          await axios.post(`${API_URL}/api/stats/token-update`, {
+            userId: currentUser.id,
+            promptTokens: summaryTokens.total,
+          }).catch(() => {})
+          useStore.getState().triggerStatsRefresh()
+        }
+      }
+
+      if (currentUser?.id && rawSummaryText) {
+        axios.post(`${API_URL}/api/judge/store-initial-summary`, {
+          userId: currentUser.id,
+          summaryText: rawSummaryText,
+          originalPrompt: summaryPrompt,
+        }).catch(err => {
+          console.error('[Summary] Error storing initial summary:', err)
+        })
+      }
+    } catch (error) {
+      console.error('[Summary] Error generating summary:', error.message)
+      setSummary({
+        text: `Error generating summary: ${error.message}. Please try again.`,
+        timestamp: Date.now(),
+        error: true,
+        originalPrompt: useStore.getState().lastSubmittedPrompt || '',
+      })
+    } finally {
+      setIsGeneratingSummary(false)
+    }
   }
 
   // Check if current user is an admin (admins bypass subscription gate)
@@ -245,6 +367,7 @@ function App() {
   // Handle prompt submission
   const handlePromptSubmit = async () => {
     if (!currentPrompt.trim() || selectedModels.length === 0) return
+    clearGenerateSummary()
     
     // Save the prompt BEFORE clearing responses (for voting button)
     const savedPrompt = currentPrompt.trim()
@@ -796,7 +919,8 @@ function App() {
     
     // If only 1 model was used, don't create a summary - just show the response in ResponseComparison
     // Skip summary creation for single model responses
-    if (validResponses.length >= 2 && !summary) {
+    // Manual mode: summary is generated only when user clicks "Generate Summary" in MainView.
+    if (false && validResponses.length >= 2 && !summary) {
       setIsGeneratingSummary(true)
       try {
         // Build the summary prompt (matches judge finalization prompt)
@@ -1276,6 +1400,14 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldSubmit]) // Only depend on shouldSubmit to prevent double-firing when selectedModels changes
+
+  useEffect(() => {
+    if (!shouldGenerateSummary) return
+    handleGenerateSummary().finally(() => {
+      clearGenerateSummary()
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldGenerateSummary])
 
   // Update body background and text color based on theme
   // MUST be before any conditional returns to follow Rules of Hooks
