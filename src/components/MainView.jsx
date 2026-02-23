@@ -1131,6 +1131,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
   // ---- Phase detection for council streaming view ---- //
   const responsesWithText = responses.filter(r => r.text?.length > 0 && !r.error)
+  const councilDisplayResponses = responses.filter(r => !r.error)
+  const councilColumnCount = councilDisplayResponses.length
   const primaryResponse = responses.find(r => !r.error) || null
   const isSingleModel = responses.length <= 1
   const hasSummaryTokens = !!(summary?.text && summary.text.trim().length > 0)
@@ -1419,12 +1421,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     display: 'flex',
                     justifyContent: 'center',
                     width: '100%',
-                    maxWidth: responsesWithText.length <= 2 ? '800px' : responsesWithText.length === 3 ? '1000px' : '1200px',
+                    maxWidth: councilColumnCount <= 2 ? '800px' : councilColumnCount === 3 ? '1000px' : '1200px',
                     flex: 1,
                     minHeight: 0,
                     gap: '0',
                   }}>
-                    {responses.filter(r => !r.error).map((response, index, arr) => (
+                    {councilDisplayResponses.map((response, index, arr) => (
                       <React.Fragment key={response.id}>
                         {index > 0 && (
                           <div style={{
