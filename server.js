@@ -8453,6 +8453,512 @@ User Query: ${query}`
   }
 })
 
+// Stream one council model response for the RAG pipeline and emit per-token events.
+async function streamRagCouncilModel({
+  modelId,
+  query,
+  rawSourcesData,
+  memoryContextString,
+  userId,
+  sendSSE,
+}) {
+  const firstDashIndex = modelId.indexOf('-')
+  if (firstDashIndex === -1) {
+    const invalidResult = {
+      model_name: modelId,
+      actual_model_name: modelId,
+      original_model_name: modelId,
+      response: '',
+      error: 'Invalid model ID format',
+      tokens: null,
+    }
+    sendSSE('model_error', invalidResult)
+    return invalidResult
+  }
+
+  const providerKey = modelId.substring(0, firstDashIndex)
+  const model = modelId.substring(firstDashIndex + 1)
+  const modelMappings = {
+    'claude-4.5-opus': 'claude-opus-4-5-20251101',
+    'claude-4.5-sonnet': 'claude-sonnet-4-5-20250929',
+    'claude-4.5-haiku': 'claude-haiku-4-5-20251001',
+    'gemini-3-pro': 'gemini-3-pro-preview',
+    'gemini-3-flash': 'gemini-3-flash-preview',
+    'magistral-medium': 'magistral-medium-latest',
+    'mistral-medium-3.1': 'mistral-medium-latest',
+    'mistral-small-3.2': 'mistral-small-latest',
+  }
+  const mappedModel = modelMappings[model] || model
+
+  const councilPrompt = `Today's date is ${getCurrentDateString()}.
+${memoryContextString ? `\n${memoryContextString}` : ''}
+Web Sources (background reference material):
+${rawSourcesData.formatted}
+
+The above sources are from a real-time web search and may contain useful context. Use them as reference where relevant, citing by number (e.g., "source 1", "see source 3"), but answer primarily from your own knowledge and expertise. Do not limit your response to only what the sources cover.
+
+User Query: ${query}`
+
+  sendSSE('model_start', {
+    model_name: modelId,
+    actual_model_name: mappedModel,
+    original_model_name: model,
+  })
+
+  try {
+    const apiKey = API_KEYS[providerKey]
+    if (!apiKey || apiKey.trim() === '') {
+      throw new Error(`No API key configured for provider: ${providerKey}`)
+    }
+
+    let fullResponse = ''
+    let inputTokens = 0
+    let outputTokens = 0
+    let reasoningTokens = 0
+    let tokenSource = 'none'
+
+    if (['openai', 'xai', 'meta', 'deepseek', 'mistral'].includes(providerKey)) {
+      const baseUrls = {
+        openai: 'https://api.openai.com/v1',
+        xai: 'https://api.x.ai/v1',
+        meta: 'https://api.groq.com/openai/v1',
+        deepseek: 'https://api.deepseek.com/v1',
+        mistral: 'https://api.mistral.ai/v1',
+      }
+
+      const modelsWithFixedTemperature = ['gpt-5-mini']
+      const shouldUseDefaultTemperature = modelsWithFixedTemperature.includes(mappedModel) || modelsWithFixedTemperature.includes(model)
+
+      const streamResponse = await axios.post(
+        `${baseUrls[providerKey]}/chat/completions`,
+        {
+          model: mappedModel,
+          messages: [{ role: 'user', content: councilPrompt }],
+          ...(shouldUseDefaultTemperature ? {} : { temperature: 0.7 }),
+          stream: true,
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          responseType: 'stream',
+        }
+      )
+
+      await new Promise((resolve, reject) => {
+        let buffer = ''
+        const processLine = (line) => {
+          if (!line.startsWith('data:')) return
+          const jsonStr = line.replace(/^data:\s*/, '').trim()
+          if (!jsonStr || jsonStr === '[DONE]') return
+          try {
+            const parsed = JSON.parse(jsonStr)
+            const token = parsed.choices?.[0]?.delta?.content || ''
+            if (token) {
+              fullResponse += token
+              sendSSE('model_token', {
+                model_name: modelId,
+                actual_model_name: mappedModel,
+                original_model_name: model,
+                content: token,
+              })
+            }
+            if (parsed.usage) {
+              inputTokens = parsed.usage.prompt_tokens || inputTokens
+              outputTokens = parsed.usage.completion_tokens || outputTokens
+            }
+          } catch (_) { /* skip malformed partial events */ }
+        }
+
+        streamResponse.data.on('data', (chunk) => {
+          buffer += chunk.toString()
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          for (const line of lines) processLine(line)
+        })
+        streamResponse.data.on('end', () => {
+          if (buffer.trim()) {
+            const remaining = buffer.split('\n')
+            for (const line of remaining) processLine(line)
+          }
+          resolve()
+        })
+        streamResponse.data.on('error', reject)
+      })
+
+      // NOTE: Mistral supports streaming but sometimes returns reasoning wrappers.
+      if (providerKey === 'mistral') {
+        fullResponse = cleanMistralResponse(fullResponse)
+      }
+    } else if (providerKey === 'anthropic') {
+      const streamResponse = await axios.post(
+        'https://api.anthropic.com/v1/messages',
+        {
+          model: mappedModel,
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: councilPrompt }],
+          stream: true,
+        },
+        {
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Type': 'application/json',
+          },
+          responseType: 'stream',
+          timeout: 120000,
+        }
+      )
+
+      await new Promise((resolve, reject) => {
+        let buffer = ''
+        let streamError = null
+        const processLine = (line) => {
+          if (!line.startsWith('data: ')) return
+          const jsonStr = line.replace('data: ', '').trim()
+          if (!jsonStr) return
+          try {
+            const parsed = JSON.parse(jsonStr)
+            if (parsed.type === 'content_block_delta') {
+              const text = parsed.delta?.text || ''
+              if (text) {
+                fullResponse += text
+                sendSSE('model_token', {
+                  model_name: modelId,
+                  actual_model_name: mappedModel,
+                  original_model_name: model,
+                  content: text,
+                })
+              }
+            }
+            if (parsed.type === 'message_delta' && parsed.usage) {
+              outputTokens = parsed.usage.output_tokens || 0
+            }
+            if (parsed.type === 'message_start' && parsed.message?.usage) {
+              inputTokens = parsed.message.usage.input_tokens || 0
+            }
+            if (parsed.type === 'error') {
+              streamError = parsed.error?.message || 'Anthropic stream error'
+            }
+          } catch (_) { /* skip */ }
+        }
+        streamResponse.data.on('data', (chunk) => {
+          buffer += chunk.toString()
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          for (const line of lines) processLine(line)
+        })
+        streamResponse.data.on('end', () => {
+          if (buffer.trim()) {
+            const remaining = buffer.split('\n')
+            for (const line of remaining) processLine(line)
+          }
+          if (streamError && !fullResponse) reject(new Error(streamError))
+          else resolve()
+        })
+        streamResponse.data.on('error', reject)
+      })
+    } else if (providerKey === 'google') {
+      const isPreviewModel = mappedModel.includes('-preview')
+      const apiVersion = isPreviewModel ? 'v1beta' : 'v1'
+      const baseUrl = `https://generativelanguage.googleapis.com/${apiVersion}`
+      const streamResponse = await axios.post(
+        `${baseUrl}/models/${mappedModel}:streamGenerateContent?key=${apiKey}&alt=sse`,
+        {
+          contents: [{ parts: [{ text: councilPrompt }] }],
+          generationConfig: { maxOutputTokens: 4096 },
+        },
+        { responseType: 'stream' }
+      )
+
+      await new Promise((resolve, reject) => {
+        let buffer = ''
+        const processLine = (line) => {
+          if (!line.startsWith('data: ')) return
+          const jsonStr = line.replace('data: ', '').trim()
+          if (!jsonStr) return
+          try {
+            const parsed = JSON.parse(jsonStr)
+            const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
+            if (text) {
+              fullResponse += text
+              sendSSE('model_token', {
+                model_name: modelId,
+                actual_model_name: mappedModel,
+                original_model_name: model,
+                content: text,
+              })
+            }
+            if (parsed.usageMetadata) {
+              inputTokens = parsed.usageMetadata.promptTokenCount || inputTokens
+              outputTokens = parsed.usageMetadata.candidatesTokenCount || outputTokens
+            }
+          } catch (_) { /* skip */ }
+        }
+        streamResponse.data.on('data', (chunk) => {
+          buffer += chunk.toString()
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          for (const line of lines) processLine(line)
+        })
+        streamResponse.data.on('end', () => {
+          if (buffer.trim()) {
+            const remaining = buffer.split('\n')
+            for (const line of remaining) processLine(line)
+          }
+          resolve()
+        })
+        streamResponse.data.on('error', reject)
+      })
+    } else {
+      throw new Error(`Unsupported provider: ${providerKey}`)
+    }
+
+    if (inputTokens === 0 && outputTokens === 0) {
+      const responseTokens = null
+      if (responseTokens) {
+        inputTokens = responseTokens.inputTokens || 0
+        outputTokens = responseTokens.outputTokens || 0
+        reasoningTokens = responseTokens.reasoningTokens || 0
+        tokenSource = 'api_response'
+      } else {
+        inputTokens = await countTokens(councilPrompt, providerKey, mappedModel)
+        outputTokens = await countTokens(fullResponse, providerKey, mappedModel)
+        tokenSource = 'tokenizer'
+      }
+    } else {
+      tokenSource = 'api_response'
+    }
+
+    if (userId && fullResponse) {
+      trackUsage(userId, providerKey, model, inputTokens, outputTokens)
+    }
+
+    const tokenInfo = userId && fullResponse ? {
+      input: inputTokens,
+      output: outputTokens,
+      total: inputTokens + outputTokens,
+      reasoningTokens: reasoningTokens,
+      provider: providerKey,
+      model: model,
+      source: tokenSource,
+      breakdown: buildTokenBreakdown(query, rawSourcesData?.formatted, inputTokens),
+    } : null
+
+    const result = {
+      model_name: modelId,
+      actual_model_name: mappedModel,
+      original_model_name: model,
+      response: fullResponse,
+      prompt: councilPrompt,
+      error: null,
+      tokens: tokenInfo,
+    }
+
+    sendSSE('model_done', result)
+    return result
+  } catch (error) {
+    console.error(`[RAG Stream] Error calling ${modelId}:`, error.message)
+    const errorResult = {
+      model_name: modelId,
+      actual_model_name: mappedModel || model,
+      original_model_name: model,
+      response: '',
+      prompt: councilPrompt,
+      error: error.message || 'Unknown model error',
+      tokens: null,
+    }
+    sendSSE('model_error', errorResult)
+    return errorResult
+  }
+}
+
+// SSE streaming version of RAG pipeline (search + council model streaming + done payload)
+app.post('/api/rag/stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders()
+
+  const sendSSE = (type, data) => {
+    try {
+      res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+    } catch (_) { /* stream may already be closed */ }
+  }
+
+  const heartbeat = setInterval(() => {
+    try { res.write(': heartbeat\n\n') } catch (_) { clearInterval(heartbeat) }
+  }, 15000)
+
+  try {
+    const { query, selectedModels, userId, needsContext: needsContextHint } = req.body || {}
+
+    if (userId) {
+      const subscriptionCheck = await checkSubscriptionStatus(userId)
+      if (!subscriptionCheck.hasAccess) {
+        sendSSE('error', {
+          message: 'Active subscription required. Please subscribe to use this service.',
+          subscriptionRequired: true,
+          reason: subscriptionCheck.reason,
+        })
+        clearInterval(heartbeat)
+        return res.end()
+      }
+    }
+
+    if (!query || !query.trim()) {
+      sendSSE('error', { message: 'Missing required field: query' })
+      clearInterval(heartbeat)
+      return res.end()
+    }
+    if (!selectedModels || !Array.isArray(selectedModels) || selectedModels.length === 0) {
+      sendSSE('error', { message: 'Missing or empty selectedModels array' })
+      clearInterval(heartbeat)
+      return res.end()
+    }
+
+    sendSSE('status', { message: 'Searching the web...' })
+
+    const serperApiKey = API_KEYS.serper
+    if (!serperApiKey) {
+      sendSSE('error', { message: 'Serper API key not configured' })
+      clearInterval(heartbeat)
+      return res.end()
+    }
+
+    const searchQuery = await reformulateSearchQuery(query, userId)
+    const serperData = await performSerperSearch(searchQuery, 5)
+    const searchResults = (serperData?.organic || []).map(r => ({
+      title: r.title,
+      link: r.link,
+      snippet: r.snippet,
+    }))
+    sendSSE('search_results', { search_results: searchResults })
+
+    // Query tracking (same as /api/rag JSON endpoint)
+    if (userId) {
+      const usage = readUsage()
+      if (!usage[userId]) {
+        usage[userId] = {
+          totalTokens: 0,
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          totalQueries: 0,
+          totalPrompts: 0,
+          monthlyUsage: {},
+          providers: {},
+          models: {},
+        }
+      }
+      const userUsage = usage[userId]
+      const tz = getUserTimezone(userId)
+      const currentMonth = getMonthForUser(tz)
+      userUsage.totalQueries = (userUsage.totalQueries || 0) + 1
+      if (!userUsage.monthlyUsage) userUsage.monthlyUsage = {}
+      if (!userUsage.monthlyUsage[currentMonth]) {
+        userUsage.monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
+      }
+      userUsage.monthlyUsage[currentMonth].queries = (userUsage.monthlyUsage[currentMonth].queries || 0) + 1
+      const today = getTodayForUser(tz)
+      if (!userUsage.dailyUsage) userUsage.dailyUsage = {}
+      if (!userUsage.dailyUsage[currentMonth]) userUsage.dailyUsage[currentMonth] = {}
+      if (!userUsage.dailyUsage[currentMonth][today]) {
+        userUsage.dailyUsage[currentMonth][today] = { inputTokens: 0, outputTokens: 0, queries: 0, models: {} }
+      }
+      userUsage.dailyUsage[currentMonth][today].queries = (userUsage.dailyUsage[currentMonth][today].queries || 0) + 1
+      writeUsage(usage, userId)
+
+      try {
+        const users = readUsers()
+        const user = users[userId]
+        if (user) {
+          const queryCost = calculateSerperQueryCost(1)
+          if (!user.monthlyUsageCost) user.monthlyUsageCost = {}
+          const existingCost = user.monthlyUsageCost[currentMonth] || 0
+          user.monthlyUsageCost[currentMonth] = existingCost + queryCost
+          writeUsers(users, userId)
+        }
+      } catch (costErr) {
+        console.error('[RAG Stream] Error updating monthlyUsageCost:', costErr)
+      }
+    }
+
+    sendSSE('status', { message: 'Scraping web sources...' })
+    let rawSourcesData
+    try {
+      rawSourcesData = await formatRawSourcesForPrompt(searchResults, 5)
+    } catch (scrapeError) {
+      console.error('[RAG Stream] Source scraping error:', scrapeError.message)
+      rawSourcesData = { formatted: '', sourceCount: 0, scrapedSources: [] }
+    }
+
+    let memoryContextString = ''
+    let memoryContextItems = []
+    if (userId) {
+      const scoreThreshold = needsContextHint ? 0.70 : 0.82
+      memoryContextItems = await findRelevantContext(userId, query, 3, scoreThreshold)
+      memoryContextString = formatMemoryContext(memoryContextItems)
+    }
+
+    sendSSE('status', { message: 'Streaming council model responses...' })
+    const councilResponses = await Promise.all(
+      selectedModels.map((modelId) => streamRagCouncilModel({
+        modelId,
+        query,
+        rawSourcesData,
+        memoryContextString,
+        userId,
+        sendSSE,
+      }))
+    )
+
+    if (userId) {
+      for (const cr of councilResponses) {
+        if (cr.response && cr.model_name) {
+          storeModelContext(userId, cr.model_name, cr.response, query).catch(err => {
+            console.error(`[RAG Stream] Error storing initial model context for ${cr.model_name}:`, err)
+          })
+        }
+      }
+    }
+
+    if (userId && usageDirtyUsers.size > 0) {
+      try {
+        await flushUsageToMongo()
+      } catch (err) {
+        console.error('[RAG Stream] Token flush failed:', err.message)
+      }
+    }
+
+    sendSSE('done', {
+      query,
+      search_results: searchResults,
+      refined_data: null,
+      council_responses: councilResponses,
+      raw_sources: {
+        source_count: rawSourcesData.sourceCount,
+        scraped_sources: rawSourcesData.scrapedSources,
+      },
+      memory_context: {
+        items: memoryContextItems,
+        needsContextHint: !!needsContextHint,
+        scoreThreshold: needsContextHint ? 0.70 : 0.82,
+        injected: memoryContextItems.length > 0,
+      },
+    })
+
+    clearInterval(heartbeat)
+    res.end()
+  } catch (error) {
+    console.error('[RAG Stream] Error:', error)
+    sendSSE('error', { message: error.message || 'Unknown error in RAG stream pipeline' })
+    clearInterval(heartbeat)
+    res.end()
+  }
+})
+
 // Admin endpoints
 // Get total users count and user list (PROTECTED - requires admin)
 app.get('/api/admin/users', requireAdmin, async (req, res) => {

@@ -324,6 +324,7 @@ function App() {
     let responses = []
     let summary = null
     let ragData = null // Store RAG data for token collection
+    let ragResponsesAlreadyInStore = false
 
     // If web search is needed (needsSearch === true), use RAG pipeline
     // The RAG pipeline will perform Serper query → Refiner → Council → Judge
@@ -331,14 +332,117 @@ function App() {
       setIsSearchingWeb(true)
       try {
         const userId = currentUser?.id || null
-        const ragResponse = await axios.post(`${API_URL}/api/rag`, {
+        const responseIds = {}
+        const ragResponsesByModel = {}
+        const normalizeCouncilResponse = (councilResponse) => {
+          const actualModel = councilResponse.actual_model_name || councilResponse.model_name
+          const originalModel = councilResponse.original_model_name || councilResponse.model_name
+
+          let responseText = ''
+          if (typeof councilResponse.response === 'string') {
+            responseText = councilResponse.response
+          } else if (Array.isArray(councilResponse.response)) {
+            responseText = councilResponse.response.map(item => {
+              if (typeof item === 'string') return item
+              if (item && typeof item === 'object' && item.text) return item.text
+              return JSON.stringify(item)
+            }).join(' ')
+          } else if (councilResponse.response && typeof councilResponse.response === 'object') {
+            responseText = councilResponse.response.text || councilResponse.response.content || councilResponse.response.message || JSON.stringify(councilResponse.response)
+          } else {
+            responseText = String(councilResponse.response || '')
+          }
+
+          return {
+            id: responseIds[councilResponse.model_name] || `${councilResponse.model_name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            modelName: councilResponse.model_name,
+            actualModelName: actualModel,
+            originalModelName: originalModel,
+            text: responseText,
+            error: !!councilResponse.error,
+            tokens: councilResponse.tokens || null,
+            isStreaming: false,
+          }
+        }
+
+        // Add placeholder cards immediately so council columns can stream in for RAG path too
+        modelsToUse.forEach((modelId) => {
+          const id = `${modelId}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+          responseIds[modelId] = id
+          addResponse({
+            id,
+            modelName: modelId,
+            actualModelName: modelId,
+            originalModelName: modelId,
+            text: '',
+            error: false,
+            tokens: null,
+            isStreaming: true,
+          })
+        })
+        ragResponsesAlreadyInStore = true
+
+        const ragFinalData = await streamFetch(`${API_URL}/api/rag/stream`, {
           query: currentPrompt,
           selectedModels: modelsToUse,
           userId: userId,
           needsContext: needsContext
-        }, { signal: abortController.signal })
+        }, {
+          onToken: () => {},
+          onStatus: () => {},
+          onEvent: (event) => {
+            if (!event || !event.type) return
 
-        ragData = ragResponse.data
+            if (event.type === 'search_results') {
+              if (Array.isArray(event.search_results) && event.search_results.length > 0) {
+                setSearchSources(event.search_results)
+              }
+              return
+            }
+
+            if (event.type === 'model_token') {
+              const responseId = responseIds[event.model_name]
+              if (!responseId || !event.content) return
+              updateResponse(responseId, {
+                text: (useStore.getState().responses.find(r => r.id === responseId)?.text || '') + event.content,
+                isStreaming: true,
+                actualModelName: event.actual_model_name || event.model_name,
+                originalModelName: event.original_model_name || event.model_name,
+              })
+              return
+            }
+
+            if (event.type === 'model_done') {
+              const normalized = normalizeCouncilResponse(event)
+              ragResponsesByModel[normalized.modelName] = normalized
+              updateResponse(normalized.id, {
+                text: normalized.text,
+                error: normalized.error,
+                tokens: normalized.tokens,
+                actualModelName: normalized.actualModelName,
+                originalModelName: normalized.originalModelName,
+                isStreaming: false,
+              })
+              return
+            }
+
+            if (event.type === 'model_error') {
+              const responseId = responseIds[event.model_name]
+              if (!responseId) return
+              updateResponse(responseId, {
+                text: `Error: ${event.error || 'Unknown model error'}`,
+                error: true,
+                isStreaming: false,
+              })
+            }
+          },
+          onError: (message) => {
+            console.error('[RAG Stream] Error:', message)
+          },
+          signal: abortController.signal,
+        })
+
+        ragData = ragFinalData || {}
 
         // Track query count (1 query per RAG pipeline call)
         setQueryCount(1)
@@ -368,40 +472,34 @@ function App() {
           setSearchSources(null)
         }
 
-        // Add council responses
-        ragData.council_responses.forEach((councilResponse, index) => {
-          if (!councilResponse.error && councilResponse.response) {
-            const actualModel = councilResponse.actual_model_name || councilResponse.model_name
-            const originalModel = councilResponse.original_model_name || councilResponse.model_name
-            
-            // Ensure response is a string - handle objects and arrays
-            let responseText = ''
-            if (typeof councilResponse.response === 'string') {
-              responseText = councilResponse.response
-            } else if (Array.isArray(councilResponse.response)) {
-              responseText = councilResponse.response.map(item => {
-                if (typeof item === 'string') return item
-                if (item && typeof item === 'object' && item.text) return item.text
-                return JSON.stringify(item)
-              }).join(' ')
-            } else if (councilResponse.response && typeof councilResponse.response === 'object') {
-              // Try to extract text from object
-              responseText = councilResponse.response.text || councilResponse.response.content || councilResponse.response.message || JSON.stringify(councilResponse.response)
-            } else {
-              responseText = String(councilResponse.response || '')
-            }
-            
-            responses.push({
-              id: `${councilResponse.model_name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              modelName: councilResponse.model_name, // User-friendly name
-              actualModelName: actualModel, // Actual API model name
-              originalModelName: originalModel, // Original user selection
-              text: responseText,
-              error: false,
-              tokens: councilResponse.tokens || null, // Token information from RAG pipeline
+        // Build final ordered responses from streamed model completions (fallback to done payload if needed)
+        if (Array.isArray(ragData.council_responses)) {
+          ragData.council_responses.forEach((councilResponse) => {
+            const normalized = normalizeCouncilResponse(councilResponse)
+            ragResponsesByModel[normalized.modelName] = normalized
+            updateResponse(normalized.id, {
+              text: normalized.text,
+              error: normalized.error,
+              tokens: normalized.tokens,
+              actualModelName: normalized.actualModelName,
+              originalModelName: normalized.originalModelName,
+              isStreaming: false,
             })
-          } else {
-            console.warn(`[RAG Pipeline] Skipping response for ${councilResponse.model_name}: ${councilResponse.error || 'no response'}`)
+          })
+        }
+
+        responses = modelsToUse.map((modelId) => {
+          if (ragResponsesByModel[modelId]) return ragResponsesByModel[modelId]
+          const responseId = responseIds[modelId]
+          return {
+            id: responseId,
+            modelName: modelId,
+            actualModelName: modelId,
+            originalModelName: modelId,
+            text: useStore.getState().responses.find(r => r.id === responseId)?.text || '',
+            error: false,
+            tokens: null,
+            isStreaming: false,
           }
         })
         // Summary will be generated via streaming endpoint after council responses are collected
@@ -417,10 +515,13 @@ function App() {
         
         // If it's a subscription error (403), don't fall back to direct LLM calls
         // They will also fail with the same error
-        if (ragError.response?.status === 403 || ragError.response?.data?.subscriptionRequired) {
+        if (ragError.response?.status === 403 || ragError.response?.data?.subscriptionRequired || /HTTP 403/.test(ragError.message) || /subscription required/i.test(ragError.message)) {
           // Clear any partial responses from failed RAG attempt
           responses = []
           summary = null
+          if (ragResponsesAlreadyInStore) {
+            clearResponses()
+          }
           setIsSearchingWeb(false)
           // Re-throw the error so it's caught by the outer try-catch and handled properly
           throw ragError
@@ -429,6 +530,9 @@ function App() {
         // Clear any partial responses from failed RAG attempt
         responses = []
         summary = null
+        if (ragResponsesAlreadyInStore) {
+          clearResponses()
+        }
         // Fallback to direct LLM calls if RAG fails (only for non-subscription errors)
         needsSearch = false
         setIsSearchingWeb(false) // Clear searching indicator when RAG fails
@@ -582,8 +686,10 @@ function App() {
       const directResponses = await Promise.all(responsePromises)
       responses = directResponses
     } else {
-      // RAG pipeline responses were already collected — add them to the store
-      responses.forEach((response) => addResponse(response))
+      // RAG streaming path already wrote placeholder cards and streamed updates into the store
+      if (!ragResponsesAlreadyInStore) {
+        responses.forEach((response) => addResponse(response))
+      }
       // Council panel stays hidden until user clicks "Show Council" button
     }
 

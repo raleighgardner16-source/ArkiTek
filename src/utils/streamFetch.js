@@ -4,7 +4,7 @@
  * and returns the final metadata from the 'done' event.
  * Optionally accepts an AbortSignal to cancel the stream.
  */
-export async function streamFetch(url, body, { onToken, onStatus, onError, signal }) {
+export async function streamFetch(url, body, { onToken, onStatus, onError, onEvent, signal }) {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -33,6 +33,14 @@ export async function streamFetch(url, body, { onToken, onStatus, onError, signa
     } catch (e) {
       // Skip unparseable lines (malformed JSON)
       return
+    }
+
+    if (onEvent) {
+      try {
+        onEvent(parsed)
+      } catch (_) {
+        // Ignore callback errors so stream processing continues
+      }
     }
 
     switch (parsed.type) {

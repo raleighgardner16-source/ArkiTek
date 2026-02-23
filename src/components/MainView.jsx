@@ -1131,15 +1131,17 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
   // ---- Phase detection for council streaming view ---- //
   const responsesWithText = responses.filter(r => r.text?.length > 0 && !r.error)
+  const primaryResponse = responses.find(r => !r.error) || null
   const isSingleModel = responses.length <= 1
-  const summaryStreamStarted = summary && (summary.isStreaming || (summary.text?.length > 0))
+  const hasSummaryTokens = !!(summary?.text && summary.text.trim().length > 0)
+  const summaryInitializing = !!(summary && summary.isStreaming && !hasSummaryTokens)
   // Detect the brief gap between isLoading=false and isGeneratingSummary=true
   const inTransitionGap = !isLoading && !isGeneratingSummary && responsesWithText.length >= 2 && !summary
 
-  const showCouncilLoading = isLoading && responsesWithText.length === 0
-  const showCouncilColumns = !isSingleModel && responsesWithText.length > 0 && !summaryStreamStarted && (isLoading || isGeneratingSummary || inTransitionGap)
-  const showSingleModelStreamingPhase = isSingleModel && isLoading && responsesWithText.length > 0
-  const showSummaryStreamingPhase = (isGeneratingSummary || (summary && summary.isStreaming)) && summaryStreamStarted
+  const showCouncilLoading = isLoading && responses.length === 0
+  const showCouncilColumns = !isSingleModel && responses.length > 0 && !hasSummaryTokens && (isLoading || isGeneratingSummary || inTransitionGap || summaryInitializing)
+  const showSingleModelStreamingPhase = isSingleModel && isLoading && responses.length > 0
+  const showSummaryStreamingPhase = hasSummaryTokens && (isGeneratingSummary || (summary && summary.isStreaming))
   const showProcessingView = showCouncilLoading || showCouncilColumns || showSingleModelStreamingPhase || showSummaryStreamingPhase
 
   // Scroll to show the response when it first appears (after a new prompt)
@@ -1525,13 +1527,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
                     <FileText size={16} color={currentTheme.accent} />
                     <span style={{ color: currentTheme.accent, fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      {getProviderDisplayName(responsesWithText[0]?.modelName)}
+                      {getProviderDisplayName(primaryResponse?.modelName)}
                     </span>
                   </div>
                   {/* Streaming response */}
                   <div>
-                    <MarkdownRenderer content={responsesWithText[0]?.text || ''} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
-                    {responsesWithText[0]?.isStreaming && (
+                    <MarkdownRenderer content={primaryResponse?.text || ''} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
+                    {primaryResponse?.isStreaming && (
                       <motion.span
                         animate={{ opacity: [1, 0.3, 1] }}
                         transition={{ duration: 0.8, repeat: Infinity }}

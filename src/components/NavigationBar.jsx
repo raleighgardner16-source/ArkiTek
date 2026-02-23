@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { MessageSquare, Settings, User, LogOut, Clock, X, Trophy, Sun, Moon, History, MessageSquarePlus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { MessageSquare, Settings, User, LogOut, Trophy, Sun, Moon, History, MessageSquarePlus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
-import ConfirmationModal from './ConfirmationModal'
 
 const NavigationBar = () => {
   const activeTab = useStore((state) => state.activeTab || 'home')
@@ -14,7 +13,6 @@ const NavigationBar = () => {
   const clearCurrentUser = useStore((state) => state.clearCurrentUser)
   const clearResponses = useStore((state) => state.clearResponses)
   const setCurrentPrompt = useStore((state) => state.setCurrentPrompt)
-  const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
   const theme = useStore((state) => state.theme || 'dark')
   const toggleTheme = useStore((state) => state.toggleTheme)
   const setNavExpanded = useStore((state) => state.setNavExpanded)
@@ -22,54 +20,10 @@ const NavigationBar = () => {
   const [isExpanded, setIsExpanded] = useState(true) // Nav starts expanded by default
   const [showCollapseTooltip, setShowCollapseTooltip] = useState(false)
   const [showExpandTooltip, setShowExpandTooltip] = useState(false)
-  const [promptHistory, setPromptHistory] = useState([])
-  const [showClearConfirm, setShowClearConfirm] = useState(false)
   
   const currentTheme = getTheme(theme)
 
   // Debug: Log when tab changes
-
-  // Fetch prompt history
-  useEffect(() => {
-    if (currentUser?.id) {
-      fetchPromptHistory()
-    }
-  }, [currentUser, statsRefreshTrigger])
-
-  const fetchPromptHistory = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/api/stats/${currentUser.id}/history`)
-      setPromptHistory(response.data.prompts || [])
-    } catch (error) {
-      console.error('Error fetching prompt history:', error)
-      setPromptHistory([])
-    }
-  }
-
-  const handleClearPromptHistory = () => {
-    setShowClearConfirm(true)
-  }
-
-  const clearPromptHistory = async () => {
-    if (!currentUser?.id) {
-      console.error('Cannot clear history: No user ID')
-      return
-    }
-    
-    try {
-      await axios.delete(`${API_URL}/api/stats/${currentUser.id}/history`)
-      setPromptHistory([])
-    } catch (error) {
-      console.error('[Clear History] Error clearing prompt history:', error)
-      console.error('[Clear History] Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        statusText: error.response?.statusText
-      })
-      alert(`Failed to clear search history: ${error.response?.data?.error || error.message || 'Unknown error'}`)
-    }
-  }
 
   const setSummaryMinimized = useStore((state) => state.setSummaryMinimized)
 
@@ -353,108 +307,6 @@ const NavigationBar = () => {
         })}
       </div>
 
-      {/* Search History Section */}
-      {currentUser && isExpanded && (
-        <div
-          style={{
-            marginTop: 'auto',
-            marginBottom: '16px',
-            padding: '0 20px',
-            borderTop: `1px solid ${currentTheme.border}`,
-            paddingTop: '16px',
-            maxHeight: '300px',
-            overflowY: 'auto',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Clock size={18} color={currentTheme.accent} />
-              <h3 style={{ fontSize: '0.9rem', color: currentTheme.accent, fontWeight: '600', margin: 0 }}>
-                Search History
-              </h3>
-            </div>
-            {promptHistory.length > 0 && (
-              <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  handleClearPromptHistory()
-                }}
-                type="button"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid rgba(255, 107, 107, 0.3)',
-                  borderRadius: '4px',
-                  padding: '4px 8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  transition: 'all 0.2s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 107, 107, 0.1)'
-                  e.currentTarget.style.borderColor = 'rgba(255, 107, 107, 0.5)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent'
-                  e.currentTarget.style.borderColor = 'rgba(255, 107, 107, 0.3)'
-                }}
-                title="Clear search history"
-              >
-                <X size={14} color="#ff6b6b" />
-                <span style={{ color: '#ff6b6b', fontSize: '0.7rem' }}>Clear</span>
-              </button>
-            )}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {promptHistory.length > 0 ? (
-              promptHistory.slice(0, 10).map((prompt, index) => (
-                <div
-                  key={index}
-                  style={{
-                    padding: '8px 12px',
-                    background: currentTheme.buttonBackground,
-                    border: `1px solid ${currentTheme.border}`,
-                    borderRadius: '6px',
-                    fontSize: '0.75rem',
-                    color: currentTheme.textSecondary,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = currentTheme.buttonBackgroundHover
-                    e.currentTarget.style.whiteSpace = 'normal'
-                    e.currentTarget.style.overflow = 'visible'
-                    e.currentTarget.style.zIndex = '1000'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(93, 173, 226, 0.05)'
-                    e.currentTarget.style.whiteSpace = 'nowrap'
-                    e.currentTarget.style.overflow = 'hidden'
-                    e.currentTarget.style.zIndex = 'auto'
-                  }}
-                  onClick={() => {
-                    setActiveTab('home')
-                    // Set the prompt in the store
-                    useStore.getState().setCurrentPrompt(prompt.text)
-                  }}
-                >
-                  {prompt.text || 'No text'}
-                </div>
-              ))
-            ) : (
-              <p style={{ color: currentTheme.textMuted, fontSize: '0.75rem', fontStyle: 'italic', textAlign: 'center', padding: '8px' }}>
-                No search history yet
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Theme Toggle Button */}
       <motion.button
         onClick={toggleTheme}
@@ -548,17 +400,6 @@ const NavigationBar = () => {
         </motion.button>
       )}
 
-      {/* Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={showClearConfirm}
-        onClose={() => setShowClearConfirm(false)}
-        onConfirm={clearPromptHistory}
-        title="Clear Search History"
-        message="Are you sure you want to clear your search history? This action cannot be undone."
-        confirmText="Clear History"
-        cancelText="Cancel"
-        confirmColor="#ff6b6b"
-      />
     </motion.div>
   )
 }
