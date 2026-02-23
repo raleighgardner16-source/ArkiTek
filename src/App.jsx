@@ -584,9 +584,11 @@ function App() {
       }
       
       // Build the prompt with memory context prepended (if available)
+      const todayDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+      const dateGroundedPrompt = `Today is ${todayDate}. This is the real, current date.\n\nUser Query: ${currentPrompt}`
       const enhancedPrompt = memoryPrefix
-        ? `${memoryPrefix}\n${currentPrompt}`
-        : currentPrompt
+        ? `${memoryPrefix}\n${dateGroundedPrompt}`
+        : dateGroundedPrompt
 
       // Phase 2 Streaming: Add placeholder responses immediately, then stream tokens into them
       const responseIds = {}

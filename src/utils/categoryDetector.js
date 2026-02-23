@@ -1,5 +1,42 @@
 import { API_URL } from './config'
 
+// Hard guardrail for time-sensitive prompts.
+// If these terms are present, force web search to avoid stale answers.
+const shouldForceSearchForTimeSensitivePrompt = (prompt) => {
+  const lower = (prompt || '').toLowerCase()
+  if (!lower.trim()) return false
+
+  const timeSensitiveTerms = [
+    'upcoming',
+    'today',
+    'right now',
+    'currently',
+    'current',
+    'latest',
+    'recent',
+    'this week',
+    'this month',
+    'this year',
+    'this season',
+    'newest',
+    'breaking',
+    'forecast',
+    'schedule',
+    'standings',
+    'bracket',
+    'march madness',
+    'playoffs',
+  ]
+
+  if (timeSensitiveTerms.some(term => lower.includes(term))) return true
+
+  // Event/date-style prompts are frequently time-bound.
+  if (/\b(20\d{2})\b/.test(lower)) return true
+  if (/\b(next|upcoming|this)\s+(week|month|year|season)\b/.test(lower)) return true
+
+  return false
+}
+
 // Detect category, determine if web search is needed, and recommend model types using Gemini 2.5 Flash Lite
 // selectedProviders: Array of { providerKey, providerName, models: [{ id, model, type, label }] }
 export const detectCategory = async (prompt, selectedProviders = []) => {
@@ -156,6 +193,7 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
         const category = parsed.category || parsed.Category || ''
         const needsSearch = parsed.needsSearch !== undefined ? parsed.needsSearch : false
         const needsContext = parsed.needsContext !== undefined ? parsed.needsContext : false
+        const forcedSearch = shouldForceSearchForTimeSensitivePrompt(prompt)
         const recommendedModelType = parsed.recommendedModelType || 'versatile'
         const recommendedModels = parsed.recommendedModels || {}
 
@@ -181,7 +219,7 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
         if (matchedCategory) {
           return { 
             category: matchedCategory, 
-            needsSearch: Boolean(needsSearch),
+            needsSearch: forcedSearch ? true : Boolean(needsSearch),
             needsContext: Boolean(needsContext),
             recommendedModelType: recommendedModelType.toLowerCase() || 'versatile',
             recommendedModels,
@@ -232,12 +270,13 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
                        lowerResponse.includes('needsSearch: true') ||
                        lowerResponse.includes('needs search: true') ||
                        lowerResponse.includes('yes') && (lowerResponse.includes('search') || lowerResponse.includes('web') || lowerResponse.includes('internet'))
+    const forcedSearch = shouldForceSearchForTimeSensitivePrompt(prompt)
     const needsContext = lowerResponse.includes('"needsContext":true') || 
                         lowerResponse.includes('needsContext: true')
 
     return {
       category: matchedCategory || 'General Knowledge/Other',
-      needsSearch: Boolean(needsSearch),
+      needsSearch: forcedSearch ? true : Boolean(needsSearch),
       needsContext: Boolean(needsContext),
       recommendedModelType: 'versatile',
       recommendedModels: {},
