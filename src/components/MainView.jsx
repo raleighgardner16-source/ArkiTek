@@ -1149,11 +1149,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const isSingleModel = responses.length <= 1
   const hasSummaryTokens = !!(summary?.text && summary.text.trim().length > 0)
   const summaryInitializing = !!(summary && summary.isStreaming && !hasSummaryTokens)
-  // Detect the brief gap between isLoading=false and isGeneratingSummary=true
-  const inTransitionGap = !isLoading && !isGeneratingSummary && responsesWithText.length >= 2 && !summary
 
   const showCouncilLoading = isLoading && responses.length === 0
-  const showCouncilColumns = !isSingleModel && responses.length > 0 && !hasSummaryTokens && (isLoading || isGeneratingSummary || inTransitionGap || summaryInitializing)
+  const showCouncilColumns = !isSingleModel && responses.length > 0 && !hasSummaryTokens && (isLoading || isGeneratingSummary || summaryInitializing)
   const showSingleModelStreamingPhase = isSingleModel && isLoading && responses.length > 0
   const showSummaryStreamingPhase = hasSummaryTokens && (isGeneratingSummary || (summary && summary.isStreaming))
   const showProcessingView = showCouncilLoading || showCouncilColumns || showSingleModelStreamingPhase || showSummaryStreamingPhase
@@ -1447,42 +1445,44 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               {showCouncilColumns && (
                 <>
                   {/* Loading Summary indicator at top center */}
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      marginBottom: '30px',
-                      padding: '10px 24px',
-                      background: currentTheme.buttonBackground,
-                      borderRadius: '12px',
-                      border: `1px solid ${currentTheme.borderLight}`,
-                    }}
-                  >
+                  {(isGeneratingSummary || summaryInitializing) && (
                     <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
                       style={{
-                        width: '18px',
-                        height: '18px',
-                        border: `2px solid ${currentTheme.borderLight}`,
-                        borderTop: `2px solid ${currentTheme.accent}`,
-                        borderRadius: '50%',
-                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        marginBottom: '30px',
+                        padding: '10px 24px',
+                        background: currentTheme.buttonBackground,
+                        borderRadius: '12px',
+                        border: `1px solid ${currentTheme.borderLight}`,
                       }}
-                    />
-                    <span style={{
-                      fontSize: '0.9rem',
-                      fontWeight: '500',
-                      background: currentTheme.accentGradient,
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                    }}>
-                      Loading Summary...
-                    </span>
-                  </motion.div>
+                    >
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          border: `2px solid ${currentTheme.borderLight}`,
+                          borderTop: `2px solid ${currentTheme.accent}`,
+                          borderRadius: '50%',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span style={{
+                        fontSize: '0.9rem',
+                        fontWeight: '500',
+                        background: currentTheme.accentGradient,
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                      }}>
+                        Loading Summary...
+                      </span>
+                    </motion.div>
+                  )}
 
                   {/* Council Response Columns */}
                   <div style={{
