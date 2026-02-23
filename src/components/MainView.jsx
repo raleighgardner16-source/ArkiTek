@@ -545,7 +545,11 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       }
 
       // If council responses are ready, Enter triggers summary generation.
-      if (canGenerateSummary) {
+      const canGenerateSummaryFromKey = !isLoading &&
+        !isGeneratingSummary &&
+        !summary &&
+        responses.filter(r => !r.error && r.text).length >= 2
+      if (canGenerateSummaryFromKey) {
         e.preventDefault()
         triggerGenerateSummary()
         return
@@ -568,7 +572,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     
     window.addEventListener('keydown', handleGlobalKeyDown)
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [currentPrompt, selectedModels, autoSmartProviders, canGenerateSummary, triggerGenerateSummary])
+  }, [currentPrompt, selectedModels, autoSmartProviders, isLoading, isGeneratingSummary, summary, responses, triggerGenerateSummary])
   
   // Ref to always have the latest handleSubmit function
   const handleSubmitRef = useRef(null)
