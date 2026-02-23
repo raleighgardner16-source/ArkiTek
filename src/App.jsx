@@ -297,11 +297,15 @@ Important: Only include each section label followed by a colon and content.`
 
       const rawSummaryText = summaryFinalData?.text || useStore.getState().summary?.text || ''
       const summaryTokens = summaryFinalData?.tokens || null
+      const normalizedSummaryText = rawSummaryText.replace(
+        /(\b(?:CONSENSUS|Consensus|consensus)\b\s*[:\-]?\s*(?:\*\*)?\s*)(\d{1,3})(?!\s*%)/,
+        (_, prefix, score) => `${prefix}${score}%`
+      )
 
       setSummary((prev) => ({
         ...(prev || {}),
-        text: rawSummaryText,
-        summary: rawSummaryText,
+        text: normalizedSummaryText,
+        summary: normalizedSummaryText,
         timestamp: Date.now(),
         singleModel: false,
         prompt: summaryPrompt,

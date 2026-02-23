@@ -1151,11 +1151,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const summaryInitializing = !!(summary && summary.isStreaming && !hasSummaryTokens)
 
   const showCouncilLoading = isLoading && responses.length === 0
-  const showCouncilColumns = !isSingleModel && responses.length > 0 && !hasSummaryTokens && (isLoading || isGeneratingSummary || summaryInitializing)
+  const showCouncilReviewPhase = !isLoading && !isGeneratingSummary && !summary && !isSingleModel && responses.length > 0
+  const showCouncilColumns = !isSingleModel && responses.length > 0 && !hasSummaryTokens && (isLoading || isGeneratingSummary || summaryInitializing || showCouncilReviewPhase)
   const showSingleModelStreamingPhase = isSingleModel && isLoading && responses.length > 0
   const showSummaryStreamingPhase = hasSummaryTokens && (isGeneratingSummary || (summary && summary.isStreaming))
   const showProcessingView = showCouncilLoading || showCouncilColumns || showSingleModelStreamingPhase || showSummaryStreamingPhase
-  const canGenerateSummary = !showProcessingView && !isLoading && !isGeneratingSummary && !summary && responses.filter(r => !r.error && r.text).length >= 2
+  const canGenerateSummary = !isLoading && !isGeneratingSummary && !summary && responses.filter(r => !r.error && r.text).length >= 2
 
   // Scroll to show the response when it first appears (after a new prompt)
   useEffect(() => {
