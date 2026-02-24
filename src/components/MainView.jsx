@@ -60,6 +60,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [conversationContext, setConversationContext] = useState([])
   const [summaryConvoSources, setSummaryConvoSources] = useState({}) // { turnIndex: [...sources] } — per-turn summary follow-up search
   const [showSummaryConvoSources, setShowSummaryConvoSources] = useState({}) // { turnIndex: true/false }
+  const [showCouncilColumnSources, setShowCouncilColumnSources] = useState({}) // { responseId: true/false }
   const [showClearSummaryTooltip, setShowClearSummaryTooltip] = useState(false)
   const [showPostPromptTooltip, setShowPostPromptTooltip] = useState(false)
   const [showClearTooltip, setShowClearTooltip] = useState(false)
@@ -674,6 +675,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     // Reset per-turn sources when starting a new prompt
     setSummaryConvoSources({})
     setShowSummaryConvoSources({})
+    setShowCouncilColumnSources({})
     setSingleConvoSources({})
     setShowSingleConvoSources({})
     
@@ -1239,6 +1241,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       setCouncilColumnConvoInputs({})
       setCouncilColumnConvoHistory({})
       setCouncilColumnConvoSending({})
+      setShowCouncilColumnSources({})
     }
   }, [responses.length])
 
@@ -1543,7 +1546,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 padding: '3px 10px',
               }}
             >
-              Press Enter to generate instead of clicking
+              Press Enter to generate
             </span>
           </motion.div>
         )}
@@ -1880,6 +1883,71 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                     lineHeight: '1.4',
                                   }}
                                 />
+                                {Array.isArray(searchSources) && searchSources.length > 0 && (
+                                  <div style={{ marginTop: '10px' }}>
+                                    <button
+                                      onClick={() => setShowCouncilColumnSources(prev => ({ ...prev, [response.id]: !prev[response.id] }))}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '5px 10px',
+                                        background: showCouncilColumnSources[response.id] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                                        border: `1px solid ${showCouncilColumnSources[response.id] ? currentTheme.accent : currentTheme.borderLight}`,
+                                        borderRadius: '8px',
+                                        color: currentTheme.accent,
+                                        fontSize: '0.75rem',
+                                        fontWeight: '500',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease',
+                                      }}
+                                    >
+                                      <Globe size={12} />
+                                      Sources ({searchSources.length})
+                                      <ChevronDown size={12} style={{ transform: showCouncilColumnSources[response.id] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                                    </button>
+                                    {showCouncilColumnSources[response.id] && (
+                                      <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
+                                      >
+                                        {searchSources.map((source, sIdx) => (
+                                          <a
+                                            key={sIdx}
+                                            href={source.link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                              display: 'block',
+                                              padding: '6px 10px',
+                                              background: currentTheme.buttonBackground,
+                                              border: `1px solid ${currentTheme.borderLight}`,
+                                              borderRadius: '6px',
+                                              textDecoration: 'none',
+                                              transition: 'border-color 0.2s',
+                                            }}
+                                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                                          >
+                                            <div style={{ fontSize: '0.75rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {source.title}
+                                            </div>
+                                            <div style={{ fontSize: '0.65rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {source.link}
+                                            </div>
+                                            {source.snippet && (
+                                              <div style={{ fontSize: '0.7rem', color: currentTheme.textSecondary, marginTop: '3px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                                {source.snippet}
+                                              </div>
+                                            )}
+                                          </a>
+                                        ))}
+                                      </motion.div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </motion.div>

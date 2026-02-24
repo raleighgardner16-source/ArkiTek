@@ -12,6 +12,23 @@ import 'katex/dist/katex.min.css'
  */
 const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1.7' }) => {
   if (!content) return null
+  const sanitizeSourceLabels = (input) => {
+    return String(input)
+      // Remove fake self-referential markdown links like [Source 3](Source 3)
+      .replace(/\[\s*source\s*\d+\s*\]\(\s*source\s*\d+\s*\)/gi, '')
+      // Remove bracket/parenthesis citation labels like [Source 3] or (Source 3)
+      .replace(/\[\s*source\s*\d+\s*\]/gi, '')
+      .replace(/\(\s*source\s*\d+\s*\)/gi, '')
+      // Remove standalone "Source 3" tokens
+      .replace(/\bsource\s*\d+\b/gi, '')
+      // Normalize leftover punctuation/spacing after removals
+      .replace(/\(\s*\)/g, '')
+      .replace(/\[\s*\]/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/\n[ \t]+\n/g, '\n\n')
+      .trim()
+  }
+  const cleanedContent = sanitizeSourceLabels(content)
 
   return (
     <div
@@ -223,7 +240,7 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
           ),
         }}
       >
-        {content}
+        {cleanedContent}
       </ReactMarkdown>
     </div>
   )

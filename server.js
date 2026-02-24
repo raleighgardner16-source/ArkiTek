@@ -3830,7 +3830,7 @@ app.post('/api/model/conversation/stream', async (req, res) => {
     const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
 
     // System message: instructions, memory context, and search results
-    let systemMessage = `Today's date is ${getCurrentDateStringForUser(userId)}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data.`
+    let systemMessage = `Today's date is ${getCurrentDateStringForUser(userId)}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data. If citing sources, cite publication/site/title or URL/domain and NEVER use numeric labels like "source 1" or "source 3".`
 
     if (memoryContextString) {
       systemMessage += '\n\n' + memoryContextString
@@ -4224,7 +4224,7 @@ app.post('/api/model/conversation', async (req, res) => {
     const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
     
     // Build context string from server-stored context (position 0 = full, 1-4 = summarized)
-    let prompt = `Today's date is ${getCurrentDateStringForUser(userId)}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data.\n\n`
+    let prompt = `Today's date is ${getCurrentDateStringForUser(userId)}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data. If citing sources, cite publication/site/title or URL/domain and NEVER use numeric labels like "source 1" or "source 3".\n\n`
     
     if (memoryContextString) {
       prompt += memoryContextString + '\n'
@@ -7339,7 +7339,7 @@ RESPOND WITH EXACTLY THESE 5 SECTIONS IN THIS EXACT FORMAT:
 CONSENSUS: [number]%
 
 SUMMARY:
-[Write a thorough, explanatory summary that synthesizes what the council collectively determined. Do not just state conclusions — explain the reasoning, key details, and context behind them. When referencing models, use ONLY their short names: ChatGPT, Claude, Gemini, Grok. Do NOT use version numbers or full model identifiers like "GPT-4.1" or "Claude 4.5 Sonnet" or "Gemini 3 Flash" or "Grok 4-1 Fast". If models cited sources, include those citations like [source 2]. The summary should give the reader a complete understanding of the topic without needing to read the individual model responses. Aim for 2-3 substantial paragraphs.]
+[Write a thorough, explanatory summary that synthesizes what the council collectively determined. Do not just state conclusions — explain the reasoning, key details, and context behind them. When referencing models, use ONLY their short names: ChatGPT, Claude, Gemini, Grok. Do NOT use version numbers or full model identifiers like "GPT-4.1" or "Claude 4.5 Sonnet" or "Gemini 3 Flash" or "Grok 4-1 Fast". If models cited sources, include source attributions by publication/site/title or URL/domain — NEVER use numeric labels like [source 2]. The summary should give the reader a complete understanding of the topic without needing to read the individual model responses. Aim for 2-3 substantial paragraphs.]
 
 AGREEMENTS:
 - [First specific point all/most models agree on
@@ -8098,7 +8098,7 @@ ${memoryContextString ? `\n${memoryContextString}` : ''}
 Web Sources (background reference material):
 ${rawSourcesData.formatted}
 
-The above sources are from a real-time web search and may contain useful context. Use them as reference where relevant, citing by number (e.g., "source 1", "see source 3"), but answer primarily from your own knowledge and expertise. Do not limit your response to only what the sources cover.
+The above sources are from a real-time web search and may contain useful context. Use them as reference where relevant, but DO NOT cite by number (do not write "source 1", "source 3", etc.). Instead, cite where information came from using the source's publication/site name, title, or URL/domain. Answer primarily from your own knowledge and expertise, and do not limit your response to only what the sources cover.
 
 User Query: ${query}`
       
@@ -8509,7 +8509,7 @@ ${memoryContextString ? `\n${memoryContextString}` : ''}
 Web Sources (background reference material):
 ${rawSourcesData.formatted}
 
-The above sources are from a real-time web search and may contain useful context. Use them as reference where relevant, citing by number (e.g., "source 1", "see source 3"), but answer primarily from your own knowledge and expertise. Do not limit your response to only what the sources cover.
+The above sources are from a real-time web search and may contain useful context. Use them as reference where relevant, but DO NOT cite by number (do not write "source 1", "source 3", etc.). Instead, cite where information came from using the source's publication/site name, title, or URL/domain. Answer primarily from your own knowledge and expertise, and do not limit your response to only what the sources cover.
 
 User Query: ${query}`
 
