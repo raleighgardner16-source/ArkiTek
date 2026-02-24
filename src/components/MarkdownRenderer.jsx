@@ -24,7 +24,8 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
       // Normalize leftover punctuation/spacing after removals
       .replace(/\(\s*\)/g, '')
       .replace(/\[\s*\]/g, '')
-      .replace(/\s{2,}/g, ' ')
+      // Normalize only horizontal whitespace — keep newlines for markdown structure
+      .replace(/[ \t]{2,}/g, ' ')
       .replace(/\n[ \t]+\n/g, '\n\n')
       .trim()
   }

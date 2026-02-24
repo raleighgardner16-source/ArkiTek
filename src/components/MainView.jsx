@@ -1852,39 +1852,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                     )}
                                   </div>
                                 ))}
-                                <textarea
-                                  data-local-enter-handler="true"
-                                  value={councilColumnConvoInputs[response.id] || ''}
-                                  onChange={(e) => setCouncilColumnConvoInputs(prev => ({ ...prev, [response.id]: e.target.value }))}
-                                  onFocus={() => setIsCouncilColumnInputFocused(true)}
-                                  onBlur={() => setIsCouncilColumnInputFocused(false)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && !e.shiftKey) {
-                                      e.preventDefault()
-                                      e.stopPropagation()
-                                      handleSendCouncilColumnConvo(response)
-                                    }
-                                  }}
-                                  placeholder="Continue the conversation..."
-                                  disabled={!!councilColumnConvoSending[response.id]}
-                                  style={{
-                                    width: '100%',
-                                    minHeight: '44px',
-                                    maxHeight: '120px',
-                                    padding: '10px 12px',
-                                    background: currentTheme.buttonBackground,
-                                    border: `1px solid ${currentTheme.borderLight}`,
-                                    borderRadius: '10px',
-                                    color: currentTheme.text,
-                                    fontSize: '0.82rem',
-                                    resize: 'vertical',
-                                    fontFamily: 'inherit',
-                                    outline: 'none',
-                                    lineHeight: '1.4',
-                                  }}
-                                />
                                 {Array.isArray(searchSources) && searchSources.length > 0 && (
-                                  <div style={{ marginTop: '10px' }}>
+                                  <div style={{ marginBottom: '10px' }}>
                                     <button
                                       onClick={() => setShowCouncilColumnSources(prev => ({ ...prev, [response.id]: !prev[response.id] }))}
                                       style={{
@@ -1911,7 +1880,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                         initial={{ opacity: 0, height: 0 }}
                                         animate={{ opacity: 1, height: 'auto' }}
                                         exit={{ opacity: 0, height: 0 }}
-                                        style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
+                                        style={{ marginTop: '6px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
                                       >
                                         {searchSources.map((source, sIdx) => (
                                           <a
@@ -1948,6 +1917,37 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                     )}
                                   </div>
                                 )}
+                                <textarea
+                                  data-local-enter-handler="true"
+                                  value={councilColumnConvoInputs[response.id] || ''}
+                                  onChange={(e) => setCouncilColumnConvoInputs(prev => ({ ...prev, [response.id]: e.target.value }))}
+                                  onFocus={() => setIsCouncilColumnInputFocused(true)}
+                                  onBlur={() => setIsCouncilColumnInputFocused(false)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      handleSendCouncilColumnConvo(response)
+                                    }
+                                  }}
+                                  placeholder="Continue the conversation..."
+                                  disabled={!!councilColumnConvoSending[response.id]}
+                                  style={{
+                                    width: '100%',
+                                    minHeight: '44px',
+                                    maxHeight: '120px',
+                                    padding: '10px 12px',
+                                    background: currentTheme.buttonBackground,
+                                    border: `1px solid ${currentTheme.borderLight}`,
+                                    borderRadius: '10px',
+                                    color: currentTheme.text,
+                                    fontSize: '0.82rem',
+                                    resize: 'vertical',
+                                    fontFamily: 'inherit',
+                                    outline: 'none',
+                                    lineHeight: '1.4',
+                                  }}
+                                />
                               </div>
                             )}
                           </motion.div>
