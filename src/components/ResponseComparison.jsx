@@ -2512,7 +2512,7 @@ const ResponseComparison = () => {
                     fontWeight: '500',
                   }}
                 >
-                  Token Usage
+                  Prompt Token Usage
                 </h3>
               </div>
               <ChevronRight size={16} color={currentTheme.accent} style={{ marginRight: '20px' }} />
@@ -2573,7 +2573,7 @@ const ResponseComparison = () => {
                     fontWeight: '500',
                   }}
                 >
-                  Cost Breakdown
+                  Prompt Cost Breakdown
                 </h3>
               </div>
               <ChevronRight size={16} color={currentTheme.accent} style={{ marginRight: '20px' }} />

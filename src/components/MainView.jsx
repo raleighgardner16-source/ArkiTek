@@ -76,6 +76,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [isSendingSingleConvo, setIsSendingSingleConvo] = useState(false)
   const [isSearchingInSingleConvo, setIsSearchingInSingleConvo] = useState(false)
   const [singleModelConvoHistory, setSingleModelConvoHistory] = useState([])
+  const [singleModelInitialSources, setSingleModelInitialSources] = useState([])
   const [singleConvoSources, setSingleConvoSources] = useState({}) // { turnIndex: [...sources] } — per-turn single-model follow-up search
   const [showSingleConvoSources, setShowSingleConvoSources] = useState({}) // { turnIndex: true/false }
   const [councilColumnConvoInputs, setCouncilColumnConvoInputs] = useState({}) // { responseId: inputText }
@@ -1275,6 +1276,20 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     : (responses.length === 1 ? (responses[0].modelName || 'Model') : null)
   const showConversationInput = summary && !summary.singleModel
   const showSingleModelConvoInput = !summary && responses.length === 1 && !responses[0].error && lastSubmittedPrompt
+  const summaryInitialSources = Array.isArray(summary?.sources)
+    ? summary.sources
+    : (Array.isArray(searchSources) ? searchSources : [])
+
+  useEffect(() => {
+    setSingleModelInitialSources([])
+  }, [lastSubmittedPrompt])
+
+  useEffect(() => {
+    if (!showSingleModelConvoInput) return
+    if (singleModelInitialSources.length > 0) return
+    if (!Array.isArray(searchSources) || searchSources.length === 0) return
+    setSingleModelInitialSources([...searchSources])
+  }, [showSingleModelConvoInput, singleModelInitialSources.length, searchSources])
 
   // ---- Helper: get short provider name from model ID ---- //
   const getProviderDisplayName = (modelName) => {
@@ -1496,10 +1511,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   boxShadow: `0 6px 20px ${currentTheme.shadow}`,
                   pointerEvents: 'auto',
                 }}
-                title="Open token usage"
+                title="Open prompt token usage"
               >
                 <Coins size={14} />
-                Token Usage
+                Prompt Token Usage
               </motion.button>
               <motion.button
                 onClick={() => triggerGenerateSummary()}
@@ -1544,10 +1559,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   boxShadow: `0 6px 20px ${currentTheme.shadow}`,
                   pointerEvents: 'auto',
                 }}
-                title="Open cost breakdown"
+                title="Open prompt cost breakdown"
               >
                 <DollarSign size={14} />
-                Cost Breakdown
+                Prompt Cost Breakdown
               </motion.button>
             </div>
             <span
@@ -2194,7 +2209,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
                 {/* Initial Sources — shown with the first prompt+response pair */}
                 {showConversationInput && (() => {
-                  if (!searchSources || !Array.isArray(searchSources) || searchSources.length === 0) return null
+                  if (!summaryInitialSources || summaryInitialSources.length === 0) return null
                   const toggleKey = 'summary_initial'
                   return (
                     <div style={{ marginTop: '8px', marginBottom: '4px' }}>
@@ -2209,7 +2224,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         }}
                       >
                         <Globe size={14} />
-                        Sources ({searchSources.length})
+                        Sources ({summaryInitialSources.length})
                         <ChevronDown size={14} style={{ transform: showSummaryConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
                       </button>
                       {showSummaryConvoSources[toggleKey] && (
@@ -2217,7 +2232,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
                           style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}
                         >
-                          {searchSources.map((source, sIdx) => (
+                          {summaryInitialSources.map((source, sIdx) => (
                             <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
                               style={{ display: 'block', padding: '8px 12px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '8px', textDecoration: 'none', transition: 'border-color 0.2s' }}
                               onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
@@ -2236,7 +2251,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
                 {/* Single-model Initial Sources — shown with the first prompt+response pair */}
                 {showSingleModelConvoInput && (() => {
-                  if (!searchSources || !Array.isArray(searchSources) || searchSources.length === 0) return null
+                  if (!singleModelInitialSources || singleModelInitialSources.length === 0) return null
                   const toggleKey = 'single_initial'
                   return (
                     <div style={{ marginTop: '8px', marginBottom: '4px' }}>
@@ -2251,7 +2266,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         }}
                       >
                         <Globe size={14} />
-                        Sources ({searchSources.length})
+                        Sources ({singleModelInitialSources.length})
                         <ChevronDown size={14} style={{ transform: showSingleConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
                       </button>
                       {showSingleConvoSources[toggleKey] && (
@@ -2259,7 +2274,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
                           style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}
                         >
-                          {searchSources.map((source, sIdx) => (
+                          {singleModelInitialSources.map((source, sIdx) => (
                             <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
                               style={{ display: 'block', padding: '8px 12px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '8px', textDecoration: 'none', transition: 'border-color 0.2s' }}
                               onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare } from 'lucide-react'
 import { useStore } from '../store/useStore'
@@ -49,6 +49,7 @@ const SavedConversationsView = () => {
   const [expandedSources, setExpandedSources] = useState({})
   const [expandedTitles, setExpandedTitles] = useState({})
   const [expandAllDetailSections, setExpandAllDetailSections] = useState(false)
+  const detailPanelRef = useRef(null)
 
   // Categories state
   const [categoriesData, setCategoriesData] = useState(null)
@@ -62,6 +63,23 @@ const SavedConversationsView = () => {
       fetchCategories()
     }
   }, [currentUser])
+
+  // Close selected chat when clicking outside the open detail panel.
+  useEffect(() => {
+    if (activeSubTab !== 'history' || !selectedConvo) return
+
+    const handleOutsideClick = (event) => {
+      if (!detailPanelRef.current) return
+      if (detailPanelRef.current.contains(event.target)) return
+      setSelectedConvo(null)
+      setExpandAllDetailSections(false)
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+    }
+  }, [activeSubTab, selectedConvo])
 
   // --- Categories data fetching ---
   const fetchCategories = async () => {
@@ -362,7 +380,6 @@ const SavedConversationsView = () => {
           {/* Title / prompt - click to expand full text */}
           <p
             onClick={(e) => {
-              e.stopPropagation()
               setExpandedTitles(prev => ({ ...prev, [convo.id]: !prev[convo.id] }))
             }}
             title={expandedTitles[convo.id] ? 'Click to collapse' : 'Click to see full prompt'}
@@ -505,6 +522,7 @@ const SavedConversationsView = () => {
 
     return (
       <motion.div
+        ref={detailPanelRef}
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: 20 }}
@@ -1187,6 +1205,41 @@ const SavedConversationsView = () => {
           </div>
         )}
           </>
+        )}
+
+        {/* Floating close button for open chat detail */}
+        {activeSubTab === 'history' && selectedConvo && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={() => {
+              setSelectedConvo(null)
+              setExpandAllDetailSections(false)
+            }}
+            style={{
+              position: 'fixed',
+              right: '26px',
+              bottom: '26px',
+              zIndex: 120,
+              width: '42px',
+              height: '42px',
+              borderRadius: '999px',
+              border: '1px solid rgba(255, 107, 107, 0.55)',
+              background: 'rgba(255, 107, 107, 0.18)',
+              color: '#ff6b6b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 18px rgba(0, 0, 0, 0.35)',
+              backdropFilter: 'blur(6px)',
+            }}
+            whileHover={{ scale: 1.06, background: 'rgba(255, 107, 107, 0.28)' }}
+            whileTap={{ scale: 0.95 }}
+            title="Close open chat"
+          >
+            <X size={18} />
+          </motion.button>
         )}
 
         {/* Categories Sub-Tab */}

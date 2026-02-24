@@ -821,6 +821,36 @@ const getTodayForUser = (timezone) => {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+// Convert a timestamp/date into YYYY-MM-DD in the user's timezone.
+// Falls back to UTC when timezone is missing or invalid.
+const getDateKeyForUser = (dateInput, timezone) => {
+  if (!dateInput) return null
+  const parsed = new Date(dateInput)
+  if (Number.isNaN(parsed.getTime())) return null
+
+  try {
+    if (timezone) {
+      return parsed.toLocaleDateString('en-CA', { timeZone: timezone }) // YYYY-MM-DD
+    }
+  } catch (err) {
+    console.warn(`[Timezone] Failed to format date key for timezone "${timezone}", falling back to UTC:`, err.message)
+  }
+
+  return parsed.toISOString().substring(0, 10)
+}
+
+const getDayDiffFromDateKeys = (startDateKey, endDateKey) => {
+  if (!startDateKey || !endDateKey) return null
+  const startParts = startDateKey.split('-').map(Number)
+  const endParts = endDateKey.split('-').map(Number)
+  if (startParts.length !== 3 || endParts.length !== 3) return null
+  if (startParts.some(Number.isNaN) || endParts.some(Number.isNaN)) return null
+
+  const startMs = Date.UTC(startParts[0], startParts[1] - 1, startParts[2])
+  const endMs = Date.UTC(endParts[0], endParts[1] - 1, endParts[2])
+  return Math.round((endMs - startMs) / (1000 * 60 * 60 * 24))
+}
+
 // Get a user's stored timezone from the users cache
 const getUserTimezone = (userId) => {
   const users = readUsers()
@@ -3385,7 +3415,8 @@ app.post('/api/judge/conversation', async (req, res) => {
         console.warn('[Judge Conversation] Serper API key not configured, skipping search')
       } else {
         try {
-          const searchQuery = await reformulateSearchQuery(userMessage, userId)
+          const searchContextSnippet = buildSearchContextSnippet(contextSummaries, originalSummaryText)
+          const searchQuery = await reformulateSearchQuery(userMessage, userId, searchContextSnippet)
           const serperData = await performSerperSearch(searchQuery, 5)
           searchResults = (serperData?.organic || []).map(r => ({
             title: r.title,
@@ -3590,7 +3621,8 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
       const serperApiKey = API_KEYS.serper
       if (serperApiKey) {
         try {
-          const searchQuery = await reformulateSearchQuery(userMessage, userId)
+          const searchContextSnippet = buildSearchContextSnippet(contextSummaries, originalSummaryText)
+          const searchQuery = await reformulateSearchQuery(userMessage, userId, searchContextSnippet)
           const serperData = await performSerperSearch(searchQuery, 5)
           searchResults = (serperData?.organic || []).map(r => ({
             title: r.title, link: r.link, snippet: r.snippet
@@ -3798,7 +3830,13 @@ app.post('/api/model/conversation/stream', async (req, res) => {
       }
     }
 
-    // Step 2: Search + scrape raw sources (no refiner)
+    // Step 2: Load model conversation context before search so vague follow-ups can be resolved.
+    const usageData = readUsage()
+    const userUsage = usageData[userId] || {}
+    const allModelContexts = userUsage.modelConversationContext || {}
+    const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
+
+    // Step 3: Search + scrape raw sources (no refiner)
     let rawSourcesData = null
     let searchResults = []
 
@@ -3807,7 +3845,8 @@ app.post('/api/model/conversation/stream', async (req, res) => {
       const serperApiKey = API_KEYS.serper
       if (serperApiKey) {
         try {
-          const searchQuery = await reformulateSearchQuery(userMessage, userId)
+          const searchContextSnippet = buildSearchContextSnippet(contextSummaries, originalResponse)
+          const searchQuery = await reformulateSearchQuery(userMessage, userId, searchContextSnippet)
           const serperData = await performSerperSearch(searchQuery, 5)
           searchResults = (serperData?.organic || []).map(r => ({
             title: r.title, link: r.link, snippet: r.snippet
@@ -3823,11 +3862,7 @@ app.post('/api/model/conversation/stream', async (req, res) => {
       }
     }
 
-    // Step 3: Build multi-turn messages (proper conversation format so models understand context)
-    const usageData = readUsage()
-    const userUsage = usageData[userId] || {}
-    const allModelContexts = userUsage.modelConversationContext || {}
-    const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
+    // Step 4: Build multi-turn messages (proper conversation format so models understand context)
 
     // System message: instructions, memory context, and search results
     let systemMessage = `Today's date is ${getCurrentDateStringForUser(userId)}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data. If citing sources, cite publication/site/title or URL/domain and NEVER use numeric labels like "source 1" or "source 3".`
@@ -4183,7 +4218,13 @@ app.post('/api/model/conversation', async (req, res) => {
       }
     }
     
-    // Step 2: If search is needed, run search + refiner pipeline
+    // Step 2: Get conversation context from server-side storage before search
+    const usage = readUsage()
+    const userUsage = usage[userId] || {}
+    const allModelContexts = userUsage.modelConversationContext || {}
+    const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
+
+    // Step 3: If search is needed, run search + refiner pipeline
     let rawSourcesData = null
     let searchResults = []
     
@@ -4193,7 +4234,8 @@ app.post('/api/model/conversation', async (req, res) => {
       const serperApiKey = API_KEYS.serper
       if (serperApiKey) {
         try {
-          const searchQuery = await reformulateSearchQuery(userMessage, userId)
+          const searchContextSnippet = buildSearchContextSnippet(contextSummaries, originalResponse)
+          const searchQuery = await reformulateSearchQuery(userMessage, userId, searchContextSnippet)
           const serperData = await performSerperSearch(searchQuery, 5)
           searchResults = (serperData?.organic || []).map(r => ({
             title: r.title,
@@ -4217,13 +4259,7 @@ app.post('/api/model/conversation', async (req, res) => {
       }
     }
     
-    // Step 3: Get conversation context from server-side storage
-    const usage = readUsage()
-    const userUsage = usage[userId] || {}
-    const allModelContexts = userUsage.modelConversationContext || {}
-    const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
-    
-    // Build context string from server-stored context (position 0 = full, 1-4 = summarized)
+    // Step 4: Build context string from server-stored context (position 0 = full, 1-4 = summarized)
     let prompt = `Today's date is ${getCurrentDateStringForUser(userId)}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data. If citing sources, cite publication/site/title or URL/domain and NEVER use numeric labels like "source 1" or "source 3".\n\n`
     
     if (memoryContextString) {
@@ -4625,8 +4661,26 @@ app.get('/api/stats/:userId/streak', (req, res) => {
   const { userId } = req.params
   const usage = readUsage()
   const userUsage = usage[userId] || {}
+  const users = readUsers()
+  const user = users[userId] || {}
+
+  const tz = user.timezone || null
+  const todayKey = getTodayForUser(tz)
+  const memberSinceRaw = user.subscriptionStartedDate || user.createdAt || null
+  const memberSinceKey = getDateKeyForUser(memberSinceRaw, tz)
+
+  let streakDays = userUsage.streakDays || 0
+  if (memberSinceKey && streakDays > 0) {
+    const membershipDayDiff = getDayDiffFromDateKeys(memberSinceKey, todayKey)
+    if (membershipDayDiff !== null && membershipDayDiff >= 0) {
+      // Do not allow streak to exceed elapsed membership days (inclusive).
+      const membershipDays = membershipDayDiff + 1
+      streakDays = Math.min(streakDays, membershipDays)
+    }
+  }
+
   res.json({ 
-    streakDays: userUsage.streakDays || 0,
+    streakDays,
     lastActiveAt: userUsage.lastActiveAt || null,
   })
 })
@@ -5762,9 +5816,27 @@ app.post('/api/summary/stream', async (req, res) => {
   }
 })
 
+function buildSearchContextSnippet(contextSummaries = [], fallbackText = '') {
+  const parts = []
+  const latest = Array.isArray(contextSummaries) && contextSummaries.length > 0 ? contextSummaries[0] : null
+
+  if (latest?.originalPrompt) {
+    parts.push(`Previous user prompt: ${String(latest.originalPrompt).substring(0, 500)}`)
+  }
+
+  const latestAssistant = latest?.isFull && latest?.response ? latest.response : latest?.summary
+  if (latestAssistant) {
+    parts.push(`Previous assistant response: ${String(latestAssistant).substring(0, 1000)}`)
+  } else if (fallbackText && String(fallbackText).trim()) {
+    parts.push(`Previous assistant response: ${String(fallbackText).substring(0, 1000)}`)
+  }
+
+  return parts.join('\n')
+}
+
 // Reformulate a conversational user prompt into an effective Google search query
 // Uses Gemini 2.5 Flash Lite for speed and cost efficiency
-async function reformulateSearchQuery(userMessage, userId = null) {
+async function reformulateSearchQuery(userMessage, userId = null, contextSnippet = '') {
   try {
     const apiKey = API_KEYS.google
     if (!apiKey) {
@@ -5772,11 +5844,19 @@ async function reformulateSearchQuery(userMessage, userId = null) {
       return userMessage
     }
 
+    const trimmedContext = String(contextSnippet || '').trim()
+    const contextBlock = trimmedContext
+      ? `\nConversation context (use this to resolve references like "this", "that", "it", and "latest"):\n${trimmedContext}\n`
+      : ''
+
     const reformulationPrompt = `Convert the following user message into a concise, effective Google search query. 
 - Remove conversational language, filler words, and self-referential pronouns (e.g. "your", "you", "my")
 - Focus on the core topic the user wants information about
+- If the message is a follow-up with vague references, resolve them using the conversation context
+- Preserve specific topic nouns from context so the query is not generic
 - Keep it under 10 words if possible
 - Output ONLY the search query, nothing else
+${contextBlock}
 
 User message: "${userMessage}"
 
@@ -9615,6 +9695,8 @@ app.get('/api/history/:userId', async (req, res) => {
       modelNames: (c.responses || []).filter(r => !r.error).map(r => r.modelName),
       consensus: c.summary?.consensus || null,
       isSingleModel: c.summary?.singleModel || (c.responses?.length === 1),
+      // Explicit flag for UI badges/labels so summary status isn't inferred from partial fields.
+      hasSummary: !!c.summary,
     }))
 
     res.json({ history: mapped })

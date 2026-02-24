@@ -264,6 +264,9 @@ Differences: [notable non-contradictory differences]
 Important: Only include each section label followed by a colon and content.`
 
       const userId = currentUser?.id || null
+      const summarySourcesSnapshot = Array.isArray(useStore.getState().searchSources)
+        ? [...useStore.getState().searchSources]
+        : []
 
       setSummary({
         text: '',
@@ -276,6 +279,7 @@ Important: Only include each section label followed by a colon and content.`
         singleModel: false,
         prompt: summaryPrompt,
         originalPrompt: promptForSummary,
+        sources: summarySourcesSnapshot,
         isStreaming: true,
       })
 
@@ -357,6 +361,7 @@ Important: Only include each section label followed by a colon and content.`
         singleModel: false,
         prompt: summaryPrompt,
         originalPrompt: promptForSummary,
+        sources: summarySourcesSnapshot,
       }))
 
       // Merge judge tokens into the token table and backend totals.
@@ -392,6 +397,7 @@ Important: Only include each section label followed by a colon and content.`
         timestamp: Date.now(),
         error: true,
         originalPrompt: useStore.getState().lastSubmittedPrompt || '',
+        sources: [],
       })
     } finally {
       setIsGeneratingSummary(false)

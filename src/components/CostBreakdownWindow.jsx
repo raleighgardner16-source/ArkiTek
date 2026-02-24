@@ -116,7 +116,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
     return (
       <div style={{ padding: '16px' }}>
         <h3 style={{ color: '#5dade2', fontSize: '1.2rem', margin: '0 0 16px 0', fontWeight: 'bold' }}>
-          Cost Breakdown
+          Prompt Cost Breakdown
         </h3>
         {loading ? (
           <div style={{ color: '#aaaaaa', textAlign: 'center', padding: '20px' }}>Loading pricing data...</div>
@@ -210,7 +210,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                     fontWeight: 'bold',
                   }}
                 >
-                  Cost Breakdown
+                  Prompt Cost Breakdown
                 </h2>
               </div>
               <button
