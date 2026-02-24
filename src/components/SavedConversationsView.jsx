@@ -48,6 +48,7 @@ const SavedConversationsView = () => {
   const [expandedDays, setExpandedDays] = useState({})
   const [expandedSources, setExpandedSources] = useState({})
   const [expandedTitles, setExpandedTitles] = useState({})
+  const [expandAllDetailSections, setExpandAllDetailSections] = useState(false)
 
   // Categories state
   const [categoriesData, setCategoriesData] = useState(null)
@@ -114,6 +115,19 @@ const SavedConversationsView = () => {
     return num.toLocaleString()
   }
 
+  const hasSummaryForConversation = (convo) => {
+    if (!convo) return false
+    if (typeof convo.hasSummary === 'boolean') return convo.hasSummary
+    if (typeof convo.summaryText === 'string' && convo.summaryText.trim().length > 0) return true
+    if (!convo.summary) return false
+    if (typeof convo.summary === 'string') return convo.summary.trim().length > 0
+    return !!(
+      (typeof convo.summary.text === 'string' && convo.summary.text.trim().length > 0) ||
+      (typeof convo.summary.summary === 'string' && convo.summary.summary.trim().length > 0) ||
+      (typeof convo.summary.initialSummary === 'string' && convo.summary.initialSummary.trim().length > 0)
+    )
+  }
+
   const fetchHistory = async () => {
     setLoading(true)
     try {
@@ -136,6 +150,70 @@ const SavedConversationsView = () => {
       alert('Failed to load conversation details.')
     }
     setLoadingDetail(false)
+  }
+
+  const normalizeText = (text) => (text || '').toString().trim().replace(/\s+/g, ' ').toLowerCase()
+
+  const findBestHistoryMatchForPrompt = (prompt) => {
+    if (!prompt || history.length === 0) return null
+
+    const promptTextNorm = normalizeText(prompt.text)
+    const promptTimestamp = prompt.timestamp ? new Date(prompt.timestamp).getTime() : null
+
+    let best = null
+    let bestScore = -1
+
+    history.forEach((convo) => {
+      const convoPromptNorm = normalizeText(convo.originalPrompt)
+      const convoTitleNorm = normalizeText(convo.title)
+      let score = 0
+
+      if (promptTextNorm) {
+        if (convoPromptNorm && convoPromptNorm === promptTextNorm) score += 120
+        else if (convoPromptNorm && convoPromptNorm.includes(promptTextNorm)) score += 90
+        else if (convoPromptNorm && promptTextNorm.includes(convoPromptNorm) && convoPromptNorm.length > 16) score += 70
+
+        if (convoTitleNorm && convoTitleNorm === promptTextNorm) score += 100
+        else if (convoTitleNorm && (convoTitleNorm.includes(promptTextNorm) || promptTextNorm.includes(convoTitleNorm))) score += 55
+      }
+
+      if (promptTimestamp && convo.savedAt) {
+        const convoTime = new Date(convo.savedAt).getTime()
+        const diffMinutes = Math.abs(convoTime - promptTimestamp) / 60000
+        if (diffMinutes <= 2) score += 35
+        else if (diffMinutes <= 15) score += 20
+        else if (diffMinutes <= 60) score += 10
+      }
+
+      if (score > bestScore) {
+        bestScore = score
+        best = convo
+      }
+    })
+
+    return bestScore > 0 ? best : null
+  }
+
+  const handleOpenPromptInHistory = async (prompt) => {
+    const matchedConvo = findBestHistoryMatchForPrompt(prompt)
+    if (!matchedConvo) {
+      alert('Could not find this prompt in Chat History yet.')
+      return
+    }
+
+    setActiveSubTab('history')
+
+    // Ensure the matching year/month/day are expanded so the selected convo is visible in the list.
+    const year = getYear(matchedConvo.savedAt)
+    const monthKey = getMonthKey(matchedConvo.savedAt)
+    const dayKey = getDayKey(matchedConvo.savedAt)
+    setExpandedYears((prev) => ({ ...prev, [year]: true }))
+    setExpandedMonths((prev) => ({ ...prev, [monthKey]: true }))
+    setExpandedDays((prev) => ({ ...prev, [dayKey]: true }))
+
+    // Open detail and auto-expand model/judge sections for this jump.
+    setExpandAllDetailSections(true)
+    await fetchDetail(matchedConvo.id)
   }
 
   const handleDelete = async (historyId) => {
@@ -217,14 +295,20 @@ const SavedConversationsView = () => {
   const countInMonth = (monthData) => Object.values(monthData).reduce((sum, days) => sum + days.length, 0)
 
   // --- Render a conversation card ---
-  const renderConvoCard = (convo) => (
-    <motion.div
+  const renderConvoCard = (convo) => {
+    const modelCount = convo.modelCount || convo.responses?.length || 0
+    const hasSummary = hasSummaryForConversation(convo)
+
+    return (
+      <motion.div
       key={convo.id}
       onClick={() => {
         // Toggle: if this convo is already selected, close the detail panel
         if (selectedConvo?.id === convo.id) {
           setSelectedConvo(null)
+          setExpandAllDetailSections(false)
         } else {
+          setExpandAllDetailSections(false)
           fetchDetail(convo.id)
         }
       }}
@@ -262,7 +346,7 @@ const SavedConversationsView = () => {
                 textTransform: 'uppercase', letterSpacing: '0.5px',
                 display: 'flex', alignItems: 'center', gap: '4px',
               }}>
-                <Layers size={12} /> Council ({convo.modelCount} models)
+                <Layers size={12} /> Council ({modelCount} models {hasSummary ? 'and summary' : 'no summary'})
               </span>
             )}
             {convo.consensus !== null && (
@@ -355,8 +439,9 @@ const SavedConversationsView = () => {
           )}
         </div>
       </div>
-    </motion.div>
-  )
+      </motion.div>
+    )
+  }
 
   // --- Render sources section ---
   const renderSourcesSection = (sources, toggleKey, label = 'Sources') => {
@@ -410,6 +495,8 @@ const SavedConversationsView = () => {
   // --- Detail view ---
   const renderDetail = () => {
     if (!selectedConvo) return null
+    const selectedModelCount = selectedConvo.modelCount || selectedConvo.responses?.length || 0
+    const selectedHasSummary = hasSummaryForConversation(selectedConvo)
     const formatDate = (dateStr) => {
       const d = new Date(dateStr)
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
@@ -446,7 +533,9 @@ const SavedConversationsView = () => {
                 color: selectedConvo.responses?.length > 1 ? '#60a5fa' : '#a855f7',
                 fontWeight: '600',
               }}>
-                {selectedConvo.responses?.length > 1 ? `Council (${selectedConvo.responses.length} models)` : 'Single Model'}
+                {selectedConvo.responses?.length > 1
+                  ? `Council (${selectedModelCount} models ${selectedHasSummary ? 'and summary' : 'no summary'})`
+                  : 'Single Model'}
               </span>
               <span style={{ fontSize: '0.8rem', color: currentTheme.textMuted }}>
                 {formatDate(selectedConvo.savedAt)}
@@ -462,7 +551,10 @@ const SavedConversationsView = () => {
             </div>
           </div>
           <button
-            onClick={() => setSelectedConvo(null)}
+            onClick={() => {
+              setSelectedConvo(null)
+              setExpandAllDetailSections(false)
+            }}
             style={{
               background: 'rgba(255, 107, 107, 0.1)',
               border: '1px solid rgba(255, 107, 107, 0.3)',
@@ -506,6 +598,16 @@ const SavedConversationsView = () => {
           </div>
         )}
 
+        {/* Summary / Judge — includes judge conversation turns inside */}
+        {selectedConvo.summary && selectedConvo.summary.text && (
+          <ExpandableSummary
+            summary={selectedConvo.summary}
+            currentTheme={currentTheme}
+            judgeTurns={(selectedConvo.conversationTurns || []).filter(t => t.type === 'judge')}
+            defaultExpanded={expandAllDetailSections}
+          />
+        )}
+
         {/* Model Responses + Continued Conversations (grouped per model) */}
         {selectedConvo.responses && selectedConvo.responses.length > 0 && (() => {
           // Group conversation turns by modelName so they appear under their model
@@ -542,21 +644,13 @@ const SavedConversationsView = () => {
                     idx={idx}
                     currentTheme={currentTheme}
                     conversationTurns={modelTurns}
+                    defaultExpanded={expandAllDetailSections}
                   />
                 )
               })}
             </div>
           )
         })()}
-
-        {/* Summary / Judge — includes judge conversation turns inside */}
-        {selectedConvo.summary && selectedConvo.summary.text && (
-          <ExpandableSummary
-            summary={selectedConvo.summary}
-            currentTheme={currentTheme}
-            judgeTurns={(selectedConvo.conversationTurns || []).filter(t => t.type === 'judge')}
-          />
-        )}
 
         {/* Sources */}
         {renderSourcesSection(selectedConvo.sources, 'detail_sources', 'Sources')}
@@ -738,6 +832,8 @@ const SavedConversationsView = () => {
                               return (
                                 <div
                                   key={`${category}-prompt-${index}-${theme}`}
+                                  onDoubleClick={() => handleOpenPromptInHistory(prompt)}
+                                  title="Double-click to open this conversation in Chat History"
                                   style={{
                                     background: theme === 'light' ? '#ffffff' : 'rgba(20, 20, 30, 0.9)',
                                     border: `1px solid ${currentTheme.borderLight}`,
@@ -747,6 +843,7 @@ const SavedConversationsView = () => {
                                       ? '0 2px 8px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06)'
                                       : '0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3)',
                                     position: 'relative',
+                                    cursor: 'pointer',
                                   }}
                                 >
                                   <button
@@ -829,7 +926,7 @@ const SavedConversationsView = () => {
           borderBottom: `1px solid ${currentTheme.borderLight}`,
         }}>
           <button
-            onClick={() => { setActiveSubTab('history'); setSelectedConvo(null) }}
+            onClick={() => { setActiveSubTab('history'); setSelectedConvo(null); setExpandAllDetailSections(false) }}
             style={{
               flex: 1,
               padding: '12px 24px',
@@ -851,7 +948,7 @@ const SavedConversationsView = () => {
             Chat History
           </button>
           <button
-            onClick={() => { setActiveSubTab('categories'); setSelectedConvo(null) }}
+            onClick={() => { setActiveSubTab('categories'); setSelectedConvo(null); setExpandAllDetailSections(false) }}
             style={{
               flex: 1,
               padding: '12px 24px',
@@ -1127,8 +1224,11 @@ const SavedConversationsView = () => {
 }
 
 // Expandable summary/judge for detail view
-const ExpandableSummary = ({ summary, currentTheme, judgeTurns = [] }) => {
-  const [expanded, setExpanded] = useState(false)
+const ExpandableSummary = ({ summary, currentTheme, judgeTurns = [], defaultExpanded = false }) => {
+  const [expanded, setExpanded] = useState(defaultExpanded)
+  useEffect(() => {
+    setExpanded(defaultExpanded)
+  }, [defaultExpanded, summary?.timestamp, summary?.text])
   const label = summary.singleModel
     ? `${summary.modelName || 'Model'} Response`
     : 'Judge Summary'
@@ -1225,8 +1325,11 @@ const ExpandableSummary = ({ summary, currentTheme, judgeTurns = [] }) => {
 }
 
 // Expandable model response for detail view
-const ExpandableResponse = ({ resp, idx, currentTheme, conversationTurns = [] }) => {
-  const [expanded, setExpanded] = useState(false)
+const ExpandableResponse = ({ resp, idx, currentTheme, conversationTurns = [], defaultExpanded = false }) => {
+  const [expanded, setExpanded] = useState(defaultExpanded)
+  useEffect(() => {
+    setExpanded(defaultExpanded)
+  }, [defaultExpanded, resp?.id, resp?.modelName, resp?.actualModelName, resp?.text])
   const providerKey = getProviderFromModelName(resp.modelName || resp.actualModelName)
   const providerInfo = PROVIDER_MAP[providerKey] || { name: providerKey, color: '#888' }
   const modelName = resp.modelName || resp.actualModelName || `Model ${idx + 1}`

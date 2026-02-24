@@ -2369,8 +2369,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 </motion.span>
               </motion.div>
                     )}
-                    {(responses.length > 0 && lastSubmittedPrompt) && (
-                      <div style={{ display: 'flex', justifyContent: 'stretch', gap: '6px', marginBottom: '8px', width: '100%' }}>
+                    <div style={{ display: 'flex', justifyContent: 'stretch', gap: '6px', marginBottom: '8px', width: '100%' }}>
                         {/* Clear Summary Button */}
                         <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
                         <motion.button
@@ -2517,7 +2516,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           </div>
                         </div>
 
-                        {/* Council Responses toggle button */}
+                        {/* Model Responses toggle button */}
                         <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
                           <motion.button
                             onClick={toggleCouncilPanel}
@@ -2547,10 +2546,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                 : (theme === 'light' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.15)'),
                             }}
                             whileTap={{ scale: 0.96 }}
-                            title={showCouncilPanel ? 'Hide Council Responses' : 'Show Council Responses'}
+                            title={showCouncilPanel ? 'Hide Model Responses' : 'Show Model Responses'}
                           >
                             <LayoutGrid size={12} />
-                            {showCouncilPanel ? 'Hide Council Responses' : 'Show Council Responses'}
+                            {showCouncilPanel ? 'Hide Model Responses' : 'Show Model Responses'}
                           </motion.button>
                           <div
                             style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
@@ -2573,13 +2572,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                                 zIndex: 100,
                               }}>
-                                Toggle the council panel to view individual responses from each AI model.
+                                Toggle the panel to view individual responses from each AI model.
                               </div>
                             )}
                           </div>
                         </div>
                       </div>
-                    )}
 
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
                       <div style={{ flex: 1, position: 'relative' }}>

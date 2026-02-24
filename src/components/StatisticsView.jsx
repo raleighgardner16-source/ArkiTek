@@ -231,10 +231,12 @@ const StatisticsView = () => {
   const [showBuyUsageModal, setShowBuyUsageModal] = useState(false)
   const [profilePrompts, setProfilePrompts] = useState([])
   const [loadingProfile, setLoadingProfile] = useState(false)
+  const [hasLoadedProfile, setHasLoadedProfile] = useState(false)
   const [deletingPostId, setDeletingPostId] = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [expandedBadgeCategory, setExpandedBadgeCategory] = useState(null)
   const [hoveredBadge, setHoveredBadge] = useState(null)
+  const [hasLoadedLeaderboard, setHasLoadedLeaderboard] = useState(false)
   // Public profile data for another user
   const [publicProfile, setPublicProfile] = useState(null)
   const [loadingPublicProfile, setLoadingPublicProfile] = useState(false)
@@ -259,15 +261,26 @@ const StatisticsView = () => {
   useEffect(() => {
     if (isViewingOther) {
       setActiveTab('profile') // Default to their posts when viewing another user
+      setHasLoadedProfile(false)
+      setProfilePrompts([])
       fetchPublicProfile(viewingProfile.userId)
     } else {
       setPublicProfile(null)
+      setHasLoadedProfile(false)
+      setProfilePrompts([])
     }
   }, [viewingProfile?.userId])
 
+  useEffect(() => {
+    setHasLoadedLeaderboard(false)
+    setLeaderboardStats(null)
+  }, [currentUser?.id])
+
   const fetchPublicProfile = async (userId) => {
     try {
-      setLoadingPublicProfile(true)
+      if (!hasLoadedProfile) {
+        setLoadingPublicProfile(true)
+      }
       const response = await axios.get(`${API_URL}/api/profile/${userId}`)
       setPublicProfile(response.data)
       setProfilePrompts(response.data.posts || [])
@@ -278,6 +291,7 @@ const StatisticsView = () => {
     } finally {
       setLoadingPublicProfile(false)
       setLoadingProfile(false)
+      setHasLoadedProfile(true)
     }
   }
 
@@ -299,7 +313,9 @@ const StatisticsView = () => {
     if (!currentUser?.id) return
     
     try {
-      setLoadingLeaderboardStats(true)
+      if (!hasLoadedLeaderboard) {
+        setLoadingLeaderboardStats(true)
+      }
       const response = await axios.get(`${API_URL}/api/leaderboard/user-stats/${currentUser.id}`)
       setLeaderboardStats(response.data)
     } catch (error) {
@@ -307,13 +323,16 @@ const StatisticsView = () => {
       setLeaderboardStats(null)
     } finally {
       setLoadingLeaderboardStats(false)
+      setHasLoadedLeaderboard(true)
     }
   }
 
   const fetchProfilePrompts = async () => {
     if (!currentUser?.id) return
     try {
-      setLoadingProfile(true)
+      if (!hasLoadedProfile) {
+        setLoadingProfile(true)
+      }
       const response = await axios.get(`${API_URL}/api/leaderboard?filter=profile&userId=${currentUser.id}`)
       setProfilePrompts(response.data.prompts || [])
     } catch (error) {
@@ -321,6 +340,7 @@ const StatisticsView = () => {
       setProfilePrompts([])
     } finally {
       setLoadingProfile(false)
+      setHasLoadedProfile(true)
     }
   }
 
