@@ -38,7 +38,6 @@ const ResponseComparison = () => {
   const setShowCouncilPanel = useStore((state) => state.setShowCouncilPanel)
   const isNavExpanded = useStore((state) => state.isNavExpanded)
   const ragDebugData = useStore((state) => state.ragDebugData)
-  const searchSources = useStore((state) => state.searchSources)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const [expandedCards, setExpandedCards] = useState({})
@@ -650,7 +649,8 @@ const ResponseComparison = () => {
 
             {/* Initial Sources — shown with the first prompt+response pair */}
             {(() => {
-              if (!searchSources || !Array.isArray(searchSources) || searchSources.length === 0) return null
+              const initialSources = Array.isArray(response.sources) ? response.sources : []
+              if (initialSources.length === 0) return null
               const toggleKey = `${response.id}_initial`
               return (
                 <div style={{ marginTop: '12px' }}>
@@ -665,7 +665,7 @@ const ResponseComparison = () => {
                     }}
                   >
                     <Globe size={14} />
-                    Sources ({searchSources.length})
+                    Sources ({initialSources.length})
                     <ChevronDown size={14} style={{ transform: showConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
                   </button>
                   {showConvoSources[toggleKey] && (
@@ -673,7 +673,7 @@ const ResponseComparison = () => {
                       initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
                       style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}
                     >
-                      {searchSources.map((source, sIdx) => (
+                      {initialSources.map((source, sIdx) => (
                         <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
                           style={{ display: 'block', padding: '8px 12px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '8px', textDecoration: 'none', transition: 'border-color 0.2s' }}
                           onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
@@ -1269,7 +1269,8 @@ const ResponseComparison = () => {
 
           {/* Initial Sources — shown with the first prompt+response pair */}
           {(() => {
-            if (!searchSources || !Array.isArray(searchSources) || searchSources.length === 0) return null
+            const initialSources = Array.isArray(response.sources) ? response.sources : []
+            if (initialSources.length === 0) return null
             const toggleKey = `${response.id}_initial`
             return (
               <div style={{ marginTop: '12px' }}>
@@ -1284,7 +1285,7 @@ const ResponseComparison = () => {
                   }}
                 >
                   <Globe size={14} />
-                  Sources ({searchSources.length})
+                  Sources ({initialSources.length})
                   <ChevronDown size={14} style={{ transform: showConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
                 </button>
                 {showConvoSources[toggleKey] && (
@@ -1292,7 +1293,7 @@ const ResponseComparison = () => {
                     initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
                     style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}
                   >
-                    {searchSources.map((source, sIdx) => (
+                    {initialSources.map((source, sIdx) => (
                       <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
                         style={{ display: 'block', padding: '8px 12px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '8px', textDecoration: 'none', transition: 'border-color 0.2s' }}
                         onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}

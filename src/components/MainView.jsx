@@ -28,7 +28,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const summary = useStore((state) => state.summary)
   const setSummary = useStore((state) => state.setSummary)
   const ragDebugData = useStore((state) => state.ragDebugData)
-  const searchSources = useStore((state) => state.searchSources)
   const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
   const theme = useStore((state) => state.theme || 'dark')
   const isNavExpanded = useStore((state) => state.isNavExpanded)
@@ -1282,9 +1281,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     resultViewMode === 'summary'
   )
   const showSingleModelConvoInput = !summary && responses.length === 1 && !responses[0].error && lastSubmittedPrompt
-  const summaryInitialSources = Array.isArray(summary?.sources)
-    ? summary.sources
-    : (Array.isArray(searchSources) ? searchSources : [])
+  const summaryInitialSources = Array.isArray(summary?.sources) ? summary.sources : []
 
   useEffect(() => {
     setSingleModelInitialSources([])
@@ -1293,9 +1290,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   useEffect(() => {
     if (!showSingleModelConvoInput) return
     if (singleModelInitialSources.length > 0) return
-    if (!Array.isArray(searchSources) || searchSources.length === 0) return
-    setSingleModelInitialSources([...searchSources])
-  }, [showSingleModelConvoInput, singleModelInitialSources.length, searchSources])
+    const initialSources = Array.isArray(responses[0]?.sources) ? responses[0].sources : []
+    if (initialSources.length === 0) return
+    setSingleModelInitialSources([...initialSources])
+  }, [showSingleModelConvoInput, singleModelInitialSources.length, responses])
 
   // ---- Helper: get short provider name from model ID ---- //
   const getProviderDisplayName = (modelName) => {
@@ -1797,19 +1795,17 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '8px',
                           padding: '8px 14px',
-                          background: 'rgba(239, 68, 68, 0.15)',
-                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          background: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid #ef4444',
                           borderRadius: '10px',
-                          color: '#ef4444',
+                          color: '#fff',
                           fontSize: '0.82rem',
                           fontWeight: '600',
                           cursor: 'pointer',
                         }}
                         title="Cancel"
                       >
-                        <Square size={12} fill="#ef4444" />
                         Cancel
                       </motion.button>
                     </div>
@@ -1823,24 +1819,22 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           style={{
-                            width: '30px',
-                            height: '30px',
-                            padding: 0,
-                            background: '#ef4444',
-                            border: 'none',
-                            borderRadius: '8px',
-                            color: '#fff',
-                            cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
+                            padding: '8px 14px',
+                            background: 'rgba(239, 68, 68, 0.12)',
+                            border: '1px solid #ef4444',
+                            borderRadius: '10px',
+                            color: '#fff',
+                            cursor: 'pointer',
                             transition: 'all 0.2s ease',
+                            fontSize: '0.82rem',
+                            fontWeight: '600',
                           }}
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
+                          whileHover={{ scale: 1.03 }}
+                          whileTap={{ scale: 0.97 }}
                           title="Cancel"
                         >
-                          <Square size={12} fill="#fff" />
                           Cancel
                         </motion.button>
                       )}
@@ -2032,71 +2026,75 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                     )}
                                   </div>
                                 ))}
-                                {Array.isArray(searchSources) && searchSources.length > 0 && (
-                                  <div style={{ marginBottom: '10px' }}>
-                                    <button
-                                      onClick={() => setShowCouncilColumnSources(prev => ({ ...prev, [response.id]: !prev[response.id] }))}
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        padding: '5px 10px',
-                                        background: showCouncilColumnSources[response.id] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
-                                        border: `1px solid ${showCouncilColumnSources[response.id] ? currentTheme.accent : currentTheme.borderLight}`,
-                                        borderRadius: '8px',
-                                        color: currentTheme.accent,
-                                        fontSize: '0.75rem',
-                                        fontWeight: '500',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s ease',
-                                      }}
-                                    >
-                                      <Globe size={12} />
-                                      Sources ({searchSources.length})
-                                      <ChevronDown size={12} style={{ transform: showCouncilColumnSources[response.id] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
-                                    </button>
-                                    {showCouncilColumnSources[response.id] && (
-                                      <motion.div
-                                        initial={{ opacity: 0, height: 0 }}
-                                        animate={{ opacity: 1, height: 'auto' }}
-                                        exit={{ opacity: 0, height: 0 }}
-                                        style={{ marginTop: '6px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
+                                {(() => {
+                                  const initialSources = Array.isArray(response.sources) ? response.sources : []
+                                  if (initialSources.length === 0) return null
+                                  return (
+                                    <div style={{ marginBottom: '10px' }}>
+                                      <button
+                                        onClick={() => setShowCouncilColumnSources(prev => ({ ...prev, [response.id]: !prev[response.id] }))}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '6px',
+                                          padding: '5px 10px',
+                                          background: showCouncilColumnSources[response.id] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                                          border: `1px solid ${showCouncilColumnSources[response.id] ? currentTheme.accent : currentTheme.borderLight}`,
+                                          borderRadius: '8px',
+                                          color: currentTheme.accent,
+                                          fontSize: '0.75rem',
+                                          fontWeight: '500',
+                                          cursor: 'pointer',
+                                          transition: 'all 0.2s ease',
+                                        }}
                                       >
-                                        {searchSources.map((source, sIdx) => (
-                                          <a
-                                            key={sIdx}
-                                            href={source.link}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={{
-                                              display: 'block',
-                                              padding: '6px 10px',
-                                              background: currentTheme.buttonBackground,
-                                              border: `1px solid ${currentTheme.borderLight}`,
-                                              borderRadius: '6px',
-                                              textDecoration: 'none',
-                                              transition: 'border-color 0.2s',
-                                            }}
-                                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
-                                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
-                                          >
-                                            <div style={{ fontSize: '0.75rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                              {source.title}
-                                            </div>
-                                            <div style={{ fontSize: '0.65rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                              {source.link}
-                                            </div>
-                                            {source.snippet && (
-                                              <div style={{ fontSize: '0.7rem', color: currentTheme.textSecondary, marginTop: '3px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                                                {source.snippet}
+                                        <Globe size={12} />
+                                        Sources ({initialSources.length})
+                                        <ChevronDown size={12} style={{ transform: showCouncilColumnSources[response.id] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                                      </button>
+                                      {showCouncilColumnSources[response.id] && (
+                                        <motion.div
+                                          initial={{ opacity: 0, height: 0 }}
+                                          animate={{ opacity: 1, height: 'auto' }}
+                                          exit={{ opacity: 0, height: 0 }}
+                                          style={{ marginTop: '6px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
+                                        >
+                                          {initialSources.map((source, sIdx) => (
+                                            <a
+                                              key={sIdx}
+                                              href={source.link}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              style={{
+                                                display: 'block',
+                                                padding: '6px 10px',
+                                                background: currentTheme.buttonBackground,
+                                                border: `1px solid ${currentTheme.borderLight}`,
+                                                borderRadius: '6px',
+                                                textDecoration: 'none',
+                                                transition: 'border-color 0.2s',
+                                              }}
+                                              onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                                              onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                                            >
+                                              <div style={{ fontSize: '0.75rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {source.title}
                                               </div>
-                                            )}
-                                          </a>
-                                        ))}
-                                      </motion.div>
-                                    )}
-                                  </div>
-                                )}
+                                              <div style={{ fontSize: '0.65rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {source.link}
+                                              </div>
+                                              {source.snippet && (
+                                                <div style={{ fontSize: '0.7rem', color: currentTheme.textSecondary, marginTop: '3px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                                  {source.snippet}
+                                                </div>
+                                              )}
+                                            </a>
+                                          ))}
+                                        </motion.div>
+                                      )}
+                                    </div>
+                                  )
+                                })()}
                                 <textarea
                                   data-local-enter-handler="true"
                                   value={councilColumnConvoInputs[response.id] || ''}
@@ -2190,10 +2188,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '8px',
                           padding: '8px 14px',
-                          background: 'rgba(239, 68, 68, 0.9)',
-                          border: 'none',
+                          background: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid #ef4444',
                           borderRadius: '10px',
                           color: '#fff',
                           cursor: 'pointer',
@@ -2201,11 +2198,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           fontSize: '0.82rem',
                           fontWeight: '600',
                         }}
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
                         title="Cancel"
                       >
-                        <Square size={12} fill="#fff" />
                         Cancel
                       </motion.button>
                     </div>
@@ -3399,10 +3395,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px',
                       padding: '8px 14px',
-                      background: '#ef4444',
-                      border: 'none',
+                      background: 'rgba(239, 68, 68, 0.12)',
+                      border: '1px solid #ef4444',
                       borderRadius: '10px',
                       color: '#fff',
                       cursor: 'pointer',
@@ -3410,11 +3405,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       fontSize: '0.82rem',
                       fontWeight: '600',
                     }}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
                     title="Cancel"
                   >
-                    <Square size={12} fill="#fff" />
                     Cancel
                   </motion.button>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
@@ -4285,8 +4279,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         let facts = null
                         let sources = null
                         
-                        if (searchSources && Array.isArray(searchSources) && searchSources.length > 0) {
-                          sources = searchSources.map(s => ({
+                        const responseBoundSources = Array.isArray(summary?.sources) && summary.sources.length > 0
+                          ? summary.sources
+                          : (responses.find(r => Array.isArray(r.sources) && r.sources.length > 0)?.sources || null)
+
+                        if (responseBoundSources) {
+                          sources = responseBoundSources.map(s => ({
                             title: s.title,
                             link: s.link || s.url,
                             snippet: s.snippet,

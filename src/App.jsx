@@ -460,6 +460,8 @@ Important: Only include each section label followed by a colon and content.`
     }
 
     clearResponses()
+    // Prevent stale sources from appearing on the next prompt before new search data arrives.
+    setSearchSources(null)
     
     // Clear judge and model conversation context when starting a new prompt from main page
     if (currentUser?.id) {
@@ -514,6 +516,7 @@ Important: Only include each section label followed by a colon and content.`
         const userId = currentUser?.id || null
         const responseIds = {}
         const ragResponsesByModel = {}
+        let latestRagSearchSources = []
         const normalizeCouncilResponse = (councilResponse) => {
           const actualModel = councilResponse.actual_model_name || councilResponse.model_name
           const originalModel = councilResponse.original_model_name || councilResponse.model_name
@@ -542,6 +545,7 @@ Important: Only include each section label followed by a colon and content.`
             error: !!councilResponse.error,
             tokens: councilResponse.tokens || null,
             isStreaming: false,
+            sources: latestRagSearchSources,
           }
         }
 
@@ -558,6 +562,7 @@ Important: Only include each section label followed by a colon and content.`
             error: false,
             tokens: null,
             isStreaming: true,
+            sources: [],
           })
         })
         ragResponsesAlreadyInStore = true
@@ -575,6 +580,7 @@ Important: Only include each section label followed by a colon and content.`
 
             if (event.type === 'search_results') {
               if (Array.isArray(event.search_results) && event.search_results.length > 0) {
+                latestRagSearchSources = [...event.search_results]
                 setSearchSources(event.search_results)
               }
               return
@@ -602,6 +608,7 @@ Important: Only include each section label followed by a colon and content.`
                 actualModelName: normalized.actualModelName,
                 originalModelName: normalized.originalModelName,
                 isStreaming: false,
+                sources: normalized.sources || [],
               })
               return
             }
@@ -646,6 +653,7 @@ Important: Only include each section label followed by a colon and content.`
 
         // Store sources for display in ResponseComparison
         if (ragData.search_results && Array.isArray(ragData.search_results) && ragData.search_results.length > 0) {
+          latestRagSearchSources = [...ragData.search_results]
           setSearchSources(ragData.search_results)
         } else {
           console.warn('[RAG Pipeline] No search results returned from Serper')
@@ -664,6 +672,7 @@ Important: Only include each section label followed by a colon and content.`
               actualModelName: normalized.actualModelName,
               originalModelName: normalized.originalModelName,
               isStreaming: false,
+              sources: normalized.sources || [],
             })
           })
         }
@@ -680,6 +689,7 @@ Important: Only include each section label followed by a colon and content.`
             error: false,
             tokens: null,
             isStreaming: false,
+            sources: latestRagSearchSources,
           }
         })
         // Summary will be generated via streaming endpoint after council responses are collected
