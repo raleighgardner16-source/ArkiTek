@@ -830,7 +830,16 @@ const getDateKeyForUser = (dateInput, timezone) => {
 
   try {
     if (timezone) {
-      return parsed.toLocaleDateString('en-CA', { timeZone: timezone }) // YYYY-MM-DD
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(parsed)
+      const year = parts.find(p => p.type === 'year')?.value
+      const month = parts.find(p => p.type === 'month')?.value
+      const day = parts.find(p => p.type === 'day')?.value
+      if (year && month && day) return `${year}-${month}-${day}`
     }
   } catch (err) {
     console.warn(`[Timezone] Failed to format date key for timezone "${timezone}", falling back to UTC:`, err.message)
@@ -1101,7 +1110,7 @@ const trackPrompt = async (userId, promptText, category, promptData = {}) => {
     const parsed = new Date(lastActiveDate)
     if (!isNaN(parsed.getTime())) {
       if (tz) {
-        lastActiveDate = parsed.toLocaleDateString('en-CA', { timeZone: tz }) // en-CA gives YYYY-MM-DD
+        lastActiveDate = getDateKeyForUser(parsed, tz)
       } else {
         lastActiveDate = parsed.toISOString().substring(0, 10)
       }

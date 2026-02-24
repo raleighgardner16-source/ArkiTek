@@ -1323,6 +1323,14 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const showCouncilReviewPhase = !isLoading && !isGeneratingSummary && !summary && !isSingleModel && responses.length > 0
   const hasCouncilResponsesForView = responses.filter(r => !r.error).length >= 2
   const canToggleResultViews = !isSingleModel && hasSummaryTokens && !isGeneratingSummary && !(summary && summary.isStreaming) && hasCouncilResponsesForView
+  const canShowCouncilSideBySideButton = !!(
+    summary &&
+    !summary.singleModel &&
+    !isLoading &&
+    !isGeneratingSummary &&
+    !(summary && summary.isStreaming) &&
+    hasCouncilResponsesForView
+  )
   const showCouncilColumns = !isSingleModel && responses.length > 0 && (
     (!hasSummaryTokens && (isLoading || isGeneratingSummary || summaryInitializing || showCouncilReviewPhase)) ||
     (canToggleResultViews && resultViewMode === 'council')
@@ -1503,7 +1511,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           zIndex: 10,
         }}
       >
-        {(canGenerateSummary || (canToggleResultViews && resultViewMode === 'summary')) && (
+        {(canGenerateSummary || (canShowCouncilSideBySideButton && resultViewMode === 'summary')) && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1832,7 +1840,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           whileTap={{ scale: 0.9 }}
                           title="Cancel"
                         >
-                          <Square size={14} fill="#fff" />
+                          <Square size={12} fill="#fff" />
+                          Cancel
                         </motion.button>
                       )}
                       <motion.div
@@ -2179,24 +2188,25 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         style={{
-                          width: '30px',
-                          height: '30px',
-                          padding: 0,
-                          background: '#ef4444',
-                          border: 'none',
-                          borderRadius: '8px',
-                          color: '#fff',
-                          cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center',
+                          gap: '8px',
+                          padding: '8px 14px',
+                          background: 'rgba(239, 68, 68, 0.9)',
+                          border: 'none',
+                          borderRadius: '10px',
+                          color: '#fff',
+                          cursor: 'pointer',
                           transition: 'all 0.2s ease',
+                          fontSize: '0.82rem',
+                          fontWeight: '600',
                         }}
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
                         title="Cancel"
                       >
-                        <Square size={14} fill="#fff" />
+                        <Square size={12} fill="#fff" />
+                        Cancel
                       </motion.button>
                     </div>
                   )}
@@ -3387,24 +3397,25 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     style={{
-                      width: '30px',
-                      height: '30px',
-                      padding: 0,
-                      background: '#ef4444',
-                      border: 'none',
-                      borderRadius: '8px',
-                      color: '#fff',
-                      cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
+                      gap: '8px',
+                      padding: '8px 14px',
+                      background: '#ef4444',
+                      border: 'none',
+                      borderRadius: '10px',
+                      color: '#fff',
+                      cursor: 'pointer',
                       transition: 'all 0.2s ease',
+                      fontSize: '0.82rem',
+                      fontWeight: '600',
                     }}
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
                     title="Cancel"
                   >
-                    <Square size={14} fill="#fff" />
+                    <Square size={12} fill="#fff" />
+                    Cancel
                   </motion.button>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
                   <motion.div
