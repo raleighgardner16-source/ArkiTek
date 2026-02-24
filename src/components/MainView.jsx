@@ -1496,7 +1496,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           zIndex: 10,
         }}
       >
-        {canGenerateSummary && (
+        {(canGenerateSummary || (canToggleResultViews && resultViewMode === 'summary')) && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1543,7 +1543,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
                 <motion.button
-                  onClick={() => triggerGenerateSummary()}
+                  onClick={() => {
+                    if (canGenerateSummary) {
+                      triggerGenerateSummary()
+                    } else {
+                      setResultViewMode('council')
+                    }
+                  }}
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
                   style={{
@@ -1561,24 +1567,26 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     boxShadow: `0 6px 20px ${currentTheme.shadow}`,
                     pointerEvents: 'auto',
                   }}
-                  title="Generate summary from the current council responses"
+                  title={canGenerateSummary ? 'Generate summary from the current council responses' : 'Show side-by-side model responses'}
                 >
                   <Sparkles size={16} />
-                  Generate Summary
+                  {canGenerateSummary ? 'Generate Summary' : 'Council Side by Side view'}
                 </motion.button>
-                <span
-                  style={{
-                    fontSize: '0.72rem',
-                    color: currentTheme.textMuted,
-                    textAlign: 'center',
-                    background: currentTheme.backgroundOverlay,
-                    border: `1px solid ${currentTheme.borderLight}`,
-                    borderRadius: '999px',
-                    padding: '3px 10px',
-                  }}
-                >
-                  PRESS ENTER TO GENERATE
-                </span>
+                {canGenerateSummary && (
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      color: currentTheme.textMuted,
+                      textAlign: 'center',
+                      background: currentTheme.backgroundOverlay,
+                      border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '999px',
+                      padding: '3px 10px',
+                    }}
+                  >
+                    PRESS ENTER TO GENERATE
+                  </span>
+                )}
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                 <motion.button
@@ -1609,7 +1617,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             </div>
           </motion.div>
         )}
-        {canToggleResultViews && (
+        {canToggleResultViews && resultViewMode === 'council' && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1708,37 +1716,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               position: 'relative',
               padding: showCouncilLoading ? '0 0 24px 0' : `${processingTopPadding}px 20px 36px`,
             }}>
-              {/* Cancel button - show only during active loading/generation */}
-              {(isLoading || isGeneratingSummary || summaryInitializing || showSummaryStreamingPhase) && (
-                <motion.button
-                  onClick={() => { if (onCancelPrompt) onCancelPrompt() }}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  style={{
-                    position: 'absolute',
-                    top: '20px',
-                    right: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 16px',
-                    background: 'rgba(239, 68, 68, 0.15)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    borderRadius: '10px',
-                    color: '#ef4444',
-                    fontSize: '0.8rem',
-                    fontWeight: '500',
-                    cursor: 'pointer',
-                    zIndex: 50,
-                  }}
-                  whileHover={{ scale: 1.05, background: 'rgba(239, 68, 68, 0.25)' }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <Square size={12} fill="#ef4444" />
-                  Cancel
-                </motion.button>
-              )}
-
               {/* Phase 1: Loading Council of LLMs - centered spinner */}
               {showCouncilLoading && (
                 <motion.div
@@ -1751,6 +1728,30 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     gap: '24px',
                   }}
                 >
+                  <motion.button
+                    onClick={() => { if (onCancelPrompt) onCancelPrompt() }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    style={{
+                      width: '30px',
+                      height: '30px',
+                      padding: 0,
+                      background: '#ef4444',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.2s ease',
+                    }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    title="Cancel"
+                  >
+                    <Square size={14} fill="#fff" />
+                  </motion.button>
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
@@ -1796,42 +1797,69 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 <>
                   {/* Loading Summary indicator at top center */}
                   {(isGeneratingSummary || summaryInitializing) && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        marginBottom: '30px',
-                        padding: '10px 24px',
-                        background: currentTheme.buttonBackground,
-                        borderRadius: '12px',
-                        border: `1px solid ${currentTheme.borderLight}`,
-                      }}
-                    >
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '30px' }}>
+                      {isGeneratingSummary && (
+                        <motion.button
+                          onClick={() => { if (onCancelPrompt) onCancelPrompt() }}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          style={{
+                            width: '30px',
+                            height: '30px',
+                            padding: 0,
+                            background: '#ef4444',
+                            border: 'none',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.2s ease',
+                          }}
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          title="Cancel"
+                        >
+                          <Square size={14} fill="#fff" />
+                        </motion.button>
+                      )}
                       <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
                         style={{
-                          width: '18px',
-                          height: '18px',
-                          border: `2px solid ${currentTheme.borderLight}`,
-                          borderTop: `2px solid ${currentTheme.accent}`,
-                          borderRadius: '50%',
-                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          padding: '10px 24px',
+                          background: currentTheme.buttonBackground,
+                          borderRadius: '12px',
+                          border: `1px solid ${currentTheme.borderLight}`,
                         }}
-                      />
-                      <span style={{
-                        fontSize: '0.9rem',
-                        fontWeight: '500',
-                        background: currentTheme.accentGradient,
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                      }}>
-                        Loading Summary...
-                      </span>
-                    </motion.div>
+                      >
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            border: `2px solid ${currentTheme.borderLight}`,
+                            borderTop: `2px solid ${currentTheme.accent}`,
+                            borderRadius: '50%',
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span style={{
+                          fontSize: '0.9rem',
+                          fontWeight: '500',
+                          background: currentTheme.accentGradient,
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent',
+                        }}>
+                          Loading Summary...
+                        </span>
+                      </motion.div>
+                    </div>
                   )}
 
                   {/* Council Response Columns */}
@@ -2133,6 +2161,34 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   animate={{ opacity: 1, y: 0 }}
                   style={{ maxWidth: '800px', width: '100%', padding: '0 20px 36px' }}
                 >
+                  {isGeneratingSummary && (
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '18px' }}>
+                      <motion.button
+                        onClick={() => { if (onCancelPrompt) onCancelPrompt() }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        style={{
+                          width: '30px',
+                          height: '30px',
+                          padding: 0,
+                          background: '#ef4444',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: '#fff',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s ease',
+                        }}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        title="Cancel"
+                      >
+                        <Square size={14} fill="#fff" />
+                      </motion.button>
+                    </div>
+                  )}
                   {/* User prompt bubble */}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '24px' }}>
                     <div style={{
@@ -3305,15 +3361,41 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
                   transition={{ duration: 0.25 }}
-                    style={{
-                      display: 'flex',
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
-                      justifyContent: 'center',
-                    gap: '12px',
+                    justifyContent: 'center',
+                    gap: '10px',
                     marginBottom: '14px',
                     padding: '12px 24px',
                   }}
                 >
+                  <motion.button
+                    onClick={() => { if (onCancelPrompt) onCancelPrompt() }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    style={{
+                      width: '30px',
+                      height: '30px',
+                      padding: 0,
+                      background: '#ef4444',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.2s ease',
+                    }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    title="Cancel"
+                  >
+                    <Square size={14} fill="#fff" />
+                  </motion.button>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
@@ -3339,6 +3421,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         ? `Loading ${allModels.find(m => m.id === selectedModels[0])?.providerName || 'model'}'s response...`
                         : 'Loading Council of LLMs responses...'}
                   </span>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -3608,7 +3691,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     )
                   })}
 
-                  {/* Send / Cancel Button */}
+                  {/* Send Button */}
                   {(() => {
                     const hasAutoSmart = Object.values(autoSmartProviders).some(enabled => enabled)
                     const hasModels = selectedModels.length > 0 || hasAutoSmart
@@ -3618,34 +3701,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     
                     return (
                       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      {isProcessing ? (
-                        <motion.button
-                          onClick={() => {
-                            if (onCancelPrompt) onCancelPrompt()
-                          }}
-                          style={{
-                            width: '30px',
-                            height: '30px',
-                            padding: 0,
-                            background: '#ef4444',
-                            border: 'none',
-                            borderRadius: '8px',
-                            color: '#fff',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'all 0.2s ease',
-                          }}
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                          title="Cancel"
-                        >
-                          <Square size={14} fill="#fff" />
-                        </motion.button>
-                      ) : (
                       <motion.button
                         onClick={() => {
+                          if (isProcessing) return
                           if (canSubmit) {
                             setIsSubmitPending(true)
                             handleSubmit()
@@ -3662,19 +3720,19 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           border: 'none',
                           borderRadius: '8px',
                           color: canSubmit || hasPromptOnly ? '#fff' : currentTheme.textMuted,
-                          cursor: (canSubmit || hasPromptOnly) ? 'pointer' : 'not-allowed',
+                          cursor: (!isProcessing && (canSubmit || hasPromptOnly)) ? 'pointer' : 'not-allowed',
                             display: 'flex', 
                             alignItems: 'center', 
                             justifyContent: 'center',
                           transition: 'all 0.2s ease',
+                          opacity: isProcessing ? 0.55 : 1,
                         }}
-                        whileHover={(canSubmit || hasPromptOnly) ? { scale: 1.1 } : {}}
-                        whileTap={(canSubmit || hasPromptOnly) ? { scale: 0.9 } : {}}
+                        whileHover={(!isProcessing && (canSubmit || hasPromptOnly)) ? { scale: 1.1 } : {}}
+                        whileTap={(!isProcessing && (canSubmit || hasPromptOnly)) ? { scale: 0.9 } : {}}
                         title="Send"
                       >
                         <Send size={14} />
                       </motion.button>
-                      )}
                         <div
                           style={{ position: 'absolute', top: '-8px', right: '-8px', cursor: 'help', zIndex: 10 }}
                           onMouseEnter={() => setShowSendTooltip(true)}
