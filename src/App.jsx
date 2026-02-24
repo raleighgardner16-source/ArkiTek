@@ -362,6 +362,7 @@ Important: Only include each section label followed by a colon and content.`
         prompt: summaryPrompt,
         originalPrompt: promptForSummary,
         sources: summarySourcesSnapshot,
+        isStreaming: false,
       }))
 
       // Merge judge tokens into the token table and backend totals.
