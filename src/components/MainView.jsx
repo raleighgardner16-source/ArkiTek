@@ -1334,6 +1334,29 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     }
   }, [canToggleResultViews, resultViewMode])
 
+  // In side-by-side council view, lock page-level scrolling and allow
+  // scrolling only inside each response column.
+  useEffect(() => {
+    if (!showCouncilColumns) return
+
+    const previousBodyOverflow = document.body.style.overflow
+    const previousBodyOverscroll = document.body.style.overscrollBehavior
+    const previousHtmlOverflow = document.documentElement.style.overflow
+    const previousHtmlOverscroll = document.documentElement.style.overscrollBehavior
+
+    document.body.style.overflow = 'hidden'
+    document.body.style.overscrollBehavior = 'none'
+    document.documentElement.style.overflow = 'hidden'
+    document.documentElement.style.overscrollBehavior = 'none'
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow
+      document.body.style.overscrollBehavior = previousBodyOverscroll
+      document.documentElement.style.overflow = previousHtmlOverflow
+      document.documentElement.style.overscrollBehavior = previousHtmlOverscroll
+    }
+  }, [showCouncilColumns])
+
   // Scroll to show the response when it first appears (after a new prompt)
   useEffect(() => {
     if (!hasActiveConversation || !inlineResponseText || !chatAreaRef.current) return
@@ -1491,8 +1514,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               pointerEvents: 'none',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <motion.button
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'start', columnGap: '10px', width: 'min(980px, calc(100% - 32px))' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <motion.button
                 onClick={() => setShowSingleTokenUsage(true)}
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
@@ -1516,31 +1540,48 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 <Coins size={14} />
                 Prompt Token Usage
               </motion.button>
-              <motion.button
-                onClick={() => triggerGenerateSummary()}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '10px 18px',
-                  borderRadius: '12px',
-                  border: `1px solid ${currentTheme.borderLight}`,
-                  background: currentTheme.buttonBackground,
-                  color: currentTheme.accent,
-                  fontSize: '0.85rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  boxShadow: `0 6px 20px ${currentTheme.shadow}`,
-                  pointerEvents: 'auto',
-                }}
-                title="Generate summary from the current council responses"
-              >
-                <Sparkles size={16} />
-                Generate Summary
-              </motion.button>
-              <motion.button
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                <motion.button
+                  onClick={() => triggerGenerateSummary()}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 18px',
+                    borderRadius: '12px',
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    background: currentTheme.buttonBackground,
+                    color: currentTheme.accent,
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    boxShadow: `0 6px 20px ${currentTheme.shadow}`,
+                    pointerEvents: 'auto',
+                  }}
+                  title="Generate summary from the current council responses"
+                >
+                  <Sparkles size={16} />
+                  Generate Summary
+                </motion.button>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    color: currentTheme.textMuted,
+                    textAlign: 'center',
+                    background: currentTheme.backgroundOverlay,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '999px',
+                    padding: '3px 10px',
+                  }}
+                >
+                  PRESS ENTER TO GENERATE
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                <motion.button
                 onClick={() => setShowTopCostBreakdown(true)}
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
@@ -1564,20 +1605,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 <DollarSign size={14} />
                 Prompt Cost Breakdown
               </motion.button>
+              </div>
             </div>
-            <span
-              style={{
-                fontSize: '0.72rem',
-                color: currentTheme.textMuted,
-                textAlign: 'center',
-                background: currentTheme.backgroundOverlay,
-                border: `1px solid ${currentTheme.borderLight}`,
-                borderRadius: '999px',
-                padding: '3px 10px',
-              }}
-            >
-              Press Enter to generate
-            </span>
           </motion.div>
         )}
         {canToggleResultViews && (
@@ -1659,7 +1688,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           className="chat-area"
         style={{
             flex: 1,
-            overflowY: 'auto',
+            overflowY: showCouncilColumns ? 'hidden' : 'auto',
             padding: showProcessingView ? '0 0 24px 0' : `${normalViewTopPadding} 40px 36px`,
           display: 'flex',
           flexDirection: 'column',
@@ -1833,6 +1862,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           padding: '0 16px 24px',
                           overflowY: 'auto',
                           overflowX: 'hidden',
+                          overscrollBehaviorY: 'contain',
                           minWidth: 0,
                           height: '100%',
                           maxWidth: arr.length === 1 ? '800px' : 'none',
