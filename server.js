@@ -37,9 +37,9 @@ process.on('unhandledRejection', (reason) => {
 // ============================================================================
 // DATE HELPERS — dynamic current date for prompts & search queries
 // ============================================================================
-const getCurrentDateString = () => {
+const getCurrentDateString = (timeZone = 'America/New_York') => {
   const now = new Date()
-  const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/New_York' }
+  const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone }
   return now.toLocaleDateString('en-US', options) // e.g. "Wednesday, February 12, 2026"
 }
 const getCurrentMonthYear = () => {
@@ -825,6 +825,20 @@ const getTodayForUser = (timezone) => {
 const getUserTimezone = (userId) => {
   const users = readUsers()
   return users[userId]?.timezone || null
+}
+
+// Date string aligned to the user's stored timezone (falls back to ET for legacy users)
+const getCurrentDateStringForUser = (userId) => {
+  const timezone = userId ? getUserTimezone(userId) : null
+  if (!timezone) {
+    return getCurrentDateString()
+  }
+  try {
+    return getCurrentDateString(timezone)
+  } catch (err) {
+    console.warn(`[Timezone] Failed to format date for user ${userId} timezone "${timezone}", falling back to ET:`, err.message)
+    return getCurrentDateString()
+  }
 }
 
 // Track a prompt submission (one per user submission, regardless of models called)
@@ -3142,7 +3156,7 @@ app.post('/api/model/clear-context', (req, res) => {
 
 // Helper function to detect category and determine if search is needed
 const detectCategoryForJudge = async (prompt, userId = null) => {
-  const todayDate = getCurrentDateString()
+  const todayDate = getCurrentDateStringForUser(userId)
   const categoryPrompt = `Today's date is ${todayDate}.
 
 Classify the user prompt into EXACTLY ONE category from the list below.
@@ -3395,7 +3409,7 @@ app.post('/api/judge/conversation', async (req, res) => {
     
     // Step 3: Build prompt for Gemini (conversational, not judge mode)
     // After the initial judge summary, the user is just talking to Gemini naturally
-    const todayDate = getCurrentDateString()
+    const todayDate = getCurrentDateStringForUser(userId)
     if (rawSourcesData && rawSourcesData.sourceCount > 0) {
       judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search — the source content below is current and already retrieved for you. Read and parse it yourself to answer. Do NOT tell the user you cannot search the web.\n\n${contextString}Here is raw content from recent web sources that may help:\n\n${rawSourcesData.formatted}\n\nUser's question: ${userMessage}`
     } else {
@@ -3595,7 +3609,7 @@ app.post('/api/judge/conversation/stream', async (req, res) => {
     }
 
     // Step 3: Build prompt
-    const todayDate = getCurrentDateString()
+    const todayDate = getCurrentDateStringForUser(userId)
     if (rawSourcesData && rawSourcesData.sourceCount > 0) {
       judgePrompt = `Today's date is ${todayDate}. You have access to real-time web search — the source content below is current and already retrieved for you. Read and parse it yourself to answer. Do NOT tell the user you cannot search the web.\n\n${contextString}Here is raw content from recent web sources that may help:\n\n${rawSourcesData.formatted}\n\nUser's question: ${userMessage}`
     } else {
@@ -3816,7 +3830,7 @@ app.post('/api/model/conversation/stream', async (req, res) => {
     const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
 
     // System message: instructions, memory context, and search results
-    let systemMessage = `Today's date is ${getCurrentDateString()}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data.`
+    let systemMessage = `Today's date is ${getCurrentDateStringForUser(userId)}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data.`
 
     if (memoryContextString) {
       systemMessage += '\n\n' + memoryContextString
@@ -4210,7 +4224,7 @@ app.post('/api/model/conversation', async (req, res) => {
     const contextSummaries = (allModelContexts[modelName] || []).slice(0, 5)
     
     // Build context string from server-stored context (position 0 = full, 1-4 = summarized)
-    let prompt = `Today's date is ${getCurrentDateString()}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data.\n\n`
+    let prompt = `Today's date is ${getCurrentDateStringForUser(userId)}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data.\n\n`
     
     if (memoryContextString) {
       prompt += memoryContextString + '\n'
@@ -7313,7 +7327,7 @@ const judgeFinalization = async (query, councilResponses, userId = null) => {
     .map((r, idx) => `\n--- Response ${idx + 1}: ${getFriendlyModelName(r.model_name)} ---\n${r.response}\n`)
     .join('')
   
-  const judgePrompt = `Today is ${getCurrentDateString()}. This is the real, current date — not hypothetical or simulated. You are a judge analyzing responses from multiple AI models to a user's question.
+  const judgePrompt = `Today is ${getCurrentDateStringForUser(userId)}. This is the real, current date — not hypothetical or simulated. You are a judge analyzing responses from multiple AI models to a user's question.
 
 Original User Query: "${query}"
 
@@ -8079,7 +8093,7 @@ app.post('/api/rag', async (req, res) => {
       console.log(`[RAG Pipeline] Council: Preparing prompt for ${modelId}`)
       console.log(`[RAG Pipeline] Council: Raw sources count: ${rawSourcesData.sourceCount}`)
       
-      const councilPrompt = `Today's date is ${getCurrentDateString()}.
+      const councilPrompt = `Today's date is ${getCurrentDateStringForUser(userId)}.
 ${memoryContextString ? `\n${memoryContextString}` : ''}
 Web Sources (background reference material):
 ${rawSourcesData.formatted}
@@ -8490,7 +8504,7 @@ async function streamRagCouncilModel({
   }
   const mappedModel = modelMappings[model] || model
 
-  const councilPrompt = `Today's date is ${getCurrentDateString()}.
+  const councilPrompt = `Today's date is ${getCurrentDateStringForUser(userId)}.
 ${memoryContextString ? `\n${memoryContextString}` : ''}
 Web Sources (background reference material):
 ${rawSourcesData.formatted}

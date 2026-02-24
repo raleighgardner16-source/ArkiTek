@@ -74,6 +74,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [singleModelConvoHistory, setSingleModelConvoHistory] = useState([])
   const [singleConvoSources, setSingleConvoSources] = useState({}) // { turnIndex: [...sources] } — per-turn single-model follow-up search
   const [showSingleConvoSources, setShowSingleConvoSources] = useState({}) // { turnIndex: true/false }
+  const [councilColumnConvoInputs, setCouncilColumnConvoInputs] = useState({}) // { responseId: inputText }
+  const [councilColumnConvoHistory, setCouncilColumnConvoHistory] = useState({}) // { responseId: [{user, assistant, timestamp}] }
+  const [councilColumnConvoSending, setCouncilColumnConvoSending] = useState({}) // { responseId: boolean }
 
   // Refs for chat layout
   const textareaRef = useRef(null)
@@ -624,6 +627,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     setShowCouncilPanel(false)
     setSingleModelConvoInput('')
     setSingleModelConvoHistory([])
+    setCouncilColumnConvoInputs({})
+    setCouncilColumnConvoHistory({})
+    setCouncilColumnConvoSending({})
     // Reset textarea height back to normal after submitting
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
@@ -1098,6 +1104,94 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       setIsSearchingInSingleConvo(false)
     }
   }
+
+  // Per-column council conversation handler (multi-model view)
+  const handleSendCouncilColumnConvo = async (response) => {
+    const responseId = response?.id
+    if (!responseId || !currentUser?.id) return
+    const rawInput = councilColumnConvoInputs[responseId] || ''
+    const userMsg = rawInput.trim()
+    if (!userMsg || councilColumnConvoSending[responseId]) return
+
+    const modelName = response.modelName || response.actualModelName
+    if (!modelName) return
+
+    setCouncilColumnConvoInputs(prev => ({ ...prev, [responseId]: '' }))
+    setCouncilColumnConvoSending(prev => ({ ...prev, [responseId]: true }))
+    setCouncilColumnConvoHistory(prev => ({
+      ...prev,
+      [responseId]: [...(prev[responseId] || []), { user: userMsg, assistant: '', timestamp: Date.now() }]
+    }))
+
+    try {
+      const finalData = await streamFetch(`${API_URL}/api/model/conversation/stream`, {
+        userId: currentUser.id,
+        modelName,
+        userMessage: userMsg,
+        originalResponse: response.text || '',
+        responseId,
+      }, {
+        onToken: (token) => {
+          setCouncilColumnConvoHistory(prev => {
+            const turns = [...(prev[responseId] || [])]
+            if (turns.length > 0) {
+              turns[turns.length - 1] = {
+                ...turns[turns.length - 1],
+                assistant: (turns[turns.length - 1].assistant || '') + token
+              }
+            }
+            return { ...prev, [responseId]: turns }
+          })
+        },
+        onStatus: () => {},
+        onError: (message) => {
+          console.error('[Council Column Convo] Stream error:', message)
+        }
+      })
+
+      if (finalData?.tokens) {
+        useStore.getState().mergeTokenData(modelName, {
+          input: finalData.tokens.input || 0,
+          output: finalData.tokens.output || 0,
+          total: finalData.tokens.total || 0,
+        }, false)
+      }
+
+      if (currentUser?.id && finalData?.tokens?.total > 0) {
+        axios.post(`${API_URL}/api/stats/token-update`, {
+          userId: currentUser.id,
+          promptTokens: finalData.tokens.total,
+        }).then(() => {
+          useStore.getState().triggerStatsRefresh()
+        }).catch(err => console.error('[Token Update] Council column conversation token update failed:', err.message))
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        setCouncilColumnConvoHistory(prev => ({
+          ...prev,
+          [responseId]: (prev[responseId] || []).slice(0, -1)
+        }))
+      } else {
+        console.error('[Council Column Convo] Error:', error)
+        setCouncilColumnConvoHistory(prev => ({
+          ...prev,
+          [responseId]: (prev[responseId] || []).slice(0, -1)
+        }))
+        setCouncilColumnConvoInputs(prev => ({ ...prev, [responseId]: userMsg }))
+      }
+    } finally {
+      setCouncilColumnConvoSending(prev => ({ ...prev, [responseId]: false }))
+    }
+  }
+
+  // Cleanup local per-column convo state when responses are cleared
+  useEffect(() => {
+    if (responses.length === 0) {
+      setCouncilColumnConvoInputs({})
+      setCouncilColumnConvoHistory({})
+      setCouncilColumnConvoSending({})
+    }
+  }, [responses.length])
 
   // Auto-grow conversation textarea
   const adjustConvoTextarea = () => {
@@ -1608,6 +1702,51 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                 </motion.div>
                               )}
                             </div>
+                            {showCouncilReviewPhase && (
+                              <div style={{ marginTop: '14px', borderTop: `1px solid ${currentTheme.borderLight}`, paddingTop: '12px' }}>
+                                {(councilColumnConvoHistory[response.id] || []).map((turn, turnIdx) => (
+                                  <div key={`${response.id}-turn-${turnIdx}`} style={{ marginBottom: '10px' }}>
+                                    <div style={{ fontSize: '0.7rem', color: currentTheme.textMuted, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>You</div>
+                                    <div style={{ fontSize: '0.8rem', color: currentTheme.text, marginBottom: '8px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                                      {turn.user}
+                                    </div>
+                                    <div style={{ fontSize: '0.7rem', color: currentTheme.accent, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                                      {getProviderDisplayName(response.modelName)}
+                                    </div>
+                                    <div style={{ fontSize: '0.8rem', color: currentTheme.textSecondary, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                                      {turn.assistant || (councilColumnConvoSending[response.id] ? 'Thinking...' : '')}
+                                    </div>
+                                  </div>
+                                ))}
+                                <textarea
+                                  value={councilColumnConvoInputs[response.id] || ''}
+                                  onChange={(e) => setCouncilColumnConvoInputs(prev => ({ ...prev, [response.id]: e.target.value }))}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                      e.preventDefault()
+                                      handleSendCouncilColumnConvo(response)
+                                    }
+                                  }}
+                                  placeholder="Continue the conversation..."
+                                  disabled={!!councilColumnConvoSending[response.id]}
+                                  style={{
+                                    width: '100%',
+                                    minHeight: '44px',
+                                    maxHeight: '120px',
+                                    padding: '10px 12px',
+                                    background: currentTheme.buttonBackground,
+                                    border: `1px solid ${currentTheme.borderLight}`,
+                                    borderRadius: '10px',
+                                    color: currentTheme.text,
+                                    fontSize: '0.82rem',
+                                    resize: 'vertical',
+                                    fontFamily: 'inherit',
+                                    outline: 'none',
+                                    lineHeight: '1.4',
+                                  }}
+                                />
+                              </div>
+                            )}
                           </motion.div>
                         </div>
                       </React.Fragment>
