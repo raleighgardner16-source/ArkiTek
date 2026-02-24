@@ -385,7 +385,8 @@ const StatisticsView = () => {
         monthlyTokens: 0,
         monthlyPrompts: 0,
         monthlyCost: 0,
-        remainingFreeAllocation: 7.50,
+        freeMonthlyAllocation: 0,
+        remainingFreeAllocation: 0,
         freeUsagePercentage: 100,
         dailyUsage: [],
         providers: {},
@@ -474,9 +475,10 @@ const StatisticsView = () => {
     monthlyOutputTokens: 0,
     monthlyPrompts: 0,
     monthlyCost: 0,
-    remainingFreeAllocation: 7.50,
+    freeMonthlyAllocation: 0,
+    remainingFreeAllocation: 0,
     freeUsagePercentage: 100,
-    totalAvailableBalance: 7.50,
+    totalAvailableBalance: 0,
     purchasedCredits: { total: 0, remaining: 0, purchaseCount: 0, lastPurchase: null },
     dailyUsage: [],
     providers: {},
@@ -862,9 +864,9 @@ const StatisticsView = () => {
                   <p style={{ fontSize: '0.85rem', color: (userStats.monthlyCost || 0) > 0 ? '#f0a050' : currentTheme.textMuted, margin: '0 0 4px 0', fontStyle: 'italic' }}>
                     Monthly Spend: ${(userStats.monthlyCost || 0).toFixed(2)}
                   </p>
-                  {(userStats.monthlyCost || 0) > 7.50 && (
+                  {(userStats.monthlyCost || 0) > (userStats.freeMonthlyAllocation || 0) && (userStats.freeMonthlyAllocation || 0) > 0 && (
                     <p style={{ fontSize: '0.85rem', color: '#ff6b6b', margin: '0 0 4px 0', fontStyle: 'italic' }}>
-                      Additional Usage: ${Math.max(0, (userStats.monthlyCost || 0) - 7.50).toFixed(2)}
+                      Additional Usage: ${Math.max(0, (userStats.monthlyCost || 0) - (userStats.freeMonthlyAllocation || 0)).toFixed(2)}
                     </p>
                   )}
                   <p style={{ fontSize: '0.85rem', color: (userStats.purchasedCredits?.remaining || 0) > 0 ? '#00cc66' : currentTheme.textMuted, margin: 0, fontStyle: 'italic' }}>

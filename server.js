@@ -2823,7 +2823,8 @@ app.get('/api/stats/:userId', async (req, res) => {
   const createdAt = user?.createdAt || null
 
   // Calculate monthly cost and remaining free allocation
-  const FREE_MONTHLY_ALLOCATION = 7.50 // $7.50 per month included in subscription
+  // Free trial users only get their $0.50 purchasedCredits — no monthly allocation
+  const FREE_MONTHLY_ALLOCATION = (user?.plan === 'free_trial') ? 0 : 7.50
   
   // Get the tracked monthly cost from users cache (incremental counter)
   let cachedMonthlyCost = user?.monthlyUsageCost?.[currentMonth] || 0
@@ -2930,8 +2931,8 @@ app.get('/api/stats/:userId', async (req, res) => {
         dayCost += queryCost
       }
       
-      // Calculate percentage of $7.50 allocation used on this day
-      const dayPercentage = (dayCost / FREE_MONTHLY_ALLOCATION) * 100
+      const effectiveAllocation = FREE_MONTHLY_ALLOCATION + (purchasedCredits.total || 0)
+      const dayPercentage = effectiveAllocation > 0 ? (dayCost / effectiveAllocation) * 100 : 0
       
       dailyUsage.push({
         date: dateStr,
@@ -2980,6 +2981,7 @@ app.get('/api/stats/:userId', async (req, res) => {
     monthlyOutputTokens: monthlyStats.outputTokens || 0,
     monthlyPrompts: monthlyPrompts,
     monthlyCost: roundCents(monthlyCost),
+    freeMonthlyAllocation: FREE_MONTHLY_ALLOCATION,
     remainingFreeAllocation: roundCents(remainingFreeAllocation),
     freeUsagePercentage: Math.round(freeUsagePercentage * 100) / 100,
     totalAvailableBalance: roundCents(totalAvailableBalance),
@@ -11720,7 +11722,8 @@ const calculateAndRecordOverage = async (userId, month) => {
     }
     
     // Calculate monthly cost
-    const FREE_MONTHLY_ALLOCATION = 7.50
+    // Free trial users have no monthly allocation (they only get purchasedCredits)
+    const FREE_MONTHLY_ALLOCATION = (user?.plan === 'free_trial') ? 0 : 7.50
     const pricing = getPricingData()
     const dailyData = userUsage.dailyUsage?.[month] || {}
     let monthlyCost = 0
