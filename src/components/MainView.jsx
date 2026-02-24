@@ -77,6 +77,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [councilColumnConvoInputs, setCouncilColumnConvoInputs] = useState({}) // { responseId: inputText }
   const [councilColumnConvoHistory, setCouncilColumnConvoHistory] = useState({}) // { responseId: [{user, assistant, timestamp}] }
   const [councilColumnConvoSending, setCouncilColumnConvoSending] = useState({}) // { responseId: boolean }
+  const [isCouncilColumnInputFocused, setIsCouncilColumnInputFocused] = useState(false)
+  const [isSubmitPending, setIsSubmitPending] = useState(false) // Immediate UI feedback before App flips isLoading
 
   // Refs for chat layout
   const textareaRef = useRef(null)
@@ -539,6 +541,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       // Only trigger on Enter key (not Shift+Enter)
       if (e.key !== 'Enter' || e.shiftKey) return
       if (e.defaultPrevented) return
+      if (isCouncilColumnInputFocused) return
 
       const target = e.target
       if (target?.closest?.('[data-local-enter-handler="true"]')) {
@@ -548,8 +551,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       // Don't trigger if user is focused on ANY input/textarea
       const activeElement = document.activeElement
       const tagName = activeElement?.tagName?.toLowerCase()
+      const activeElementHasLocalHandler = activeElement?.closest?.('[data-local-enter-handler="true"]')
       
-      if (tagName === 'input' || tagName === 'textarea') {
+      if (activeElementHasLocalHandler || tagName === 'input' || tagName === 'textarea') {
         return
       }
 
@@ -575,13 +579,26 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         return
       }
       
+      setIsSubmitPending(true)
       e.preventDefault()
       handleSubmitRef.current()
     }
     
     window.addEventListener('keydown', handleGlobalKeyDown)
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [currentPrompt, selectedModels, autoSmartProviders, isLoading, isGeneratingSummary, summary, responses, triggerGenerateSummary])
+  }, [currentPrompt, selectedModels, autoSmartProviders, isLoading, isGeneratingSummary, summary, responses, triggerGenerateSummary, isCouncilColumnInputFocused])
+
+  // Hand-off/reset for immediate-submit UI state.
+  // Clear when real processing starts or once results are present.
+  useEffect(() => {
+    if (isLoading || isGeneratingSummary) {
+      setIsSubmitPending(false)
+      return
+    }
+    if (!isLoading && !isGeneratingSummary && (responses.length > 0 || !!summary)) {
+      setIsSubmitPending(false)
+    }
+  }, [isLoading, isGeneratingSummary, responses.length, summary])
   
   // Ref to always have the latest handleSubmit function
   const handleSubmitRef = useRef(null)
@@ -624,6 +641,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       console.warn('[Submit] No models selected and no Auto Smart enabled')
       setShowNoModelNotification(true)
       setTimeout(() => setShowNoModelNotification(false), 4000)
+      setIsSubmitPending(false)
       return
     }
     
@@ -781,6 +799,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           } else {
             console.error('[Auto Smart] Failed to select models and no manual selections')
             alert('Failed to automatically select models. Please manually select models or try again.')
+            setIsSubmitPending(false)
           }
         }
       } catch (error) {
@@ -789,11 +808,14 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           triggerSubmit()
         } else {
           alert('Error getting model recommendations. Please manually select models or try again.')
+          setIsSubmitPending(false)
         }
       }
     } else {
       if (selectedModels.length > 0) {
         triggerSubmit()
+      } else {
+        setIsSubmitPending(false)
       }
     }
   }
@@ -1404,13 +1426,15 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             style={{
               position: 'absolute',
               top: '20px',
-              left: '50%',
-              transform: 'translateX(-50%)',
+              left: 0,
+              right: 0,
               zIndex: 30,
               display: 'flex',
-              flexDirection: 'column',
               alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'column',
               gap: '6px',
+              pointerEvents: 'none',
             }}
           >
             <motion.button
@@ -1430,6 +1454,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 fontWeight: '600',
                 cursor: 'pointer',
                 boxShadow: `0 6px 20px ${currentTheme.shadow}`,
+                pointerEvents: 'auto',
               }}
               title="Generate summary from the current council responses"
             >
@@ -1736,6 +1761,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                   data-local-enter-handler="true"
                                   value={councilColumnConvoInputs[response.id] || ''}
                                   onChange={(e) => setCouncilColumnConvoInputs(prev => ({ ...prev, [response.id]: e.target.value }))}
+                                  onFocus={() => setIsCouncilColumnInputFocused(true)}
+                                  onBlur={() => setIsCouncilColumnInputFocused(false)}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter' && !e.shiftKey) {
                                       e.preventDefault()
@@ -3151,6 +3178,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     const hasAutoSmart = Object.values(autoSmartProviders).some(enabled => enabled)
                     if (currentPrompt.trim()) {
                       if (selectedModels.length > 0 || hasAutoSmart) {
+                        setIsSubmitPending(true)
                         handleSubmit()
                       } else {
                         setShowNoModelNotification(true)
@@ -3285,7 +3313,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     const hasModels = selectedModels.length > 0 || hasAutoSmart
                     const canSubmit = currentPrompt.trim() && hasModels
                     const hasPromptOnly = currentPrompt.trim() && !hasModels
-                    const isProcessing = isLoading || isGeneratingSummary
+                    const isProcessing = isSubmitPending || isLoading || isGeneratingSummary
                     
                     return (
                       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -3318,6 +3346,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       <motion.button
                         onClick={() => {
                           if (canSubmit) {
+                            setIsSubmitPending(true)
                             handleSubmit()
                           } else if (hasPromptOnly) {
                             setShowNoModelNotification(true)
