@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus, Coins, DollarSign } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus, Coins, DollarSign, Maximize2, X } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 import { detectCategory } from '../utils/categoryDetector'
@@ -86,6 +86,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [showCouncilColumnConvoSources, setShowCouncilColumnConvoSources] = useState({}) // { `${responseId}-${turnIdx}`: boolean }
   const [isCouncilColumnInputFocused, setIsCouncilColumnInputFocused] = useState(false)
   const [isSubmitPending, setIsSubmitPending] = useState(false) // Immediate UI feedback before App flips isLoading
+  const [maximizedCouncilResponseId, setMaximizedCouncilResponseId] = useState(null)
   const [resultViewMode, setResultViewMode] = useState('summary') // 'summary' | 'council'
 
   // Refs for chat layout
@@ -1382,6 +1383,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const topBarVisible = canGenerateSummary || canToggleResultViews
   const normalViewTopPadding = topBarVisible ? '140px' : '100px'
   const processingTopPadding = topBarVisible ? 150 : 80
+  const maximizedCouncilResponse = maximizedCouncilResponseId
+    ? councilDisplayResponses.find(r => r.id === maximizedCouncilResponseId) || null
+    : null
 
   useEffect(() => {
     if (!canToggleResultViews && resultViewMode !== 'summary') {
@@ -1990,20 +1994,45 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             <div style={{
                               display: 'flex',
                               alignItems: 'center',
-                              fontSize: '0.75rem',
-                              fontWeight: '700',
-                              color: currentTheme.accent,
+                              justifyContent: 'space-between',
+                              gap: '8px',
                               marginBottom: '12px',
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.8px',
                               paddingBottom: '8px',
                               borderBottom: `1px solid ${currentTheme.borderLight}`,
                               minHeight: '32px',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
                             }}>
-                              {getProviderDisplayName(response.modelName)}
+                              <div style={{
+                                fontSize: '0.75rem',
+                                fontWeight: '700',
+                                color: currentTheme.accent,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.8px',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}>
+                                {getProviderDisplayName(response.modelName)}
+                              </div>
+                              <button
+                                onClick={() => setMaximizedCouncilResponseId(response.id)}
+                                title="Expand response"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '24px',
+                                  height: '24px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${currentTheme.borderLight}`,
+                                  background: currentTheme.buttonBackground,
+                                  color: currentTheme.textSecondary,
+                                  cursor: 'pointer',
+                                  flexShrink: 0,
+                                  transition: 'all 0.2s ease',
+                                }}
+                              >
+                                <Maximize2 size={13} />
+                              </button>
                             </div>
                             <div style={{
                               fontSize: arr.length > 3 ? '0.8rem' : '0.85rem',
@@ -2579,57 +2608,83 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         </div>
                       </div>
 
-                      {/* Response - free flowing */}
-                      <div style={{ padding: '4px 0 0 4px' }}>
-                        <div style={{
-                          marginBottom: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                          gap: '6px',
-                        }}>
-                          <span style={{
-                            color: currentTheme.accent,
-                            fontSize: '0.8rem',
-                            fontWeight: '600',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px',
-                          }}>
-                            Response
-                          </span>
-                        </div>
-                        <div>
-                          <MarkdownRenderer content={exchange.assistant || exchange.judge} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
-                        </div>
-                      </div>
-                      {/* Per-turn Sources Tab (inline summary convo) */}
+                      {/* Response / Sources tabs for follow-up turns */}
                       {(() => {
-                        const turnSources = summaryConvoSources[idx]
-                        if (!turnSources || turnSources.length === 0) return null
+                        const turnSources = summaryConvoSources[idx] || []
+                        const hasTurnSources = turnSources.length > 0
                         const toggleKey = `summary_${idx}`
+                        const showSourcesTab = hasTurnSources && !!showSummaryConvoSources[toggleKey]
+
                         return (
-                          <div style={{ marginTop: '8px', marginBottom: '4px' }}>
-                            <button
-                              onClick={() => setShowSummaryConvoSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px',
-                                background: showSummaryConvoSources[toggleKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
-                                border: `1px solid ${showSummaryConvoSources[toggleKey] ? currentTheme.accent : currentTheme.borderLight}`,
-                                borderRadius: '8px', color: currentTheme.accent, fontSize: '0.75rem', fontWeight: '500',
-                                cursor: 'pointer', transition: 'all 0.2s ease',
-                              }}
-                            >
-                              <Globe size={12} />
-                              Sources ({turnSources.length})
-                              <ChevronDown size={12} style={{ transform: showSummaryConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
-                            </button>
-                            {showSummaryConvoSources[toggleKey] && (
+                          <div style={{ padding: '4px 0 0 4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                              <button
+                                onClick={() => setShowSummaryConvoSources(prev => ({ ...prev, [toggleKey]: false }))}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '5px 10px',
+                                  background: !showSourcesTab ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                                  border: `1px solid ${!showSourcesTab ? currentTheme.accent : currentTheme.borderLight}`,
+                                  borderRadius: '8px',
+                                  color: !showSourcesTab ? currentTheme.accent : currentTheme.textSecondary,
+                                  fontSize: '0.75rem',
+                                  fontWeight: '600',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                }}
+                              >
+                                <FileText size={12} />
+                                Response
+                              </button>
+                              {hasTurnSources && (
+                                <button
+                                  onClick={() => setShowSummaryConvoSources(prev => ({ ...prev, [toggleKey]: true }))}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '5px 10px',
+                                    background: showSourcesTab ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                                    border: `1px solid ${showSourcesTab ? currentTheme.accent : currentTheme.borderLight}`,
+                                    borderRadius: '8px',
+                                    color: showSourcesTab ? currentTheme.accent : currentTheme.textSecondary,
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                  }}
+                                >
+                                  <Globe size={12} />
+                                  Sources ({turnSources.length})
+                                </button>
+                              )}
+                            </div>
+
+                            {!showSourcesTab ? (
+                              <MarkdownRenderer content={exchange.assistant || exchange.judge} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
+                            ) : (
                               <motion.div
-                                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                                style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
+                                initial={{ opacity: 0, y: 2 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
                               >
                                 {turnSources.map((source, sIdx) => (
-                                  <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
-                                    style={{ display: 'block', padding: '6px 10px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '6px', textDecoration: 'none', transition: 'border-color 0.2s' }}
+                                  <a
+                                    key={sIdx}
+                                    href={source.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      display: 'block',
+                                      padding: '6px 10px',
+                                      background: currentTheme.buttonBackground,
+                                      border: `1px solid ${currentTheme.borderLight}`,
+                                      borderRadius: '6px',
+                                      textDecoration: 'none',
+                                      transition: 'border-color 0.2s',
+                                    }}
                                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
                                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
                                   >
@@ -3029,56 +3084,74 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         </div>
                       </div>
 
-                      {/* Model response - free flowing */}
-                      <div style={{ padding: '4px 0 0 4px' }}>
-                        <div style={{
-                          marginBottom: '10px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                        }}>
-                          <span style={{
-                            color: currentTheme.accent,
-                            fontSize: '0.8rem',
-                            fontWeight: '600',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px',
-                          }}>
-                            {inlineResponseLabel || 'Response'}
-                          </span>
-          </div>
-                        <div>
-                          <MarkdownRenderer content={exchange.assistant} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
-                        </div>
-                      </div>
-                      {/* Per-turn Sources Tab (inline single-model convo) */}
+                      {/* Response / Sources tabs for follow-up turns */}
                       {(() => {
-                        const turnSources = singleConvoSources[idx]
-                        if (!turnSources || turnSources.length === 0) return null
+                        const turnSources = singleConvoSources[idx] || []
+                        const hasTurnSources = turnSources.length > 0
                         const toggleKey = `single_${idx}`
+                        const showSourcesTab = hasTurnSources && !!showSingleConvoSources[toggleKey]
+
                         return (
-                          <div style={{ marginTop: '8px', marginBottom: '4px' }}>
-                            <button
-                              onClick={() => setShowSingleConvoSources(prev => ({ ...prev, [toggleKey]: !prev[toggleKey] }))}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px',
-                                background: showSingleConvoSources[toggleKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
-                                border: `1px solid ${showSingleConvoSources[toggleKey] ? currentTheme.accent : currentTheme.borderLight}`,
-                                borderRadius: '8px', color: currentTheme.accent, fontSize: '0.75rem', fontWeight: '500',
-                                cursor: 'pointer', transition: 'all 0.2s ease',
-                              }}
-                            >
-                              <Globe size={12} />
-                              Sources ({turnSources.length})
-                              <ChevronDown size={12} style={{ transform: showSingleConvoSources[toggleKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
-                            </button>
-                            {showSingleConvoSources[toggleKey] && (
+                          <div style={{ padding: '4px 0 0 4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                              <button
+                                onClick={() => setShowSingleConvoSources(prev => ({ ...prev, [toggleKey]: false }))}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '5px 10px',
+                                  background: !showSourcesTab ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                                  border: `1px solid ${!showSourcesTab ? currentTheme.accent : currentTheme.borderLight}`,
+                                  borderRadius: '8px',
+                                  color: !showSourcesTab ? currentTheme.accent : currentTheme.textSecondary,
+                                  fontSize: '0.75rem',
+                                  fontWeight: '600',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                }}
+                              >
+                                <FileText size={12} />
+                                {inlineResponseLabel || 'Response'}
+                              </button>
+                              {hasTurnSources && (
+                                <button
+                                  onClick={() => setShowSingleConvoSources(prev => ({ ...prev, [toggleKey]: true }))}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '5px 10px',
+                                    background: showSourcesTab ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                                    border: `1px solid ${showSourcesTab ? currentTheme.accent : currentTheme.borderLight}`,
+                                    borderRadius: '8px',
+                                    color: showSourcesTab ? currentTheme.accent : currentTheme.textSecondary,
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                  }}
+                                >
+                                  <Globe size={12} />
+                                  Sources ({turnSources.length})
+                                </button>
+                              )}
+                            </div>
+
+                            {!showSourcesTab ? (
+                              <MarkdownRenderer content={exchange.assistant} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
+                            ) : (
                               <motion.div
-                                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                                style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
+                                initial={{ opacity: 0, y: 2 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}
                               >
                                 {turnSources.map((source, sIdx) => (
-                                  <a key={sIdx} href={source.link} target="_blank" rel="noopener noreferrer"
+                                  <a
+                                    key={sIdx}
+                                    href={source.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     style={{ display: 'block', padding: '6px 10px', background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`, borderRadius: '6px', textDecoration: 'none', transition: 'border-color 0.2s' }}
                                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
                                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
@@ -3934,6 +4007,304 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         </div>
         )}
       </div>
+
+      {/* Expanded Council Column Response Popup */}
+      <AnimatePresence>
+        {maximizedCouncilResponse && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setMaximizedCouncilResponseId(null)}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 900,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: theme === 'light' ? 'rgba(0, 0, 0, 0.35)' : 'rgba(0, 0, 0, 0.72)',
+              backdropFilter: 'blur(4px)',
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'relative',
+                width: 'min(900px, calc(100vw - 48px))',
+                maxHeight: '82vh',
+                overflowY: 'auto',
+                background: currentTheme.backgroundOverlay,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '14px',
+                padding: '22px',
+                boxShadow: theme === 'light'
+                  ? '0 10px 40px rgba(0, 0, 0, 0.18)'
+                  : '0 10px 40px rgba(0, 0, 0, 0.6)',
+              }}
+            >
+              <button
+                onClick={() => setMaximizedCouncilResponseId(null)}
+                title="Close"
+                style={{
+                  position: 'absolute',
+                  top: '14px',
+                  right: '14px',
+                  background: 'rgba(255, 0, 0, 0.08)',
+                  border: '1px solid rgba(255, 0, 0, 0.3)',
+                  borderRadius: '8px',
+                  padding: '6px',
+                  color: '#ff6b6b',
+                  cursor: 'pointer',
+                }}
+              >
+                <X size={16} />
+              </button>
+
+              <div style={{ marginBottom: '14px', paddingRight: '36px' }}>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: '1.25rem',
+                    fontWeight: '700',
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  }}
+                >
+                  {getProviderDisplayName(maximizedCouncilResponse.modelName)}
+                </h3>
+              </div>
+
+              <MarkdownRenderer
+                content={typeof maximizedCouncilResponse.text === 'string' ? maximizedCouncilResponse.text : String(maximizedCouncilResponse.text || '')}
+                theme={currentTheme}
+                fontSize="1rem"
+                lineHeight="1.8"
+              />
+
+              {Array.isArray(maximizedCouncilResponse.sources) && maximizedCouncilResponse.sources.length > 0 && (
+                <div style={{ marginTop: '14px', borderTop: `1px solid ${currentTheme.borderLight}`, paddingTop: '12px' }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    marginBottom: '8px',
+                    color: currentTheme.accent,
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                  }}>
+                    <Globe size={14} />
+                    Sources ({maximizedCouncilResponse.sources.length})
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '220px', overflowY: 'auto' }}>
+                    {maximizedCouncilResponse.sources.map((source, sIdx) => (
+                      <a
+                        key={sIdx}
+                        href={source.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'block',
+                          padding: '8px 12px',
+                          background: currentTheme.buttonBackground,
+                          border: `1px solid ${currentTheme.borderLight}`,
+                          borderRadius: '8px',
+                          textDecoration: 'none',
+                          transition: 'border-color 0.2s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                      >
+                        <div style={{ fontSize: '0.8rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {source.title}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {source.link}
+                        </div>
+                        {source.snippet && (
+                          <div style={{ fontSize: '0.75rem', color: currentTheme.textSecondary, marginTop: '4px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                            {source.snippet}
+                          </div>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: '16px', borderTop: `1px solid ${currentTheme.borderLight}`, paddingTop: '12px' }}>
+                {(councilColumnConvoHistory[maximizedCouncilResponse.id] || []).map((turn, turnIdx) => {
+                  const turnSourceKey = `${maximizedCouncilResponse.id}-${turnIdx}`
+                  const turnSources = councilColumnConvoSources[turnSourceKey] || []
+                  const isLastTurn = turnIdx === (councilColumnConvoHistory[maximizedCouncilResponse.id] || []).length - 1
+                  return (
+                    <div key={`${maximizedCouncilResponse.id}-modal-turn-${turnIdx}`} style={{ marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <div style={{
+                          maxWidth: '80%',
+                          padding: '8px 10px',
+                          borderRadius: '10px',
+                          border: theme === 'light' ? '1px solid rgba(0, 0, 0, 0.15)' : '1px solid rgba(255, 255, 255, 0.35)',
+                          background: theme === 'light' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.08)',
+                        }}>
+                          <div style={{ fontSize: '0.8rem', color: theme === 'light' ? '#111111' : currentTheme.text, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                            {turn.user}
+                          </div>
+                        </div>
+                      </div>
+
+                      {isLastTurn && councilColumnConvoSearching[maximizedCouncilResponse.id] && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 3 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            margin: '8px 0 6px',
+                            padding: '5px 10px',
+                            background: currentTheme.buttonBackground,
+                            borderRadius: '16px',
+                            width: 'fit-content',
+                          }}
+                        >
+                          <Search size={12} color={currentTheme.accent} />
+                          <span style={{
+                            fontSize: '0.75rem',
+                            background: currentTheme.accentGradient,
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                          }}>
+                            Searching the web
+                          </span>
+                          <motion.span
+                            animate={{ opacity: [1, 0.3, 1] }}
+                            transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                            style={{
+                              background: currentTheme.accentGradient,
+                              WebkitBackgroundClip: 'text',
+                              WebkitTextFillColor: 'transparent',
+                            }}
+                          >
+                            ...
+                          </motion.span>
+                        </motion.div>
+                      )}
+
+                      <div style={{ marginTop: '6px', fontSize: '0.95rem', color: currentTheme.textSecondary, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                        <MarkdownRenderer content={turn.assistant || ''} theme={currentTheme} fontSize="0.95rem" lineHeight="1.7" />
+                      </div>
+
+                      {turnSources.length > 0 && (
+                        <div style={{ marginTop: '8px' }}>
+                          <button
+                            onClick={() => setShowCouncilColumnConvoSources(prev => ({ ...prev, [turnSourceKey]: !prev[turnSourceKey] }))}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '5px 10px',
+                              background: showCouncilColumnConvoSources[turnSourceKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                              border: `1px solid ${showCouncilColumnConvoSources[turnSourceKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                              borderRadius: '8px',
+                              color: currentTheme.accent,
+                              fontSize: '0.75rem',
+                              fontWeight: '500',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease',
+                            }}
+                          >
+                            <Globe size={12} />
+                            Sources ({turnSources.length})
+                            <ChevronDown size={12} style={{ transform: showCouncilColumnConvoSources[turnSourceKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                          </button>
+                          {showCouncilColumnConvoSources[turnSourceKey] && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '170px', overflowY: 'auto' }}
+                            >
+                              {turnSources.map((source, sIdx) => (
+                                <a
+                                  key={sIdx}
+                                  href={source.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    display: 'block',
+                                    padding: '6px 10px',
+                                    background: currentTheme.buttonBackground,
+                                    border: `1px solid ${currentTheme.borderLight}`,
+                                    borderRadius: '6px',
+                                    textDecoration: 'none',
+                                  }}
+                                >
+                                  <div style={{ fontSize: '0.75rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {source.title}
+                                  </div>
+                                  <div style={{ fontSize: '0.65rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {source.link}
+                                  </div>
+                                  {source.snippet && (
+                                    <div style={{ fontSize: '0.7rem', color: currentTheme.textSecondary, marginTop: '3px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                      {source.snippet}
+                                    </div>
+                                  )}
+                                </a>
+                              ))}
+                            </motion.div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                <textarea
+                  data-local-enter-handler="true"
+                  value={councilColumnConvoInputs[maximizedCouncilResponse.id] || ''}
+                  onChange={(e) => setCouncilColumnConvoInputs(prev => ({ ...prev, [maximizedCouncilResponse.id]: e.target.value }))}
+                  onFocus={() => setIsCouncilColumnInputFocused(true)}
+                  onBlur={() => setIsCouncilColumnInputFocused(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleSendCouncilColumnConvo(maximizedCouncilResponse)
+                    }
+                  }}
+                  placeholder="Continue the conversation..."
+                  disabled={!!councilColumnConvoSending[maximizedCouncilResponse.id]}
+                  style={{
+                    width: '100%',
+                    minHeight: '46px',
+                    maxHeight: '130px',
+                    padding: '10px 12px',
+                    marginTop: '8px',
+                    background: currentTheme.buttonBackground,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '10px',
+                    color: currentTheme.text,
+                    fontSize: '0.85rem',
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                    outline: 'none',
+                    lineHeight: '1.45',
+                  }}
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Provider Models Dropdowns - rendered at top level to avoid transform containing block issues */}
                 <AnimatePresence>
