@@ -332,6 +332,35 @@ const SummaryWindow = () => {
     setDragOffset({ x: offsetX, y: offsetY })
   }
 
+  const renderStructuredSummaryText = (text, fontSize, lineHeight) => {
+    const content = (text || '').toString()
+    if (!content.trim()) return null
+
+    const headerPattern = /^(CONSENSUS|SUMMARY|AGREEMENTS|CONTRADICTIONS|DIFFERENCES):/i
+    const lines = content.split('\n')
+
+    return lines.map((line, index) => {
+      const isHeader = headerPattern.test(line.trim())
+      return (
+        <div
+          key={`summary-line-${index}`}
+          style={{
+            color: currentTheme.textSecondary,
+            fontSize,
+            lineHeight,
+            fontWeight: isHeader ? '700' : '400',
+            textTransform: isHeader ? 'uppercase' : 'none',
+            margin: 0,
+            minHeight: line.trim() === '' ? `${lineHeight}em` : 'auto',
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {line}
+        </div>
+      )
+    })
+  }
+
   // Debug log
   useEffect(() => {
   }, [summary])
@@ -534,7 +563,7 @@ const SummaryWindow = () => {
             background: currentTheme.backgroundOverlay,
             border: `1px solid ${currentTheme.border}`,
             borderRadius: '16px',
-            padding: '30px',
+            padding: '30px 30px 44px',
             maxWidth: '900px',
             width: '100%',
             maxHeight: '80vh',
@@ -669,18 +698,22 @@ const SummaryWindow = () => {
                   {summary.singleModel ? (summary.modelName || 'Model') : 'Summary'}
                 </span>
               </div>
-              <p
-                style={{
-                  color: currentTheme.textSecondary,
-                  lineHeight: '1.8',
-                  fontSize: '1rem',
-                  whiteSpace: 'pre-wrap',
-                  margin: 0,
-                  fontStyle: 'normal',
-                }}
-              >
-                {summary.singleModel && summary.summary ? summary.summary : (summary.initialSummary || summary.text || 'No summary content available.')}
-              </p>
+              {summary.singleModel
+                ? (
+                  <p
+                    style={{
+                      color: currentTheme.textSecondary,
+                      lineHeight: '1.8',
+                      fontSize: '1rem',
+                      whiteSpace: 'pre-wrap',
+                      margin: 0,
+                      fontStyle: 'normal',
+                    }}
+                  >
+                    {summary.summary || 'No summary content available.'}
+                  </p>
+                )
+                : renderStructuredSummaryText(summary.initialSummary || summary.text || 'No summary content available.', '1rem', 1.8)}
             </div>
 
             {/* Initial Sources — shown with the first prompt+response pair */}
@@ -1002,7 +1035,7 @@ const SummaryWindow = () => {
         background: currentTheme.backgroundOverlay,
         border: `1px solid ${currentTheme.border}`,
         borderRadius: '16px',
-        padding: '30px',
+        padding: '30px 30px 44px',
         zIndex: 300,
         boxShadow: `0 0 40px ${currentTheme.shadow}`,
         overflowY: 'auto',
@@ -1158,18 +1191,22 @@ const SummaryWindow = () => {
               {summary.singleModel ? (summary.modelName || 'Model') : 'Summary'}
             </span>
           </div>
-          <p
-            style={{
-              color: currentTheme.textSecondary,
-              lineHeight: '1.7',
-              fontSize: '0.95rem',
-              whiteSpace: 'pre-wrap',
-              margin: 0,
-              fontStyle: 'normal',
-            }}
-          >
-            {summary.singleModel && summary.summary ? summary.summary : (summary.initialSummary || summary.text || 'No summary content available.')}
-          </p>
+          {summary.singleModel
+            ? (
+              <p
+                style={{
+                  color: currentTheme.textSecondary,
+                  lineHeight: '1.7',
+                  fontSize: '0.95rem',
+                  whiteSpace: 'pre-wrap',
+                  margin: 0,
+                  fontStyle: 'normal',
+                }}
+              >
+                {summary.summary || 'No summary content available.'}
+              </p>
+            )
+            : renderStructuredSummaryText(summary.initialSummary || summary.text || 'No summary content available.', '0.95rem', 1.7)}
         </div>
 
         {/* Initial Sources — shown with the first prompt+response pair (minimized) */}

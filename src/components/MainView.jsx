@@ -1286,7 +1286,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             animate={{ opacity: 1, y: 0 }}
             style={{
               position: 'absolute',
-              top: '74px',
+              top: '20px',
               left: '50%',
               transform: 'translateX(-50%)',
               zIndex: 30,
@@ -1342,7 +1342,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         style={{
             flex: 1,
             overflowY: 'auto',
-            padding: showProcessingView ? '0' : '100px 40px 20px',
+            padding: showProcessingView ? '0 0 24px 0' : '100px 40px 36px',
           display: 'flex',
           flexDirection: 'column',
           }}
@@ -1359,7 +1359,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               width: '100%',
               height: '100%',
               position: 'relative',
-              padding: showCouncilLoading ? '0' : '80px 20px 20px',
+              padding: showCouncilLoading ? '0 0 24px 0' : `${canGenerateSummary ? 150 : 80}px 20px 36px`,
             }}>
               {/* Cancel button - floating top right */}
               <motion.button
@@ -1507,7 +1507,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         )}
                         <div style={{
                           flex: 1,
-                          padding: '0 16px',
+                          padding: '0 16px 24px',
                           overflowY: 'auto',
                           minWidth: 0,
                           maxWidth: arr.length === 1 ? '800px' : 'none',
@@ -1518,6 +1518,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             transition={{ delay: index * 0.1 }}
                           >
                             <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
                               fontSize: '0.75rem',
                               fontWeight: '700',
                               color: currentTheme.accent,
@@ -1526,6 +1528,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                               letterSpacing: '0.8px',
                               paddingBottom: '8px',
                               borderBottom: `1px solid ${currentTheme.borderLight}`,
+                              minHeight: '32px',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
                             }}>
                               {getProviderDisplayName(response.modelName)}
                             </div>
