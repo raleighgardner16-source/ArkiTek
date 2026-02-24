@@ -81,6 +81,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [councilColumnConvoInputs, setCouncilColumnConvoInputs] = useState({}) // { responseId: inputText }
   const [councilColumnConvoHistory, setCouncilColumnConvoHistory] = useState({}) // { responseId: [{user, assistant, timestamp}] }
   const [councilColumnConvoSending, setCouncilColumnConvoSending] = useState({}) // { responseId: boolean }
+  const [councilColumnConvoSearching, setCouncilColumnConvoSearching] = useState({}) // { responseId: boolean }
+  const [councilColumnConvoSources, setCouncilColumnConvoSources] = useState({}) // { `${responseId}-${turnIdx}`: [...sources] }
+  const [showCouncilColumnConvoSources, setShowCouncilColumnConvoSources] = useState({}) // { `${responseId}-${turnIdx}`: boolean }
   const [isCouncilColumnInputFocused, setIsCouncilColumnInputFocused] = useState(false)
   const [isSubmitPending, setIsSubmitPending] = useState(false) // Immediate UI feedback before App flips isLoading
   const [resultViewMode, setResultViewMode] = useState('summary') // 'summary' | 'council'
@@ -1171,6 +1174,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
     setCouncilColumnConvoInputs(prev => ({ ...prev, [responseId]: '' }))
     setCouncilColumnConvoSending(prev => ({ ...prev, [responseId]: true }))
+    setCouncilColumnConvoSearching(prev => ({ ...prev, [responseId]: false }))
+    const prevTurnCount = (councilColumnConvoHistory[responseId] || []).length
     setCouncilColumnConvoHistory(prev => ({
       ...prev,
       [responseId]: [...(prev[responseId] || []), { user: userMsg, assistant: '', timestamp: Date.now() }]
@@ -1185,6 +1190,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         responseId,
       }, {
         onToken: (token) => {
+          setCouncilColumnConvoSearching(prev => ({ ...prev, [responseId]: false }))
           setCouncilColumnConvoHistory(prev => {
             const turns = [...(prev[responseId] || [])]
             if (turns.length > 0) {
@@ -1196,11 +1202,24 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             return { ...prev, [responseId]: turns }
           })
         },
-        onStatus: () => {},
+        onStatus: (message) => {
+          if (message.toLowerCase().includes('search')) {
+            setCouncilColumnConvoSearching(prev => ({ ...prev, [responseId]: true }))
+          }
+        },
         onError: (message) => {
           console.error('[Council Column Convo] Stream error:', message)
         }
       })
+
+      if (finalData?.searchResults && finalData.searchResults.length > 0) {
+        const sourceKey = `${responseId}-${prevTurnCount}`
+        setCouncilColumnConvoSources(prev => ({ ...prev, [sourceKey]: finalData.searchResults }))
+      }
+
+      if (finalData?.usedSearch) {
+        useStore.getState().incrementQueryCount()
+      }
 
       if (finalData?.tokens) {
         useStore.getState().mergeTokenData(modelName, {
@@ -1218,6 +1237,25 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           useStore.getState().triggerStatsRefresh()
         }).catch(err => console.error('[Token Update] Council column conversation token update failed:', err.message))
       }
+
+      const activeHistoryId = useStore.getState().currentHistoryId
+      if (activeHistoryId && currentUser?.id) {
+        const latestTurns = councilColumnConvoHistory[responseId] || []
+        const latestTurn = latestTurns.length > 0 ? latestTurns[latestTurns.length - 1] : null
+        const assistantText = finalData?.response || latestTurn?.assistant || ''
+        if (assistantText) {
+          axios.post(`${API_URL}/api/history/update-conversation`, {
+            historyId: activeHistoryId,
+            turn: {
+              type: 'model',
+              modelName: modelName,
+              user: userMsg,
+              assistant: assistantText,
+              sources: finalData?.searchResults || [],
+            }
+          }).catch(err => console.error('[History] Error updating council column conversation turn:', err.message))
+        }
+      }
     } catch (error) {
       if (error.name === 'AbortError') {
         setCouncilColumnConvoHistory(prev => ({
@@ -1234,6 +1272,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       }
     } finally {
       setCouncilColumnConvoSending(prev => ({ ...prev, [responseId]: false }))
+      setCouncilColumnConvoSearching(prev => ({ ...prev, [responseId]: false }))
     }
   }
 
@@ -1243,6 +1282,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       setCouncilColumnConvoInputs({})
       setCouncilColumnConvoHistory({})
       setCouncilColumnConvoSending({})
+      setCouncilColumnConvoSearching({})
+      setCouncilColumnConvoSources({})
+      setShowCouncilColumnConvoSources({})
       setShowCouncilColumnSources({})
     }
   }, [responses.length])
@@ -1991,9 +2033,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                 </motion.div>
                               )}
                             </div>
-                            {showCouncilReviewPhase && (
+                            {(showCouncilReviewPhase || (canToggleResultViews && resultViewMode === 'council')) && (
                               <div style={{ marginTop: '14px', borderTop: `1px solid ${currentTheme.borderLight}`, paddingTop: '12px' }}>
-                                {(councilColumnConvoHistory[response.id] || []).map((turn, turnIdx) => (
+                                {(councilColumnConvoHistory[response.id] || []).map((turn, turnIdx) => {
+                                  const turnSourceKey = `${response.id}-${turnIdx}`
+                                  const turnSources = councilColumnConvoSources[turnSourceKey] || []
+                                  const isLastTurn = turnIdx === (councilColumnConvoHistory[response.id] || []).length - 1
+                                  return (
                                   <div key={`${response.id}-turn-${turnIdx}`} style={{ marginBottom: '10px' }}>
                                     <div style={{ fontSize: '0.7rem', color: currentTheme.textMuted, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>You</div>
                                     <div style={{
@@ -2007,6 +2053,43 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                         {turn.user}
                                       </div>
                                     </div>
+                                    {isLastTurn && councilColumnConvoSearching[response.id] && (
+                                      <motion.div
+                                        initial={{ opacity: 0, y: 3 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '6px',
+                                          marginBottom: '8px',
+                                          padding: '5px 10px',
+                                          background: currentTheme.buttonBackground,
+                                          borderRadius: '16px',
+                                          width: 'fit-content',
+                                        }}
+                                      >
+                                        <Search size={12} color={currentTheme.accent} />
+                                        <span style={{
+                                          fontSize: '0.75rem',
+                                          background: currentTheme.accentGradient,
+                                          WebkitBackgroundClip: 'text',
+                                          WebkitTextFillColor: 'transparent',
+                                        }}>
+                                          Searching the web
+                                        </span>
+                                        <motion.span
+                                          animate={{ opacity: [1, 0.3, 1] }}
+                                          transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                                          style={{
+                                            background: currentTheme.accentGradient,
+                                            WebkitBackgroundClip: 'text',
+                                            WebkitTextFillColor: 'transparent',
+                                          }}
+                                        >
+                                          ...
+                                        </motion.span>
+                                      </motion.div>
+                                    )}
                                     <div style={{ fontSize: '0.7rem', color: currentTheme.accent, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
                                       {getProviderDisplayName(response.modelName)}
                                     </div>
@@ -2024,8 +2107,74 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                         {councilColumnConvoSending[response.id] ? 'Thinking...' : ''}
                                       </div>
                                     )}
+                                    {turnSources.length > 0 && (
+                                      <div style={{ marginTop: '8px' }}>
+                                        <button
+                                          onClick={() => setShowCouncilColumnConvoSources(prev => ({ ...prev, [turnSourceKey]: !prev[turnSourceKey] }))}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '4px 8px',
+                                            background: showCouncilColumnConvoSources[turnSourceKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                                            border: `1px solid ${showCouncilColumnConvoSources[turnSourceKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                                            borderRadius: '8px',
+                                            color: currentTheme.accent,
+                                            fontSize: '0.7rem',
+                                            fontWeight: '500',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s ease',
+                                          }}
+                                        >
+                                          <Globe size={11} />
+                                          Sources ({turnSources.length})
+                                          <ChevronDown size={11} style={{ transform: showCouncilColumnConvoSources[turnSourceKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                                        </button>
+                                        {showCouncilColumnConvoSources[turnSourceKey] && (
+                                          <motion.div
+                                            initial={{ opacity: 0, height: 0 }}
+                                            animate={{ opacity: 1, height: 'auto' }}
+                                            exit={{ opacity: 0, height: 0 }}
+                                            style={{ marginTop: '5px', marginBottom: '6px', display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '160px', overflowY: 'auto' }}
+                                          >
+                                            {turnSources.map((source, sIdx) => (
+                                              <a
+                                                key={sIdx}
+                                                href={source.link}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{
+                                                  display: 'block',
+                                                  padding: '5px 8px',
+                                                  background: currentTheme.buttonBackground,
+                                                  border: `1px solid ${currentTheme.borderLight}`,
+                                                  borderRadius: '6px',
+                                                  textDecoration: 'none',
+                                                  transition: 'border-color 0.2s',
+                                                }}
+                                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                                              >
+                                                <div style={{ fontSize: '0.7rem', fontWeight: '600', color: currentTheme.accent, marginBottom: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                  {source.title}
+                                                </div>
+                                                <div style={{ fontSize: '0.6rem', color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                  {source.link}
+                                                </div>
+                                                {source.snippet && (
+                                                  <div style={{ fontSize: '0.65rem', color: currentTheme.textSecondary, marginTop: '2px', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                                    {source.snippet}
+                                                  </div>
+                                                )}
+                                              </a>
+                                            ))}
+                                          </motion.div>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
-                                ))}
+                                  )
+                                })}
                                 {(() => {
                                   const initialSources = Array.isArray(response.sources) ? response.sources : []
                                   if (initialSources.length === 0) return null
