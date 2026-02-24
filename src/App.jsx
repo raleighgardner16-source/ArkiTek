@@ -368,6 +368,7 @@ Important: Only include each section label followed by a colon and content.`
       // Merge judge tokens into the token table and backend totals.
       if (summaryTokens) {
         useStore.getState().mergeTokenData('Judge Model', {
+          ...summaryTokens,
           input: summaryTokens.input || 0,
           output: summaryTokens.output || 0,
           total: summaryTokens.total || ((summaryTokens.input || 0) + (summaryTokens.output || 0)),
@@ -389,6 +390,25 @@ Important: Only include each section label followed by a colon and content.`
           originalPrompt: summaryPrompt,
         }).catch(err => {
           console.error('[Summary] Error storing initial summary:', err)
+        })
+      }
+
+      // Update the saved history entry with the summary so it appears in History tab
+      const activeHistoryId = useStore.getState().currentHistoryId
+      if (activeHistoryId && currentUser?.id) {
+        axios.post(`${API_URL}/api/history/update-summary`, {
+          historyId: activeHistoryId,
+          userId: currentUser.id,
+          summary: {
+            text: finalSummaryText || rawSummaryText,
+            consensus,
+            agreements,
+            disagreements: contradictions,
+            differences,
+            singleModel: false,
+          },
+        }).catch(err => {
+          console.error('[History] Error updating summary in history:', err)
         })
       }
     } catch (error) {

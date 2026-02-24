@@ -222,7 +222,7 @@ export const useStore = create(
       // Current user
       currentUser: null,
       setCurrentUser: (user) => set({ currentUser: user }),
-      clearCurrentUser: () => set({ currentUser: null }),
+      clearCurrentUser: () => set({ currentUser: null, selectedModels: [], autoSmartProviders: {} }),
 
       // Stats refresh trigger
       statsRefreshTrigger: 0,
@@ -262,6 +262,8 @@ export const useStore = create(
         theme: state.theme,
         activeTab: state.activeTab,
         apiKeys: state.apiKeys,
+        selectedModels: state.selectedModels,
+        autoSmartProviders: state.autoSmartProviders,
       }),
     }
   )

@@ -9542,6 +9542,45 @@ app.post('/api/history/auto-save', async (req, res) => {
   }
 })
 
+// ==================== UPDATE HISTORY WITH SUMMARY ====================
+// Updates an existing history entry with the judge summary after manual generation.
+app.post('/api/history/update-summary', async (req, res) => {
+  try {
+    const { historyId, userId, summary } = req.body
+
+    if (!historyId || !userId || !summary) {
+      return res.status(400).json({ error: 'historyId, userId, and summary are required' })
+    }
+
+    const dbInstance = await db.getDb()
+    const doc = await dbInstance.collection('conversation_history').findOne({ _id: historyId, userId })
+    if (!doc) {
+      return res.status(404).json({ error: 'History entry not found' })
+    }
+
+    const summaryDoc = {
+      text: summary.text || '',
+      consensus: summary.consensus || null,
+      agreements: summary.agreements || [],
+      disagreements: summary.disagreements || [],
+      differences: summary.differences || [],
+      singleModel: summary.singleModel || false,
+      modelName: summary.modelName || null,
+    }
+
+    await dbInstance.collection('conversation_history').updateOne(
+      { _id: historyId, userId },
+      { $set: { summary: summaryDoc } }
+    )
+
+    console.log(`[History] Updated summary for ${historyId}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[History] Error updating summary:', error)
+    res.status(500).json({ error: 'Failed to update summary' })
+  }
+})
+
 // ==================== UPDATE HISTORY WITH CONTINUED CONVERSATION ====================
 // Appends a follow-up conversation turn to an existing history entry.
 // Called after each model/judge follow-up message completes.

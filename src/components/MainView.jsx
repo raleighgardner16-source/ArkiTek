@@ -3446,7 +3446,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         </div>
 
         {/* ===== BOTTOM INPUT BAR ===== */}
-        {!showProcessingView && (
+        {!showProcessingView && !hasActiveConversation && (
         <div style={bottomBarStyle}>
           <div style={{ maxWidth: '1100px', width: '100%', margin: '0 auto' }}>
             {/* Streak & Searching indicator row - above prompt area */}

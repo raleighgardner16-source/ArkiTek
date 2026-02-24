@@ -56,8 +56,12 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
     return (numQueries / 1000) * pricePer1k
   }
 
-  // Process token data and calculate costs
-  const costBreakdown = tokenData.map((item) => {
+  // Separate judge items from regular council items
+  const judgeTokenData = tokenData.filter(item => item.isJudge)
+  const councilTokenData = tokenData.filter(item => !item.isJudge && !item.isPipeline)
+
+  // Process token data and calculate costs (council models only)
+  const costBreakdown = councilTokenData.map((item) => {
     if (!item.tokens) return null
     
     const provider = item.tokens.provider || 'unknown'
@@ -84,11 +88,40 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
     }
   }).filter(item => item !== null)
 
-  // Calculate totals
-  const totalInputTokens = costBreakdown.reduce((sum, item) => sum + item.inputTokens, 0)
-  const totalOutputTokens = costBreakdown.reduce((sum, item) => sum + item.outputTokens, 0)
+  // Process judge model costs separately
+  const judgeCostBreakdown = judgeTokenData.map((item) => {
+    if (!item.tokens) return null
+    const provider = item.tokens.provider || 'google'
+    const model = item.tokens.model || 'unknown'
+    const inputTokens = item.tokens.input || 0
+    const outputTokens = item.tokens.output || 0
+    const costs = calculateModelCost(provider, model, inputTokens, outputTokens)
+    return {
+      modelName: 'Judge Model',
+      provider,
+      model,
+      inputTokens,
+      outputTokens,
+      reasoningTokens: 0,
+      totalTokens: inputTokens + outputTokens,
+      inputPrice: costs.inputPrice,
+      outputPrice: costs.outputPrice,
+      inputCost: costs.inputCost,
+      outputCost: costs.outputCost,
+      totalCost: costs.totalCost,
+    }
+  }).filter(item => item !== null)
+
+  // Calculate totals (council + judge)
+  const judgeTotalCost = judgeCostBreakdown.reduce((sum, item) => sum + item.totalCost, 0)
+  const judgeTotalInputTokens = judgeCostBreakdown.reduce((sum, item) => sum + item.inputTokens, 0)
+  const judgeTotalOutputTokens = judgeCostBreakdown.reduce((sum, item) => sum + item.outputTokens, 0)
+  const judgeTotalTokens = judgeTotalInputTokens + judgeTotalOutputTokens
+
+  const totalInputTokens = costBreakdown.reduce((sum, item) => sum + item.inputTokens, 0) + judgeTotalInputTokens
+  const totalOutputTokens = costBreakdown.reduce((sum, item) => sum + item.outputTokens, 0) + judgeTotalOutputTokens
   const totalTokens = totalInputTokens + totalOutputTokens
-  const totalModelCost = costBreakdown.reduce((sum, item) => sum + item.totalCost, 0)
+  const totalModelCost = costBreakdown.reduce((sum, item) => sum + item.totalCost, 0) + judgeTotalCost
   const queryCost = calculateQueryCost(queryCount)
   const totalCost = totalModelCost + queryCost
 
@@ -139,7 +172,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
               {Object.entries(groupedByProvider).map(([provider, data]) => (
                 <div key={provider} style={{ marginBottom: '20px', padding: '12px', background: 'rgba(93, 173, 226, 0.05)', borderRadius: '8px', border: '1px solid rgba(93, 173, 226, 0.2)' }}>
                   <h4 style={{ color: '#5dade2', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
-                    {provider === 'openai' ? 'Chatgpt' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
+                    {provider === 'openai' ? 'ChatGPT' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
                   </h4>
                   <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', fontSize: '0.85rem', color: '#aaaaaa' }}>
                     <div><strong style={{ color: '#5dade2' }}>Total Cost:</strong> ${data.totalCost.toFixed(4)}</div>
@@ -152,6 +185,17 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                   ))}
                 </div>
               ))}
+              {judgeCostBreakdown.length > 0 && judgeTotalTokens > 0 && (
+                <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(168, 85, 247, 0.05)', borderRadius: '8px', border: '1px solid rgba(168, 85, 247, 0.2)' }}>
+                  <h4 style={{ color: '#a855f7', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
+                    Judge Model
+                  </h4>
+                  <div style={{ display: 'flex', gap: '16px', marginBottom: '4px', flexWrap: 'wrap', fontSize: '0.85rem', color: '#aaaaaa' }}>
+                    <div><strong style={{ color: '#a855f7' }}>Total Cost:</strong> ${judgeTotalCost.toFixed(4)}</div>
+                    <div><strong style={{ color: '#a855f7' }}>Tokens:</strong> {judgeTotalTokens.toLocaleString()}</div>
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -289,7 +333,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                         textTransform: 'capitalize',
                       }}
                     >
-                      {provider === 'openai' ? 'Chatgpt' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
+                      {provider === 'openai' ? 'ChatGPT' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
                     </h3>
                     
                     {/* Provider Total */}
@@ -362,6 +406,82 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                     ))}
                   </div>
                 ))}
+
+                {/* Judge Model */}
+                {judgeCostBreakdown.length > 0 && judgeTotalTokens > 0 && (
+                  <div
+                    style={{
+                      background: 'rgba(168, 85, 247, 0.05)',
+                      border: '1px solid rgba(168, 85, 247, 0.2)',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    <h3
+                      style={{
+                        color: '#a855f7',
+                        fontSize: '1.2rem',
+                        margin: '0 0 16px 0',
+                      }}
+                    >
+                      Judge Model
+                    </h3>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '12px',
+                        paddingBottom: '12px',
+                        borderBottom: '1px solid rgba(168, 85, 247, 0.2)',
+                      }}
+                    >
+                      <span style={{ color: '#ffffff', fontWeight: '600' }}>Judge Total</span>
+                      <span style={{ color: '#a855f7', fontWeight: 'bold', fontSize: '1.1rem' }}>
+                        ${judgeTotalCost.toFixed(4)}
+                      </span>
+                    </div>
+                    {judgeCostBreakdown.map((item, index) => (
+                      <div
+                        key={`judge-${index}`}
+                        style={{
+                          background: 'rgba(0, 0, 0, 0.3)',
+                          borderRadius: '8px',
+                          padding: '16px',
+                          marginBottom: '12px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ color: '#ffffff', fontWeight: '600' }}>Judge Model</span>
+                          <span style={{ color: '#a855f7', fontWeight: 'bold' }}>
+                            ${item.totalCost.toFixed(4)}
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.85rem' }}>
+                          <div>
+                            <div style={{ color: '#aaaaaa', marginBottom: '4px' }}>Input Tokens</div>
+                            <div style={{ color: '#ffffff' }}>
+                              {item.inputTokens.toLocaleString()} tokens
+                            </div>
+                            <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: '2px' }}>
+                              @ ${item.inputPrice.toFixed(2)}/1M = ${item.inputCost.toFixed(4)}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ color: '#aaaaaa', marginBottom: '4px' }}>Output Tokens</div>
+                            <div style={{ color: '#ffffff' }}>
+                              {item.outputTokens.toLocaleString()} tokens
+                            </div>
+                            <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: '2px' }}>
+                              @ ${item.outputPrice.toFixed(2)}/1M = ${item.outputCost.toFixed(4)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Query Costs */}
                 {queryCount > 0 && (

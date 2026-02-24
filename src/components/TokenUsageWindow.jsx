@@ -212,8 +212,12 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
 
   // If inline mode, render without modal overlay
   if (inline) {
+    const inlinePipelineItems = tokenData.filter(item => item.isPipeline)
+    const inlineJudgeItems = tokenData.filter(item => item.isJudge)
+    const inlineCountedItems = tokenData.filter(item => !item.isPipeline && !item.isJudge)
+
     const inlineGrouped = {}
-    tokenData.forEach((item) => {
+    inlineCountedItems.forEach((item) => {
       if (!item.tokens) return
       const provider = item.tokens.provider || 'unknown'
       if (!inlineGrouped[provider]) {
@@ -232,8 +236,13 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
       inlineGrouped[provider].models.push(item)
     })
 
-    const inlineTotalTokens = Object.values(inlineGrouped).reduce((sum, provider) => sum + provider.totalTokens, 0)
-    const inlineTotalReasoning = Object.values(inlineGrouped).reduce((sum, provider) => sum + provider.totalReasoning, 0)
+    const inlineJudgeTotalInput = inlineJudgeItems.reduce((sum, item) => sum + (item.tokens?.inputTokens || item.tokens?.input || 0), 0)
+    const inlineJudgeTotalOutput = inlineJudgeItems.reduce((sum, item) => sum + (item.tokens?.outputTokens || item.tokens?.output || 0), 0)
+    const inlineJudgeTotalTokens = inlineJudgeTotalInput + inlineJudgeTotalOutput
+
+    const inlineAllCounted = [...inlineCountedItems, ...inlineJudgeItems]
+    const inlineTotalTokens = inlineAllCounted.reduce((sum, item) => sum + (item.tokens?.inputTokens || item.tokens?.input || 0) + (item.tokens?.outputTokens || item.tokens?.output || 0), 0)
+    const inlineTotalReasoning = inlineAllCounted.reduce((sum, item) => sum + (item.tokens?.reasoningTokens || 0), 0)
 
     return (
       <div style={{ padding: '16px' }}>
@@ -299,6 +308,18 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }) => {
               ))}
             </div>
           ))}
+          {inlineJudgeItems.length > 0 && inlineJudgeTotalTokens > 0 && (
+            <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(168, 85, 247, 0.05)', borderRadius: '8px', border: '1px solid rgba(168, 85, 247, 0.2)' }}>
+              <h4 style={{ color: '#a855f7', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
+                Judge Model
+              </h4>
+              <div style={{ display: 'flex', gap: '16px', marginBottom: '4px', flexWrap: 'wrap', fontSize: '0.85rem', color: '#aaaaaa' }}>
+                <div><strong style={{ color: '#a855f7' }}>Input:</strong> {inlineJudgeTotalInput.toLocaleString()}</div>
+                <div><strong style={{ color: '#48c9b0' }}>Output:</strong> {inlineJudgeTotalOutput.toLocaleString()}</div>
+                <div><strong style={{ color: '#ffffff' }}>Total:</strong> {inlineJudgeTotalTokens.toLocaleString()}</div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
