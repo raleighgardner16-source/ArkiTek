@@ -1274,7 +1274,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const inlineResponseLabel = summary
     ? (summary.singleModel ? (summary.modelName || 'Model') : 'Summary')
     : (responses.length === 1 ? (responses[0].modelName || 'Model') : null)
-  const showConversationInput = summary && !summary.singleModel
+  const showConversationInput = !!(
+    summary &&
+    !summary.singleModel &&
+    summary.text &&
+    summary.text.trim().length > 0 &&
+    resultViewMode === 'summary'
+  )
   const showSingleModelConvoInput = !summary && responses.length === 1 && !responses[0].error && lastSubmittedPrompt
   const summaryInitialSources = Array.isArray(summary?.sources)
     ? summary.sources
@@ -1315,7 +1321,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
   const showCouncilLoading = isLoading && responses.length === 0
   const showCouncilReviewPhase = !isLoading && !isGeneratingSummary && !summary && !isSingleModel && responses.length > 0
-  const canToggleResultViews = !isSingleModel && hasSummaryTokens && !isGeneratingSummary && !(summary && summary.isStreaming) && responses.filter(r => !r.error && r.text).length >= 2
+  const hasCouncilResponsesForView = responses.filter(r => !r.error).length >= 2
+  const canToggleResultViews = !isSingleModel && hasSummaryTokens && !isGeneratingSummary && !(summary && summary.isStreaming) && hasCouncilResponsesForView
   const showCouncilColumns = !isSingleModel && responses.length > 0 && (
     (!hasSummaryTokens && (isLoading || isGeneratingSummary || summaryInitializing || showCouncilReviewPhase)) ||
     (canToggleResultViews && resultViewMode === 'council')
@@ -1570,7 +1577,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   title={canGenerateSummary ? 'Generate summary from the current council responses' : 'Show side-by-side model responses'}
                 >
                   <Sparkles size={16} />
-                  {canGenerateSummary ? 'Generate Summary' : 'Council Side by Side view'}
+                  {canGenerateSummary ? 'Generate Summary' : 'Council Side by Side View'}
                 </motion.button>
                 {canGenerateSummary && (
                   <span
@@ -1728,30 +1735,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     gap: '24px',
                   }}
                 >
-                  <motion.button
-                    onClick={() => { if (onCancelPrompt) onCancelPrompt() }}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    style={{
-                      width: '30px',
-                      height: '30px',
-                      padding: 0,
-                      background: '#ef4444',
-                      border: 'none',
-                      borderRadius: '8px',
-                      color: '#fff',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      transition: 'all 0.2s ease',
-                    }}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    title="Cancel"
-                  >
-                    <Square size={14} fill="#fff" />
-                  </motion.button>
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
@@ -1795,6 +1778,34 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               {/* Phase 2: Council Columns - multi-model streaming responses */}
               {showCouncilColumns && (
                 <>
+                  {isLoading && !isGeneratingSummary && (
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+                      <motion.button
+                        onClick={() => { if (onCancelPrompt) onCancelPrompt() }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 14px',
+                          background: 'rgba(239, 68, 68, 0.15)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          borderRadius: '10px',
+                          color: '#ef4444',
+                          fontSize: '0.82rem',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                        }}
+                        title="Cancel"
+                      >
+                        <Square size={12} fill="#ef4444" />
+                        Cancel
+                      </motion.button>
+                    </div>
+                  )}
                   {/* Loading Summary indicator at top center */}
                   {(isGeneratingSummary || summaryInitializing) && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '30px' }}>
