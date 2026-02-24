@@ -538,6 +538,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     const handleGlobalKeyDown = (e) => {
       // Only trigger on Enter key (not Shift+Enter)
       if (e.key !== 'Enter' || e.shiftKey) return
+      if (e.defaultPrevented) return
+
+      const target = e.target
+      if (target?.closest?.('[data-local-enter-handler="true"]')) {
+        return
+      }
       
       // Don't trigger if user is focused on ANY input/textarea
       const activeElement = document.activeElement
@@ -1357,13 +1363,21 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             background: rgba(128, 128, 128, 0.5);
           }
           .council-column-scroll {
-            scrollbar-width: none; /* Firefox */
-            -ms-overflow-style: none; /* IE/Edge legacy */
+            scrollbar-width: thin; /* Firefox */
+            scrollbar-color: rgba(93, 173, 226, 0.55) transparent;
           }
           .council-column-scroll::-webkit-scrollbar {
-            width: 0;
-            height: 0;
-            display: none;
+            width: 6px;
+          }
+          .council-column-scroll::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .council-column-scroll::-webkit-scrollbar-thumb {
+            background: rgba(93, 173, 226, 0.55);
+            border-radius: 6px;
+          }
+          .council-column-scroll::-webkit-scrollbar-thumb:hover {
+            background: rgba(93, 173, 226, 0.75);
           }
           .main-prompt-input::placeholder {
             color: ${currentTheme.textMuted};
@@ -1719,11 +1733,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                   </div>
                                 ))}
                                 <textarea
+                                  data-local-enter-handler="true"
                                   value={councilColumnConvoInputs[response.id] || ''}
                                   onChange={(e) => setCouncilColumnConvoInputs(prev => ({ ...prev, [response.id]: e.target.value }))}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter' && !e.shiftKey) {
                                       e.preventDefault()
+                                      e.stopPropagation()
                                       handleSendCouncilColumnConvo(response)
                                     }
                                   }}
