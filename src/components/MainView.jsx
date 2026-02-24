@@ -83,6 +83,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [councilColumnConvoSending, setCouncilColumnConvoSending] = useState({}) // { responseId: boolean }
   const [isCouncilColumnInputFocused, setIsCouncilColumnInputFocused] = useState(false)
   const [isSubmitPending, setIsSubmitPending] = useState(false) // Immediate UI feedback before App flips isLoading
+  const [resultViewMode, setResultViewMode] = useState('summary') // 'summary' | 'council'
 
   // Refs for chat layout
   const textareaRef = useRef(null)
@@ -668,6 +669,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     setCouncilColumnConvoInputs({})
     setCouncilColumnConvoHistory({})
     setCouncilColumnConvoSending({})
+    setResultViewMode('summary')
     // Reset textarea height back to normal after submitting
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
@@ -1298,11 +1300,24 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
   const showCouncilLoading = isLoading && responses.length === 0
   const showCouncilReviewPhase = !isLoading && !isGeneratingSummary && !summary && !isSingleModel && responses.length > 0
-  const showCouncilColumns = !isSingleModel && responses.length > 0 && !hasSummaryTokens && (isLoading || isGeneratingSummary || summaryInitializing || showCouncilReviewPhase)
+  const canToggleResultViews = !isSingleModel && hasSummaryTokens && !isGeneratingSummary && !(summary && summary.isStreaming) && responses.filter(r => !r.error && r.text).length >= 2
+  const showCouncilColumns = !isSingleModel && responses.length > 0 && (
+    (!hasSummaryTokens && (isLoading || isGeneratingSummary || summaryInitializing || showCouncilReviewPhase)) ||
+    (canToggleResultViews && resultViewMode === 'council')
+  )
   const showSingleModelStreamingPhase = isSingleModel && isLoading && responses.length > 0
   const showSummaryStreamingPhase = hasSummaryTokens && (isGeneratingSummary || (summary && summary.isStreaming))
   const showProcessingView = showCouncilLoading || showCouncilColumns || showSingleModelStreamingPhase || showSummaryStreamingPhase
   const canGenerateSummary = !isLoading && !isGeneratingSummary && !summary && responses.filter(r => !r.error && r.text).length >= 2
+  const topBarVisible = canGenerateSummary || canToggleResultViews
+  const normalViewTopPadding = topBarVisible ? '140px' : '100px'
+  const processingTopPadding = topBarVisible ? 150 : 80
+
+  useEffect(() => {
+    if (!canToggleResultViews && resultViewMode !== 'summary') {
+      setResultViewMode('summary')
+    }
+  }, [canToggleResultViews, resultViewMode])
 
   // Scroll to show the response when it first appears (after a new prompt)
   useEffect(() => {
@@ -1550,6 +1565,78 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             </span>
           </motion.div>
         )}
+        {canToggleResultViews && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{
+              position: 'absolute',
+              top: '20px',
+              left: 0,
+              right: 0,
+              zIndex: 30,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px',
+                borderRadius: '14px',
+                border: `1px solid ${currentTheme.borderLight}`,
+                background: currentTheme.backgroundOverlay,
+                boxShadow: `0 6px 20px ${currentTheme.shadow}`,
+                pointerEvents: 'auto',
+              }}
+            >
+              <motion.button
+                onClick={() => setResultViewMode('summary')}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  border: `1px solid ${resultViewMode === 'summary' ? 'rgba(59, 130, 246, 0.5)' : currentTheme.borderLight}`,
+                  background: resultViewMode === 'summary'
+                    ? (theme === 'light' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.2)')
+                    : currentTheme.buttonBackground,
+                  color: resultViewMode === 'summary' ? '#60a5fa' : currentTheme.textSecondary,
+                  fontSize: '0.78rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+                title="Show summary response"
+              >
+                Summary View
+              </motion.button>
+              <motion.button
+                onClick={() => setResultViewMode('council')}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  border: `1px solid ${resultViewMode === 'council' ? 'rgba(59, 130, 246, 0.5)' : currentTheme.borderLight}`,
+                  background: resultViewMode === 'council'
+                    ? (theme === 'light' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.2)')
+                    : currentTheme.buttonBackground,
+                  color: resultViewMode === 'council' ? '#60a5fa' : currentTheme.textSecondary,
+                  fontSize: '0.78rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+                title="Show side-by-side model responses"
+              >
+                Council View
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
 
         {/* ===== SCROLLABLE CHAT AREA ===== */}
       <div
@@ -1558,7 +1645,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         style={{
             flex: 1,
             overflowY: 'auto',
-            padding: showProcessingView ? '0 0 24px 0' : '100px 40px 36px',
+            padding: showProcessingView ? '0 0 24px 0' : `${normalViewTopPadding} 40px 36px`,
           display: 'flex',
           flexDirection: 'column',
           }}
@@ -1575,7 +1662,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               width: '100%',
               height: '100%',
               position: 'relative',
-              padding: showCouncilLoading ? '0 0 24px 0' : `${canGenerateSummary ? 150 : 80}px 20px 36px`,
+              padding: showCouncilLoading ? '0 0 24px 0' : `${processingTopPadding}px 20px 36px`,
             }}>
               {/* Cancel button - show only during active loading/generation */}
               {(isLoading || isGeneratingSummary || summaryInitializing || showSummaryStreamingPhase) && (

@@ -1824,6 +1824,48 @@ const ResponseComparison = () => {
                 >
                   <X size={16} color={currentTheme.text} />
                 </button>
+                {/* Expand Badge - shown once model response is finished */}
+                {!response.isStreaming && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setMinimizedCards((prev) => ({
+                        ...prev,
+                        [response.id]: false,
+                      }))
+                      setMaximizedCard(response.id)
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: '-6px',
+                      right: '22px',
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: theme === 'light' ? '#ffffff' : 'rgba(0, 0, 0, 0.9)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      padding: 0,
+                      zIndex: 1001,
+                      pointerEvents: 'auto',
+                      boxShadow: theme === 'light' ? '0 0 10px rgba(0, 0, 0, 0.2)' : '0 0 10px rgba(255, 255, 255, 0.4)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = theme === 'light' ? currentTheme.buttonBackgroundHover : 'rgba(93, 173, 226, 0.3)'
+                      e.currentTarget.style.boxShadow = theme === 'light' ? '0 0 15px rgba(0, 0, 0, 0.3)' : '0 0 15px rgba(255, 255, 255, 0.5)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(0, 0, 0, 0.9)'
+                      e.currentTarget.style.boxShadow = theme === 'light' ? '0 0 10px rgba(0, 0, 0, 0.2)' : '0 0 10px rgba(255, 255, 255, 0.4)'
+                    }}
+                    title="Expand response"
+                  >
+                    <Maximize2 size={13} color={currentTheme.text} />
+                  </button>
+                )}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -2249,20 +2291,22 @@ const ResponseComparison = () => {
                   >
                     <X size={14} />
                   </button>
-                  <button
-                    onClick={(e) => toggleMaximize(response.id, e)}
-                    style={{
-                      background: currentTheme.buttonBackground,
-                      border: `1px solid ${currentTheme.borderLight}`,
-                      borderRadius: '4px',
-                      padding: '4px',
-                      color: currentTheme.text,
-                      cursor: 'pointer',
-                    }}
-                    title="Maximize"
-                  >
-                    <Maximize2 size={14} />
-                  </button>
+                  {!response.isStreaming && (
+                    <button
+                      onClick={(e) => toggleMaximize(response.id, e)}
+                      style={{
+                        background: currentTheme.buttonBackground,
+                        border: `1px solid ${currentTheme.borderLight}`,
+                        borderRadius: '4px',
+                        padding: '4px',
+                        color: currentTheme.text,
+                        cursor: 'pointer',
+                      }}
+                      title="Expand response"
+                    >
+                      <Maximize2 size={14} />
+                    </button>
+                  )}
                   {hasMoreText && (
                     <button
                       style={{
