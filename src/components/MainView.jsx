@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus, Coins } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus, Coins, DollarSign } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 import { detectCategory } from '../utils/categoryDetector'
@@ -10,6 +10,7 @@ import { API_URL } from '../utils/config'
 import { streamFetch } from '../utils/streamFetch'
 import MarkdownRenderer from './MarkdownRenderer'
 import TokenUsageWindow from './TokenUsageWindow'
+import CostBreakdownWindow from './CostBreakdownWindow'
 
 const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaused = false, subscriptionExpiring = false, subscriptionRenewalDate = null, isLoading = false, isGeneratingSummary = false, onCancelPrompt }) => {
   const selectedModels = useStore((state) => state.selectedModels)
@@ -65,7 +66,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [showPostPromptSingleTooltip, setShowPostPromptSingleTooltip] = useState(false)
   const [showSendTooltip, setShowSendTooltip] = useState(false)
   const [showSingleTokenUsage, setShowSingleTokenUsage] = useState(false)
+  const [showTopCostBreakdown, setShowTopCostBreakdown] = useState(false)
   const tokenData = useStore((state) => state.tokenData)
+  const queryCount = useStore((state) => state.queryCount || 0)
 
   // Single-model conversation state
   const [singleModelConvoInput, setSingleModelConvoInput] = useState('')
@@ -86,6 +89,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const chatEndRef = useRef(null)
   const convoTextareaRef = useRef(null)
   const singleConvoTextareaRef = useRef(null)
+  const singleConvoAbortControllerRef = useRef(null)
   const responseAreaRef = useRef(null)
 
   // Fetch streak data
@@ -1025,6 +1029,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     if (!singleModelConvoInput.trim() || !currentUser?.id || isSendingSingleConvo) return
     if (responses.length !== 1) return
 
+    if (singleConvoAbortControllerRef.current) {
+      singleConvoAbortControllerRef.current.abort()
+    }
+    const abortController = new AbortController()
+    singleConvoAbortControllerRef.current = abortController
+
     const singleResponse = responses[0]
     const modelName = singleResponse.modelName || singleResponse.actualModelName
     const userMsg = singleModelConvoInput.trim()
@@ -1067,7 +1077,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         },
         onError: (message) => {
           console.error('[SingleModelConvo] Stream error:', message)
-        }
+        },
+        signal: abortController.signal,
       })
       
       // Capture search results keyed by turn index
@@ -1130,6 +1141,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     } finally {
       setIsSendingSingleConvo(false)
       setIsSearchingInSingleConvo(false)
+      singleConvoAbortControllerRef.current = null
     }
   }
 
@@ -1437,30 +1449,80 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               pointerEvents: 'none',
             }}
           >
-            <motion.button
-              onClick={() => triggerGenerateSummary()}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 18px',
-                borderRadius: '12px',
-                border: `1px solid ${currentTheme.borderLight}`,
-                background: currentTheme.buttonBackground,
-                color: currentTheme.accent,
-                fontSize: '0.85rem',
-                fontWeight: '600',
-                cursor: 'pointer',
-                boxShadow: `0 6px 20px ${currentTheme.shadow}`,
-                pointerEvents: 'auto',
-              }}
-              title="Generate summary from the current council responses"
-            >
-              <Sparkles size={16} />
-              Generate Summary
-            </motion.button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <motion.button
+                onClick={() => setShowSingleTokenUsage(true)}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '9px 14px',
+                  borderRadius: '12px',
+                  border: `1px solid ${currentTheme.borderLight}`,
+                  background: currentTheme.buttonBackground,
+                  color: currentTheme.accent,
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  boxShadow: `0 6px 20px ${currentTheme.shadow}`,
+                  pointerEvents: 'auto',
+                }}
+                title="Open token usage"
+              >
+                <Coins size={14} />
+                Token Usage
+              </motion.button>
+              <motion.button
+                onClick={() => triggerGenerateSummary()}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 18px',
+                  borderRadius: '12px',
+                  border: `1px solid ${currentTheme.borderLight}`,
+                  background: currentTheme.buttonBackground,
+                  color: currentTheme.accent,
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  boxShadow: `0 6px 20px ${currentTheme.shadow}`,
+                  pointerEvents: 'auto',
+                }}
+                title="Generate summary from the current council responses"
+              >
+                <Sparkles size={16} />
+                Generate Summary
+              </motion.button>
+              <motion.button
+                onClick={() => setShowTopCostBreakdown(true)}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '9px 14px',
+                  borderRadius: '12px',
+                  border: `1px solid ${currentTheme.borderLight}`,
+                  background: currentTheme.buttonBackground,
+                  color: currentTheme.accent,
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  boxShadow: `0 6px 20px ${currentTheme.shadow}`,
+                  pointerEvents: 'auto',
+                }}
+                title="Open cost breakdown"
+              >
+                <DollarSign size={14} />
+                Cost Breakdown
+              </motion.button>
+            </div>
             <span
               style={{
                 fontSize: '0.72rem',
@@ -1503,34 +1565,36 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               position: 'relative',
               padding: showCouncilLoading ? '0 0 24px 0' : `${canGenerateSummary ? 150 : 80}px 20px 36px`,
             }}>
-              {/* Cancel button - floating top right */}
-              <motion.button
-                onClick={() => { if (onCancelPrompt) onCancelPrompt() }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                style={{
-                  position: 'absolute',
-                  top: '20px',
-                  right: '20px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '8px 16px',
-                  background: 'rgba(239, 68, 68, 0.15)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  borderRadius: '10px',
-                  color: '#ef4444',
-                  fontSize: '0.8rem',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  zIndex: 50,
-                }}
-                whileHover={{ scale: 1.05, background: 'rgba(239, 68, 68, 0.25)' }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Square size={12} fill="#ef4444" />
-                Cancel
-              </motion.button>
+              {/* Cancel button - show only during active loading/generation */}
+              {(isLoading || isGeneratingSummary || summaryInitializing || showSummaryStreamingPhase) && (
+                <motion.button
+                  onClick={() => { if (onCancelPrompt) onCancelPrompt() }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  style={{
+                    position: 'absolute',
+                    top: '20px',
+                    right: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 16px',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '10px',
+                    color: '#ef4444',
+                    fontSize: '0.8rem',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    zIndex: 50,
+                  }}
+                  whileHover={{ scale: 1.05, background: 'rgba(239, 68, 68, 0.25)' }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Square size={12} fill="#ef4444" />
+                  Cancel
+                </motion.button>
+              )}
 
               {/* Phase 1: Loading Council of LLMs - centered spinner */}
               {showCouncilLoading && (
@@ -1746,15 +1810,34 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                 {(councilColumnConvoHistory[response.id] || []).map((turn, turnIdx) => (
                                   <div key={`${response.id}-turn-${turnIdx}`} style={{ marginBottom: '10px' }}>
                                     <div style={{ fontSize: '0.7rem', color: currentTheme.textMuted, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>You</div>
-                                    <div style={{ fontSize: '0.8rem', color: currentTheme.text, marginBottom: '8px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                                      {turn.user}
+                                    <div style={{
+                                      marginBottom: '8px',
+                                      padding: '8px 10px',
+                                      borderRadius: '10px',
+                                      border: theme === 'light' ? '1px solid rgba(0, 0, 0, 0.15)' : '1px solid rgba(255, 255, 255, 0.35)',
+                                      background: theme === 'light' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.08)',
+                                    }}>
+                                      <div style={{ fontSize: '0.8rem', color: theme === 'light' ? '#111111' : currentTheme.text, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                                        {turn.user}
+                                      </div>
                                     </div>
                                     <div style={{ fontSize: '0.7rem', color: currentTheme.accent, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
                                       {getProviderDisplayName(response.modelName)}
                                     </div>
-                                    <div style={{ fontSize: '0.8rem', color: currentTheme.textSecondary, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-                                      {turn.assistant || (councilColumnConvoSending[response.id] ? 'Thinking...' : '')}
-                                    </div>
+                                    {turn.assistant ? (
+                                      <div style={{ fontSize: '0.8rem', color: currentTheme.textSecondary, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                                        <MarkdownRenderer
+                                          content={turn.assistant}
+                                          theme={currentTheme}
+                                          fontSize="0.8rem"
+                                          lineHeight="1.6"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div style={{ fontSize: '0.8rem', color: currentTheme.textSecondary, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                                        {councilColumnConvoSending[response.id] ? 'Thinking...' : ''}
+                                      </div>
+                                    )}
                                   </div>
                                 ))}
                                 <textarea
@@ -2887,27 +2970,38 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           }}
                         />
                         <motion.button
-                          onClick={handleSendSingleModelConvo}
-                          disabled={!singleModelConvoInput.trim() || isSendingSingleConvo}
+                          onClick={() => {
+                            if (isSendingSingleConvo) {
+                              if (singleConvoAbortControllerRef.current) {
+                                singleConvoAbortControllerRef.current.abort()
+                              }
+                            } else {
+                              handleSendSingleModelConvo()
+                            }
+                          }}
+                          disabled={!isSendingSingleConvo && !singleModelConvoInput.trim()}
                         style={{
                           position: 'absolute',
                             right: '8px',
                             bottom: '8px',
-                            background: 'transparent',
-                            border: 'none',
-                            color: (!singleModelConvoInput.trim() || isSendingSingleConvo) ? currentTheme.textMuted : currentTheme.accent,
-                            cursor: (!singleModelConvoInput.trim() || isSendingSingleConvo) ? 'not-allowed' : 'pointer',
+                            background: isSendingSingleConvo ? '#ef4444' : 'transparent',
+                            border: isSendingSingleConvo ? 'none' : 'none',
+                            color: isSendingSingleConvo ? '#fff' : ((!singleModelConvoInput.trim() || isSendingSingleConvo) ? currentTheme.textMuted : currentTheme.accent),
+                            cursor: (!isSendingSingleConvo && !singleModelConvoInput.trim()) ? 'not-allowed' : 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            padding: '6px',
-                            borderRadius: '50%',
-                            opacity: (!singleModelConvoInput.trim() || isSendingSingleConvo) ? 0.4 : 1,
+                            width: isSendingSingleConvo ? '26px' : 'auto',
+                            height: isSendingSingleConvo ? '26px' : 'auto',
+                            padding: isSendingSingleConvo ? '0' : '6px',
+                            borderRadius: isSendingSingleConvo ? '8px' : '50%',
+                            opacity: (!isSendingSingleConvo && !singleModelConvoInput.trim()) ? 0.4 : 1,
                           }}
-                          whileHover={singleModelConvoInput.trim() && !isSendingSingleConvo ? { scale: 1.1 } : {}}
-                          whileTap={singleModelConvoInput.trim() && !isSendingSingleConvo ? { scale: 0.95 } : {}}
+                          whileHover={isSendingSingleConvo ? { scale: 1.05 } : (singleModelConvoInput.trim() ? { scale: 1.1 } : {})}
+                          whileTap={isSendingSingleConvo ? { scale: 0.95 } : (singleModelConvoInput.trim() ? { scale: 0.95 } : {})}
+                          title={isSendingSingleConvo ? 'Pause' : 'Send'}
                         >
-                          <Send size={16} />
+                          {isSendingSingleConvo ? <Square size={12} fill="#fff" /> : <Send size={16} />}
                         </motion.button>
                       </div>
                     </div>
@@ -4111,6 +4205,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         isOpen={showSingleTokenUsage}
         onClose={() => setShowSingleTokenUsage(false)}
         tokenData={tokenData}
+      />
+      <CostBreakdownWindow
+        isOpen={showTopCostBreakdown}
+        onClose={() => setShowTopCostBreakdown(false)}
+        tokenData={tokenData}
+        queryCount={queryCount}
       />
     </>
   )
