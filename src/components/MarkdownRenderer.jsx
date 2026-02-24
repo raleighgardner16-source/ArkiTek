@@ -14,7 +14,19 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
   if (!content) return null
 
   return (
-    <div className="markdown-body" style={{ fontSize, lineHeight, color: theme.textSecondary }}>
+    <div
+      className="markdown-body"
+      style={{
+        fontSize,
+        lineHeight,
+        color: theme.textSecondary,
+        maxWidth: '100%',
+        minWidth: 0,
+        overflowX: 'hidden',
+        overflowWrap: 'anywhere',
+        wordBreak: 'break-word',
+      }}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
@@ -63,6 +75,8 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
               margin: '8px 0',
               color: theme.textSecondary,
               lineHeight,
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
             }}>{children}</p>
           ),
 
@@ -93,6 +107,8 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
               margin: '4px 0',
               color: theme.textSecondary,
               lineHeight: '1.6',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
             }}>{children}</li>
           ),
 
@@ -105,6 +121,8 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
               style={{
                 color: theme.accent,
                 textDecoration: 'none',
+                overflowWrap: 'anywhere',
+                wordBreak: 'break-word',
               }}
               onMouseEnter={(e) => { e.target.style.textDecoration = 'underline' }}
               onMouseLeave={(e) => { e.target.style.textDecoration = 'none' }}
@@ -123,6 +141,8 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
                   fontSize: '0.88em',
                   fontFamily: 'monospace',
                   color: theme.accent,
+                  overflowWrap: 'anywhere',
+                  wordBreak: 'break-all',
                 }}>{children}</code>
               )
             }
@@ -154,6 +174,8 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
               paddingLeft: '14px',
               color: theme.textMuted,
               fontStyle: 'italic',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
             }}>{children}</blockquote>
           ),
 
@@ -195,6 +217,8 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
               padding: '6px 12px',
               borderBottom: `1px solid ${theme.borderLight}`,
               color: theme.textSecondary,
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
             }}>{children}</td>
           ),
         }}

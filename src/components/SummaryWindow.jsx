@@ -340,22 +340,23 @@ const SummaryWindow = () => {
     const lines = content.split('\n')
 
     return lines.map((line, index) => {
-      const isHeader = headerPattern.test(line.trim())
+      const normalizedLine = line.replace(/^\s*#{1,6}\s*/, '')
+      const isHeader = headerPattern.test(normalizedLine.trim())
       return (
         <div
           key={`summary-line-${index}`}
           style={{
             color: currentTheme.textSecondary,
-            fontSize,
+            fontSize: isHeader ? '1.05rem' : fontSize,
             lineHeight,
             fontWeight: isHeader ? '700' : '400',
             textTransform: isHeader ? 'uppercase' : 'none',
-            margin: 0,
+            margin: isHeader ? '8px 0 2px' : 0,
             minHeight: line.trim() === '' ? `${lineHeight}em` : 'auto',
             whiteSpace: 'pre-wrap',
           }}
         >
-          {line}
+          {isHeader ? normalizedLine : line}
         </div>
       )
     })

@@ -1489,11 +1489,14 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   <div style={{
                     display: 'flex',
                     justifyContent: 'center',
+                    alignItems: 'stretch',
                     width: '100%',
                     maxWidth: councilColumnCount <= 2 ? '800px' : councilColumnCount === 3 ? '1000px' : '1200px',
                     flex: 1,
                     minHeight: 0,
+                    height: '100%',
                     gap: '0',
+                    overflow: 'hidden',
                   }}>
                     {councilDisplayResponses.map((response, index, arr) => (
                       <React.Fragment key={response.id}>
@@ -1509,7 +1512,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           flex: 1,
                           padding: '0 16px 24px',
                           overflowY: 'auto',
+                          overflowX: 'hidden',
                           minWidth: 0,
+                          height: '100%',
                           maxWidth: arr.length === 1 ? '800px' : 'none',
                         }}>
                           <motion.div
