@@ -1262,6 +1262,15 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           .chat-area::-webkit-scrollbar-thumb:hover {
             background: rgba(128, 128, 128, 0.5);
           }
+          .council-column-scroll {
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge legacy */
+          }
+          .council-column-scroll::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+            display: none;
+          }
           .main-prompt-input::placeholder {
             color: ${currentTheme.textMuted};
           }
@@ -1508,7 +1517,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             alignSelf: 'stretch',
                           }} />
                         )}
-                        <div style={{
+                        <div className="council-column-scroll" style={{
                           flex: 1,
                           padding: '0 16px 24px',
                           overflowY: 'auto',
@@ -1522,6 +1531,37 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: index * 0.1 }}
                           >
+                            {lastSubmittedPrompt && (
+                              <div style={{
+                                marginBottom: '12px',
+                                padding: '10px 12px',
+                                background: currentTheme.buttonBackground,
+                                border: `1px solid ${currentTheme.borderLight}`,
+                                borderRadius: '10px',
+                              }}>
+                                <div style={{
+                                  fontSize: '0.68rem',
+                                  fontWeight: '700',
+                                  color: currentTheme.textMuted,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.6px',
+                                  marginBottom: '4px',
+                                }}>
+                                  Prompt
+                                </div>
+                                <p style={{
+                                  margin: 0,
+                                  color: currentTheme.text,
+                                  fontSize: '0.82rem',
+                                  lineHeight: '1.45',
+                                  whiteSpace: 'pre-wrap',
+                                  overflowWrap: 'anywhere',
+                                  wordBreak: 'break-word',
+                                }}>
+                                  {lastSubmittedPrompt}
+                                </p>
+                              </div>
+                            )}
                             <div style={{
                               display: 'flex',
                               alignItems: 'center',
@@ -1581,7 +1621,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  style={{ maxWidth: '800px', width: '100%', padding: '0 20px' }}
+                  style={{ maxWidth: '800px', width: '100%', padding: '0 20px 36px' }}
                 >
                   {/* User prompt bubble */}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '24px' }}>
@@ -1617,7 +1657,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  style={{ maxWidth: '800px', width: '100%', padding: '0 20px' }}
+                  style={{ maxWidth: '800px', width: '100%', padding: '0 20px 36px' }}
                 >
                   {/* User prompt bubble */}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '24px' }}>

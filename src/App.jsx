@@ -335,14 +335,14 @@ Important: Only include each section label followed by a colon and content.`
 
       let formattedSummaryText = ''
       if (consensus !== null) {
-        formattedSummaryText += `## CONSENSUS:\n${consensus}%\n\n`
+        formattedSummaryText += `## CONSENSUS: ${consensus}%\n\n`
       }
       if (parsedSummary) {
-        formattedSummaryText += `## SUMMARY:\n${parsedSummary}\n\n`
+        formattedSummaryText += `## SUMMARY\n${parsedSummary}\n\n`
       }
-      formattedSummaryText += `## AGREEMENTS:\n${agreements.length ? agreements.map(a => `- ${a}`).join('\n') : 'None identified.'}\n\n`
-      formattedSummaryText += `## CONTRADICTIONS:\n${contradictions.length ? contradictions.map(c => `- ${c}`).join('\n') : 'None identified — all models are in factual agreement.'}\n\n`
-      formattedSummaryText += `## DIFFERENCES:\n${differences.length ? differences.map(d => `- ${d}`).join('\n') : 'None identified.'}`
+      formattedSummaryText += `## AGREEMENTS\n${agreements.length ? agreements.map(a => `- ${a}`).join('\n') : 'None identified.'}\n\n`
+      formattedSummaryText += `## CONTRADICTIONS\n${contradictions.length ? contradictions.map(c => `- ${c}`).join('\n') : 'None identified — all models are in factual agreement.'}\n\n`
+      formattedSummaryText += `## DIFFERENCES\n${differences.length ? differences.map(d => `- ${d}`).join('\n') : 'None identified.'}`
       const finalSummaryText = formattedSummaryText || rawSummaryText
 
       setSummary((prev) => ({
@@ -1225,30 +1225,30 @@ Important: Only include each section label followed by a colon and content.`
         
         // Consensus score at the top
         if (consensus !== null && consensus !== undefined) {
-          formattedSummaryText += `## CONSENSUS:\n${consensus}%\n\n`
+          formattedSummaryText += `## CONSENSUS: ${consensus}%\n\n`
         }
         
         // Summary section
         if (parsedSummary) {
-          formattedSummaryText += `## SUMMARY:\n${parsedSummary}\n\n`
+          formattedSummaryText += `## SUMMARY\n${parsedSummary}\n\n`
         }
         
         // Agreements section
         if (agreements && agreements.length > 0) {
-          formattedSummaryText += `## AGREEMENTS:\n${agreements.map(a => `- ${a}`).join('\n')}\n\n`
+          formattedSummaryText += `## AGREEMENTS\n${agreements.map(a => `- ${a}`).join('\n')}\n\n`
         } else {
-          formattedSummaryText += `## AGREEMENTS:\nNone identified.\n\n`
+          formattedSummaryText += `## AGREEMENTS\nNone identified.\n\n`
         }
         
         // Contradictions section
         if (disagreements && disagreements.length > 0) {
-          formattedSummaryText += `## CONTRADICTIONS:\n${disagreements.map(d => `- ${d}`).join('\n')}\n\n`
+          formattedSummaryText += `## CONTRADICTIONS\n${disagreements.map(d => `- ${d}`).join('\n')}\n\n`
         } else {
-          formattedSummaryText += `## CONTRADICTIONS:\nNone identified — all models are in factual agreement.\n\n`
+          formattedSummaryText += `## CONTRADICTIONS\nNone identified — all models are in factual agreement.\n\n`
         }
         
         // Differences section
-        formattedSummaryText += `## DIFFERENCES:\n${differences && differences.length > 0 ? differences.map(d => `- ${d}`).join('\n') : 'None identified.'}`
+        formattedSummaryText += `## DIFFERENCES\n${differences && differences.length > 0 ? differences.map(d => `- ${d}`).join('\n') : 'None identified.'}`
         
         // Collect judge tokens and update token data
         if (summaryTokens) {

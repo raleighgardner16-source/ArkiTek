@@ -336,7 +336,7 @@ const SummaryWindow = () => {
     const content = (text || '').toString()
     if (!content.trim()) return null
 
-    const headerPattern = /^(CONSENSUS|SUMMARY|AGREEMENTS|CONTRADICTIONS|DIFFERENCES):/i
+    const headerPattern = /^(CONSENSUS|SUMMARY|AGREEMENTS|CONTRADICTIONS|DIFFERENCES)\b:?/i
     const lines = content.split('\n')
 
     return lines.map((line, index) => {
