@@ -297,15 +297,64 @@ Important: Only include each section label followed by a colon and content.`
 
       const rawSummaryText = summaryFinalData?.text || useStore.getState().summary?.text || ''
       const summaryTokens = summaryFinalData?.tokens || null
-      const normalizedSummaryText = rawSummaryText.replace(
-        /(\b(?:CONSENSUS|Consensus|consensus)\b\s*[:\-]?\s*(?:\*\*)?\s*)(\d{1,3})(?!\s*%)/,
-        (_, prefix, score) => `${prefix}${score}%`
-      )
+
+      // Parse and format summary sections (matches the prior styled structure),
+      // while guaranteeing consensus is displayed with a % sign.
+      const normalizedText = rawSummaryText
+        .replace(/\*\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*\*[:\-]?/gi, '\n$1:')
+        .replace(/\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*[:\-]?/gi, '\n$1:')
+
+      const consensusMatch = normalizedText.match(/(?:Consensus|consensus)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
+      const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:AGREEMENTS|Agreements)[:\-]|\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
+      const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
+      const contradictionsMatch = normalizedText.match(/(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
+      const differencesMatch = normalizedText.match(/(?:DIFFERENCES|Differences)[:\-]?\s*([\s\S]+)$/i)
+
+      let consensus = null
+      if (consensusMatch) {
+        const score = parseInt(consensusMatch[1], 10)
+        if (!Number.isNaN(score)) consensus = Math.max(0, Math.min(100, score))
+      }
+
+      const parsedSummary = (summaryMatch ? summaryMatch[1] : rawSummaryText)
+        .replace(/^(?:\*\*)?(?:Summary|SUMMARY)[:\-]?\s*\*?\*?\s*/i, '')
+        .replace(/^:\s*/, '')
+        .trim()
+
+      const toBulletArray = (text) => {
+        if (!text) return []
+        return text
+          .split('\n')
+          .map(l => l.replace(/^[-•*]\s*/, '').trim())
+          .filter(Boolean)
+      }
+
+      const agreements = toBulletArray((agreementsMatch?.[1] || '').trim())
+      const contradictions = toBulletArray((contradictionsMatch?.[1] || '').trim())
+      const differences = toBulletArray((differencesMatch?.[1] || '').trim())
+
+      let formattedSummaryText = ''
+      if (consensus !== null) {
+        formattedSummaryText += `**CONSENSUS: ${consensus}%**\n\n`
+      }
+      if (parsedSummary) {
+        formattedSummaryText += `## SUMMARY\n${parsedSummary}\n\n`
+      }
+      formattedSummaryText += `## AGREEMENTS\n${agreements.length ? agreements.map(a => `- ${a}`).join('\n') : 'None identified.'}\n\n`
+      formattedSummaryText += `## CONTRADICTIONS\n${contradictions.length ? contradictions.map(c => `- ${c}`).join('\n') : 'None identified — all models are in factual agreement.'}\n\n`
+      if (differences.length) {
+        formattedSummaryText += `## DIFFERENCES\n${differences.map(d => `- ${d}`).join('\n')}`
+      }
+      const finalSummaryText = formattedSummaryText || rawSummaryText
 
       setSummary((prev) => ({
         ...(prev || {}),
-        text: normalizedSummaryText,
-        summary: normalizedSummaryText,
+        text: finalSummaryText,
+        summary: parsedSummary || finalSummaryText,
+        consensus,
+        agreements,
+        disagreements: contradictions,
+        differences,
         timestamp: Date.now(),
         singleModel: false,
         prompt: summaryPrompt,
