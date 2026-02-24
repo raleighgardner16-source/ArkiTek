@@ -464,65 +464,74 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
   // On sign-in (or first visit), restore saved model preferences from the server.
   // If no preferences exist (brand new user), default to Auto Smart for all providers.
-  // Also migrates the old "all models selected" state to Auto Smart.
-  const modelPrefsRestoredRef = useRef(false)
+  const modelPrefsRestoredForUserRef = useRef(null)
   useEffect(() => {
     if (Object.keys(modelsByProvider).length === 0) return
-    if (modelPrefsRestoredRef.current) return // Only run once per mount
+    const restoreKey = currentUser?.id || 'guest'
+    if (modelPrefsRestoredForUserRef.current === restoreKey) return
 
-    const hasInitialized = localStorage.getItem('arktek-models-initialized')
-
-    // Check if user has saved model preferences (returned from sign-in or already in store)
     const hasStorePrefs = selectedModels.length > 0 || Object.keys(autoSmartProviders).length > 0
-
-    // If user already has preferences in the store (restored from sign-in), mark as done
-    if (hasStorePrefs && hasInitialized) {
-      modelPrefsRestoredRef.current = true
-      return
-    }
-
-    // Fresh sign-in with no saved prefs: default to Auto Smart for all providers
-    if (!hasInitialized && !hasStorePrefs) {
+    const applyDefaultAutoSmart = () => {
       const autoSmartState = {}
       Object.keys(modelsByProvider).forEach(providerKey => {
         autoSmartState[providerKey] = true
       })
+      setSelectedModels([])
       setAutoSmartProviders(autoSmartState)
       localStorage.setItem('arktek-models-initialized', 'true')
-      modelPrefsRestoredRef.current = true
+    }
+
+    // If preferences were already placed in store (e.g. sign-in response), keep them.
+    if (hasStorePrefs) {
+      modelPrefsRestoredForUserRef.current = restoreKey
       return
     }
 
-    // Migration: if ALL models from every provider are selected (old buggy default),
-    // clear them and switch to Auto Smart instead.
-    const hasMigrated = localStorage.getItem('arktek-autosmart-migrated')
-    if (!hasMigrated && selectedModels.length > 0) {
-      const totalAvailableModels = Object.values(modelsByProvider).reduce(
-        (sum, p) => sum + p.models.length, 0
-      )
-      const allSelected = totalAvailableModels > 0 && selectedModels.length >= totalAvailableModels &&
-        Object.values(modelsByProvider).every(providerData =>
-          providerData.models.every(m => selectedModels.includes(m.id))
-        )
-      if (allSelected) {
-        setSelectedModels([])
-        const autoSmartState = {}
-        Object.keys(modelsByProvider).forEach(providerKey => {
-          autoSmartState[providerKey] = true
-        })
-        setAutoSmartProviders(autoSmartState)
+    let cancelled = false
+    const restoreModelPrefs = async () => {
+      // Signed-in user: load their last saved config from backend.
+      if (currentUser?.id) {
+        try {
+          const response = await axios.get(`${API_URL}/api/user/model-preferences/${currentUser.id}`)
+          if (cancelled) return
+
+          const prefs = response.data?.modelPreferences
+          const savedModels = Array.isArray(prefs?.selectedModels) ? prefs.selectedModels : []
+          const savedAutoSmart = (prefs?.autoSmartProviders && typeof prefs.autoSmartProviders === 'object') ? prefs.autoSmartProviders : {}
+
+          if (savedModels.length > 0 || Object.keys(savedAutoSmart).length > 0) {
+            setSelectedModels(savedModels)
+            setAutoSmartProviders(savedAutoSmart)
+            localStorage.setItem('arktek-models-initialized', 'true')
+          } else {
+            applyDefaultAutoSmart()
+          }
+        } catch (error) {
+          console.error('[Model Prefs] Error loading preferences:', error.message)
+          applyDefaultAutoSmart()
+        } finally {
+          if (!cancelled) modelPrefsRestoredForUserRef.current = restoreKey
+        }
+        return
       }
-      localStorage.setItem('arktek-autosmart-migrated', 'true')
+
+      // Guest/no user: keep sane defaults.
+      applyDefaultAutoSmart()
+      modelPrefsRestoredForUserRef.current = restoreKey
     }
 
-    modelPrefsRestoredRef.current = true
-  }, [modelsByProvider, selectedModels, setSelectedModels])
+    restoreModelPrefs()
+
+    return () => {
+      cancelled = true
+    }
+  }, [modelsByProvider, currentUser?.id, selectedModels, autoSmartProviders, setSelectedModels, setAutoSmartProviders])
 
   // Debounced save of model preferences to the server whenever they change
   const savePrefsTimeoutRef = useRef(null)
   useEffect(() => {
     if (!currentUser?.id) return
-    if (!modelPrefsRestoredRef.current) return // Don't save during initialization
+    if (modelPrefsRestoredForUserRef.current !== currentUser.id) return // Don't save before restore completes for this user
 
     // Debounce: save 1.5s after last change
     if (savePrefsTimeoutRef.current) clearTimeout(savePrefsTimeoutRef.current)
