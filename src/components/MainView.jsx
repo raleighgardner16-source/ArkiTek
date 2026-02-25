@@ -3723,6 +3723,22 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         onKeyDown={(e) => {
                               if (e.key === 'Enter') e.preventDefault()
                         }}
+                        onMouseEnter={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(93, 133, 186, 0.1)'
+                            e.currentTarget.style.borderColor = currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(93, 133, 186, 0.35)'
+                            e.currentTarget.style.transform = 'translateY(-1px)'
+                          } else {
+                            e.currentTarget.style.transform = 'translateY(-1px)'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = 'transparent'
+                            e.currentTarget.style.borderColor = currentTheme.borderLight
+                          }
+                          e.currentTarget.style.transform = 'translateY(0)'
+                        }}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -3730,19 +3746,19 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             padding: '5px 8px',
                             height: '30px',
                             background: isActive
-                              ? (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(93, 133, 186, 0.18)')
+                              ? (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(44, 82, 130, 0.28)')
                               : 'transparent',
-                            border: `1px solid ${isActive ? (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(93, 133, 186, 0.5)') : currentTheme.borderLight}`,
+                            border: `1px solid ${isActive ? (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(44, 82, 130, 0.55)') : currentTheme.borderLight}`,
                             borderRadius: '8px',
-                            color: isActive ? (currentTheme.name === 'dark' ? '#111' : '#2c5282') : currentTheme.textSecondary,
+                            color: isActive ? (currentTheme.name === 'dark' ? '#111' : '#1a365d') : currentTheme.textSecondary,
                             cursor: 'pointer',
                             fontSize: '0.8rem',
                             fontWeight: isActive ? '700' : '500',
                             whiteSpace: 'nowrap',
-                          transition: 'all 0.2s ease',
+                          transition: 'all 0.15s ease',
                               outline: 'none',
                               WebkitTapHighlightColor: 'transparent',
-                            boxShadow: isActive ? '0 1px 6px rgba(0,0,0,0.15)' : 'none',
+                            boxShadow: isActive ? (currentTheme.name === 'dark' ? '0 1px 6px rgba(0,0,0,0.15)' : '0 1px 4px rgba(44, 82, 130, 0.2)') : 'none',
                           }}
                         >
                           {isActive && (

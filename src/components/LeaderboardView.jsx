@@ -64,6 +64,9 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
   const leaderboardRefreshTrigger = useStore((state) => state.leaderboardRefreshTrigger)
 
   useEffect(() => {
+    if (activeSection === 'myfeed' || activeSection === 'search') {
+      setSelectedCategory('All')
+    }
     fetchLeaderboard()
   }, [currentUser, activeSection, leaderboardRefreshTrigger])
 
@@ -1509,8 +1512,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
             </button>
           </div>
           
-          {/* Category Filter Tabs — shown for My Feed and Browse */}
-          {activeSection !== 'search' && (
+          {/* Category Filter Tabs — shown for Browse, Today's, and All Time */}
+          {activeSection !== 'search' && activeSection !== 'myfeed' && (
           <div
             style={{
               display: 'flex',
