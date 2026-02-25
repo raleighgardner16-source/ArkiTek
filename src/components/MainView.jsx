@@ -3746,32 +3746,32 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             padding: '5px 8px',
                             height: '30px',
                             background: isActive
-                              ? (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(44, 82, 130, 0.28)')
+                              ? (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.10)' : 'rgba(44, 82, 130, 0.08)')
                               : 'transparent',
-                            border: `1px solid ${isActive ? (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(44, 82, 130, 0.55)') : currentTheme.borderLight}`,
+                            border: `1px solid ${isActive ? (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.30)' : 'rgba(44, 82, 130, 0.30)') : currentTheme.borderLight}`,
                             borderRadius: '8px',
-                            color: isActive ? (currentTheme.name === 'dark' ? '#111' : '#1a365d') : currentTheme.textSecondary,
+                            color: isActive ? (currentTheme.name === 'dark' ? '#fff' : '#1a365d') : currentTheme.textSecondary,
                             cursor: 'pointer',
                             fontSize: '0.8rem',
-                            fontWeight: isActive ? '700' : '500',
+                            fontWeight: isActive ? '600' : '500',
                             whiteSpace: 'nowrap',
                           transition: 'all 0.15s ease',
                               outline: 'none',
                               WebkitTapHighlightColor: 'transparent',
-                            boxShadow: isActive ? (currentTheme.name === 'dark' ? '0 1px 6px rgba(0,0,0,0.15)' : '0 1px 4px rgba(44, 82, 130, 0.2)') : 'none',
+                            boxShadow: 'none',
                           }}
                         >
                           {isActive && (
                             <Check
                               size={13}
-                              style={{ flexShrink: 0, color: '#22c55e', strokeWidth: 3 }}
+                              style={{ flexShrink: 0, color: currentTheme.name === 'dark' ? '#fff' : '#000', strokeWidth: 3 }}
                             />
                           )}
                           <span>{providerData.providerName}</span>
                           {isActive && (
                             <XCircle
                               size={13}
-                              style={{ flexShrink: 0, opacity: 0.5, color: isActive ? (currentTheme.name === 'dark' ? '#555' : '#ccc') : undefined }}
+                              style={{ flexShrink: 0, opacity: 0.5, color: isActive ? (currentTheme.name === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)') : undefined }}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 // Deselect all models from this provider
@@ -3803,7 +3803,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                               flexShrink: 0,
                               padding: '0 1px',
                               marginLeft: '2px',
-                              borderLeft: `1px solid ${isActive ? (currentTheme.name === 'dark' ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.3)') : currentTheme.borderLight}`,
+                              borderLeft: `1px solid ${isActive ? (currentTheme.name === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)') : currentTheme.borderLight}`,
                               paddingLeft: '4px',
                             }}
                           >
