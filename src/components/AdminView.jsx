@@ -777,6 +777,7 @@ const AdminView = () => {
           whileTap={{ scale: 0.95 }}
           onClick={() => {
             setActiveSection('expenses')
+            setExpensesSubSection('revenue')
             loadPeriodData()
           }}
           style={{
@@ -850,12 +851,8 @@ const AdminView = () => {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             onClick={() => {
-              if (activeSection === 'expenses' && expensesSubSection) {
-                setExpensesSubSection(null)
-              } else {
-                setActiveSection('main')
-                setExpensesSubSection(null)
-              }
+              setActiveSection('main')
+              setExpensesSubSection(null)
             }}
             style={{
               display: 'flex',
@@ -879,7 +876,7 @@ const AdminView = () => {
             }}
           >
             <ArrowLeft size={20} />
-            {activeSection === 'expenses' && expensesSubSection ? 'Back to Revenue / Expenses' : 'Back to Main'}
+            Back to Main
           </motion.button>
         )}
 
@@ -904,16 +901,14 @@ const AdminView = () => {
                   {activeSection === 'users' && 'Users'}
                   {activeSection === 'models' && 'Models & Releases'}
                   {activeSection === 'prices' && 'Prices'}
-                  {activeSection === 'expenses' && (expensesSubSection === 'revenue' ? 'Revenue' : expensesSubSection === 'expenses' ? 'Expenses' : 'Revenue / Expenses')}
+                  {activeSection === 'expenses' && 'Revenue / Expenses'}
                 </h1>
               </div>
               <p style={{ color: '#aaaaaa', fontSize: '1.1rem' }}>
                 {activeSection === 'users' && 'Manage users and monitor usage'}
                 {activeSection === 'models' && 'View available models and releases'}
                 {activeSection === 'prices' && 'Manage model pricing'}
-                {activeSection === 'expenses' && !expensesSubSection && 'Track revenue streams and monitor costs'}
-                {activeSection === 'expenses' && expensesSubSection === 'revenue' && 'Subscriptions, store purchases, and credit revenue'}
-                {activeSection === 'expenses' && expensesSubSection === 'expenses' && 'API costs, services, and operational expenses'}
+                {activeSection === 'expenses' && 'Track revenue streams and monitor costs'}
               </p>
             </div>
 
@@ -2022,84 +2017,63 @@ const AdminView = () => {
             )}
 
             {/* Revenue / Expenses Section */}
-            {activeSection === 'expenses' && !expensesSubSection && (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: '30px',
-                maxWidth: '800px',
-                margin: '40px auto 0',
-              }}>
-                <motion.div
-                  whileHover={{ scale: 1.05, y: -5 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    setExpensesSubSection('revenue')
-                    loadPeriodData()
-                  }}
-                  style={{
-                    background: 'rgba(72, 201, 176, 0.1)',
-                    border: '2px solid rgba(72, 201, 176, 0.3)',
-                    borderRadius: '20px',
-                    padding: '50px 40px',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '20px',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.border = '2px solid rgba(72, 201, 176, 0.6)'
-                    e.currentTarget.style.background = 'rgba(72, 201, 176, 0.15)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.border = '2px solid rgba(72, 201, 176, 0.3)'
-                    e.currentTarget.style.background = 'rgba(72, 201, 176, 0.1)'
-                  }}
-                >
-                  <TrendingUp size={56} color="#48c9b0" />
-                  <h2 style={{ fontSize: '1.6rem', color: '#ffffff', margin: 0, fontWeight: '600' }}>Revenue</h2>
-                  <p style={{ color: '#aaaaaa', fontSize: '0.9rem', margin: 0, textAlign: 'center' }}>Subscriptions, store purchases, and credits</p>
-                </motion.div>
+            {activeSection === 'expenses' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
 
-                <motion.div
-                  whileHover={{ scale: 1.05, y: -5 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    setExpensesSubSection('expenses')
-                    loadPeriodData()
-                  }}
-                  style={{
-                    background: 'rgba(93, 173, 226, 0.1)',
-                    border: '2px solid rgba(93, 173, 226, 0.3)',
-                    borderRadius: '20px',
-                    padding: '50px 40px',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '20px',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.border = '2px solid rgba(93, 173, 226, 0.6)'
-                    e.currentTarget.style.background = 'rgba(93, 173, 226, 0.15)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.border = '2px solid rgba(93, 173, 226, 0.3)'
-                    e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
-                  }}
-                >
-                  <Receipt size={56} color="#5dade2" />
-                  <h2 style={{ fontSize: '1.6rem', color: '#ffffff', margin: 0, fontWeight: '600' }}>Expenses</h2>
-                  <p style={{ color: '#aaaaaa', fontSize: '0.9rem', margin: 0, textAlign: 'center' }}>API costs, services, and operations</p>
-                </motion.div>
-              </div>
-            )}
+                {/* Tab Bar */}
+                <div style={{
+                  display: 'flex',
+                  marginBottom: '28px',
+                  borderBottom: '1px solid rgba(93, 173, 226, 0.2)',
+                }}>
+                  <button
+                    onClick={() => setExpensesSubSection('revenue')}
+                    style={{
+                      flex: 1,
+                      padding: '14px 12px',
+                      background: expensesSubSection === 'revenue' ? 'rgba(72, 201, 176, 0.08)' : 'transparent',
+                      border: 'none',
+                      borderBottom: expensesSubSection === 'revenue' ? '2px solid #48c9b0' : '2px solid transparent',
+                      color: expensesSubSection === 'revenue' ? '#48c9b0' : '#6b7280',
+                      fontSize: '1rem',
+                      fontWeight: expensesSubSection === 'revenue' ? '600' : '400',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <TrendingUp size={18} />
+                    Revenue
+                  </button>
+                  <button
+                    onClick={() => setExpensesSubSection('expenses')}
+                    style={{
+                      flex: 1,
+                      padding: '14px 12px',
+                      background: expensesSubSection === 'expenses' ? 'rgba(93, 173, 226, 0.08)' : 'transparent',
+                      border: 'none',
+                      borderBottom: expensesSubSection === 'expenses' ? '2px solid #5dade2' : '2px solid transparent',
+                      color: expensesSubSection === 'expenses' ? '#5dade2' : '#6b7280',
+                      fontSize: '1rem',
+                      fontWeight: expensesSubSection === 'expenses' ? '600' : '400',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <Receipt size={18} />
+                    Expenses
+                  </button>
+                </div>
 
-            {/* ═══════════════════ REVENUE SUB-SECTION ═══════════════════ */}
-            {activeSection === 'expenses' && expensesSubSection === 'revenue' && (
+            {/* ═══════════════════ REVENUE TAB ═══════════════════ */}
+            {expensesSubSection === 'revenue' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
                 {/* Period Selector */}
@@ -2193,13 +2167,37 @@ const AdminView = () => {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-                    {/* Subscription Stats Row */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
+                    {/* Total Users Summary */}
+                    <div style={{
+                      background: 'linear-gradient(135deg, rgba(72, 201, 176, 0.1), rgba(93, 173, 226, 0.06))',
+                      border: '1px solid rgba(72, 201, 176, 0.25)',
+                      borderRadius: '14px',
+                      padding: '24px',
+                      display: 'flex',
+                      justifyContent: 'space-around',
+                      alignItems: 'center',
+                      gap: '16px',
+                      flexWrap: 'wrap',
+                    }}>
                       {[
-                        { label: 'Active Subscriptions', value: revenueData.activeSubscriptions, color: '#48c9b0' },
-                        { label: `New (${periodOptions.find(o => o.value === timePeriod)?.label})`, value: revenueData.newSubscriptions, color: '#5dade2' },
+                        { label: 'Total Active Users', value: (revenueData.activeSubscriptions ?? 0) + (revenueData.activeFreeTrials ?? 0), color: '#ffffff' },
+                        { label: 'Paid Subscribers', value: revenueData.activeSubscriptions ?? 0, color: '#48c9b0' },
+                        { label: 'Free Trial Users', value: revenueData.activeFreeTrials ?? 0, color: '#fbbf24' },
+                      ].map(({ label, value, color }) => (
+                        <div key={label} style={{ textAlign: 'center', minWidth: '140px' }}>
+                          <p style={{ color: '#999999', fontSize: '0.8rem', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</p>
+                          <p style={{ color, fontSize: '2.2rem', fontWeight: '800', margin: 0, fontFamily: 'monospace' }}>{value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Period Activity Stats */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '16px' }}>
+                      {[
+                        { label: `New Subs (${periodOptions.find(o => o.value === timePeriod)?.label})`, value: revenueData.newSubscriptions, color: '#5dade2' },
                         { label: `Renewed (${periodOptions.find(o => o.value === timePeriod)?.label})`, value: revenueData.renewedSubscriptions ?? 0, color: '#a78bfa' },
                         { label: `Canceled (${periodOptions.find(o => o.value === timePeriod)?.label})`, value: revenueData.canceledSubscriptions, color: '#f87171' },
+                        { label: `New Trials (${periodOptions.find(o => o.value === timePeriod)?.label})`, value: revenueData.newFreeTrials ?? 0, color: '#f59e0b' },
                       ].map(({ label, value, color }) => (
                         <div key={label} style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
                           <p style={{ color: '#cccccc', fontSize: '0.85rem', margin: '0 0 8px 0' }}>{label}</p>
@@ -2243,6 +2241,36 @@ const AdminView = () => {
                           <p style={{ color: '#6b7280', fontSize: '0.8rem', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '1px' }}>New subscribers</p>
                           {revenueData.subscriptionUsers.map((u, i) => (
                             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(93, 173, 226, 0.06)', borderRadius: '8px' }}>
+                              <span style={{ color: '#cccccc', fontSize: '0.9rem' }}>
+                                <User size={14} style={{ marginRight: '6px', verticalAlign: 'middle', opacity: 0.6 }} />
+                                {u.username}
+                              </span>
+                              <span style={{ color: '#666666', fontSize: '0.8rem' }}>{new Date(u.date).toLocaleDateString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Free Trials */}
+                    <div style={{ background: 'rgba(251, 191, 36, 0.06)', border: '1px solid rgba(251, 191, 36, 0.15)', borderRadius: '14px', padding: '24px' }}>
+                      <h3 style={{ fontSize: '1.15rem', color: '#fbbf24', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <User size={20} color="#fbbf24" />
+                        Free Trials
+                      </h3>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
+                          {revenueData.activeFreeTrials ?? 0} active trial{(revenueData.activeFreeTrials ?? 0) !== 1 ? 's' : ''} · {revenueData.newFreeTrials ?? 0} new this period
+                        </span>
+                        <span style={{ color: '#fbbf24', fontSize: '1.1rem', fontWeight: '600', fontFamily: 'monospace' }}>
+                          $0.00 (free)
+                        </span>
+                      </div>
+                      {revenueData.freeTrialUsers?.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(251, 191, 36, 0.1)' }}>
+                          <p style={{ color: '#6b7280', fontSize: '0.8rem', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '1px' }}>New trial users</p>
+                          {revenueData.freeTrialUsers.map((u, i) => (
+                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(251, 191, 36, 0.06)', borderRadius: '8px' }}>
                               <span style={{ color: '#cccccc', fontSize: '0.9rem' }}>
                                 <User size={14} style={{ marginRight: '6px', verticalAlign: 'middle', opacity: 0.6 }} />
                                 {u.username}
@@ -2380,8 +2408,8 @@ const AdminView = () => {
               </div>
             )}
 
-            {/* ═══════════════════ EXPENSES SUB-SECTION ═══════════════════ */}
-            {activeSection === 'expenses' && expensesSubSection === 'expenses' && (
+            {/* ═══════════════════ EXPENSES TAB ═══════════════════ */}
+            {expensesSubSection === 'expenses' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
                 {/* Period Selector */}
@@ -2653,6 +2681,9 @@ const AdminView = () => {
                     })()}
                   </div>
                 )}
+
+              </div>
+            )}
 
               </div>
             )}

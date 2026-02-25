@@ -9569,23 +9569,39 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
     let activeSubscriptions = 0
     let newSubscriptions = 0
     let canceledSubscriptions = 0
+    let activeFreeTrials = 0
+    let newFreeTrials = 0
     const subscriptionUsers = []
+    const freeTrialUsers = []
 
     for (const [userId, user] of Object.entries(users)) {
       if (!user.subscriptionStatus || user.subscriptionStatus === 'inactive') continue
-      if (user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing') {
+      const isTrial = user.plan === 'free_trial' || user.subscriptionStatus === 'trialing'
+
+      if (user.subscriptionStatus === 'active') {
         activeSubscriptions++
+      } else if (user.subscriptionStatus === 'trialing') {
+        activeFreeTrials++
       }
+
       if (user.subscriptionStartedDate) {
         const started = new Date(user.subscriptionStartedDate)
         if (started >= startDate && started < endDate) {
-          newSubscriptions++
-          subscriptionUsers.push({
-            username: user.username || 'Anonymous',
-            type: 'new_subscription',
-            plan: user.plan || 'pro',
-            date: user.subscriptionStartedDate,
-          })
+          if (isTrial) {
+            newFreeTrials++
+            freeTrialUsers.push({
+              username: user.username || 'Anonymous',
+              date: user.subscriptionStartedDate,
+            })
+          } else {
+            newSubscriptions++
+            subscriptionUsers.push({
+              username: user.username || 'Anonymous',
+              type: 'new_subscription',
+              plan: user.plan || 'pro',
+              date: user.subscriptionStartedDate,
+            })
+          }
         }
       }
       if (user.cancellationHistory?.length > 0) {
@@ -9667,6 +9683,9 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
         totalStoreRevenue,
         totalRevenue: grandTotalRevenue,
         subscriptionUsers,
+        activeFreeTrials,
+        newFreeTrials,
+        freeTrialUsers,
       },
     })
   } catch (error) {
