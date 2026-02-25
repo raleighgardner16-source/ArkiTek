@@ -2513,13 +2513,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       </p>
                     </div>
                   </div>
-                  {/* Summary label */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                    <FileText size={16} color={currentTheme.accent} />
-                    <span style={{ color: currentTheme.accent, fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Summary
-                    </span>
-                  </div>
                   {/* Summary streaming text */}
                   <div>
                     <MarkdownRenderer content={summary?.text || ''} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
@@ -2575,27 +2568,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 {/* Response - Free flowing text, NO container/border */}
                 {inlineResponseText && (
                   <div ref={responseAreaRef} style={{ padding: '4px 0 0 4px' }}>
-                    <div style={{
-                      marginBottom: '14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '12px',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <FileText size={16} color={currentTheme.accent} />
-                        <span style={{
-                          color: currentTheme.accent,
-                          fontSize: '0.8rem',
-                          fontWeight: '600',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px',
-                        }}>
-                          {inlineResponseLabel}
-                        </span>
-                      </div>
-                      
-                    </div>
                     <div>
                       <MarkdownRenderer content={inlineResponseText} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
                     </div>
