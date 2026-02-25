@@ -9506,6 +9506,196 @@ app.post('/api/admin/expenses', requireAdmin, async (req, res) => {
   }
 })
 
+// Helper: compute date range from period + reference date
+function computeDateRange(period, dateStr) {
+  const now = new Date()
+  const ref = dateStr ? new Date(dateStr + (dateStr.length <= 10 ? 'T00:00:00' : '')) : now
+  let startDate, endDate
+
+  switch (period) {
+    case 'day': {
+      startDate = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate())
+      endDate = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() + 1)
+      break
+    }
+    case 'week': {
+      const dow = ref.getDay()
+      const diffToMon = dow === 0 ? 6 : dow - 1
+      const monday = new Date(ref)
+      monday.setDate(ref.getDate() - diffToMon)
+      startDate = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate())
+      endDate = new Date(startDate)
+      endDate.setDate(startDate.getDate() + 7)
+      break
+    }
+    case 'month': {
+      startDate = new Date(ref.getFullYear(), ref.getMonth(), 1)
+      endDate = new Date(ref.getFullYear(), ref.getMonth() + 1, 1)
+      break
+    }
+    case 'quarter': {
+      const q = Math.floor(ref.getMonth() / 3)
+      startDate = new Date(ref.getFullYear(), q * 3, 1)
+      endDate = new Date(ref.getFullYear(), q * 3 + 3, 1)
+      break
+    }
+    case 'year': {
+      startDate = new Date(ref.getFullYear(), 0, 1)
+      endDate = new Date(ref.getFullYear() + 1, 0, 1)
+      break
+    }
+    case 'all': {
+      startDate = new Date(2020, 0, 1)
+      endDate = new Date(2099, 0, 1)
+      break
+    }
+    default: {
+      startDate = new Date(ref.getFullYear(), ref.getMonth(), 1)
+      endDate = new Date(ref.getFullYear(), ref.getMonth() + 1, 1)
+    }
+  }
+  return { startDate, endDate }
+}
+
+// Get revenue data for any period (PROTECTED - requires admin)
+app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
+  try {
+    const { period = 'month', date } = req.query
+    const { startDate, endDate } = computeDateRange(period, date)
+
+    const users = readUsers()
+    const dbInstance = await db.getDb()
+
+    let activeSubscriptions = 0
+    let newSubscriptions = 0
+    let canceledSubscriptions = 0
+    const subscriptionUsers = []
+
+    for (const [userId, user] of Object.entries(users)) {
+      if (!user.subscriptionStatus || user.subscriptionStatus === 'inactive') continue
+      if (user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing') {
+        activeSubscriptions++
+      }
+      if (user.subscriptionStartedDate) {
+        const started = new Date(user.subscriptionStartedDate)
+        if (started >= startDate && started < endDate) {
+          newSubscriptions++
+          subscriptionUsers.push({
+            username: user.username || 'Anonymous',
+            type: 'new_subscription',
+            plan: user.plan || 'pro',
+            date: user.subscriptionStartedDate,
+          })
+        }
+      }
+      if (user.cancellationHistory?.length > 0) {
+        user.cancellationHistory.forEach(c => {
+          const cancelDate = new Date(c.canceledAt || c.date)
+          if (cancelDate >= startDate && cancelDate < endDate) {
+            canceledSubscriptions++
+          }
+        })
+      }
+    }
+
+    let creditPurchases = []
+    let totalCreditRevenue = 0
+    try {
+      const purchases = await dbInstance.collection('purchases')
+        .find({ timestamp: { $gte: startDate, $lt: endDate }, status: 'succeeded' })
+        .sort({ timestamp: -1 })
+        .toArray()
+      creditPurchases = purchases.map(p => ({
+        userId: p.userId,
+        username: users[p.userId]?.username || 'Unknown',
+        amount: p.amount || 0,
+        total: p.total || 0,
+        date: p.timestamp,
+      }))
+      totalCreditRevenue = creditPurchases.reduce((sum, p) => sum + (p.total || 0), 0)
+    } catch (e) {
+      // purchases collection may not exist yet
+    }
+
+    const subscriptionPrice = 3.99
+    const estimatedSubscriptionRevenue = newSubscriptions * subscriptionPrice
+    const totalRevenue = estimatedSubscriptionRevenue + totalCreditRevenue
+
+    res.json({
+      success: true,
+      revenue: {
+        period,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        activeSubscriptions,
+        newSubscriptions,
+        canceledSubscriptions,
+        subscriptionPrice,
+        estimatedSubscriptionRevenue,
+        creditPurchases,
+        creditPurchaseCount: creditPurchases.length,
+        totalCreditRevenue,
+        totalRevenue,
+        subscriptionUsers,
+      },
+    })
+  } catch (error) {
+    console.error('[Admin] Error fetching revenue:', error)
+    res.status(500).json({ error: 'Failed to fetch revenue data' })
+  }
+})
+
+// Get aggregated expenses for any period (PROTECTED - requires admin)
+app.get('/api/admin/expenses/aggregate', requireAdmin, async (req, res) => {
+  try {
+    const { period = 'month', date } = req.query
+    const { startDate, endDate } = computeDateRange(period, date)
+
+    // Determine which YYYY-MM month keys fall within the range
+    const allExpenseDocs = await adminDb.expenses.getAll()
+    const relevantMonths = []
+    const expenseFields = [
+      'stripeFees', 'openaiCost', 'anthropicCost', 'googleCost', 'metaCost',
+      'deepseekCost', 'mistralCost', 'xaiCost', 'serperCost', 'resendCost',
+      'mongoDbCost', 'vercelCost', 'domainCost',
+    ]
+
+    const aggregated = {}
+    expenseFields.forEach(f => { aggregated[f] = 0 })
+
+    for (const doc of allExpenseDocs) {
+      const monthKey = doc._id || doc.month
+      if (!monthKey) continue
+      const [y, m] = monthKey.split('-').map(Number)
+      const monthStart = new Date(y, m - 1, 1)
+      const monthEnd = new Date(y, m, 1)
+
+      // Include if the month overlaps with the period range
+      if (monthEnd > startDate && monthStart < endDate) {
+        relevantMonths.push(monthKey)
+        expenseFields.forEach(f => {
+          aggregated[f] += parseFloat(doc[f]) || 0
+        })
+      }
+    }
+
+    const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'metaCost', 'deepseekCost', 'mistralCost', 'xaiCost']
+      .reduce((sum, key) => sum + aggregated[key], 0)
+    const grandTotal = Object.values(aggregated).reduce((sum, val) => sum + val, 0)
+
+    res.json({
+      success: true,
+      expenses: aggregated,
+      months: relevantMonths,
+      totalApiCost,
+      grandTotal,
+    })
+  } catch (error) {
+    console.error('[Admin] Error aggregating expenses:', error)
+    res.status(500).json({ error: 'Failed to aggregate expenses' })
+  }
+})
+
 // Get all months' expenses history (PROTECTED - requires admin)
 app.get('/api/admin/expenses/history', requireAdmin, async (req, res) => {
   try {

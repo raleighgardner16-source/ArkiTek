@@ -246,7 +246,6 @@ const expenses = {
       serperCost: parseFloat(expenseData.serperCost) || 0,
       resendCost: parseFloat(expenseData.resendCost) || 0,
       mongoDbCost: parseFloat(expenseData.mongoDbCost) || 0,
-      railwayCost: parseFloat(expenseData.railwayCost) || 0,
       vercelCost: parseFloat(expenseData.vercelCost) || 0,
       domainCost: parseFloat(expenseData.domainCost) || 0,
       lastUpdated: new Date(),

@@ -40,7 +40,6 @@ const AdminView = () => {
     serperCost: '',
     resendCost: '',
     mongoDbCost: '',
-    railwayCost: '',
     vercelCost: '',
     domainCost: '',
   })
@@ -51,6 +50,51 @@ const AdminView = () => {
   const [expensesLoaded, setExpensesLoaded] = useState(false)
   const [expensesSaving, setExpensesSaving] = useState(false)
   const [expenseSaveTimer, setExpenseSaveTimer] = useState(null)
+  const [revenueData, setRevenueData] = useState(null)
+  const [loadingRevenue, setLoadingRevenue] = useState(false)
+  const [timePeriod, setTimePeriod] = useState('month')
+  const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false)
+  const [referenceDate, setReferenceDate] = useState(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  })
+  const [aggregatedExpenses, setAggregatedExpenses] = useState(null)
+  const [loadingAggExpenses, setLoadingAggExpenses] = useState(false)
+
+  const periodOptions = [
+    { value: 'day', label: 'Day' },
+    { value: 'week', label: 'Week' },
+    { value: 'month', label: 'Month' },
+    { value: 'quarter', label: 'Quarter' },
+    { value: 'year', label: 'Year' },
+    { value: 'all', label: 'All Time' },
+  ]
+
+  const getPeriodLabel = () => {
+    const ref = new Date(referenceDate + 'T00:00:00')
+    switch (timePeriod) {
+      case 'day': return ref.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' })
+      case 'week': {
+        const dow = ref.getDay()
+        const diff = dow === 0 ? 6 : dow - 1
+        const monday = new Date(ref)
+        monday.setDate(ref.getDate() - diff)
+        const sunday = new Date(monday)
+        sunday.setDate(monday.getDate() + 6)
+        return `${monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+      }
+      case 'month': return ref.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      case 'quarter': {
+        const q = Math.ceil((ref.getMonth() + 1) / 3)
+        const qStart = new Date(ref.getFullYear(), (q - 1) * 3, 1)
+        const qEnd = new Date(ref.getFullYear(), q * 3 - 1, 1)
+        return `Q${q} ${ref.getFullYear()} (${qStart.toLocaleDateString('en-US', { month: 'short' })} – ${qEnd.toLocaleDateString('en-US', { month: 'short' })})`
+      }
+      case 'year': return `${ref.getFullYear()}`
+      case 'all': return 'All Time'
+      default: return ''
+    }
+  }
 
   // Calculate total API cost (sum of all provider costs)
   const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'metaCost', 'deepseekCost', 'mistralCost', 'xaiCost']
@@ -60,7 +104,10 @@ const AdminView = () => {
   const grandTotal = Object.values(expenses)
     .reduce((sum, val) => sum + (parseFloat(val) || 0), 0)
 
-  // Load expenses from ADMIN database for the selected month
+  // Effective grand total: use aggregated for non-month periods, calculated for month
+  const effectiveGrandTotal = timePeriod === 'month' ? grandTotal : (aggregatedExpenses?.grandTotal || 0)
+
+  // Load expenses from ADMIN database for the selected month (editable, month view only)
   const loadExpenses = async (month) => {
     try {
       const adminParams = { requestingUserId: currentUser?.id, month }
@@ -79,7 +126,6 @@ const AdminView = () => {
           serperCost: data.serperCost ? String(data.serperCost) : '',
           resendCost: data.resendCost ? String(data.resendCost) : '',
           mongoDbCost: data.mongoDbCost ? String(data.mongoDbCost) : '',
-          railwayCost: data.railwayCost ? String(data.railwayCost) : '',
           vercelCost: data.vercelCost ? String(data.vercelCost) : '',
           domainCost: data.domainCost ? String(data.domainCost) : '',
         })
@@ -88,6 +134,53 @@ const AdminView = () => {
     } catch (error) {
       console.error('Error loading expenses:', error)
       setExpensesLoaded(true)
+    }
+  }
+
+  // Load aggregated expenses for non-month periods (read-only)
+  const loadAggregatedExpenses = async (period, date) => {
+    try {
+      setLoadingAggExpenses(true)
+      const adminParams = { requestingUserId: currentUser?.id, period, date }
+      const response = await axios.get(`${API_URL}/api/admin/expenses/aggregate`, { params: adminParams })
+      if (response.data.success) {
+        setAggregatedExpenses(response.data)
+      }
+    } catch (error) {
+      console.error('Error loading aggregated expenses:', error)
+    } finally {
+      setLoadingAggExpenses(false)
+    }
+  }
+
+  const loadRevenue = async (period, date) => {
+    try {
+      setLoadingRevenue(true)
+      const adminParams = { requestingUserId: currentUser?.id, period, date }
+      const response = await axios.get(`${API_URL}/api/admin/revenue`, { params: adminParams })
+      if (response.data.success) {
+        setRevenueData(response.data.revenue)
+      }
+    } catch (error) {
+      console.error('Error loading revenue:', error)
+    } finally {
+      setLoadingRevenue(false)
+    }
+  }
+
+  // Unified loader: loads both revenue and expenses for the current period
+  const loadPeriodData = (period, dateVal) => {
+    const p = period || timePeriod
+    const d = dateVal || referenceDate
+    if (p === 'month') {
+      const monthStr = d.slice(0, 7)
+      setExpenseMonth(monthStr)
+      setExpensesLoaded(false)
+      loadExpenses(monthStr)
+      loadRevenue(p, d)
+    } else {
+      loadAggregatedExpenses(p, d)
+      loadRevenue(p, d)
     }
   }
 
@@ -684,18 +777,18 @@ const AdminView = () => {
           </h2>
         </motion.div>
 
-        {/* Expenses Card */}
+        {/* Revenue/Expenses Card */}
         <motion.div
           whileHover={{ scale: 1.05, y: -5 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => {
             setActiveSection('expenses')
             fetchAdminData()
-            loadExpenses(expenseMonth)
+            loadPeriodData()
           }}
           style={{
-            background: 'rgba(255, 0, 0, 0.1)',
-            border: '2px solid rgba(255, 0, 0, 0.3)',
+            background: 'rgba(72, 201, 176, 0.1)',
+            border: '2px solid rgba(72, 201, 176, 0.3)',
             borderRadius: '20px',
             padding: '40px',
             cursor: 'pointer',
@@ -706,15 +799,15 @@ const AdminView = () => {
             gap: '20px',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.border = '2px solid rgba(255, 0, 0, 0.6)'
-            e.currentTarget.style.background = 'rgba(255, 0, 0, 0.15)'
+            e.currentTarget.style.border = '2px solid rgba(72, 201, 176, 0.6)'
+            e.currentTarget.style.background = 'rgba(72, 201, 176, 0.15)'
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.border = '2px solid rgba(255, 0, 0, 0.3)'
-            e.currentTarget.style.background = 'rgba(255, 0, 0, 0.1)'
+            e.currentTarget.style.border = '2px solid rgba(72, 201, 176, 0.3)'
+            e.currentTarget.style.background = 'rgba(72, 201, 176, 0.1)'
           }}
         >
-          <Receipt size={64} color="#FF0000" />
+          <Receipt size={64} color="#48c9b0" />
           <h2
             style={{
               fontSize: '1.8rem',
@@ -723,7 +816,7 @@ const AdminView = () => {
               fontWeight: '600',
             }}
           >
-            Expenses
+            Revenue / Expenses
           </h2>
         </motion.div>
       </div>
@@ -811,14 +904,14 @@ const AdminView = () => {
                   {activeSection === 'users' && 'Users'}
                   {activeSection === 'models' && 'Models & Releases'}
                   {activeSection === 'prices' && 'Prices'}
-                  {activeSection === 'expenses' && 'Expenses'}
+                  {activeSection === 'expenses' && 'Revenue / Expenses'}
                 </h1>
               </div>
               <p style={{ color: '#aaaaaa', fontSize: '1.1rem' }}>
                 {activeSection === 'users' && 'Manage users and monitor usage'}
                 {activeSection === 'models' && 'View available models and releases'}
                 {activeSection === 'prices' && 'Manage model pricing'}
-                {activeSection === 'expenses' && 'Monitor costs and expenses'}
+                {activeSection === 'expenses' && 'Track revenue streams and monitor costs'}
               </p>
             </div>
 
@@ -1895,25 +1988,6 @@ const AdminView = () => {
                                   />
                                 </div>
                                 <div style={{ textAlign: 'right' }}>
-                                  <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: '0 0 4px 0' }}>Cache</p>
-                                  <input
-                                    type="text"
-                                    defaultValue={pricing.cachedInput !== null && pricing.cachedInput !== undefined ? pricing.cachedInput.toFixed(2) : ''}
-                                    placeholder="TBD"
-                                    style={{
-                                      background: 'rgba(255, 170, 0, 0.1)',
-                                      border: '1px solid rgba(255, 170, 0, 0.3)',
-                                      borderRadius: '6px',
-                                      padding: '6px 10px',
-                                      color: '#FFAA00',
-                                      fontSize: '1rem',
-                                      fontWeight: 'bold',
-                                      width: '80px',
-                                      textAlign: 'right',
-                                    }}
-                                  />
-                                </div>
-                                <div style={{ textAlign: 'right' }}>
                                   <p style={{ color: '#aaaaaa', fontSize: '0.75rem', margin: '0 0 4px 0' }}>Output</p>
                                   <input
                                     type="text"
@@ -1945,244 +2019,717 @@ const AdminView = () => {
           </div>
             )}
 
-            {/* Expenses Section */}
+            {/* Revenue / Expenses Section */}
             {activeSection === 'expenses' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
-                {/* Month Selector + Save Indicator */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <label style={{ color: '#aaaaaa', fontSize: '1rem' }}>Month:</label>
-                    <input
-                      type="month"
-                      value={expenseMonth}
-                      onChange={(e) => {
-                        setExpenseMonth(e.target.value)
-                        setExpensesLoaded(false)
-                        loadExpenses(e.target.value)
-                      }}
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.06)',
-                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                        borderRadius: '10px',
-                        padding: '10px 16px',
-                        color: '#ffffff',
-                        fontSize: '1rem',
-                        outline: 'none',
-                        cursor: 'pointer',
-                        colorScheme: 'dark',
-                      }}
-                    />
-                  </div>
-                  <span style={{
-                    color: expensesSaving ? '#f59e0b' : '#48c9b0',
-                    fontSize: '0.85rem',
-                    opacity: 0.8,
-                    transition: 'all 0.3s ease',
-                  }}>
-                    {expensesSaving ? '⏳ Saving...' : expensesLoaded ? '✅ Auto-saved' : ''}
-                  </span>
-                </div>
+                {/* Period Selector + Date Picker + Save Indicator */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
 
-                {/* Stripe Fees */}
-                <div
-                  style={{
-                    background: 'rgba(99, 102, 241, 0.1)',
-                    border: '1px solid rgba(99, 102, 241, 0.3)',
-                    borderRadius: '16px',
-                    padding: '28px',
-                  }}
-                >
-                  <h3 style={{ fontSize: '1.3rem', color: '#818cf8', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <CreditCard size={22} color="#818cf8" />
-                    Stripe Fees
-                  </h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ color: '#aaaaaa', fontSize: '1.1rem' }}>$</span>
-                    <input
-                      type="text"
-                      value={expenses.stripeFees}
-                      onChange={(e) => handleExpenseChange('stripeFees', e.target.value)}
-                      placeholder="0.00"
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.06)',
-                        border: '1px solid rgba(99, 102, 241, 0.4)',
-                        borderRadius: '10px',
-                        padding: '12px 16px',
-                        color: '#ffffff',
-                        fontSize: '1.1rem',
-                        width: '200px',
-                        outline: 'none',
-                        transition: 'border-color 0.2s ease',
-                      }}
-                      onFocus={(e) => e.target.style.borderColor = 'rgba(99, 102, 241, 0.8)'}
-                      onBlur={(e) => e.target.style.borderColor = 'rgba(99, 102, 241, 0.4)'}
-                    />
-                  </div>
-                </div>
-
-                {/* API Costs Per Provider */}
-                <div
-                  style={{
-                    background: 'rgba(255, 165, 0, 0.1)',
-                    border: '1px solid rgba(255, 165, 0, 0.3)',
-                    borderRadius: '16px',
-                    padding: '28px',
-                  }}
-                >
-                  <h3 style={{ fontSize: '1.3rem', color: '#FFA500', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <BarChart3 size={22} color="#FFA500" />
-                    API Costs Per Provider
-                  </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-                    {[
-                      { key: 'openaiCost', label: 'OpenAI (ChatGPT)', color: '#10a37f' },
-                      { key: 'anthropicCost', label: 'Anthropic (Claude)', color: '#d4a574' },
-                      { key: 'googleCost', label: 'Google (Gemini)', color: '#4285f4' },
-                      { key: 'metaCost', label: 'Meta (Llama)', color: '#0668E1' },
-                      { key: 'deepseekCost', label: 'DeepSeek', color: '#6366f1' },
-                      { key: 'mistralCost', label: 'Mistral AI', color: '#ff7000' },
-                      { key: 'xaiCost', label: 'xAI (Grok)', color: '#ffffff' },
-                    ].map(({ key, label, color }) => (
+                    {/* Period Dropdown */}
+                    <div style={{ position: 'relative' }}>
                       <div
-                        key={key}
+                        onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
                         style={{
-                          background: 'rgba(255, 255, 255, 0.03)',
-                          border: `1px solid ${color}33`,
-                          borderRadius: '12px',
-                          padding: '16px',
+                          background: 'rgba(93, 173, 226, 0.1)',
+                          border: '1px solid rgba(93, 173, 226, 0.3)',
+                          borderRadius: '10px',
+                          padding: '10px 16px',
+                          color: '#ffffff',
+                          fontSize: '1rem',
+                          cursor: 'pointer',
                           display: 'flex',
-                          flexDirection: 'column',
+                          alignItems: 'center',
                           gap: '8px',
+                          minWidth: '130px',
+                          justifyContent: 'space-between',
+                          transition: 'all 0.2s ease',
                         }}
                       >
-                        <label style={{ color: color, fontSize: '0.95rem', fontWeight: '500' }}>{label}</label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ color: '#aaaaaa', fontSize: '1rem' }}>$</span>
-                          <input
-                            type="text"
-                            value={expenses[key]}
-                            onChange={(e) => handleExpenseChange(key, e.target.value)}
-                            placeholder="0.00"
+                        <span>{periodOptions.find(o => o.value === timePeriod)?.label}</span>
+                        <ChevronDown size={16} style={{ transition: 'transform 0.2s ease', transform: periodDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                      </div>
+
+                      {periodDropdownOpen && (
+                        <>
+                          <div
+                            onClick={() => setPeriodDropdownOpen(false)}
+                            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
+                          />
+                          <div style={{
+                            position: 'absolute',
+                            top: 'calc(100% + 6px)',
+                            left: 0,
+                            background: '#0a0a0a',
+                            border: '1px solid rgba(93, 173, 226, 0.2)',
+                            borderRadius: '12px',
+                            padding: '6px',
+                            zIndex: 100,
+                            minWidth: '160px',
+                            boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+                          }}>
+                            {periodOptions.map(opt => (
+                              <div
+                                key={opt.value}
+                                onClick={() => {
+                                  setTimePeriod(opt.value)
+                                  setPeriodDropdownOpen(false)
+                                  loadPeriodData(opt.value, referenceDate)
+                                }}
+                                style={{
+                                  padding: '10px 14px',
+                                  borderRadius: '8px',
+                                  cursor: 'pointer',
+                                  color: timePeriod === opt.value ? '#ffffff' : '#cccccc',
+                                  background: timePeriod === opt.value ? 'rgba(93, 173, 226, 0.25)' : 'transparent',
+                                  fontSize: '0.95rem',
+                                  transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (timePeriod !== opt.value) e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)'
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (timePeriod !== opt.value) e.currentTarget.style.background = 'transparent'
+                                }}
+                              >
+                                {opt.label}
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Contextual Date Picker */}
+                    {timePeriod === 'day' && (
+                      <input
+                        type="date"
+                        value={referenceDate}
+                        onChange={(e) => {
+                          setReferenceDate(e.target.value)
+                          loadPeriodData('day', e.target.value)
+                        }}
+                        style={{
+                          background: 'rgba(93, 173, 226, 0.06)',
+                          border: '1px solid rgba(93, 173, 226, 0.2)',
+                          borderRadius: '10px',
+                          padding: '10px 16px',
+                          color: '#ffffff',
+                          fontSize: '1rem',
+                          outline: 'none',
+                          cursor: 'pointer',
+                          colorScheme: 'dark',
+                        }}
+                      />
+                    )}
+                    {timePeriod === 'week' && (
+                      <input
+                        type="date"
+                        value={referenceDate}
+                        onChange={(e) => {
+                          setReferenceDate(e.target.value)
+                          loadPeriodData('week', e.target.value)
+                        }}
+                        style={{
+                          background: 'rgba(93, 173, 226, 0.06)',
+                          border: '1px solid rgba(93, 173, 226, 0.2)',
+                          borderRadius: '10px',
+                          padding: '10px 16px',
+                          color: '#ffffff',
+                          fontSize: '1rem',
+                          outline: 'none',
+                          cursor: 'pointer',
+                          colorScheme: 'dark',
+                        }}
+                      />
+                    )}
+                    {timePeriod === 'month' && (
+                      <input
+                        type="month"
+                        value={expenseMonth}
+                        onChange={(e) => {
+                          const newMonth = e.target.value
+                          setExpenseMonth(newMonth)
+                          setReferenceDate(newMonth + '-01')
+                          setExpensesLoaded(false)
+                          loadPeriodData('month', newMonth + '-01')
+                        }}
+                        style={{
+                          background: 'rgba(93, 173, 226, 0.06)',
+                          border: '1px solid rgba(93, 173, 226, 0.2)',
+                          borderRadius: '10px',
+                          padding: '10px 16px',
+                          color: '#ffffff',
+                          fontSize: '1rem',
+                          outline: 'none',
+                          cursor: 'pointer',
+                          colorScheme: 'dark',
+                        }}
+                      />
+                    )}
+                    {timePeriod === 'quarter' && (() => {
+                      const ref = new Date(referenceDate + 'T00:00:00')
+                      const currentQ = Math.ceil((ref.getMonth() + 1) / 3)
+                      const currentY = ref.getFullYear()
+                      return (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <select
+                            value={currentQ}
+                            onChange={(e) => {
+                              const q = parseInt(e.target.value)
+                              const newDate = `${currentY}-${String((q - 1) * 3 + 1).padStart(2, '0')}-01`
+                              setReferenceDate(newDate)
+                              loadPeriodData('quarter', newDate)
+                            }}
                             style={{
-                              background: 'rgba(255, 255, 255, 0.06)',
-                              border: `1px solid ${color}44`,
-                              borderRadius: '8px',
-                              padding: '10px 14px',
+                              background: 'rgba(93, 173, 226, 0.06)',
+                              border: '1px solid rgba(93, 173, 226, 0.2)',
+                              borderRadius: '10px',
+                              padding: '10px 16px',
                               color: '#ffffff',
                               fontSize: '1rem',
-                              width: '100%',
                               outline: 'none',
-                              transition: 'border-color 0.2s ease',
+                              cursor: 'pointer',
+                              colorScheme: 'dark',
                             }}
-                            onFocus={(e) => e.target.style.borderColor = `${color}99`}
-                            onBlur={(e) => e.target.style.borderColor = `${color}44`}
+                          >
+                            <option value={1} style={{ background: '#0a0a0a' }}>Q1 (Jan–Mar)</option>
+                            <option value={2} style={{ background: '#0a0a0a' }}>Q2 (Apr–Jun)</option>
+                            <option value={3} style={{ background: '#0a0a0a' }}>Q3 (Jul–Sep)</option>
+                            <option value={4} style={{ background: '#0a0a0a' }}>Q4 (Oct–Dec)</option>
+                          </select>
+                          <input
+                            type="number"
+                            value={currentY}
+                            min={2024}
+                            max={2035}
+                            onChange={(e) => {
+                              const y = e.target.value
+                              const newDate = `${y}-${String((currentQ - 1) * 3 + 1).padStart(2, '0')}-01`
+                              setReferenceDate(newDate)
+                              loadPeriodData('quarter', newDate)
+                            }}
+                            style={{
+                              background: 'rgba(93, 173, 226, 0.06)',
+                              border: '1px solid rgba(93, 173, 226, 0.2)',
+                              borderRadius: '10px',
+                              padding: '10px 16px',
+                              color: '#ffffff',
+                              fontSize: '1rem',
+                              width: '100px',
+                              outline: 'none',
+                              colorScheme: 'dark',
+                            }}
                           />
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      )
+                    })()}
+                    {timePeriod === 'year' && (
+                      <input
+                        type="number"
+                        value={new Date(referenceDate + 'T00:00:00').getFullYear()}
+                        min={2024}
+                        max={2035}
+                        onChange={(e) => {
+                          const newDate = `${e.target.value}-01-01`
+                          setReferenceDate(newDate)
+                          loadPeriodData('year', newDate)
+                        }}
+                        style={{
+                          background: 'rgba(93, 173, 226, 0.06)',
+                          border: '1px solid rgba(93, 173, 226, 0.2)',
+                          borderRadius: '10px',
+                          padding: '10px 16px',
+                          color: '#ffffff',
+                          fontSize: '1rem',
+                          width: '110px',
+                          outline: 'none',
+                          colorScheme: 'dark',
+                        }}
+                      />
+                    )}
 
-                  {/* Total API Cost */}
-                  <div
-                    style={{
-                      marginTop: '20px',
-                      paddingTop: '20px',
-                      borderTop: '1px solid rgba(255, 165, 0, 0.2)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <span style={{ color: '#FFA500', fontSize: '1.15rem', fontWeight: '600' }}>Total API Cost</span>
-                    <span style={{ color: '#ffffff', fontSize: '1.3rem', fontWeight: '700', fontFamily: 'monospace' }}>
-                      ${totalApiCost.toFixed(2)}
+                    {/* Period Label */}
+                    <span style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                      {getPeriodLabel()}
                     </span>
                   </div>
+
+                  {timePeriod === 'month' && (
+                    <span style={{
+                      color: expensesSaving ? '#5dade2' : '#48c9b0',
+                      fontSize: '0.85rem',
+                      opacity: 0.8,
+                      transition: 'all 0.3s ease',
+                    }}>
+                      {expensesSaving ? '⏳ Saving...' : expensesLoaded ? '✅ Auto-saved' : ''}
+                    </span>
+                  )}
                 </div>
 
-                {/* Other Services */}
-                <div
-                  style={{
-                    background: 'rgba(72, 201, 176, 0.1)',
-                    border: '1px solid rgba(72, 201, 176, 0.3)',
-                    borderRadius: '16px',
-                    padding: '28px',
-                  }}
-                >
-                  <h3 style={{ fontSize: '1.3rem', color: '#48c9b0', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Package size={22} color="#48c9b0" />
-                    Other Service Costs
-                  </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-                    {[
-                      { key: 'serperCost', label: 'Serper API', color: '#f59e0b' },
-                      { key: 'resendCost', label: 'Resend Email', color: '#6ee7b7' },
-                      { key: 'mongoDbCost', label: 'MongoDB Database', color: '#00ed64' },
-                      { key: 'railwayCost', label: 'Railway Server', color: '#b537f2' },
-                      { key: 'vercelCost', label: 'Vercel Hosting', color: '#ffffff' },
-                      { key: 'domainCost', label: 'Domain Name', color: '#38bdf8' },
-                    ].map(({ key, label, color }) => (
-                      <div
-                        key={key}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.03)',
-                          border: `1px solid ${color}33`,
-                          borderRadius: '12px',
-                          padding: '16px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '8px',
-                        }}
-                      >
-                        <label style={{ color: color, fontSize: '0.95rem', fontWeight: '500' }}>{label}</label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ color: '#aaaaaa', fontSize: '1rem' }}>$</span>
+                {/* ═══════════════════ REVENUE SECTION ═══════════════════ */}
+                <div style={{
+                  background: 'rgba(72, 201, 176, 0.06)',
+                  border: '1px solid rgba(72, 201, 176, 0.2)',
+                  borderRadius: '20px',
+                  padding: '32px',
+                }}>
+                  <h2 style={{
+                    fontSize: '1.6rem',
+                    color: '#48c9b0',
+                    marginBottom: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    paddingBottom: '16px',
+                    borderBottom: '1px solid rgba(72, 201, 176, 0.15)',
+                  }}>
+                    <TrendingUp size={26} color="#48c9b0" />
+                    Revenue
+                  </h2>
+
+                  {loadingRevenue ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: '#cccccc' }}>Loading revenue data...</div>
+                  ) : !revenueData ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: '#cccccc' }}>No revenue data available for this period</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+                      {/* Subscription Stats Row */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
+                        {[
+                          { label: 'Active Subscriptions', value: revenueData.activeSubscriptions, color: '#48c9b0' },
+                          { label: `New (${periodOptions.find(o => o.value === timePeriod)?.label})`, value: revenueData.newSubscriptions, color: '#5dade2' },
+                          { label: `Canceled (${periodOptions.find(o => o.value === timePeriod)?.label})`, value: revenueData.canceledSubscriptions, color: '#cccccc' },
+                        ].map(({ label, value, color }) => (
+                          <div key={label} style={{
+                            background: 'rgba(93, 173, 226, 0.06)',
+                            border: '1px solid rgba(93, 173, 226, 0.15)',
+                            borderRadius: '12px',
+                            padding: '20px',
+                            textAlign: 'center',
+                          }}>
+                            <p style={{ color: '#cccccc', fontSize: '0.85rem', margin: '0 0 8px 0' }}>{label}</p>
+                            <p style={{ color, fontSize: '1.8rem', fontWeight: '700', margin: 0, fontFamily: 'monospace' }}>{value}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Subscriptions Revenue */}
+                      <div style={{
+                        background: 'rgba(72, 201, 176, 0.06)',
+                        border: '1px solid rgba(72, 201, 176, 0.15)',
+                        borderRadius: '14px',
+                        padding: '24px',
+                      }}>
+                        <h3 style={{ fontSize: '1.15rem', color: '#48c9b0', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <Users size={20} color="#48c9b0" />
+                          Subscription Revenue
+                        </h3>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
+                            {revenueData.newSubscriptions} new subscription{revenueData.newSubscriptions !== 1 ? 's' : ''} @ ${revenueData.subscriptionPrice}/mo
+                          </span>
+                          <span style={{ color: '#48c9b0', fontSize: '1.3rem', fontWeight: '700', fontFamily: 'monospace' }}>
+                            ${revenueData.estimatedSubscriptionRevenue?.toFixed(2)}
+                          </span>
+                        </div>
+                        {revenueData.subscriptionUsers?.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(72, 201, 176, 0.1)' }}>
+                            {revenueData.subscriptionUsers.map((u, i) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(93, 173, 226, 0.06)', borderRadius: '8px' }}>
+                                <span style={{ color: '#cccccc', fontSize: '0.9rem' }}>
+                                  <User size={14} style={{ marginRight: '6px', verticalAlign: 'middle', opacity: 0.6 }} />
+                                  {u.username}
+                                </span>
+                                <span style={{ color: '#666666', fontSize: '0.8rem' }}>
+                                  {new Date(u.date).toLocaleDateString()}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Credit Purchases Revenue */}
+                      <div style={{
+                        background: 'rgba(93, 173, 226, 0.06)',
+                        border: '1px solid rgba(93, 173, 226, 0.15)',
+                        borderRadius: '14px',
+                        padding: '24px',
+                      }}>
+                        <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <CreditCard size={20} color="#5dade2" />
+                          Extra Usage / Credit Purchases
+                        </h3>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
+                            {revenueData.creditPurchaseCount} purchase{revenueData.creditPurchaseCount !== 1 ? 's' : ''} this period
+                          </span>
+                          <span style={{ color: '#5dade2', fontSize: '1.3rem', fontWeight: '700', fontFamily: 'monospace' }}>
+                            ${revenueData.totalCreditRevenue?.toFixed(2)}
+                          </span>
+                        </div>
+                        {revenueData.creditPurchases?.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(93, 173, 226, 0.1)' }}>
+                            {revenueData.creditPurchases.map((p, i) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(93, 173, 226, 0.06)', borderRadius: '8px' }}>
+                                <span style={{ color: '#cccccc', fontSize: '0.9rem' }}>
+                                  <User size={14} style={{ marginRight: '6px', verticalAlign: 'middle', opacity: 0.6 }} />
+                                  {p.username}
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <span style={{ color: '#5dade2', fontSize: '0.9rem', fontWeight: '600', fontFamily: 'monospace' }}>
+                                    ${p.total?.toFixed(2)}
+                                  </span>
+                                  <span style={{ color: '#666666', fontSize: '0.8rem' }}>
+                                    {new Date(p.date).toLocaleDateString()}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Total Revenue */}
+                      <div style={{
+                        background: 'linear-gradient(135deg, rgba(72, 201, 176, 0.12), rgba(93, 173, 226, 0.08))',
+                        border: '1px solid rgba(72, 201, 176, 0.3)',
+                        borderRadius: '14px',
+                        padding: '24px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <TrendingUp size={24} color="#48c9b0" />
+                          <span style={{ color: '#48c9b0', fontSize: '1.25rem', fontWeight: '700' }}>Total Revenue</span>
+                        </div>
+                        <span style={{ color: '#ffffff', fontSize: '1.6rem', fontWeight: '800', fontFamily: 'monospace' }}>
+                          ${revenueData.totalRevenue?.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ═══════════════════ EXPENSES SECTION ═══════════════════ */}
+                <div style={{
+                  background: 'rgba(93, 173, 226, 0.06)',
+                  border: '1px solid rgba(93, 173, 226, 0.2)',
+                  borderRadius: '20px',
+                  padding: '32px',
+                }}>
+                  <h2 style={{
+                    fontSize: '1.6rem',
+                    color: '#5dade2',
+                    marginBottom: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingBottom: '16px',
+                    borderBottom: '1px solid rgba(93, 173, 226, 0.15)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <Receipt size={26} color="#5dade2" />
+                      Expenses
+                    </div>
+                    {timePeriod !== 'month' && aggregatedExpenses?.months?.length > 0 && (
+                      <span style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: '400' }}>
+                        Aggregated from {aggregatedExpenses.months.length} month{aggregatedExpenses.months.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </h2>
+
+                  {/* MONTH VIEW: Editable expense inputs */}
+                  {timePeriod === 'month' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+                      {/* Stripe Fees */}
+                      <div style={{
+                        background: 'rgba(93, 173, 226, 0.06)',
+                        border: '1px solid rgba(93, 173, 226, 0.15)',
+                        borderRadius: '14px',
+                        padding: '24px',
+                      }}>
+                        <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <CreditCard size={20} color="#5dade2" />
+                          Stripe Fees
+                        </h3>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ color: '#cccccc', fontSize: '1.1rem' }}>$</span>
                           <input
                             type="text"
-                            value={expenses[key]}
-                            onChange={(e) => handleExpenseChange(key, e.target.value)}
+                            value={expenses.stripeFees}
+                            onChange={(e) => handleExpenseChange('stripeFees', e.target.value)}
                             placeholder="0.00"
                             style={{
                               background: 'rgba(255, 255, 255, 0.06)',
-                              border: `1px solid ${color}44`,
-                              borderRadius: '8px',
-                              padding: '10px 14px',
+                              border: '1px solid rgba(93, 173, 226, 0.3)',
+                              borderRadius: '10px',
+                              padding: '12px 16px',
                               color: '#ffffff',
-                              fontSize: '1rem',
-                              width: '100%',
+                              fontSize: '1.1rem',
+                              width: '200px',
                               outline: 'none',
                               transition: 'border-color 0.2s ease',
                             }}
-                            onFocus={(e) => e.target.style.borderColor = `${color}99`}
-                            onBlur={(e) => e.target.style.borderColor = `${color}44`}
+                            onFocus={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.7)'}
+                            onBlur={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.3)'}
                           />
                         </div>
                       </div>
-                    ))}
-                  </div>
+
+                      {/* API Costs Per Provider */}
+                      <div style={{
+                        background: 'rgba(93, 173, 226, 0.06)',
+                        border: '1px solid rgba(93, 173, 226, 0.15)',
+                        borderRadius: '14px',
+                        padding: '24px',
+                      }}>
+                        <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <BarChart3 size={20} color="#5dade2" />
+                          API Costs Per Provider
+                        </h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                          {[
+                            { key: 'openaiCost', label: 'OpenAI (ChatGPT)', color: '#10a37f' },
+                            { key: 'anthropicCost', label: 'Anthropic (Claude)', color: '#d4a574' },
+                            { key: 'googleCost', label: 'Google (Gemini)', color: '#4285f4' },
+                            { key: 'metaCost', label: 'Meta (Llama)', color: '#0668E1' },
+                            { key: 'deepseekCost', label: 'DeepSeek', color: '#6366f1' },
+                            { key: 'mistralCost', label: 'Mistral AI', color: '#ff7000' },
+                            { key: 'xaiCost', label: 'xAI (Grok)', color: '#ffffff' },
+                          ].map(({ key, label, color }) => (
+                            <div key={key} style={{ background: 'rgba(255, 255, 255, 0.03)', border: `1px solid ${color}33`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <label style={{ color: color, fontSize: '0.95rem', fontWeight: '500' }}>{label}</label>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ color: '#aaaaaa', fontSize: '1rem' }}>$</span>
+                                <input
+                                  type="text"
+                                  value={expenses[key]}
+                                  onChange={(e) => handleExpenseChange(key, e.target.value)}
+                                  placeholder="0.00"
+                                  style={{ background: 'rgba(255, 255, 255, 0.06)', border: `1px solid ${color}44`, borderRadius: '8px', padding: '10px 14px', color: '#ffffff', fontSize: '1rem', width: '100%', outline: 'none', transition: 'border-color 0.2s ease' }}
+                                  onFocus={(e) => e.target.style.borderColor = `${color}99`}
+                                  onBlur={(e) => e.target.style.borderColor = `${color}44`}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(93, 173, 226, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ color: '#5dade2', fontSize: '1.15rem', fontWeight: '600' }}>Total API Cost</span>
+                          <span style={{ color: '#ffffff', fontSize: '1.3rem', fontWeight: '700', fontFamily: 'monospace' }}>${totalApiCost.toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      {/* Other Services */}
+                      <div style={{
+                        background: 'rgba(72, 201, 176, 0.06)',
+                        border: '1px solid rgba(72, 201, 176, 0.15)',
+                        borderRadius: '14px',
+                        padding: '24px',
+                      }}>
+                        <h3 style={{ fontSize: '1.15rem', color: '#48c9b0', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <Package size={20} color="#48c9b0" />
+                          Other Service Costs
+                        </h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                          {[
+                            { key: 'serperCost', label: 'Serper API', color: '#f59e0b' },
+                            { key: 'resendCost', label: 'Resend Email', color: '#6ee7b7' },
+                            { key: 'mongoDbCost', label: 'MongoDB Database', color: '#00ed64' },
+                            { key: 'vercelCost', label: 'Vercel Hosting', color: '#ffffff' },
+                            { key: 'domainCost', label: 'Domain Name', color: '#38bdf8' },
+                          ].map(({ key, label, color }) => (
+                            <div key={key} style={{ background: 'rgba(255, 255, 255, 0.03)', border: `1px solid ${color}33`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <label style={{ color: color, fontSize: '0.95rem', fontWeight: '500' }}>{label}</label>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ color: '#aaaaaa', fontSize: '1rem' }}>$</span>
+                                <input
+                                  type="text"
+                                  value={expenses[key]}
+                                  onChange={(e) => handleExpenseChange(key, e.target.value)}
+                                  placeholder="0.00"
+                                  style={{ background: 'rgba(255, 255, 255, 0.06)', border: `1px solid ${color}44`, borderRadius: '8px', padding: '10px 14px', color: '#ffffff', fontSize: '1rem', width: '100%', outline: 'none', transition: 'border-color 0.2s ease' }}
+                                  onFocus={(e) => e.target.style.borderColor = `${color}99`}
+                                  onBlur={(e) => e.target.style.borderColor = `${color}44`}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Total Expenses (Month) */}
+                      <div style={{
+                        background: 'linear-gradient(135deg, rgba(93, 173, 226, 0.12), rgba(72, 201, 176, 0.08))',
+                        border: '1px solid rgba(93, 173, 226, 0.3)',
+                        borderRadius: '14px',
+                        padding: '24px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <Receipt size={24} color="#5dade2" />
+                          <span style={{ color: '#5dade2', fontSize: '1.25rem', fontWeight: '700' }}>Total Expenses</span>
+                        </div>
+                        <span style={{ color: '#ffffff', fontSize: '1.6rem', fontWeight: '800', fontFamily: 'monospace' }}>
+                          ${grandTotal.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* NON-MONTH VIEW: Read-only aggregated expenses */}
+                  {timePeriod !== 'month' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                      {loadingAggExpenses ? (
+                        <div style={{ textAlign: 'center', padding: '40px', color: '#aaaaaa' }}>Loading expense data...</div>
+                      ) : !aggregatedExpenses ? (
+                        <div style={{ textAlign: 'center', padding: '40px', color: '#aaaaaa' }}>No expense data available for this period</div>
+                      ) : (() => {
+                        const agg = aggregatedExpenses.expenses
+                        const aggApiTotal = aggregatedExpenses.totalApiCost || 0
+                        const aggGrand = aggregatedExpenses.grandTotal || 0
+                        const apiProviders = [
+                          { key: 'openaiCost', label: 'OpenAI (ChatGPT)', color: '#10a37f' },
+                          { key: 'anthropicCost', label: 'Anthropic (Claude)', color: '#d4a574' },
+                          { key: 'googleCost', label: 'Google (Gemini)', color: '#4285f4' },
+                          { key: 'metaCost', label: 'Meta (Llama)', color: '#0668E1' },
+                          { key: 'deepseekCost', label: 'DeepSeek', color: '#6366f1' },
+                          { key: 'mistralCost', label: 'Mistral AI', color: '#ff7000' },
+                          { key: 'xaiCost', label: 'xAI (Grok)', color: '#ffffff' },
+                        ]
+                        const otherServices = [
+                          { key: 'serperCost', label: 'Serper API', color: '#f59e0b' },
+                          { key: 'resendCost', label: 'Resend Email', color: '#6ee7b7' },
+                          { key: 'mongoDbCost', label: 'MongoDB Database', color: '#00ed64' },
+                          { key: 'vercelCost', label: 'Vercel Hosting', color: '#ffffff' },
+                          { key: 'domainCost', label: 'Domain Name', color: '#38bdf8' },
+                        ]
+                        return (
+                          <>
+                            {/* Stripe Fees */}
+                            {(agg.stripeFees || 0) > 0 && (
+                              <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <h3 style={{ fontSize: '1.15rem', color: '#5dade2', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <CreditCard size={20} color="#5dade2" />
+                                    Stripe Fees
+                                  </h3>
+                                  <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>${(agg.stripeFees || 0).toFixed(2)}</span>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* API Costs */}
+                            <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
+                              <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <BarChart3 size={20} color="#5dade2" />
+                                API Costs Per Provider
+                              </h3>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+                                {apiProviders.map(({ key, label, color }) => (
+                                  <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'rgba(255, 255, 255, 0.03)', border: `1px solid ${color}22`, borderRadius: '10px' }}>
+                                    <span style={{ color, fontSize: '0.95rem', fontWeight: '500' }}>{label}</span>
+                                    <span style={{ color: '#ffffff', fontSize: '1.05rem', fontWeight: '600', fontFamily: 'monospace' }}>${(agg[key] || 0).toFixed(2)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(93, 173, 226, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: '#5dade2', fontSize: '1.15rem', fontWeight: '600' }}>Total API Cost</span>
+                                <span style={{ color: '#ffffff', fontSize: '1.3rem', fontWeight: '700', fontFamily: 'monospace' }}>${aggApiTotal.toFixed(2)}</span>
+                              </div>
+                            </div>
+
+                            {/* Other Services */}
+                            <div style={{ background: 'rgba(72, 201, 176, 0.06)', border: '1px solid rgba(72, 201, 176, 0.15)', borderRadius: '14px', padding: '24px' }}>
+                              <h3 style={{ fontSize: '1.15rem', color: '#48c9b0', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Package size={20} color="#48c9b0" />
+                                Other Service Costs
+                              </h3>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+                                {otherServices.map(({ key, label, color }) => (
+                                  <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'rgba(255, 255, 255, 0.03)', border: `1px solid ${color}22`, borderRadius: '10px' }}>
+                                    <span style={{ color, fontSize: '0.95rem', fontWeight: '500' }}>{label}</span>
+                                    <span style={{ color: '#ffffff', fontSize: '1.05rem', fontWeight: '600', fontFamily: 'monospace' }}>${(agg[key] || 0).toFixed(2)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Total Expenses (Aggregated) */}
+                            <div style={{
+                              background: 'linear-gradient(135deg, rgba(93, 173, 226, 0.12), rgba(72, 201, 176, 0.08))',
+                              border: '1px solid rgba(93, 173, 226, 0.3)',
+                              borderRadius: '14px',
+                              padding: '24px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Receipt size={24} color="#5dade2" />
+                                <span style={{ color: '#5dade2', fontSize: '1.25rem', fontWeight: '700' }}>Total Expenses</span>
+                              </div>
+                              <span style={{ color: '#ffffff', fontSize: '1.6rem', fontWeight: '800', fontFamily: 'monospace' }}>
+                                ${aggGrand.toFixed(2)}
+                              </span>
+                            </div>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  )}
                 </div>
 
-                {/* Grand Total */}
-                <div
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(255, 0, 0, 0.15), rgba(255, 100, 0, 0.1))',
-                    border: '1px solid rgba(255, 0, 0, 0.4)',
-                    borderRadius: '16px',
-                    padding: '28px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <Receipt size={28} color="#FF4444" />
-                    <span style={{ color: '#FF4444', fontSize: '1.4rem', fontWeight: '700' }}>Grand Total</span>
-                  </div>
-                  <span style={{ color: '#ffffff', fontSize: '1.8rem', fontWeight: '800', fontFamily: 'monospace' }}>
-                    ${grandTotal.toFixed(2)}
-                  </span>
-                </div>
+                {/* ═══════════════════ NET PROFIT / LOSS ═══════════════════ */}
+                {revenueData && (() => {
+                  const netAmount = (revenueData.totalRevenue || 0) - effectiveGrandTotal
+                  const isProfit = netAmount >= 0
+                  return (
+                    <div style={{
+                      background: isProfit
+                        ? 'linear-gradient(135deg, rgba(72, 201, 176, 0.1), rgba(93, 173, 226, 0.06))'
+                        : 'linear-gradient(135deg, rgba(93, 173, 226, 0.1), rgba(72, 201, 176, 0.06))',
+                      border: `2px solid ${isProfit ? 'rgba(72, 201, 176, 0.4)' : 'rgba(93, 173, 226, 0.4)'}`,
+                      borderRadius: '20px',
+                      padding: '32px',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{
+                            color: isProfit ? '#48c9b0' : '#5dade2',
+                            fontSize: '1.5rem',
+                            fontWeight: '700',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                          }}>
+                            <TrendingUp size={28} color={isProfit ? '#48c9b0' : '#5dade2'} style={!isProfit ? { transform: 'scaleY(-1)' } : {}} />
+                            Net {isProfit ? 'Profit' : 'Loss'}
+                          </span>
+                          <span style={{ color: '#666666', fontSize: '0.9rem' }}>
+                            Revenue ${revenueData.totalRevenue?.toFixed(2)} − Expenses ${effectiveGrandTotal.toFixed(2)}
+                          </span>
+                        </div>
+                        <span style={{
+                          color: isProfit ? '#48c9b0' : '#5dade2',
+                          fontSize: '2rem',
+                          fontWeight: '800',
+                          fontFamily: 'monospace',
+                        }}>
+                          {isProfit ? '+' : '-'}${Math.abs(netAmount).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })()}
 
               </div>
             )}
