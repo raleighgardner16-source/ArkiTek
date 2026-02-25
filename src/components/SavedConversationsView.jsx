@@ -78,8 +78,9 @@ const SavedConversationsView = () => {
   // Track how many prompts are visible per category (default 5)
   const [categoryVisibleCount, setCategoryVisibleCount] = useState({})
 
-  // Starred section expanded
+  // Starred section expanded + visible count (show 5 at a time)
   const [starredExpanded, setStarredExpanded] = useState(true)
+  const [starredVisibleCount, setStarredVisibleCount] = useState(5)
 
   useEffect(() => {
     if (currentUser?.id) {
@@ -1507,7 +1508,12 @@ const SavedConversationsView = () => {
               {history.some(c => c.starred) && (
                 <div style={{ marginBottom: '12px' }}>
                   <button
-                    onClick={() => setStarredExpanded(prev => !prev)}
+                    onClick={() => {
+                      setStarredExpanded(prev => {
+                        if (prev) setStarredVisibleCount(5)
+                        return !prev
+                      })
+                    }}
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center',
                       justifyContent: 'space-between', padding: '14px 18px',
@@ -1547,7 +1553,48 @@ const SavedConversationsView = () => {
                           padding: '8px',
                         }}
                       >
-                        {history.filter(c => c.starred).map(convo => renderConvoCard(convo))}
+                        {(() => {
+                          const starredChats = history.filter(c => c.starred)
+                          const visible = starredChats.slice(0, starredVisibleCount)
+                          const hasMore = starredChats.length > starredVisibleCount
+                          const remaining = starredChats.length - starredVisibleCount
+                          const isShowingExtra = starredVisibleCount > 5
+                          return (
+                            <>
+                              {visible.map(convo => renderConvoCard(convo))}
+                              {(hasMore || isShowingExtra) && (
+                                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '4px' }}>
+                                  {hasMore && (
+                                    <button
+                                      onClick={() => setStarredVisibleCount(prev => prev + 5)}
+                                      style={{
+                                        background: 'transparent', border: 'none', cursor: 'pointer',
+                                        color: '#f59e0b', fontSize: '0.82rem', fontWeight: '500', padding: '6px 12px',
+                                      }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.7' }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+                                    >
+                                      Show {Math.min(5, remaining)} more
+                                    </button>
+                                  )}
+                                  {isShowingExtra && (
+                                    <button
+                                      onClick={() => setStarredVisibleCount(5)}
+                                      style={{
+                                        background: 'transparent', border: 'none', cursor: 'pointer',
+                                        color: currentTheme.textMuted, fontSize: '0.78rem', fontWeight: '400', padding: '6px 8px',
+                                      }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.7' }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+                                    >
+                                      Show less
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </>
+                          )
+                        })()}
                       </motion.div>
                     )}
                   </AnimatePresence>

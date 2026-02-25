@@ -3870,31 +3870,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       >
                         <Send size={14} />
                       </motion.button>
-                        <div
-                          style={{ position: 'absolute', top: '-8px', right: '-8px', cursor: 'help', zIndex: 10 }}
-                          onMouseEnter={() => setShowSendTooltip(true)}
-                          onMouseLeave={() => setShowSendTooltip(false)}
-                        >
-                          <Info size={10} color={currentTheme.textMuted} />
-                          {showSendTooltip && (
-                            <div style={{
-                              position: 'absolute',
-                              bottom: '16px',
-                              right: 0,
-                              background: currentTheme.backgroundOverlay,
-                              border: `1px solid ${currentTheme.borderLight}`,
-                              borderRadius: '8px',
-                              padding: '6px 10px',
-                              fontSize: '0.7rem',
-                              color: currentTheme.textSecondary,
-                              width: '200px',
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                              zIndex: 100,
-                            }}>
-                              Send your prompt to the selected models. Select at least one provider and model first.
-                            </div>
-                          )}
-                        </div>
                       </div>
                     )
                   })()}
