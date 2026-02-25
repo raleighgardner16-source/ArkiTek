@@ -318,6 +318,15 @@ const syncUserToMongo = async (userId, userData) => {
         modelPreferences: userData.modelPreferences || null,
         // User's local timezone (e.g. "America/Denver") for date bucketing
         timezone: userData.timezone || null,
+        // Social / profile fields
+        bio: userData.bio || '',
+        profileImage: userData.profileImage || null,
+        isAnonymous: userData.isAnonymous || false,
+        isPrivate: userData.isPrivate || false,
+        followers: userData.followers || [],
+        following: userData.following || [],
+        followRequests: userData.followRequests || [],
+        sentFollowRequests: userData.sentFollowRequests || [],
       }},
       { upsert: true }
     )
@@ -364,7 +373,7 @@ const loadCacheFromMongoDB = async () => {
   try {
     const dbInstance = await db.getDb()
     
-    // 1. Load all users (profile + subscription + purchasedCredits only)
+    // 1. Load all users (profile + subscription + social + purchasedCredits)
     const allUsers = await dbInstance.collection('users').find({}).toArray()
     for (const user of allUsers) {
       usersCache[user._id] = {
@@ -373,6 +382,7 @@ const loadCacheFromMongoDB = async () => {
         lastName: user.lastName,
         username: user.username,
         email: user.email,
+        canonicalEmail: user.canonicalEmail || null,
         password: user.password,
         createdAt: user.createdAt?.toISOString?.() || user.createdAt,
         stripeCustomerId: user.stripeCustomerId || null,
@@ -383,6 +393,21 @@ const loadCacheFromMongoDB = async () => {
         subscriptionPausedDate: user.subscriptionPausedDate || null,
         cancellationHistory: user.cancellationHistory || [],
         lastActiveAt: user.lastActiveAt || null,
+        plan: user.plan || null,
+        emailVerified: user.emailVerified || false,
+        timezone: user.timezone || null,
+        signupIp: user.signupIp || null,
+        deviceFingerprint: user.deviceFingerprint || null,
+        modelPreferences: user.modelPreferences || null,
+        // Social fields
+        bio: user.bio || '',
+        profileImage: user.profileImage || null,
+        isAnonymous: user.isAnonymous || false,
+        isPrivate: user.isPrivate || false,
+        followers: user.followers || [],
+        following: user.following || [],
+        followRequests: user.followRequests || [],
+        sentFollowRequests: user.sentFollowRequests || [],
         // monthlyUsageCost and monthlyOverageBilled loaded from user_stats below
         monthlyUsageCost: {},
         monthlyOverageBilled: {},
@@ -10542,22 +10567,7 @@ app.post('/api/users/:targetUserId/follow', async (req, res) => {
       targetUser.followRequests.push(userId)
       currentUser.sentFollowRequests.push(targetUserId)
       writeUsers(users, userId)
-
-      try {
-        const dbInstance = await db.getDb()
-        await Promise.all([
-          dbInstance.collection('users').updateOne(
-            { _id: targetUserId },
-            { $addToSet: { followRequests: userId } }
-          ),
-          dbInstance.collection('users').updateOne(
-            { _id: userId },
-            { $addToSet: { sentFollowRequests: targetUserId } }
-          ),
-        ])
-      } catch (dbErr) {
-        console.warn('[Social] MongoDB follow request update failed:', dbErr.message)
-      }
+      syncUserToMongo(targetUserId, targetUser)
 
       // Notify the target about the follow request
       createNotification({
@@ -10576,22 +10586,7 @@ app.post('/api/users/:targetUserId/follow', async (req, res) => {
     currentUser.following.push(targetUserId)
     targetUser.followers.push(userId)
     writeUsers(users, userId)
-
-    try {
-      const dbInstance = await db.getDb()
-      await Promise.all([
-        dbInstance.collection('users').updateOne(
-          { _id: userId },
-          { $addToSet: { following: targetUserId } }
-        ),
-        dbInstance.collection('users').updateOne(
-          { _id: targetUserId },
-          { $addToSet: { followers: userId } }
-        ),
-      ])
-    } catch (dbErr) {
-      console.warn('[Social] MongoDB follow update failed:', dbErr.message)
-    }
+    syncUserToMongo(targetUserId, targetUser)
 
     // Notify the target about the new follower
     createNotification({
@@ -10650,22 +10645,7 @@ app.post('/api/users/:targetUserId/unfollow', async (req, res) => {
       currentUser.sentFollowRequests = currentUser.sentFollowRequests.filter(id => id !== targetUserId)
     }
     writeUsers(users, userId)
-
-    try {
-      const dbInstance = await db.getDb()
-      await Promise.all([
-        dbInstance.collection('users').updateOne(
-          { _id: userId },
-          { $pull: { following: targetUserId, sentFollowRequests: targetUserId } }
-        ),
-        dbInstance.collection('users').updateOne(
-          { _id: targetUserId },
-          { $pull: { followers: userId, followRequests: userId } }
-        ),
-      ])
-    } catch (dbErr) {
-      console.warn('[Social] MongoDB unfollow update failed:', dbErr.message)
-    }
+    syncUserToMongo(targetUserId, targetUser)
 
     console.log(`[Social] User ${userId} unfollowed/cancelled request to ${targetUserId}`)
     res.json({
@@ -10713,22 +10693,7 @@ app.post('/api/users/:targetUserId/follow/accept', async (req, res) => {
     requester.sentFollowRequests = (requester.sentFollowRequests || []).filter(id => id !== targetUserId)
 
     writeUsers(users, targetUserId)
-
-    try {
-      const dbInstance = await db.getDb()
-      await Promise.all([
-        dbInstance.collection('users').updateOne(
-          { _id: targetUserId },
-          { $pull: { followRequests: requesterId }, $addToSet: { followers: requesterId } }
-        ),
-        dbInstance.collection('users').updateOne(
-          { _id: requesterId },
-          { $pull: { sentFollowRequests: targetUserId }, $addToSet: { following: targetUserId } }
-        ),
-      ])
-    } catch (dbErr) {
-      console.warn('[Social] MongoDB accept follow update failed:', dbErr.message)
-    }
+    syncUserToMongo(requesterId, requester)
 
     // Notify the requester that their follow was accepted
     createNotification({
@@ -10772,22 +10737,7 @@ app.post('/api/users/:targetUserId/follow/deny', async (req, res) => {
       requester.sentFollowRequests = (requester.sentFollowRequests || []).filter(id => id !== targetUserId)
     }
     writeUsers(users, targetUserId)
-
-    try {
-      const dbInstance = await db.getDb()
-      await Promise.all([
-        dbInstance.collection('users').updateOne(
-          { _id: targetUserId },
-          { $pull: { followRequests: requesterId } }
-        ),
-        dbInstance.collection('users').updateOne(
-          { _id: requesterId },
-          { $pull: { sentFollowRequests: targetUserId } }
-        ),
-      ])
-    } catch (dbErr) {
-      console.warn('[Social] MongoDB deny follow update failed:', dbErr.message)
-    }
+    if (requester) syncUserToMongo(requesterId, requester)
 
     console.log(`[Social] User ${targetUserId} denied follow request from ${requesterId}`)
     res.json({ success: true })
