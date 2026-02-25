@@ -970,7 +970,7 @@ const SummaryWindow = () => {
                         handleSendMessage()
                       }
                     }}
-                    placeholder="Continue the conversation..."
+                    placeholder="Continue conversation with Judge Model..."
                     disabled={isSendingMessage}
                     style={{
                       flex: 1,
@@ -1462,7 +1462,7 @@ const SummaryWindow = () => {
                     handleSendMessage()
                   }
                 }}
-                placeholder="Continue the conversation..."
+                placeholder="Continue conversation with Judge Model..."
                 disabled={isSendingMessage}
                 style={{
                   flex: 1,

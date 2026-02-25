@@ -2300,7 +2300,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                       handleSendCouncilColumnConvo(response)
                                     }
                                   }}
-                                  placeholder="Continue the conversation..."
+                                  placeholder={`Continue conversation with ${getProviderDisplayName(response.modelName)}...`}
                                   disabled={!!councilColumnConvoSending[response.id]}
                                   style={{
                                     width: '100%',
@@ -3017,7 +3017,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                               handleSendConversation()
                             }
                           }}
-                          placeholder="Continue the conversation..."
+                          placeholder="Continue conversation with Judge Model..."
                           disabled={isSendingConvo}
             style={{
               width: '100%',
@@ -3466,7 +3466,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                               handleSendSingleModelConvo()
                             }
                           }}
-                          placeholder="Continue the conversation..."
+                          placeholder={`Continue conversation with ${getProviderDisplayName(primaryResponse?.modelName)}...`}
                           disabled={isSendingSingleConvo}
                           style={{
                             width: '100%',
@@ -4294,7 +4294,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       handleSendCouncilColumnConvo(maximizedCouncilResponse)
                     }
                   }}
-                  placeholder="Continue the conversation..."
+                  placeholder={`Continue conversation with ${getProviderDisplayName(maximizedCouncilResponse.modelName)}...`}
                   disabled={!!councilColumnConvoSending[maximizedCouncilResponse.id]}
                   style={{
                     width: '100%',

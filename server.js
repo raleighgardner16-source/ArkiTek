@@ -6590,8 +6590,8 @@ const fetchPageContent = async (url, timeout = 10000) => {
     if (mainContent.length > 0) {
       // Extract paragraphs from the main content
       const paragraphs = mainContent.first().find('p').map((i, el) => $(el).text().trim()).get()
-      // Filter out empty paragraphs and take first 5
-      const validParagraphs = paragraphs.filter(p => p.length > 20).slice(0, 5)
+      // Filter out empty paragraphs and take first 4
+      const validParagraphs = paragraphs.filter(p => p.length > 20).slice(0, 4)
       content = validParagraphs.join(' ')
       
       // If we didn't get enough paragraphs from <p> tags, fallback to text extraction
@@ -6601,7 +6601,7 @@ const fetchPageContent = async (url, timeout = 10000) => {
     } else {
       // Fallback to body text - try to extract paragraphs
       const paragraphs = $('body p').map((i, el) => $(el).text().trim()).get()
-      const validParagraphs = paragraphs.filter(p => p.length > 20).slice(0, 5)
+      const validParagraphs = paragraphs.filter(p => p.length > 20).slice(0, 4)
       content = validParagraphs.join(' ')
       
       // If we didn't get enough paragraphs, fallback to body text
@@ -6613,14 +6613,12 @@ const fetchPageContent = async (url, timeout = 10000) => {
     // Clean up: remove extra whitespace
     content = content.replace(/\s+/g, ' ').trim()
     
-    // If content is still very long, split by sentences and take first portion
-    // This ensures we get roughly 5 paragraphs worth of content
-    if (content.length > 2000) {
-      // Split by sentence endings and take approximately first 5 paragraphs worth
+    // Cap at ~4 paragraphs / 10 sentences / 1500 characters
+    if (content.length > 1500) {
       const sentences = content.match(/[^.!?]+[.!?]+/g) || [content]
-      const firstSentences = sentences.slice(0, 15).join(' ') // ~5 paragraphs = ~15 sentences
-      if (firstSentences.length > 2000) {
-        content = firstSentences.substring(0, 2000) + '...'
+      const firstSentences = sentences.slice(0, 10).join(' ')
+      if (firstSentences.length > 1500) {
+        content = firstSentences.substring(0, 1500) + '...'
       } else {
         content = firstSentences
       }
@@ -6833,7 +6831,7 @@ const formatSearchResults = async (searchResults, maxParseableSources = 5) => {
 }
 
 // Format raw scraped source content for direct injection into model prompts
-// Scrapes up to maxParseableSources, caps each at 2000 chars, returns a clean numbered block
+// Scrapes up to maxParseableSources, caps each at 1500 chars / 10 sentences, returns a clean numbered block
 const formatRawSourcesForPrompt = async (searchResults, maxParseableSources = 5) => {
   let formatted = ''
   let parseableCount = 0
