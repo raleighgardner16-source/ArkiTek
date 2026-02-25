@@ -469,6 +469,7 @@ const loadCacheFromMongoDB = async () => {
       username: p.username,
       promptText: p.promptText,
       category: p.category,
+      description: p.description || null,
       likes: p.likes || [],
       likeCount: p.likeCount || 0,
       createdAt: p.createdAt?.toISOString?.() || p.createdAt,
@@ -616,6 +617,7 @@ const writeLeaderboard = async (leaderboard) => {
             username: post.username,
             promptText: post.promptText,
             category: post.category,
+            description: post.description || null,
             likes: post.likes || [],
             likeCount: post.likeCount || 0,
             createdAt: post.createdAt ? new Date(post.createdAt) : new Date(),
@@ -9898,22 +9900,6 @@ app.post('/api/leaderboard/submit', async (req, res) => {
     leaderboard.prompts.push(promptEntry)
     writeLeaderboard(leaderboard)
     
-    // Also save to MongoDB
-    try {
-      await db.leaderboardPosts.submit({
-        userId,
-        username: user.username || 'Anonymous',
-        promptText: promptText.trim(),
-        category: category || 'General Knowledge/Other',
-        responses: responses || [],
-        summary: summary || null,
-        sources: sources || []
-      })
-      console.log(`[Leaderboard] Prompt also saved to MongoDB: ${promptId}`)
-    } catch (dbErr) {
-      console.warn('[Leaderboard] MongoDB save failed (non-critical):', dbErr.message)
-    }
-    
     console.log(`[Leaderboard] Prompt submitted by user ${userId}: ${promptId}`)
     res.json({ success: true, promptId })
   } catch (error) {
@@ -10014,7 +10000,7 @@ app.get('/api/leaderboard', (req, res) => {
       const currentUser = users[userId]
       const followingList = currentUser?.following || []
 
-      prompts = prompts.filter(prompt => followingList.includes(prompt.userId))
+      prompts = prompts.filter(prompt => prompt.userId === userId || followingList.includes(prompt.userId))
 
       prompts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     } else if (filter === 'browse' && userId) {

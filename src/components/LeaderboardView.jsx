@@ -1390,28 +1390,6 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
               borderBottom: `1px solid ${currentTheme.borderLight}`,
             }}
           >
-            <button
-              onClick={() => setActiveSection('search')}
-              style={{
-                flex: 1,
-                padding: '14px 12px',
-                background: activeSection === 'search' ? currentTheme.buttonBackgroundActive : 'transparent',
-                border: 'none',
-                borderBottom: activeSection === 'search' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
-                color: activeSection === 'search' ? currentTheme.accent : currentTheme.textSecondary,
-                fontSize: '1rem',
-                fontWeight: activeSection === 'search' ? '600' : '400',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-              }}
-            >
-              <Search size={20} />
-              Search Users
-            </button>
             {!subscriptionRestricted && (
               <>
             <button
@@ -1507,6 +1485,28 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
             </button>
               </>
             )}
+            <button
+              onClick={() => setActiveSection('search')}
+              style={{
+                flex: 1,
+                padding: '14px 12px',
+                background: activeSection === 'search' ? currentTheme.buttonBackgroundActive : 'transparent',
+                border: 'none',
+                borderBottom: activeSection === 'search' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+                color: activeSection === 'search' ? currentTheme.accent : currentTheme.textSecondary,
+                fontSize: '1rem',
+                fontWeight: activeSection === 'search' ? '600' : '400',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
+            >
+              <Search size={20} />
+              Search Users
+            </button>
           </div>
           
           {/* Category Filter Tabs — shown for My Feed and Browse */}

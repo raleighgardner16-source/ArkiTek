@@ -1612,28 +1612,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 <Coins size={13} />
                 Token Usage
               </motion.button>
-              <motion.button
-                onClick={() => setShowTopCostBreakdown(true)}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '8px 12px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  background: theme === 'light' ? '#f3f4f6' : '#1f2937',
-                  color: currentTheme.accent,
-                  fontSize: '0.76rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                }}
-                title="Open prompt cost breakdown"
-              >
-                <DollarSign size={13} />
-                Cost Breakdown
-              </motion.button>
 
               <div style={{
                 width: '1px',
@@ -1664,6 +1642,36 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               >
                 <Sparkles size={14} />
                 Generate Summary
+              </motion.button>
+
+              <div style={{
+                width: '1px',
+                height: '24px',
+                background: theme === 'light' ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.1)',
+                margin: '0 2px',
+              }} />
+
+              <motion.button
+                onClick={() => setShowTopCostBreakdown(true)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: theme === 'light' ? '#f3f4f6' : '#1f2937',
+                  color: currentTheme.accent,
+                  fontSize: '0.76rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+                title="Open prompt cost breakdown"
+              >
+                <DollarSign size={13} />
+                Cost Breakdown
               </motion.button>
             </div>
             <span
@@ -1947,10 +1955,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           display: 'flex',
                           alignItems: 'center',
                           padding: '8px 14px',
-                          background: 'rgba(239, 68, 68, 0.12)',
+                          background: theme === 'light' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.12)',
                           border: '1px solid #ef4444',
                           borderRadius: '10px',
-                          color: '#fff',
+                          color: theme === 'light' ? '#dc2626' : '#fff',
                           fontSize: '0.82rem',
                           fontWeight: '600',
                           cursor: 'pointer',
@@ -1976,7 +1984,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             background: 'rgba(239, 68, 68, 0.12)',
                             border: '1px solid #ef4444',
                             borderRadius: '10px',
-                            color: '#fff',
+                            color: theme === 'light' ? '#dc2626' : '#fff',
                             cursor: 'pointer',
                             transition: 'all 0.2s ease',
                             fontSize: '0.82rem',
@@ -2476,7 +2484,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           background: 'rgba(239, 68, 68, 0.12)',
                           border: '1px solid #ef4444',
                           borderRadius: '10px',
-                          color: '#fff',
+                          color: theme === 'light' ? '#dc2626' : '#fff',
                           cursor: 'pointer',
                           transition: 'all 0.2s ease',
                           fontSize: '0.82rem',
@@ -3517,7 +3525,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       background: 'rgba(239, 68, 68, 0.12)',
                       border: '1px solid #ef4444',
                       borderRadius: '10px',
-                      color: '#fff',
+                      color: theme === 'light' ? '#dc2626' : '#fff',
                       cursor: 'pointer',
                       transition: 'all 0.2s ease',
                       fontSize: '0.82rem',
