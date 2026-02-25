@@ -9919,14 +9919,26 @@ app.get('/api/leaderboard', (req, res) => {
     const users = readUsers()
     const { filter, userId } = req.query
     
-    // Map prompts with user info and like count
+    // Map prompts with user info, profile images on comments/replies, and like count
     let prompts = leaderboard.prompts.map(prompt => {
       const user = users[prompt.userId]
+      const enrichedComments = (prompt.comments || []).map(comment => {
+        const commenter = users[comment.userId]
+        return {
+          ...comment,
+          profileImage: commenter?.profileImage || null,
+          replies: (comment.replies || []).map(reply => {
+            const replier = users[reply.userId]
+            return { ...reply, profileImage: replier?.profileImage || null }
+          }),
+        }
+      })
       return {
         ...prompt,
         username: user?.isAnonymous ? 'Anonymous' : (user?.username || user?.email || 'Anonymous'),
         profileImage: user?.profileImage || null,
         likeCount: prompt.likes?.length || 0,
+        comments: enrichedComments,
       }
     })
     
@@ -10248,7 +10260,17 @@ app.get('/api/profile/:userId', async (req, res) => {
         likeCount: p.likes?.length || 0,
         likes: p.likes || [],
         createdAt: p.createdAt,
-        comments: p.comments || [],
+        comments: (p.comments || []).map(c => {
+          const commenter = users[c.userId]
+          return {
+            ...c,
+            profileImage: commenter?.profileImage || null,
+            replies: (c.replies || []).map(r => {
+              const replier = users[r.userId]
+              return { ...r, profileImage: replier?.profileImage || null }
+            }),
+          }
+        }),
         responses: p.responses || [],
         summary: p.summary || null,
         sources: p.sources || [],

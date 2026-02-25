@@ -945,22 +945,20 @@ const StatisticsView = () => {
           })()}
         </div>
 
-        {/* Tab Buttons */}
+        {/* Tab Buttons — evenly distributed */}
         <div
           style={{
             display: 'flex',
-            gap: '16px',
             marginBottom: '32px',
             borderBottom: `1px solid ${currentTheme.borderLight}`,
-            flexWrap: 'wrap',
           }}
         >
-          {/* Token Usage — own profile only */}
           {!isViewingOther && (
           <button
             onClick={() => handleTabChange('tokens')}
             style={{
-              padding: '12px 24px',
+              flex: 1,
+              padding: '14px 12px',
               background: activeTab === 'tokens' ? currentTheme.buttonBackgroundActive : 'transparent',
               border: 'none',
               borderBottom: activeTab === 'tokens' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
@@ -971,6 +969,7 @@ const StatisticsView = () => {
               transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               gap: '8px',
             }}
           >
@@ -981,7 +980,8 @@ const StatisticsView = () => {
           <button
             onClick={() => handleTabChange('badges')}
             style={{
-              padding: '12px 24px',
+              flex: 1,
+              padding: '14px 12px',
               background: activeTab === 'badges' ? currentTheme.buttonBackgroundActive : 'transparent',
               border: 'none',
               borderBottom: activeTab === 'badges' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
@@ -992,18 +992,19 @@ const StatisticsView = () => {
               transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               gap: '8px',
             }}
           >
             <Award size={20} />
             Badges
           </button>
-          {/* Ratings — own profile only */}
           {!isViewingOther && (
           <button
             onClick={() => handleTabChange('ratings')}
             style={{
-              padding: '12px 24px',
+              flex: 1,
+              padding: '14px 12px',
               background: activeTab === 'ratings' ? currentTheme.buttonBackgroundActive : 'transparent',
               border: 'none',
               borderBottom: activeTab === 'ratings' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
@@ -1014,6 +1015,7 @@ const StatisticsView = () => {
               transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               gap: '8px',
             }}
           >
@@ -1021,12 +1023,12 @@ const StatisticsView = () => {
             Ratings & Models
           </button>
           )}
-          {/* Prompt Feed — own profile only */}
           {!isViewingOther && (
           <button
             onClick={() => handleTabChange('leaderboard')}
             style={{
-              padding: '12px 24px',
+              flex: 1,
+              padding: '14px 12px',
               background: activeTab === 'leaderboard' ? currentTheme.buttonBackgroundActive : 'transparent',
               border: 'none',
               borderBottom: activeTab === 'leaderboard' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
@@ -1037,6 +1039,7 @@ const StatisticsView = () => {
               transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               gap: '8px',
             }}
           >
@@ -1047,7 +1050,8 @@ const StatisticsView = () => {
           <button
             onClick={() => handleTabChange('profile')}
             style={{
-              padding: '12px 24px',
+              flex: 1,
+              padding: '14px 12px',
               background: activeTab === 'profile' ? currentTheme.buttonBackgroundActive : 'transparent',
               border: 'none',
               borderBottom: activeTab === 'profile' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
@@ -1058,6 +1062,7 @@ const StatisticsView = () => {
               transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               gap: '8px',
             }}
           >
@@ -2663,29 +2668,6 @@ const StatisticsView = () => {
                         WebkitTextFillColor: 'transparent',
                       }}>
                         {profilePrompts.reduce((sum, p) => sum + (p.likeCount || 0), 0)}
-                      </p>
-                    </div>
-                    <div style={{
-                      background: currentTheme.backgroundOverlay,
-                      border: `1px solid ${currentTheme.borderLight}`,
-                      borderRadius: '12px',
-                      padding: '16px 24px',
-                      flex: 1,
-                      minWidth: '150px',
-                      textAlign: 'center',
-                    }}>
-                      <p style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', margin: '0 0 4px 0' }}>Avg Likes</p>
-                      <p style={{
-                        fontSize: '1.8rem',
-                        fontWeight: 'bold',
-                        margin: 0,
-                        background: currentTheme.accentGradient,
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                      }}>
-                        {profilePrompts.length > 0
-                          ? (profilePrompts.reduce((sum, p) => sum + (p.likeCount || 0), 0) / profilePrompts.length).toFixed(1)
-                          : '0'}
                       </p>
                     </div>
                   </div>

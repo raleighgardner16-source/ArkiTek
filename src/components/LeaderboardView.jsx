@@ -101,6 +101,10 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
   }, [])
 
   const fetchLeaderboard = async () => {
+    if (activeSection === 'search') {
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
       let url = `${API_URL}/api/leaderboard`
@@ -898,31 +902,56 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                         padding: '16px',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (comment.userId === currentUser?.id) {
+                              useStore.getState().clearViewingProfile()
+                            } else {
+                              setViewingProfile({ userId: comment.userId, username: comment.username })
+                            }
+                            setActiveTab('statistics')
+                          }}
+                          style={{
+                            width: '28px', height: '28px', borderRadius: '50%',
+                            background: comment.profileImage ? 'none' : currentTheme.accentGradient,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            overflow: 'hidden', flexShrink: 0, cursor: 'pointer', marginTop: '2px',
+                          }}
+                        >
+                          {comment.profileImage ? (
+                            <img src={comment.profileImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <User size={12} color="#fff" />
+                          )}
+                        </div>
                         <div style={{ flex: 1 }}>
-                          <p
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              if (comment.userId === currentUser?.id) {
-                                useStore.getState().clearViewingProfile()
-                              } else {
-                                setViewingProfile({ userId: comment.userId, username: comment.username })
-                              }
-                              setActiveTab('statistics')
-                            }}
-                            style={{ color: currentTheme.accent, fontSize: '0.9rem', fontWeight: '600', margin: '0 0 4px 0', cursor: 'pointer' }}
-                            onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
-                            onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none' }}
-                          >
-                            {comment.username}
-                          </p>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <p
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (comment.userId === currentUser?.id) {
+                                  useStore.getState().clearViewingProfile()
+                                } else {
+                                  setViewingProfile({ userId: comment.userId, username: comment.username })
+                                }
+                                setActiveTab('statistics')
+                              }}
+                              style={{ color: currentTheme.accent, fontSize: '0.9rem', fontWeight: '600', margin: '0 0 4px 0', cursor: 'pointer' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none' }}
+                            >
+                              {comment.username}
+                            </p>
+                            <p style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                              {formatDate(comment.createdAt)}
+                            </p>
+                          </div>
                           <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: 0, lineHeight: '1.5' }}>
                             {comment.text}
                           </p>
                         </div>
-                        <p style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0, whiteSpace: 'nowrap', marginLeft: '12px' }}>
-                          {formatDate(comment.createdAt)}
-                        </p>
                       </div>
 
                       {/* Comment Actions - Like, Reply, Delete */}
@@ -1062,8 +1091,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                             
                             return (
                               <div key={reply.id} style={{ marginBottom: '12px', padding: '12px', background: currentTheme.backgroundTertiary, borderRadius: '6px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
-                                  <p
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                  <div
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       if (reply.userId === currentUser?.id) {
@@ -1073,19 +1102,46 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                                       }
                                       setActiveTab('statistics')
                                     }}
-                                    style={{ color: currentTheme.accentSecondary, fontSize: '0.85rem', fontWeight: '600', margin: 0, cursor: 'pointer' }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none' }}
+                                    style={{
+                                      width: '22px', height: '22px', borderRadius: '50%',
+                                      background: reply.profileImage ? 'none' : currentTheme.accentGradient,
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      overflow: 'hidden', flexShrink: 0, cursor: 'pointer', marginTop: '1px',
+                                    }}
                                   >
-                                    {reply.username}
-                                  </p>
-                                  <p style={{ color: currentTheme.textMuted, fontSize: '0.7rem', margin: 0 }}>
-                                    {formatDate(reply.createdAt)}
-                                  </p>
+                                    {reply.profileImage ? (
+                                      <img src={reply.profileImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    ) : (
+                                      <User size={10} color="#fff" />
+                                    )}
+                                  </div>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                                      <p
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          if (reply.userId === currentUser?.id) {
+                                            useStore.getState().clearViewingProfile()
+                                          } else {
+                                            setViewingProfile({ userId: reply.userId, username: reply.username })
+                                          }
+                                          setActiveTab('statistics')
+                                        }}
+                                        style={{ color: currentTheme.accentSecondary, fontSize: '0.85rem', fontWeight: '600', margin: 0, cursor: 'pointer' }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline' }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none' }}
+                                      >
+                                        {reply.username}
+                                      </p>
+                                      <p style={{ color: currentTheme.textMuted, fontSize: '0.7rem', margin: 0 }}>
+                                        {formatDate(reply.createdAt)}
+                                      </p>
+                                    </div>
+                                    <p style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', margin: 0, lineHeight: '1.4' }}>
+                                      {reply.text}
+                                    </p>
+                                  </div>
                                 </div>
-                                <p style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', margin: 0, lineHeight: '1.4' }}>
-                                  {reply.text}
-                                </p>
                                 
                                 {/* Reply Actions */}
                                 {isOwnReply && (
@@ -1224,6 +1280,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
         return "Today's Favorites"
       case 'alltime':
         return 'All Time Favorites'
+      case 'search':
+        return 'Search Users'
       default:
         return 'Prompt Feed'
     }
@@ -1235,6 +1293,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
         return "All prompts submitted today. Vote on your favorites!"
       case 'alltime':
         return 'The top 15 most liked prompts of all time.'
+      case 'search':
+        return 'Find and connect with other users.'
       default:
         return 'Vote on prompts submitted by the community.'
     }
@@ -1286,109 +1346,6 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
             {getSectionDescription()}
           </p>
 
-          {/* User Search Bar */}
-          <div ref={searchContainerRef} style={{ position: 'relative', marginBottom: '16px', maxWidth: '400px' }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '10px 14px',
-              background: currentTheme.buttonBackground,
-              border: `1px solid ${showSearchResults && userSearchQuery ? currentTheme.accent + '55' : currentTheme.borderLight}`,
-              borderRadius: showSearchResults && userSearchResults.length > 0 ? '12px 12px 0 0' : '12px',
-              transition: 'border-color 0.2s',
-            }}>
-              <Search size={18} color={currentTheme.textSecondary} />
-              <input
-                value={userSearchQuery}
-                onChange={(e) => setUserSearchQuery(e.target.value)}
-                onFocus={() => { if (userSearchQuery.trim()) setShowSearchResults(true) }}
-                placeholder="Search users..."
-                style={{
-                  flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                  color: currentTheme.text, fontSize: '0.9rem', fontFamily: 'inherit',
-                }}
-              />
-              {userSearchQuery && (
-                <button
-                  onClick={() => { setUserSearchQuery(''); setShowSearchResults(false); setUserSearchResults([]) }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex' }}
-                >
-                  <X size={16} color={currentTheme.textSecondary} />
-                </button>
-              )}
-            </div>
-            {showSearchResults && userSearchQuery.trim() && (
-              <div style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
-                background: currentTheme.backgroundOverlay || currentTheme.buttonBackground,
-                border: `1px solid ${currentTheme.borderLight}`,
-                borderTop: 'none',
-                borderRadius: '0 0 12px 12px',
-                maxHeight: '300px', overflowY: 'auto',
-                boxShadow: `0 8px 24px ${currentTheme.shadow || 'rgba(0,0,0,0.3)'}`,
-              }}>
-                {searchingUsers ? (
-                  <div style={{ padding: '16px', textAlign: 'center', color: currentTheme.textSecondary, fontSize: '0.85rem' }}>
-                    Searching...
-                  </div>
-                ) : userSearchResults.length === 0 ? (
-                  <div style={{ padding: '16px', textAlign: 'center', color: currentTheme.textSecondary, fontSize: '0.85rem' }}>
-                    No users found
-                  </div>
-                ) : (
-                  userSearchResults.map((u) => (
-                    <div
-                      key={u.userId}
-                      onClick={() => {
-                        setShowSearchResults(false)
-                        setUserSearchQuery('')
-                        if (u.userId === currentUser?.id) {
-                          clearViewingProfile()
-                        } else {
-                          setViewingProfile({ userId: u.userId, username: u.username })
-                        }
-                        setActiveTab('statistics')
-                      }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '12px',
-                        padding: '10px 14px', cursor: 'pointer',
-                        borderBottom: `1px solid ${currentTheme.borderLight}`,
-                        transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = currentTheme.buttonBackgroundActive || 'rgba(255,255,255,0.05)' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                    >
-                      <div style={{
-                        width: '36px', height: '36px', borderRadius: '50%',
-                        background: u.profileImage ? 'none' : currentTheme.accentGradient,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        overflow: 'hidden', flexShrink: 0,
-                      }}>
-                        {u.profileImage ? (
-                          <img src={u.profileImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                          <User size={16} color="#fff" />
-                        )}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ color: currentTheme.text, fontSize: '0.9rem', fontWeight: '500', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {u.username}
-                        </p>
-                        {u.bio && (
-                          <p style={{ color: currentTheme.textSecondary, fontSize: '0.75rem', margin: '1px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {u.bio}
-                          </p>
-                        )}
-                      </div>
-                      <span style={{ color: currentTheme.textMuted || currentTheme.textSecondary, fontSize: '0.75rem', flexShrink: 0 }}>
-                        {u.followersCount} {u.followersCount === 1 ? 'follower' : 'followers'}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
           {/* Restricted mode notice */}
           {subscriptionRestricted && (
             <div
@@ -1410,23 +1367,44 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
             </div>
           )}
           
-          {/* Section Tabs */}
+          {/* Section Tabs — evenly distributed */}
           <div
             style={{
               display: 'flex',
-              gap: '16px',
               marginTop: '24px',
               marginBottom: '32px',
               borderBottom: `1px solid ${currentTheme.borderLight}`,
             }}
           >
-            {/* Today and All Time tabs are hidden when subscription is restricted */}
+            <button
+              onClick={() => setActiveSection('search')}
+              style={{
+                flex: 1,
+                padding: '14px 12px',
+                background: activeSection === 'search' ? currentTheme.buttonBackgroundActive : 'transparent',
+                border: 'none',
+                borderBottom: activeSection === 'search' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+                color: activeSection === 'search' ? currentTheme.accent : currentTheme.textSecondary,
+                fontSize: '1rem',
+                fontWeight: activeSection === 'search' ? '600' : '400',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
+            >
+              <Search size={20} />
+              Search Users
+            </button>
             {!subscriptionRestricted && (
               <>
             <button
               onClick={() => setActiveSection('today')}
               style={{
-                padding: '12px 24px',
+                flex: 1,
+                padding: '14px 12px',
                 background: activeSection === 'today' ? currentTheme.buttonBackgroundActive : 'transparent',
                 border: 'none',
                 borderBottom: activeSection === 'today' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
@@ -1437,6 +1415,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                 transition: 'all 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: '8px',
               }}
             >
@@ -1447,7 +1426,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
             <button
               onClick={() => setActiveSection('alltime')}
               style={{
-                padding: '12px 24px',
+                flex: 1,
+                padding: '14px 12px',
                 background: activeSection === 'alltime' ? currentTheme.buttonBackgroundActive : 'transparent',
                 border: 'none',
                 borderBottom: activeSection === 'alltime' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
@@ -1458,6 +1438,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                 transition: 'all 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: '8px',
               }}
             >
@@ -1466,11 +1447,10 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
             </button>
               </>
             )}
-            
-            
           </div>
           
-          {/* Category Filter Tabs */}
+          {/* Category Filter Tabs — only for Today/All Time */}
+          {activeSection !== 'search' && (
           <div
             style={{
               display: 'flex',
@@ -1531,16 +1511,136 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
               </button>
             ))}
           </div>
+          )}
           
         </div>
 
-        {/* Leaderboard Content */}
+        {/* Search Users Section */}
+        {activeSection === 'search' && (
+          <div ref={searchContainerRef}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '12px 16px', marginBottom: '20px',
+              background: currentTheme.buttonBackground,
+              border: `1px solid ${currentTheme.borderLight}`,
+              borderRadius: '12px',
+            }}>
+              <Search size={20} color={currentTheme.textSecondary} />
+              <input
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                placeholder="Search by username or name..."
+                style={{
+                  flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                  color: currentTheme.text, fontSize: '1rem', fontFamily: 'inherit',
+                }}
+              />
+              {userSearchQuery && (
+                <button
+                  onClick={() => { setUserSearchQuery(''); setUserSearchResults([]) }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                >
+                  <X size={18} color={currentTheme.textSecondary} />
+                </button>
+              )}
+            </div>
+
+            {/* Search Results */}
+            {searchingUsers ? (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <p style={{ color: currentTheme.textSecondary, fontSize: '1rem' }}>Searching...</p>
+              </div>
+            ) : userSearchQuery.trim() && userSearchResults.length === 0 ? (
+              <div style={{
+                background: currentTheme.buttonBackground,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '16px',
+                padding: '40px',
+                textAlign: 'center',
+              }}>
+                <User size={32} color={currentTheme.textMuted || currentTheme.textSecondary} style={{ marginBottom: '12px' }} />
+                <p style={{ color: currentTheme.textMuted || currentTheme.textSecondary, fontSize: '1rem', margin: 0 }}>
+                  No users found for "{userSearchQuery}"
+                </p>
+              </div>
+            ) : userSearchResults.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {userSearchResults.map((u) => (
+                  <motion.div
+                    key={u.userId}
+                    whileHover={{ scale: 1.01 }}
+                    onClick={() => {
+                      if (u.userId === currentUser?.id) {
+                        clearViewingProfile()
+                      } else {
+                        setViewingProfile({ userId: u.userId, username: u.username })
+                      }
+                      setActiveTab('statistics')
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '14px',
+                      padding: '16px 18px', cursor: 'pointer',
+                      background: currentTheme.backgroundOverlay || currentTheme.buttonBackground,
+                      border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '14px',
+                      transition: 'border-color 0.2s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent + '55' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                  >
+                    <div style={{
+                      width: '48px', height: '48px', borderRadius: '50%',
+                      background: u.profileImage ? 'none' : currentTheme.accentGradient,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      overflow: 'hidden', flexShrink: 0,
+                    }}>
+                      {u.profileImage ? (
+                        <img src={u.profileImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <User size={22} color="#fff" />
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ color: currentTheme.text, fontSize: '1rem', fontWeight: '600', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {u.username}
+                      </p>
+                      {u.bio && (
+                        <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: '3px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {u.bio}
+                        </p>
+                      )}
+                    </div>
+                    <span style={{ color: currentTheme.textMuted || currentTheme.textSecondary, fontSize: '0.8rem', flexShrink: 0 }}>
+                      {u.followersCount} {u.followersCount === 1 ? 'follower' : 'followers'}
+                    </span>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <div style={{
+                background: currentTheme.buttonBackground,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '16px',
+                padding: '50px 20px',
+                textAlign: 'center',
+              }}>
+                <Search size={36} color={currentTheme.textMuted || currentTheme.textSecondary} />
+                <p style={{ color: currentTheme.textMuted || currentTheme.textSecondary, fontSize: '1rem', margin: '12px 0 0 0' }}>
+                  Type a username or name to find people
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Leaderboard Content — only for Today/All Time */}
+        {activeSection !== 'search' && (
+          <>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>
             <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>Loading Prompt Feed...</p>
           </div>
         ) : (() => {
-          // Filter prompts by selected category
           const filteredPrompts = selectedCategory === 'All' 
             ? leaderboardPrompts 
             : leaderboardPrompts.filter(prompt => prompt.category === selectedCategory)
@@ -1562,14 +1662,12 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                   <>
                     {activeSection === 'today' && "No prompts submitted today yet. Be the first!"}
                     {activeSection === 'alltime' && "No prompts on the Prompt Feed yet. Be the first to submit one!"}
-                    {activeSection === 'fyp' && "No prompts to show yet. Check back soon!"}
                   </>
                 )}
               </p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {/* Show count of filtered results */}
               {selectedCategory !== 'All' && (
                 <p style={{ color: currentTheme.textSecondary, fontSize: '0.9rem', margin: '0 0 8px 0' }}>
                   Showing {filteredPrompts.length} prompt{filteredPrompts.length !== 1 ? 's' : ''} in "{selectedCategory}"
@@ -1579,6 +1677,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
             </div>
           )
         })()}
+          </>
+        )}
       </div>
     </motion.div>
   )
