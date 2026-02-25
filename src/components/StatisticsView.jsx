@@ -1104,10 +1104,6 @@ const StatisticsView = () => {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
-              <p style={{ color: currentTheme.textMuted, fontSize: '0.85rem', fontStyle: 'italic', marginBottom: '24px' }}>
-                A token is a unit of text (roughly 4 characters or 0.75 words) that AI models process. Token counts are displayed with full numbers and commas for readability.
-              </p>
-
         {/* Remaining Free Allocation with Counters */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '40px' }}>
           <div
