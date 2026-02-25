@@ -2465,15 +2465,19 @@ const ResponseComparison = () => {
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
             style={{
               width: '100%',
               minWidth: cardWidth,
               maxWidth: cardWidth,
-              background: theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)',
-              border: `1px solid ${theme === 'light' ? currentTheme.borderLight : 'rgba(93, 173, 226, 0.2)'}`,
-              borderRadius: '8px',
+              background: theme === 'light' ? '#ffffff' : '#0d1520',
+              border: theme === 'light' ? '1px solid rgba(0, 150, 200, 0.3)' : '1px solid rgba(93, 173, 226, 0.4)',
+              borderRadius: '10px',
               padding: '0',
-              boxShadow: 'none',
+              boxShadow: theme === 'light'
+                ? '0 3px 12px rgba(0, 0, 0, 0.1)'
+                : '0 3px 16px rgba(0, 0, 0, 0.4), 0 0 10px rgba(93, 173, 226, 0.1)',
               cursor: 'pointer',
               pointerEvents: 'auto',
               position: 'relative',
@@ -2483,13 +2487,15 @@ const ResponseComparison = () => {
             onClick={() => setShowTokenUsageModal(true)}
             onMouseEnter={(e) => {
               e.currentTarget.style.borderColor = currentTheme.borderActive
-              e.currentTarget.style.background = theme === 'light' ? currentTheme.buttonBackgroundHover : 'rgba(93, 173, 226, 0.3)'
-              e.currentTarget.style.boxShadow = `0 0 15px ${currentTheme.shadow}, 0 0 30px ${currentTheme.shadowLight}`
+              e.currentTarget.style.boxShadow = theme === 'light'
+                ? '0 4px 20px rgba(0, 0, 0, 0.15), 0 0 10px rgba(0, 150, 200, 0.15)'
+                : '0 4px 24px rgba(0, 0, 0, 0.5), 0 0 20px rgba(93, 173, 226, 0.2)'
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = theme === 'light' ? currentTheme.borderLight : 'rgba(93, 173, 226, 0.2)'
-              e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)'
-              e.currentTarget.style.boxShadow = 'none'
+              e.currentTarget.style.borderColor = theme === 'light' ? 'rgba(0, 150, 200, 0.3)' : 'rgba(93, 173, 226, 0.4)'
+              e.currentTarget.style.boxShadow = theme === 'light'
+                ? '0 3px 12px rgba(0, 0, 0, 0.1)'
+                : '0 3px 16px rgba(0, 0, 0, 0.4), 0 0 10px rgba(93, 173, 226, 0.1)'
             }}
           >
             <div
@@ -2510,7 +2516,7 @@ const ResponseComparison = () => {
                     WebkitTextFillColor: 'transparent',
                     color: currentTheme.accent,
                     margin: 0,
-                    fontWeight: '500',
+                    fontWeight: '600',
                   }}
                 >
                   Prompt Token Usage
@@ -2526,15 +2532,19 @@ const ResponseComparison = () => {
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
             style={{
               width: '100%',
               minWidth: cardWidth,
               maxWidth: cardWidth,
-              background: theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)',
-              border: `1px solid ${theme === 'light' ? currentTheme.borderLight : 'rgba(93, 173, 226, 0.2)'}`,
-              borderRadius: '8px',
+              background: theme === 'light' ? '#ffffff' : '#0d1520',
+              border: theme === 'light' ? '1px solid rgba(0, 150, 200, 0.3)' : '1px solid rgba(93, 173, 226, 0.4)',
+              borderRadius: '10px',
               padding: '0',
-              boxShadow: 'none',
+              boxShadow: theme === 'light'
+                ? '0 3px 12px rgba(0, 0, 0, 0.1)'
+                : '0 3px 16px rgba(0, 0, 0, 0.4), 0 0 10px rgba(93, 173, 226, 0.1)',
               cursor: 'pointer',
               pointerEvents: 'auto',
               position: 'relative',
@@ -2544,13 +2554,15 @@ const ResponseComparison = () => {
             onClick={() => setShowCostModal(true)}
             onMouseEnter={(e) => {
               e.currentTarget.style.borderColor = currentTheme.borderActive
-              e.currentTarget.style.background = theme === 'light' ? currentTheme.buttonBackgroundHover : 'rgba(93, 173, 226, 0.3)'
-              e.currentTarget.style.boxShadow = `0 0 15px ${currentTheme.shadow}, 0 0 30px ${currentTheme.shadowLight}`
+              e.currentTarget.style.boxShadow = theme === 'light'
+                ? '0 4px 20px rgba(0, 0, 0, 0.15), 0 0 10px rgba(0, 150, 200, 0.15)'
+                : '0 4px 24px rgba(0, 0, 0, 0.5), 0 0 20px rgba(93, 173, 226, 0.2)'
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = theme === 'light' ? currentTheme.borderLight : 'rgba(93, 173, 226, 0.2)'
-              e.currentTarget.style.background = theme === 'light' ? '#ffffff' : 'rgba(93, 173, 226, 0.05)'
-              e.currentTarget.style.boxShadow = 'none'
+              e.currentTarget.style.borderColor = theme === 'light' ? 'rgba(0, 150, 200, 0.3)' : 'rgba(93, 173, 226, 0.4)'
+              e.currentTarget.style.boxShadow = theme === 'light'
+                ? '0 3px 12px rgba(0, 0, 0, 0.1)'
+                : '0 3px 16px rgba(0, 0, 0, 0.4), 0 0 10px rgba(93, 173, 226, 0.1)'
             }}
           >
             <div
@@ -2571,7 +2583,7 @@ const ResponseComparison = () => {
                     WebkitTextFillColor: 'transparent',
                     color: currentTheme.accent,
                     margin: 0,
-                    fontWeight: '500',
+                    fontWeight: '600',
                   }}
                 >
                   Prompt Cost Breakdown

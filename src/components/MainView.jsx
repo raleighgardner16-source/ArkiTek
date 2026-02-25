@@ -1577,21 +1577,23 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <motion.button
                 onClick={() => setShowSingleTokenUsage(true)}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  padding: '9px 14px',
+                  padding: '10px 16px',
                   borderRadius: '12px',
-                  border: `1px solid ${currentTheme.borderLight}`,
-                  background: currentTheme.buttonBackground,
+                  border: theme === 'light' ? '1px solid rgba(0, 150, 200, 0.3)' : '1px solid rgba(93, 173, 226, 0.4)',
+                  background: theme === 'light' ? '#ffffff' : '#0d1520',
                   color: currentTheme.accent,
                   fontSize: '0.8rem',
                   fontWeight: '600',
                   cursor: 'pointer',
-                  boxShadow: `0 6px 20px ${currentTheme.shadow}`,
+                  boxShadow: theme === 'light'
+                    ? '0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08)'
+                    : '0 4px 20px rgba(0, 0, 0, 0.5), 0 0 15px rgba(93, 173, 226, 0.15)',
                   pointerEvents: 'auto',
                 }}
                 title="Open prompt token usage"
@@ -1609,22 +1611,25 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       setResultViewMode('council')
                     }
                   }}
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    padding: '10px 18px',
+                    padding: '11px 22px',
                     borderRadius: '12px',
-                    border: `1px solid ${currentTheme.borderLight}`,
-                    background: currentTheme.buttonBackground,
-                    color: currentTheme.accent,
-                    fontSize: '0.85rem',
-                    fontWeight: '600',
+                    border: 'none',
+                    background: currentTheme.accentGradient,
+                    color: '#ffffff',
+                    fontSize: '0.88rem',
+                    fontWeight: '700',
                     cursor: 'pointer',
-                    boxShadow: `0 6px 20px ${currentTheme.shadow}`,
+                    boxShadow: theme === 'light'
+                      ? '0 4px 20px rgba(0, 136, 204, 0.35), 0 2px 8px rgba(0, 0, 0, 0.1)'
+                      : '0 4px 24px rgba(93, 173, 226, 0.4), 0 0 20px rgba(72, 201, 176, 0.2)',
                     pointerEvents: 'auto',
+                    letterSpacing: '0.3px',
                   }}
                   title={canGenerateSummary ? 'Generate summary from the current council responses' : 'Show side-by-side model responses'}
                 >
@@ -1635,12 +1640,16 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   <span
                     style={{
                       fontSize: '0.72rem',
-                      color: currentTheme.textMuted,
+                      color: theme === 'light' ? currentTheme.textMuted : 'rgba(255, 255, 255, 0.5)',
                       textAlign: 'center',
-                      background: currentTheme.backgroundOverlay,
-                      border: `1px solid ${currentTheme.borderLight}`,
+                      background: theme === 'light' ? '#ffffff' : '#0d1520',
+                      border: theme === 'light' ? '1px solid rgba(0, 150, 200, 0.2)' : '1px solid rgba(93, 173, 226, 0.3)',
                       borderRadius: '999px',
                       padding: '3px 10px',
+                      boxShadow: theme === 'light'
+                        ? '0 2px 8px rgba(0, 0, 0, 0.08)'
+                        : '0 2px 10px rgba(0, 0, 0, 0.4)',
+                      pointerEvents: 'auto',
                     }}
                   >
                     PRESS ENTER TO GENERATE
@@ -1650,21 +1659,23 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                 <motion.button
                 onClick={() => setShowTopCostBreakdown(true)}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  padding: '9px 14px',
+                  padding: '10px 16px',
                   borderRadius: '12px',
-                  border: `1px solid ${currentTheme.borderLight}`,
-                  background: currentTheme.buttonBackground,
+                  border: theme === 'light' ? '1px solid rgba(0, 150, 200, 0.3)' : '1px solid rgba(93, 173, 226, 0.4)',
+                  background: theme === 'light' ? '#ffffff' : '#0d1520',
                   color: currentTheme.accent,
                   fontSize: '0.8rem',
                   fontWeight: '600',
                   cursor: 'pointer',
-                  boxShadow: `0 6px 20px ${currentTheme.shadow}`,
+                  boxShadow: theme === 'light'
+                    ? '0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08)'
+                    : '0 4px 20px rgba(0, 0, 0, 0.5), 0 0 15px rgba(93, 173, 226, 0.15)',
                   pointerEvents: 'auto',
                 }}
                 title="Open prompt cost breakdown"
@@ -1696,27 +1707,29 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                padding: '6px',
+                gap: '4px',
+                padding: '5px',
                 borderRadius: '14px',
-                border: `1px solid ${currentTheme.borderLight}`,
-                background: currentTheme.backgroundOverlay,
-                boxShadow: `0 6px 20px ${currentTheme.shadow}`,
+                border: theme === 'light' ? '1px solid rgba(0, 150, 200, 0.25)' : '1px solid rgba(93, 173, 226, 0.35)',
+                background: theme === 'light' ? '#ffffff' : '#0d1520',
+                boxShadow: theme === 'light'
+                  ? '0 4px 20px rgba(0, 0, 0, 0.15), 0 1px 4px rgba(0, 0, 0, 0.08)'
+                  : '0 4px 24px rgba(0, 0, 0, 0.6), 0 0 15px rgba(93, 173, 226, 0.12)',
                 pointerEvents: 'auto',
               }}
             >
               <motion.button
                 onClick={() => setResultViewMode('summary')}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.97 }}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.95 }}
                 style={{
-                  padding: '8px 12px',
+                  padding: '8px 14px',
                   borderRadius: '10px',
-                  border: `1px solid ${resultViewMode === 'summary' ? 'rgba(59, 130, 246, 0.5)' : currentTheme.borderLight}`,
+                  border: 'none',
                   background: resultViewMode === 'summary'
-                    ? (theme === 'light' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.2)')
-                    : currentTheme.buttonBackground,
-                  color: resultViewMode === 'summary' ? '#60a5fa' : currentTheme.textSecondary,
+                    ? currentTheme.accentGradient
+                    : (theme === 'light' ? '#f0f0f0' : '#1a2332'),
+                  color: resultViewMode === 'summary' ? '#ffffff' : currentTheme.textSecondary,
                   fontSize: '0.78rem',
                   fontWeight: '600',
                   cursor: 'pointer',
@@ -1727,16 +1740,16 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               </motion.button>
               <motion.button
                 onClick={() => setResultViewMode('council')}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.97 }}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.95 }}
                 style={{
-                  padding: '8px 12px',
+                  padding: '8px 14px',
                   borderRadius: '10px',
-                  border: `1px solid ${resultViewMode === 'council' ? 'rgba(59, 130, 246, 0.5)' : currentTheme.borderLight}`,
+                  border: 'none',
                   background: resultViewMode === 'council'
-                    ? (theme === 'light' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.2)')
-                    : currentTheme.buttonBackground,
-                  color: resultViewMode === 'council' ? '#60a5fa' : currentTheme.textSecondary,
+                    ? currentTheme.accentGradient
+                    : (theme === 'light' ? '#f0f0f0' : '#1a2332'),
+                  color: resultViewMode === 'council' ? '#ffffff' : currentTheme.textSecondary,
                   fontSize: '0.78rem',
                   fontWeight: '600',
                   cursor: 'pointer',
@@ -2062,7 +2075,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                 </motion.div>
                               )}
                             </div>
-                            {(showCouncilReviewPhase || (canToggleResultViews && resultViewMode === 'council')) && (
+                            {(showCouncilReviewPhase || (canToggleResultViews && resultViewMode === 'council') || (!response.isStreaming && response.text)) && (
                               <div style={{ marginTop: '14px', borderTop: `1px solid ${currentTheme.borderLight}`, paddingTop: '12px' }}>
                                 {/* Initial prompt sources — anchored to the initial response */}
                                 {(() => {

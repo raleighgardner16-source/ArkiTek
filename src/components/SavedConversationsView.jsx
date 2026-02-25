@@ -416,7 +416,7 @@ const SavedConversationsView = () => {
             <span style={{ fontSize: '0.7rem', color: currentTheme.textMuted, display: 'flex', alignItems: 'center', gap: '3px' }}>
               <Clock size={10} /> {formatTime(convo.savedAt)}
             </span>
-            {convo.category && convo.category !== 'General' && convo.category !== 'General Knowledge/Other' && (
+            {convo.category && (
               <span style={{
                 padding: '1px 6px', background: currentTheme.buttonBackground,
                 borderRadius: '4px', fontSize: '0.65rem', color: currentTheme.textMuted,
@@ -619,7 +619,7 @@ const SavedConversationsView = () => {
             <span style={{ fontSize: '0.8rem', color: currentTheme.textMuted }}>
               {formatDate(selectedConvo.savedAt)}
             </span>
-            {selectedConvo.category && selectedConvo.category !== 'General Knowledge/Other' && (
+            {selectedConvo.category && (
               <span style={{
                 padding: '3px 8px', background: currentTheme.buttonBackground,
                 borderRadius: '4px', fontSize: '0.75rem', color: currentTheme.textSecondary,
