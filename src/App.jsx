@@ -17,6 +17,7 @@ import SavedConversationsView from './components/SavedConversationsView'
 import LandingPage from './components/LandingPage'
 import TermsOfService from './components/TermsOfService'
 import PrivacyPolicy from './components/PrivacyPolicy'
+import { ShoppingBag } from 'lucide-react'
 import { callLLM, callLLMStream, getAllModels, searchWithSerper } from './services/llmProviders'
 import { streamFetch } from './utils/streamFetch'
 import { detectCategory } from './utils/categoryDetector'
@@ -1658,6 +1659,38 @@ Important: Only include each section label followed by a colon and content.`
                 {activeTab === 'saved' && <SavedConversationsView />}
                 {activeTab === 'settings' && <SettingsView />}
                 {activeTab === 'statistics' && <StatisticsView />}
+                {activeTab === 'store' && (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100%',
+                    minHeight: '60vh',
+                    gap: '16px',
+                    padding: '40px',
+                  }}>
+                    <ShoppingBag size={48} style={{ color: currentTheme.textMuted, opacity: 0.5 }} />
+                    <h2 style={{
+                      fontSize: '1.8rem',
+                      fontWeight: '700',
+                      background: currentTheme.accentGradient,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      backgroundClip: 'text',
+                      margin: 0,
+                    }}>
+                      Store
+                    </h2>
+                    <p style={{
+                      color: currentTheme.textMuted,
+                      fontSize: '1rem',
+                      margin: 0,
+                    }}>
+                      Coming soon
+                    </p>
+                  </div>
+                )}
 
                 {/* Response Comparison - Only show on home tab (not on admin route) */}
                 {!isAdminRoute && activeTab === 'home' && <ResponseComparison />}

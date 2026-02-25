@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { MessageSquare, Settings, User, LogOut, Trophy, Sun, Moon, History, MessageSquarePlus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { MessageSquare, Settings, User, LogOut, Trophy, Sun, Moon, History, MessageSquarePlus, ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -90,6 +90,11 @@ const NavigationBar = () => {
       id: 'statistics',
       icon: User,
       label: 'Profile',
+    },
+    {
+      id: 'store',
+      icon: ShoppingBag,
+      label: 'Store',
     },
     {
       id: 'settings',
