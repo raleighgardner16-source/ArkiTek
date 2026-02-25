@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, Calendar, Star, Trash2, Layers, Lock, Globe, Search, User, Users, Compass, X } from 'lucide-react'
+import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, Calendar, Star, Trash2, Layers, Lock, Globe, Search, User, Users, Compass, X, Trophy } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -28,6 +28,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
   const setActiveTab = useStore((state) => state.setActiveTab)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
+  const winningPrompts = useStore((state) => state.winningPrompts)
   const [activeSection, setActiveSection] = useState('myfeed') // 'myfeed', 'browse', 'search'
   const [selectedCategory, setSelectedCategory] = useState('All') // Category filter
   const [userSearchQuery, setUserSearchQuery] = useState('')
@@ -371,6 +372,18 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                 }}
               >
                 {prompt.category}
+              </span>
+            )}
+            {winningPrompts?.some(w => w.promptId === prompt.id) && (
+              <span style={{
+                padding: '3px 9px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: '700',
+                background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 165, 0, 0.15))',
+                border: '1px solid rgba(255, 215, 0, 0.3)',
+                color: '#FFD700',
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                textTransform: 'uppercase', letterSpacing: '0.5px',
+              }}>
+                <Trophy size={11} /> Winning Chat
               </span>
             )}
           </div>

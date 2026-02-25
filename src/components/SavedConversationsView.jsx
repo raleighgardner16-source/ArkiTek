@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare, Coins, DollarSign, Star, Play } from 'lucide-react'
+import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare, Coins, DollarSign, Star, Play, Trophy } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -45,6 +45,7 @@ const SavedConversationsView = () => {
   const setLastSubmittedPrompt = useStore((state) => state.setLastSubmittedPrompt)
   const setLastSubmittedCategory = useStore((state) => state.setLastSubmittedCategory)
   const setSummaryMinimized = useStore((state) => state.setSummaryMinimized)
+  const winningPrompts = useStore((state) => state.winningPrompts)
 
   // Sub-tab state: 'history' or 'categories'
   const [activeSubTab, setActiveSubTab] = useState('history')
@@ -172,6 +173,17 @@ const SavedConversationsView = () => {
       (typeof convo.summary.summary === 'string' && convo.summary.summary.trim().length > 0) ||
       (typeof convo.summary.initialSummary === 'string' && convo.summary.initialSummary.trim().length > 0)
     )
+  }
+
+  const isWinningChat = (convo) => {
+    if (!winningPrompts || winningPrompts.length === 0) return false
+    const convoPrompt = (convo.originalPrompt || convo.title || '').trim().toLowerCase()
+    if (!convoPrompt) return false
+    return winningPrompts.some(win => {
+      const winPrompt = (win.promptText || '').trim().toLowerCase()
+      if (!winPrompt) return false
+      return convoPrompt === winPrompt || winPrompt.includes(convoPrompt) || convoPrompt.includes(winPrompt)
+    })
   }
 
   const fetchHistory = async () => {
@@ -509,6 +521,18 @@ const SavedConversationsView = () => {
                 color: convo.consensus >= 80 ? '#48c9b0' : convo.consensus >= 50 ? '#f1c40f' : '#ff6b6b',
               }}>
                 {convo.consensus}%
+              </span>
+            )}
+            {isWinningChat(convo) && (
+              <span style={{
+                padding: '2px 8px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: '700',
+                background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 165, 0, 0.15))',
+                border: '1px solid rgba(255, 215, 0, 0.3)',
+                color: '#FFD700',
+                display: 'flex', alignItems: 'center', gap: '4px',
+                textTransform: 'uppercase', letterSpacing: '0.5px',
+              }}>
+                <Trophy size={10} /> Winning Chat
               </span>
             )}
           </div>
@@ -1272,9 +1296,30 @@ const SavedConversationsView = () => {
                                         <p key={`${category}-prompt-text-${index}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: '0.9rem', margin: '0 0 6px 0', lineHeight: '1.4', paddingRight: '24px' }}>
                                           {prompt.text}
                                         </p>
-                                        <p key={`${category}-prompt-date-${index}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0 }}>
-                                          {formattedDate}
-                                        </p>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <p key={`${category}-prompt-date-${index}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0 }}>
+                                            {formattedDate}
+                                          </p>
+                                          {(() => {
+                                            const promptNorm = (prompt.text || '').trim().toLowerCase()
+                                            const isWin = promptNorm && winningPrompts?.some(win => {
+                                              const winNorm = (win.promptText || '').trim().toLowerCase()
+                                              return winNorm && (promptNorm === winNorm || winNorm.includes(promptNorm) || promptNorm.includes(winNorm))
+                                            })
+                                            return isWin ? (
+                                              <span style={{
+                                                padding: '1px 7px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: '700',
+                                                background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 165, 0, 0.15))',
+                                                border: '1px solid rgba(255, 215, 0, 0.3)',
+                                                color: '#FFD700',
+                                                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                textTransform: 'uppercase', letterSpacing: '0.5px',
+                                              }}>
+                                                <Trophy size={9} /> Winning Chat
+                                              </span>
+                                            ) : null
+                                          })()}
+                                        </div>
                                       </div>
                                     )
                                   })}

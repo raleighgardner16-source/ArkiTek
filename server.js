@@ -10282,7 +10282,9 @@ app.get('/api/leaderboard/user-stats/:userId', (req, res) => {
       if (sortedByLikes[0]?.id === prompt.id && promptLikes > 0) {
         wins.push({
           promptId: prompt.id,
-          promptText: prompt.promptText.substring(0, 50) + '...',
+          promptText: prompt.promptText,
+          promptTextShort: prompt.promptText.substring(0, 80) + (prompt.promptText.length > 80 ? '...' : ''),
+          category: prompt.category || 'General Knowledge/Other',
           likes: promptLikes,
           date: prompt.createdAt,
         })
@@ -10829,14 +10831,17 @@ app.get('/api/users/:userId/followers', async (req, res) => {
   try {
     const { userId } = req.params
     await ensureUserInCache(userId)
-    const users = readUsers()
-    const user = users[userId]
+    const user = readUsers()[userId]
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' })
     }
 
-    const followers = (user.followers || []).map(fId => {
+    const followerIds = user.followers || []
+    await Promise.all(followerIds.map(fId => ensureUserInCache(fId)))
+    const users = readUsers()
+
+    const followers = followerIds.map(fId => {
       const f = users[fId]
       return f ? {
         userId: fId,
@@ -10858,14 +10863,17 @@ app.get('/api/users/:userId/following', async (req, res) => {
   try {
     const { userId } = req.params
     await ensureUserInCache(userId)
-    const users = readUsers()
-    const user = users[userId]
+    const user = readUsers()[userId]
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' })
     }
 
-    const following = (user.following || []).map(fId => {
+    const followingIds = user.following || []
+    await Promise.all(followingIds.map(fId => ensureUserInCache(fId)))
+    const users = readUsers()
+
+    const following = followingIds.map(fId => {
       const f = users[fId]
       return f ? {
         userId: fId,

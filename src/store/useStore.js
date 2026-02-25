@@ -232,6 +232,10 @@ export const useStore = create(
       leaderboardRefreshTrigger: 0,
       triggerLeaderboardRefresh: () => set((state) => ({ leaderboardRefreshTrigger: state.leaderboardRefreshTrigger + 1 })),
 
+      // Winning prompts from Prompt Feed Favorites (shared across views for badge display)
+      winningPrompts: [],
+      setWinningPrompts: (prompts) => set({ winningPrompts: prompts }),
+
       // Notification badge count for profile tab (social interactions)
       notificationCount: 0,
       setNotificationCount: (count) => set({ notificationCount: count }),

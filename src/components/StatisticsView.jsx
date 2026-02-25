@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield, Trash2, ArrowLeft, Camera, Edit3, UserPlus, UserCheck, Users } from 'lucide-react'
+import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield, Trash2, ArrowLeft, Camera, Edit3, UserPlus, UserCheck, Users, Calendar } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -218,6 +218,8 @@ const StatisticsView = () => {
   const currentTheme = getTheme(theme)
   const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
   const leaderboardRefreshTrigger = useStore((state) => state.leaderboardRefreshTrigger)
+  const setWinningPrompts = useStore((state) => state.setWinningPrompts)
+  const winningPrompts = useStore((state) => state.winningPrompts)
   const viewingProfile = useStore((state) => state.viewingProfile)
   const clearViewingProfile = useStore((state) => state.clearViewingProfile)
   const isViewingOther = viewingProfile && viewingProfile.userId !== currentUser?.id
@@ -527,6 +529,9 @@ const StatisticsView = () => {
       }
       const response = await axios.get(`${API_URL}/api/leaderboard/user-stats/${currentUser.id}`)
       setLeaderboardStats(response.data)
+      if (response.data.wins?.length > 0) {
+        setWinningPrompts(response.data.wins)
+      }
     } catch (error) {
       console.error('Error fetching leaderboard stats:', error)
       setLeaderboardStats(null)
@@ -2777,60 +2782,126 @@ const StatisticsView = () => {
             >
               {/* Stats Summary Row */}
               {!isViewingOther && leaderboardStats && (
-                <div style={{ display: 'flex', gap: '14px', marginBottom: '24px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '24px' }}>
+                  <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                    <div style={{
+                      flex: 1, minWidth: '140px',
+                      background: currentTheme.backgroundOverlay,
+                      border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '14px', padding: '18px 20px',
+                      display: 'flex', alignItems: 'center', gap: '14px',
+                    }}>
+                      <Rocket size={22} color={currentTheme.accent} />
+                      <div>
+                        <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: 0 }}>Total Prompts</p>
+                        <p key={`stat-prompts-${theme}`} style={{
+                          fontSize: '1.4rem', fontWeight: '700', margin: 0,
+                          background: currentTheme.accentGradient,
+                          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                          color: currentTheme.accent, display: 'inline-block',
+                        }}>{leaderboardStats.totalPrompts || 0}</p>
+                      </div>
+                    </div>
+                    <div style={{
+                      flex: 1, minWidth: '140px',
+                      background: currentTheme.backgroundOverlay,
+                      border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '14px', padding: '18px 20px',
+                      display: 'flex', alignItems: 'center', gap: '14px',
+                    }}>
+                      <Heart size={22} color="#ff6b6b" />
+                      <div>
+                        <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: 0 }}>Total Likes</p>
+                        <p key={`stat-likes-${theme}`} style={{
+                          fontSize: '1.4rem', fontWeight: '700', margin: 0,
+                          background: currentTheme.accentGradient,
+                          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                          color: currentTheme.accent, display: 'inline-block',
+                        }}>{leaderboardStats.totalLikes || 0}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Wins in Prompt Feed Favorites */}
                   <div style={{
-                    flex: 1, minWidth: '140px',
                     background: currentTheme.backgroundOverlay,
-                    border: `1px solid ${currentTheme.borderLight}`,
-                    borderRadius: '14px', padding: '18px 20px',
-                    display: 'flex', alignItems: 'center', gap: '14px',
+                    border: `1px solid ${(leaderboardStats.wins?.length > 0) ? '#FFD70040' : currentTheme.borderLight}`,
+                    borderRadius: '14px',
+                    padding: '20px 24px',
+                    ...(leaderboardStats.wins?.length > 0 ? {
+                      background: `linear-gradient(135deg, ${currentTheme.backgroundOverlay}, rgba(255, 215, 0, 0.03))`,
+                    } : {}),
                   }}>
-                    <Trophy size={22} color={currentTheme.accent} />
-                    <div>
-                      <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: 0 }}>Wins</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: leaderboardStats.wins?.length > 0 ? '16px' : '0' }}>
+                      <Trophy size={24} color="#FFD700" />
+                      <div style={{ flex: 1 }}>
+                        <p style={{ color: currentTheme.text, fontSize: '1rem', fontWeight: '600', margin: 0 }}>
+                          Wins in Prompt Feed Favorites
+                        </p>
+                        <p style={{ color: currentTheme.textMuted, fontSize: '0.8rem', margin: '2px 0 0 0' }}>
+                          {leaderboardStats.wins?.length > 0
+                            ? `${leaderboardStats.winCount} winning ${leaderboardStats.winCount === 1 ? 'prompt' : 'prompts'}`
+                            : 'No wins yet — get the most likes on a prompt to win!'}
+                        </p>
+                      </div>
                       <p key={`stat-wins-${theme}`} style={{
-                        fontSize: '1.4rem', fontWeight: '700', margin: 0,
-                        background: currentTheme.accentGradient,
+                        fontSize: '2rem', fontWeight: '800', margin: 0,
+                        background: leaderboardStats.wins?.length > 0 ? 'linear-gradient(135deg, #FFD700, #FFA500)' : currentTheme.accentGradient,
                         WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
                         color: currentTheme.accent, display: 'inline-block',
                       }}>{leaderboardStats.winCount || 0}</p>
                     </div>
-                  </div>
-                  <div style={{
-                    flex: 1, minWidth: '140px',
-                    background: currentTheme.backgroundOverlay,
-                    border: `1px solid ${currentTheme.borderLight}`,
-                    borderRadius: '14px', padding: '18px 20px',
-                    display: 'flex', alignItems: 'center', gap: '14px',
-                  }}>
-                    <Rocket size={22} color={currentTheme.accent} />
-                    <div>
-                      <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: 0 }}>Total Prompts</p>
-                      <p key={`stat-prompts-${theme}`} style={{
-                        fontSize: '1.4rem', fontWeight: '700', margin: 0,
-                        background: currentTheme.accentGradient,
-                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                        color: currentTheme.accent, display: 'inline-block',
-                      }}>{leaderboardStats.totalPrompts || 0}</p>
-                    </div>
-                  </div>
-                  <div style={{
-                    flex: 1, minWidth: '140px',
-                    background: currentTheme.backgroundOverlay,
-                    border: `1px solid ${currentTheme.borderLight}`,
-                    borderRadius: '14px', padding: '18px 20px',
-                    display: 'flex', alignItems: 'center', gap: '14px',
-                  }}>
-                    <Heart size={22} color="#ff6b6b" />
-                    <div>
-                      <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: 0 }}>Total Likes</p>
-                      <p key={`stat-likes-${theme}`} style={{
-                        fontSize: '1.4rem', fontWeight: '700', margin: 0,
-                        background: currentTheme.accentGradient,
-                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                        color: currentTheme.accent, display: 'inline-block',
-                      }}>{leaderboardStats.totalLikes || 0}</p>
-                    </div>
+
+                    {leaderboardStats.wins?.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {leaderboardStats.wins.map((win, idx) => (
+                          <div
+                            key={win.promptId || idx}
+                            style={{
+                              background: theme === 'light' ? 'rgba(255, 215, 0, 0.06)' : 'rgba(255, 215, 0, 0.04)',
+                              border: `1px solid rgba(255, 215, 0, 0.15)`,
+                              borderRadius: '10px',
+                              padding: '14px 16px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                              <Trophy size={16} color="#FFD700" style={{ marginTop: '2px', flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{
+                                  color: currentTheme.text, fontSize: '0.92rem', fontWeight: '500',
+                                  margin: '0 0 6px 0', lineHeight: '1.4',
+                                  wordBreak: 'break-word',
+                                }}>
+                                  {win.promptTextShort || win.promptText}
+                                </p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                  {win.category && (
+                                    <span style={{
+                                      padding: '2px 8px', borderRadius: '10px',
+                                      background: `${currentTheme.accent}15`,
+                                      border: `1px solid ${currentTheme.accent}30`,
+                                      color: currentTheme.accent, fontSize: '0.7rem', fontWeight: '500',
+                                    }}>
+                                      {win.category}
+                                    </span>
+                                  )}
+                                  <span style={{ color: currentTheme.textMuted, fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Calendar size={11} />
+                                    {new Date(win.date).toLocaleDateString('en-US', {
+                                      month: 'short', day: 'numeric', year: 'numeric',
+                                    })}
+                                  </span>
+                                  <span style={{ color: '#ff6b6b', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Heart size={11} fill="#ff6b6b" />
+                                    {win.likes} {win.likes === 1 ? 'like' : 'likes'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2932,6 +3003,18 @@ const StatisticsView = () => {
                                 minute: '2-digit',
                               })}
                             </span>
+                            {winningPrompts?.some(w => w.promptId === prompt.id) && (
+                              <span style={{
+                                padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: '700',
+                                background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 165, 0, 0.15))',
+                                border: '1px solid rgba(255, 215, 0, 0.3)',
+                                color: '#FFD700',
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                textTransform: 'uppercase', letterSpacing: '0.5px',
+                              }}>
+                                <Trophy size={10} /> Winning Chat
+                              </span>
+                            )}
                           </div>
                         </div>
                         {/* Delete button — only on own profile (inline confirm) */}
