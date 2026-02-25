@@ -9718,6 +9718,16 @@ app.get('/api/history/detail/:historyId', async (req, res) => {
       return res.status(404).json({ error: 'History entry not found' })
     }
 
+    // Check if this prompt was posted to the leaderboard/prompt feed
+    let postedToFeed = false
+    if (doc.userId && doc.originalPrompt) {
+      const leaderboard = readLeaderboard()
+      const normalizedPrompt = doc.originalPrompt.trim().toLowerCase()
+      postedToFeed = leaderboard.prompts.some(
+        p => p.userId === doc.userId && p.promptText.trim().toLowerCase() === normalizedPrompt
+      )
+    }
+
     res.json({
       conversation: {
         id: doc._id,
@@ -9730,6 +9740,7 @@ app.get('/api/history/detail/:historyId', async (req, res) => {
         sources: doc.sources || [],
         facts: doc.facts || [],
         conversationTurns: doc.conversationTurns || [],
+        postedToFeed,
       }
     })
   } catch (error) {
@@ -9851,7 +9862,7 @@ app.post('/api/leaderboard/submit', async (req, res) => {
     const promptEntry = {
       id: promptId,
       userId: userId,
-      username: user.username || user.email || 'Anonymous',
+      username: user.username || 'Anonymous',
       promptText: promptText.trim(),
       category: category || 'General Knowledge/Other',
       likes: [],
@@ -9887,7 +9898,7 @@ app.post('/api/leaderboard/submit', async (req, res) => {
     try {
       await db.leaderboardPosts.submit({
         userId,
-        username: user.username || user.email || 'Anonymous',
+        username: user.username || 'Anonymous',
         promptText: promptText.trim(),
         category: category || 'General Knowledge/Other',
         responses: responses || [],
@@ -9935,7 +9946,7 @@ app.get('/api/leaderboard', (req, res) => {
       })
       return {
         ...prompt,
-        username: user?.isAnonymous ? 'Anonymous' : (user?.username || user?.email || 'Anonymous'),
+        username: user?.isAnonymous ? 'Anonymous' : (user?.username || 'Anonymous'),
         profileImage: user?.profileImage || null,
         likeCount: prompt.likes?.length || 0,
         comments: enrichedComments,
@@ -10579,7 +10590,7 @@ app.post('/api/leaderboard/comment', (req, res) => {
     const comment = {
       id: commentId,
       userId: userId,
-      username: user.username || user.email || 'Anonymous',
+      username: user.username || 'Anonymous',
       text: commentText.trim(),
       createdAt: new Date().toISOString(),
       replies: [],
@@ -10632,7 +10643,7 @@ app.post('/api/leaderboard/comment/reply', (req, res) => {
     const reply = {
       id: replyId,
       userId: userId,
-      username: user.username || user.email || 'Anonymous',
+      username: user.username || 'Anonymous',
       text: replyText.trim(),
       createdAt: new Date().toISOString(),
     }

@@ -61,9 +61,11 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
     }
   }, [subscriptionRestricted, activeSection])
 
+  const leaderboardRefreshTrigger = useStore((state) => state.leaderboardRefreshTrigger)
+
   useEffect(() => {
     fetchLeaderboard()
-  }, [currentUser, activeSection])
+  }, [currentUser, activeSection, leaderboardRefreshTrigger])
 
   // Debounced user search
   useEffect(() => {
@@ -163,6 +165,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
       if (response.data.success) {
         setDeleteConfirm(null)
         await fetchLeaderboard()
+        // Notify other views (e.g. profile) so they drop the deleted prompt
+        useStore.getState().triggerLeaderboardRefresh()
       }
     } catch (error) {
       console.error('Error deleting prompt:', error)

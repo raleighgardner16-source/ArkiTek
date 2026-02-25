@@ -228,6 +228,10 @@ export const useStore = create(
       statsRefreshTrigger: 0,
       triggerStatsRefresh: () => set((state) => ({ statsRefreshTrigger: state.statsRefreshTrigger + 1 })),
 
+      // Leaderboard/prompt-feed refresh trigger (used to sync deletions across views)
+      leaderboardRefreshTrigger: 0,
+      triggerLeaderboardRefresh: () => set((state) => ({ leaderboardRefreshTrigger: state.leaderboardRefreshTrigger + 1 })),
+
       // Notification badge count for profile tab (social interactions)
       notificationCount: 0,
       setNotificationCount: (count) => set({ notificationCount: count }),

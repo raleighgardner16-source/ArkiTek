@@ -216,6 +216,7 @@ const StatisticsView = () => {
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
+  const leaderboardRefreshTrigger = useStore((state) => state.leaderboardRefreshTrigger)
   const viewingProfile = useStore((state) => state.viewingProfile)
   const clearViewingProfile = useStore((state) => state.clearViewingProfile)
   const isViewingOther = viewingProfile && viewingProfile.userId !== currentUser?.id
@@ -410,19 +411,34 @@ const StatisticsView = () => {
     }
   }
 
+  // Fetch core stats (not dependent on which tab is active)
   useEffect(() => {
-    if (isViewingOther) return // Don't fetch own stats when viewing another user
+    if (isViewingOther) return
     if (currentUser?.id) {
       fetchStats()
       fetchRatings()
-      if (activeTab === 'leaderboard' || activeTab === 'badges') {
-        fetchLeaderboardStats()
-      }
-      if (activeTab === 'profile') {
-        fetchProfilePrompts()
-      }
     }
-  }, [currentUser, statsRefreshTrigger, activeTab, isViewingOther])
+  }, [currentUser, statsRefreshTrigger, isViewingOther])
+
+  // Fetch tab-specific data only when that tab is active
+  useEffect(() => {
+    if (isViewingOther || !currentUser?.id) return
+    if (activeTab === 'leaderboard' || activeTab === 'badges') {
+      fetchLeaderboardStats()
+    }
+    if (activeTab === 'profile') {
+      fetchProfilePrompts()
+    }
+  }, [currentUser?.id, activeTab, isViewingOther])
+
+  // Re-fetch profile and leaderboard data when a prompt is deleted from either view
+  useEffect(() => {
+    if (!leaderboardRefreshTrigger || isViewingOther || !currentUser?.id) return
+    fetchLeaderboardStats()
+    if (activeTab === 'profile') {
+      fetchProfilePrompts()
+    }
+  }, [leaderboardRefreshTrigger])
 
   const fetchLeaderboardStats = async () => {
     if (!currentUser?.id) return
@@ -469,6 +485,10 @@ const StatisticsView = () => {
       // Remove from local state immediately
       setProfilePrompts(prev => prev.filter(p => p.id !== promptId))
       setConfirmDeleteId(null)
+      // Refresh leaderboard stats (updates "Total Prompts Submitted", badges, etc.)
+      fetchLeaderboardStats()
+      // Notify other views (e.g. prompt feed) so they drop the deleted prompt
+      useStore.getState().triggerLeaderboardRefresh()
     } catch (error) {
       console.error('Error deleting post:', error)
     } finally {
@@ -489,24 +509,27 @@ const StatisticsView = () => {
 
   const fetchStats = async () => {
     try {
-      setLoading(true)
+      // Only show full-page loading spinner on the very first load
+      if (!stats) setLoading(true)
       const response = await axios.get(`${API_URL}/api/stats/${currentUser.id}`)
       setStats(response.data)
     } catch (error) {
       console.error('Error fetching stats:', error)
-      setStats({
-        totalTokens: 0,
-        totalPrompts: 0,
-        monthlyTokens: 0,
-        monthlyPrompts: 0,
-        monthlyCost: 0,
-        freeMonthlyAllocation: 0,
-        remainingFreeAllocation: 0,
-        freeUsagePercentage: 100,
-        dailyUsage: [],
-        providers: {},
-        models: {},
-      })
+      if (!stats) {
+        setStats({
+          totalTokens: 0,
+          totalPrompts: 0,
+          monthlyTokens: 0,
+          monthlyPrompts: 0,
+          monthlyCost: 0,
+          freeMonthlyAllocation: 0,
+          remainingFreeAllocation: 0,
+          freeUsagePercentage: 100,
+          dailyUsage: [],
+          providers: {},
+          models: {},
+        })
+      }
     } finally {
       setLoading(false)
     }
@@ -1072,14 +1095,14 @@ const StatisticsView = () => {
         </div>
 
         {/* Tab Content */}
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="popLayout">
           {activeTab === 'tokens' && (
             <motion.div
               key="tokens"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
             >
               <p style={{ color: currentTheme.textMuted, fontSize: '0.85rem', fontStyle: 'italic', marginBottom: '24px' }}>
                 A token is a unit of text (roughly 4 characters or 0.75 words) that AI models process. Token counts are displayed with full numbers and commas for readability.
@@ -1533,10 +1556,10 @@ const StatisticsView = () => {
           {activeTab === 'ratings' && (
             <motion.div
               key="ratings"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
             >
               {/* Ratings Section */}
               <div style={{ display: 'flex', gap: '20px', flexDirection: 'row', flexWrap: 'nowrap', marginBottom: '40px' }}>
@@ -1903,10 +1926,10 @@ const StatisticsView = () => {
           {activeTab === 'leaderboard' && (
             <motion.div
               key="leaderboard"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
             >
               {loadingLeaderboardStats ? (
                 <div style={{ textAlign: 'center', padding: '40px' }}>
@@ -1992,7 +2015,7 @@ const StatisticsView = () => {
                           color: currentTheme.accent,
                           display: 'inline-block',
                         }}>
-                          {userStats.totalPrompts || 0}
+                          {leaderboardStats?.totalPrompts || 0}
                         </p>
                       </div>
                       <div>
@@ -2073,10 +2096,10 @@ const StatisticsView = () => {
           {activeTab === 'badges' && (
             <motion.div
               key="badges"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
             >
               {(() => {
                 // Compute badge progress from all available stats
@@ -2085,7 +2108,7 @@ const StatisticsView = () => {
                 const persistedBadges = new Set(earnedBadgesList)
                 const badgeStats = {
                   totalTokens: userStats.totalTokens || 0,
-                  totalPrompts: userStats.totalPrompts || 0,
+                  totalPrompts: isViewingOther ? (publicProfile?.leaderboard?.totalPosts || 0) : (leaderboardStats?.totalPrompts || 0),
                   streakDays: userStats.streakDays || 0,
                   totalLikes: isViewingOther ? (publicProfile?.leaderboard?.totalLikes || 0) : (leaderboardStats?.totalLikes || 0),
                   totalRatings: ratingsStats?.totalRatings || 0,
@@ -2568,10 +2591,10 @@ const StatisticsView = () => {
           {activeTab === 'profile' && (
             <motion.div
               key="profile"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
             >
               <div style={{ marginBottom: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
@@ -2621,57 +2644,6 @@ const StatisticsView = () => {
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {/* Stats Summary */}
-                  <div style={{
-                    display: 'flex',
-                    gap: '16px',
-                    marginBottom: '8px',
-                    flexWrap: 'wrap',
-                  }}>
-                    <div style={{
-                      background: currentTheme.backgroundOverlay,
-                      border: `1px solid ${currentTheme.borderLight}`,
-                      borderRadius: '12px',
-                      padding: '16px 24px',
-                      flex: 1,
-                      minWidth: '150px',
-                      textAlign: 'center',
-                    }}>
-                      <p style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', margin: '0 0 4px 0' }}>Total Posts</p>
-                      <p style={{
-                        fontSize: '1.8rem',
-                        fontWeight: 'bold',
-                        margin: 0,
-                        background: currentTheme.accentGradient,
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                      }}>
-                        {profilePrompts.length}
-                      </p>
-                    </div>
-                    <div style={{
-                      background: currentTheme.backgroundOverlay,
-                      border: `1px solid ${currentTheme.borderLight}`,
-                      borderRadius: '12px',
-                      padding: '16px 24px',
-                      flex: 1,
-                      minWidth: '150px',
-                      textAlign: 'center',
-                    }}>
-                      <p style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', margin: '0 0 4px 0' }}>Total Likes</p>
-                      <p style={{
-                        fontSize: '1.8rem',
-                        fontWeight: 'bold',
-                        margin: 0,
-                        background: currentTheme.accentGradient,
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                      }}>
-                        {profilePrompts.reduce((sum, p) => sum + (p.likeCount || 0), 0)}
-                      </p>
-                    </div>
-                  </div>
-
                   {/* Prompt Cards */}
                   {profilePrompts.map((prompt, index) => (
                     <div

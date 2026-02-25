@@ -396,6 +396,7 @@ const SavedConversationsView = () => {
           {/* Title / prompt - click to expand full text */}
           <p
             onClick={(e) => {
+              e.stopPropagation()
               setExpandedTitles(prev => ({ ...prev, [convo.id]: !prev[convo.id] }))
             }}
             title={expandedTitles[convo.id] ? 'Click to collapse' : 'Click to see full prompt'}
@@ -627,6 +628,28 @@ const SavedConversationsView = () => {
                 {selectedConvo.category}
               </span>
             )}
+            {selectedConvo.postedToFeed ? (
+              <span style={{
+                padding: '3px 8px',
+                background: 'rgba(72, 201, 176, 0.12)',
+                border: '1px solid rgba(72, 201, 176, 0.35)',
+                borderRadius: '6px', fontSize: '0.7rem', fontWeight: '600',
+                color: '#48c9b0',
+                display: 'flex', alignItems: 'center', gap: '4px',
+              }}>
+                <Globe size={11} /> Posted to Feed
+              </span>
+            ) : (
+              <span style={{
+                padding: '3px 8px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '6px', fontSize: '0.7rem', fontWeight: '500',
+                color: currentTheme.textMuted,
+              }}>
+                Not Posted
+              </span>
+            )}
           </div>
         </div>
 
@@ -696,6 +719,89 @@ const SavedConversationsView = () => {
                   />
                 )
               })}
+            </div>
+          )
+        })()}
+
+        {/* Token Usage & Cost Breakdown */}
+        {selectedConvo.responses && selectedConvo.responses.some(r => r.tokens) && (() => {
+          const responsesWithTokens = selectedConvo.responses.filter(r => r.tokens)
+          const totalInput = responsesWithTokens.reduce((sum, r) => sum + (r.tokens.input || 0), 0)
+          const totalOutput = responsesWithTokens.reduce((sum, r) => sum + (r.tokens.output || 0), 0)
+          const totalTokens = responsesWithTokens.reduce((sum, r) => sum + (r.tokens.total || (r.tokens.input || 0) + (r.tokens.output || 0)), 0)
+
+          const formatTokens = (n) => {
+            if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M'
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
+            return n.toLocaleString()
+          }
+
+          return (
+            <div style={{
+              background: currentTheme.buttonBackground,
+              border: `1px solid ${currentTheme.borderLight}`,
+              borderRadius: '12px', padding: '16px', marginBottom: '16px',
+            }}>
+              <div style={{ fontSize: '0.75rem', color: currentTheme.accent, fontWeight: '600', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Token Usage
+              </div>
+
+              {/* Per-model breakdown */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                {responsesWithTokens.map((r, idx) => {
+                  const providerKey = getProviderFromModelName(r.modelName || r.actualModelName)
+                  const providerInfo = PROVIDER_MAP[providerKey] || { name: providerKey, color: '#888' }
+                  const modelTokens = r.tokens
+                  const modelTotal = modelTokens.total || (modelTokens.input || 0) + (modelTokens.output || 0)
+                  return (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: providerInfo.color, flexShrink: 0 }} />
+                        <span style={{ color: currentTheme.text, fontSize: '0.82rem', fontWeight: '500' }}>
+                          {providerInfo.name}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                        <span style={{ color: currentTheme.textMuted, fontSize: '0.75rem' }}>
+                          {formatTokens(modelTokens.input || 0)} in
+                        </span>
+                        <span style={{ color: currentTheme.textMuted, fontSize: '0.75rem' }}>
+                          {formatTokens(modelTokens.output || 0)} out
+                        </span>
+                        <span style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', fontWeight: '600', minWidth: '50px', textAlign: 'right' }}>
+                          {formatTokens(modelTotal)}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Total row */}
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '8px 10px',
+                borderTop: `1px solid ${currentTheme.borderLight}`,
+              }}>
+                <span style={{ color: currentTheme.text, fontSize: '0.85rem', fontWeight: '600' }}>Total</span>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <span style={{ color: currentTheme.textMuted, fontSize: '0.75rem' }}>
+                    {formatTokens(totalInput)} in
+                  </span>
+                  <span style={{ color: currentTheme.textMuted, fontSize: '0.75rem' }}>
+                    {formatTokens(totalOutput)} out
+                  </span>
+                  <span style={{
+                    fontSize: '0.85rem', fontWeight: '700', minWidth: '50px', textAlign: 'right',
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    color: currentTheme.accent,
+                  }}>
+                    {formatTokens(totalTokens)}
+                  </span>
+                </div>
+              </div>
             </div>
           )
         })()}
