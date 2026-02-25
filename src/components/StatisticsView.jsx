@@ -6,6 +6,7 @@ import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
 import BuyUsageModal from './BuyUsageModal'
+import ConfirmationModal from './ConfirmationModal'
 import { LLM_PROVIDERS } from '../services/llmProviders'
 
 // ==================== BADGE DEFINITIONS ====================
@@ -252,6 +253,7 @@ const StatisticsView = () => {
   const [showFollowersList, setShowFollowersList] = useState(null)
   const [followersListData, setFollowersListData] = useState([])
   const [loadingFollowersList, setLoadingFollowersList] = useState(false)
+  const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false)
   const fileInputRef = useRef(null)
 
   // Handle successful usage purchase
@@ -872,7 +874,7 @@ const StatisticsView = () => {
                       {/* Follow / Edit Profile button */}
                       {isViewingOther ? (
                         <motion.button
-                          onClick={() => isFollowing ? handleUnfollow(viewingProfile.userId) : handleFollow(viewingProfile.userId)}
+                          onClick={() => isFollowing ? setShowUnfollowConfirm(true) : handleFollow(viewingProfile.userId)}
                           disabled={followLoading}
                           whileHover={{ scale: 1.03 }}
                           whileTap={{ scale: 0.97 }}
@@ -2962,6 +2964,18 @@ const StatisticsView = () => {
             </div>
           )}
         </AnimatePresence>
+
+        {/* Unfollow Confirmation Modal */}
+        <ConfirmationModal
+          isOpen={showUnfollowConfirm}
+          onClose={() => setShowUnfollowConfirm(false)}
+          onConfirm={() => handleUnfollow(viewingProfile?.userId)}
+          title="Unfollow User"
+          message={`Are you sure you want to unfollow ${viewingProfile?.username || 'this user'}?`}
+          confirmText="Unfollow"
+          cancelText="Cancel"
+          confirmColor="#ff6b6b"
+        />
 
         {/* Followers / Following List Modal */}
         <AnimatePresence>

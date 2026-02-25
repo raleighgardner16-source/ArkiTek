@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, Calendar, Star, Trash2, Layers, Lock, Globe, Search, User, X } from 'lucide-react'
+import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, Calendar, Star, Trash2, Layers, Lock, Globe, Search, User, Users, Compass, X } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -28,7 +28,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
   const setActiveTab = useStore((state) => state.setActiveTab)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
-  const [activeSection, setActiveSection] = useState('today') // 'today', 'alltime', 'fyp'
+  const [activeSection, setActiveSection] = useState('myfeed') // 'myfeed', 'browse', 'search'
   const [selectedCategory, setSelectedCategory] = useState('All') // Category filter
   const [userSearchQuery, setUserSearchQuery] = useState('')
   const [userSearchResults, setUserSearchResults] = useState([])
@@ -54,10 +54,10 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
   const [deleteCommentConfirm, setDeleteCommentConfirm] = useState(null) // Track which comment is being confirmed for deletion
   const [deleteReplyConfirm, setDeleteReplyConfirm] = useState(null) // Track which reply is being confirmed for deletion
 
-  // Force to today section when subscription is restricted (profile moved to Statistics)
+  // Force to search section when subscription is restricted
   useEffect(() => {
-    if (subscriptionRestricted && activeSection !== 'today') {
-      setActiveSection('today')
+    if (subscriptionRestricted && activeSection !== 'search') {
+      setActiveSection('search')
     }
   }, [subscriptionRestricted, activeSection])
 
@@ -111,15 +111,13 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
       setLoading(true)
       let url = `${API_URL}/api/leaderboard`
       
-      if (activeSection === 'today') {
-        url += '?filter=today'
-      } else if (activeSection === 'alltime') {
-        url += '?filter=alltime'
-      } else if (activeSection === 'fyp') {
-        const params = new URLSearchParams({ filter: 'fyp' })
-        if (currentUser?.id) {
-          params.set('userId', currentUser.id)
-        }
+      if (activeSection === 'myfeed') {
+        const params = new URLSearchParams({ filter: 'myfeed' })
+        if (currentUser?.id) params.set('userId', currentUser.id)
+        url += `?${params.toString()}`
+      } else if (activeSection === 'browse') {
+        const params = new URLSearchParams({ filter: 'browse' })
+        if (currentUser?.id) params.set('userId', currentUser.id)
         url += `?${params.toString()}`
       }
       
@@ -1280,10 +1278,10 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
 
   const getSectionTitle = () => {
     switch (activeSection) {
-      case 'today':
-        return "Today's Favorites"
-      case 'alltime':
-        return 'All Time Favorites'
+      case 'myfeed':
+        return 'My Feed'
+      case 'browse':
+        return 'Browse'
       case 'search':
         return 'Search Users'
       default:
@@ -1293,10 +1291,10 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
 
   const getSectionDescription = () => {
     switch (activeSection) {
-      case 'today':
-        return "All prompts submitted today. Vote on your favorites!"
-      case 'alltime':
-        return 'The top 15 most liked prompts of all time.'
+      case 'myfeed':
+        return 'Posts from the people you follow.'
+      case 'browse':
+        return 'Discover posts from the community.'
       case 'search':
         return 'Find and connect with other users.'
       default:
@@ -1405,16 +1403,16 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
             {!subscriptionRestricted && (
               <>
             <button
-              onClick={() => setActiveSection('today')}
+              onClick={() => setActiveSection('myfeed')}
               style={{
                 flex: 1,
                 padding: '14px 12px',
-                background: activeSection === 'today' ? currentTheme.buttonBackgroundActive : 'transparent',
+                background: activeSection === 'myfeed' ? currentTheme.buttonBackgroundActive : 'transparent',
                 border: 'none',
-                borderBottom: activeSection === 'today' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
-                color: activeSection === 'today' ? currentTheme.accent : currentTheme.textSecondary,
+                borderBottom: activeSection === 'myfeed' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+                color: activeSection === 'myfeed' ? currentTheme.accent : currentTheme.textSecondary,
                 fontSize: '1rem',
-                fontWeight: activeSection === 'today' ? '600' : '400',
+                fontWeight: activeSection === 'myfeed' ? '600' : '400',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
                 display: 'flex',
@@ -1423,21 +1421,21 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                 gap: '8px',
               }}
             >
-              <Calendar size={20} />
-              Today's Favorites
+              <Users size={20} />
+              My Feed
             </button>
             
             <button
-              onClick={() => setActiveSection('alltime')}
+              onClick={() => setActiveSection('browse')}
               style={{
                 flex: 1,
                 padding: '14px 12px',
-                background: activeSection === 'alltime' ? currentTheme.buttonBackgroundActive : 'transparent',
+                background: activeSection === 'browse' ? currentTheme.buttonBackgroundActive : 'transparent',
                 border: 'none',
-                borderBottom: activeSection === 'alltime' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
-                color: activeSection === 'alltime' ? currentTheme.accent : currentTheme.textSecondary,
+                borderBottom: activeSection === 'browse' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+                color: activeSection === 'browse' ? currentTheme.accent : currentTheme.textSecondary,
                 fontSize: '1rem',
-                fontWeight: activeSection === 'alltime' ? '600' : '400',
+                fontWeight: activeSection === 'browse' ? '600' : '400',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
                 display: 'flex',
@@ -1446,14 +1444,14 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
                 gap: '8px',
               }}
             >
-              <Star size={20} />
-              All Time Favorites
+              <Compass size={20} />
+              Browse
             </button>
               </>
             )}
           </div>
           
-          {/* Category Filter Tabs — only for Today/All Time */}
+          {/* Category Filter Tabs — shown for My Feed and Browse */}
           {activeSection !== 'search' && (
           <div
             style={{
@@ -1637,7 +1635,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
           </div>
         )}
 
-        {/* Leaderboard Content — only for Today/All Time */}
+        {/* Leaderboard Content — only for My Feed/Browse */}
         {activeSection !== 'search' && (
           <>
         {loading ? (
@@ -1661,11 +1659,11 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
             >
               <p style={{ color: currentTheme.textMuted, fontSize: '1.1rem' }}>
                 {selectedCategory !== 'All' ? (
-                  `No prompts found in the "${selectedCategory}" category${activeSection === 'today' ? ' today' : ''}.`
+                  `No prompts found in the "${selectedCategory}" category.`
                 ) : (
                   <>
-                    {activeSection === 'today' && "No prompts submitted today yet. Be the first!"}
-                    {activeSection === 'alltime' && "No prompts on the Prompt Feed yet. Be the first to submit one!"}
+                    {activeSection === 'myfeed' && "No posts from people you follow yet. Follow users to see their posts here!"}
+                    {activeSection === 'browse' && "No posts to browse right now. Check back later!"}
                   </>
                 )}
               </p>

@@ -9928,6 +9928,8 @@ app.post('/api/leaderboard/submit', async (req, res) => {
 // - ?filter=alltime - All time favorites (top 15 most liked)
 // - ?filter=profile&userId=xxx - User's profile (all prompts by user)
 // - ?filter=fyp&userId=xxx - For you prompts (mix of recent + popular; excludes user's own if userId provided)
+// - ?filter=myfeed&userId=xxx - Posts from users the current user follows, sorted by recency
+// - ?filter=browse&userId=xxx - Posts from users the current user does NOT follow (discovery feed)
 app.get('/api/leaderboard', (req, res) => {
   try {
     const leaderboard = readLeaderboard()
@@ -10001,6 +10003,34 @@ app.get('/api/leaderboard', (req, res) => {
           const recencyBoost = Math.max(0, (48 - hoursSince) / 48) // boost for ~2 days
           const score = (prompt.likeCount || 0) * 2 + recencyBoost
 
+          return { ...prompt, score }
+        })
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score
+          return new Date(b.createdAt) - new Date(a.createdAt)
+        })
+    } else if (filter === 'myfeed' && userId) {
+      // My Feed: Posts from users the current user follows, sorted by recency
+      const currentUser = users[userId]
+      const followingList = currentUser?.following || []
+
+      prompts = prompts.filter(prompt => followingList.includes(prompt.userId))
+
+      prompts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    } else if (filter === 'browse' && userId) {
+      // Browse: Discovery feed — posts from users the current user does NOT follow (and not their own)
+      const currentUser = users[userId]
+      const followingList = currentUser?.following || []
+      const excludeSet = new Set([...followingList, userId])
+
+      prompts = prompts.filter(prompt => !excludeSet.has(prompt.userId))
+
+      prompts = prompts
+        .map((prompt) => {
+          const createdAt = new Date(prompt.createdAt).getTime()
+          const hoursSince = Math.max(0, (Date.now() - createdAt) / (1000 * 60 * 60))
+          const recencyBoost = Math.max(0, (48 - hoursSince) / 48)
+          const score = (prompt.likeCount || 0) * 2 + recencyBoost
           return { ...prompt, score }
         })
         .sort((a, b) => {
