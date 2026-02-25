@@ -468,7 +468,7 @@ const SavedConversationsView = () => {
       style={{
         background: selectedConvo?.id === convo.id
           ? `${currentTheme.accent}15`
-          : currentTheme.backgroundOverlay,
+          : 'transparent',
         border: `1px solid ${selectedConvo?.id === convo.id ? currentTheme.accent + '40' : currentTheme.borderLight}`,
         borderRadius: '10px',
         padding: '12px 14px',
@@ -477,7 +477,7 @@ const SavedConversationsView = () => {
         transition: 'all 0.2s ease',
       }}
       whileHover={{
-        background: `${currentTheme.accent}10`,
+        background: `${currentTheme.accent}08`,
         borderColor: `${currentTheme.accent}30`,
       }}
     >
@@ -579,29 +579,32 @@ const SavedConversationsView = () => {
                 onClick={(e) => handleToggleStar(convo.id, e)}
                 style={{
                   background: 'transparent', border: 'none', cursor: 'pointer',
-                  padding: '4px', borderRadius: '4px', opacity: convo.starred ? 1 : 0.35,
-                  transition: 'opacity 0.15s',
+                  padding: '4px', borderRadius: '4px', opacity: convo.starred ? 1 : 0.55,
+                  transition: 'all 0.15s ease',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = convo.starred ? '1' : '0.35' }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1.15)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = convo.starred ? '1' : '0.55'; e.currentTarget.style.transform = 'scale(1)' }}
                 title={convo.starred ? 'Unstar' : 'Star'}
               >
-                <Star size={14} color="#f59e0b" fill={convo.starred ? '#f59e0b' : 'none'} />
+                <Star size={16} color="#f59e0b" fill={convo.starred ? '#f59e0b' : 'none'} />
               </button>
               <button
                 onClick={(e) => handleContinueConversation(convo.id, e)}
                 style={{
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  padding: '4px', borderRadius: '4px', opacity: 0.4,
-                  transition: 'opacity 0.15s',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: `${currentTheme.accent}12`, border: `1px solid ${currentTheme.accent}30`,
+                  cursor: 'pointer',
+                  padding: '3px 8px', borderRadius: '6px',
+                  color: currentTheme.accent,
+                  fontSize: '0.68rem', fontWeight: '600',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease',
+                  display: 'flex', alignItems: 'center',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.4' }}
-                title="Continue conversation"
+                onMouseEnter={(e) => { e.currentTarget.style.background = `${currentTheme.accent}25`; e.currentTarget.style.borderColor = `${currentTheme.accent}50` }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = `${currentTheme.accent}12`; e.currentTarget.style.borderColor = `${currentTheme.accent}30` }}
               >
-                <Play size={13} color={currentTheme.accent} />
+                Continue
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(convo.id) }}
@@ -1463,7 +1466,7 @@ const SavedConversationsView = () => {
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center',
                       justifyContent: 'space-between', padding: '14px 18px',
-                      background: starredExpanded ? 'rgba(245, 158, 11, 0.08)' : currentTheme.backgroundOverlay,
+                      background: starredExpanded ? 'rgba(245, 158, 11, 0.08)' : 'transparent',
                       border: `1px solid ${starredExpanded ? 'rgba(245, 158, 11, 0.3)' : currentTheme.borderLight}`,
                       borderRadius: starredExpanded ? '14px 14px 0 0' : '14px',
                       cursor: 'pointer', transition: 'all 0.2s ease',
@@ -1520,7 +1523,7 @@ const SavedConversationsView = () => {
                       style={{
                         width: '100%', display: 'flex', alignItems: 'center',
                         justifyContent: 'space-between', padding: '14px 18px',
-                        background: isYearOpen ? `${currentTheme.accent}12` : currentTheme.backgroundOverlay,
+                        background: isYearOpen ? `${currentTheme.accent}12` : 'transparent',
                         border: `1px solid ${isYearOpen ? currentTheme.accent + '30' : currentTheme.borderLight}`,
                         borderRadius: isYearOpen ? '14px 14px 0 0' : '14px',
                         cursor: 'pointer', transition: 'all 0.2s ease',
