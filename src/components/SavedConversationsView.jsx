@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare } from 'lucide-react'
+import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare, Coins, DollarSign } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
 import ConfirmationModal from './ConfirmationModal'
 import MarkdownRenderer from './MarkdownRenderer'
+import TokenUsageWindow from './TokenUsageWindow'
+import CostBreakdownWindow from './CostBreakdownWindow'
 
 // Map provider key from modelName to display info
 const PROVIDER_MAP = {
@@ -49,6 +51,7 @@ const SavedConversationsView = () => {
   const [expandedSources, setExpandedSources] = useState({})
   const [expandedTitles, setExpandedTitles] = useState({})
   const [expandAllDetailSections, setExpandAllDetailSections] = useState(false)
+  const [detailTokenTab, setDetailTokenTab] = useState(null)
   const detailPanelRef = useRef(null)
   const convoCardClickedRef = useRef(false)
 
@@ -81,6 +84,7 @@ const SavedConversationsView = () => {
       if (detailPanelRef.current.contains(event.target)) return
       setSelectedConvo(null)
       setExpandAllDetailSections(false)
+      setDetailTokenTab(null)
     }
 
     document.addEventListener('mousedown', handleOutsideClick)
@@ -168,6 +172,7 @@ const SavedConversationsView = () => {
   const fetchDetail = async (historyId) => {
     setLoadingDetail(true)
     setExpandedSources({})
+    setDetailTokenTab(null)
     try {
       const res = await axios.get(`${API_URL}/api/history/detail/${historyId}`)
       setSelectedConvo(res.data.conversation)
@@ -251,6 +256,7 @@ const SavedConversationsView = () => {
       setHistory(prev => prev.filter(c => c.id !== historyId))
       if (selectedConvo?.id === historyId) {
         setSelectedConvo(null)
+        setDetailTokenTab(null)
       }
       setConfirmDeleteId(null)
     } catch (error) {
@@ -346,6 +352,7 @@ const SavedConversationsView = () => {
         if (selectedConvo?.id === convo.id) {
           setSelectedConvo(null)
           setExpandAllDetailSections(false)
+          setDetailTokenTab(null)
         } else {
           setExpandAllDetailSections(false)
           fetchDetail(convo.id)
@@ -573,6 +580,7 @@ const SavedConversationsView = () => {
             onClick={() => {
               setSelectedConvo(null)
               setExpandAllDetailSections(false)
+              setDetailTokenTab(null)
             }}
             style={{
               background: 'rgba(255, 107, 107, 0.12)',
@@ -728,85 +736,133 @@ const SavedConversationsView = () => {
           )
         })()}
 
-        {/* Token Usage & Cost Breakdown */}
+        {/* Token Usage & Cost Breakdown Tabs */}
         {selectedConvo.responses && selectedConvo.responses.some(r => r.tokens) && (() => {
-          const responsesWithTokens = selectedConvo.responses.filter(r => r.tokens)
-          const totalInput = responsesWithTokens.reduce((sum, r) => sum + (r.tokens.input || 0), 0)
-          const totalOutput = responsesWithTokens.reduce((sum, r) => sum + (r.tokens.output || 0), 0)
-          const totalTokens = responsesWithTokens.reduce((sum, r) => sum + (r.tokens.total || (r.tokens.input || 0) + (r.tokens.output || 0)), 0)
-
-          const formatTokens = (n) => {
-            if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M'
-            if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
-            return n.toLocaleString()
-          }
+          const historyTokenData = selectedConvo.responses
+            .filter(r => r.tokens)
+            .map(r => {
+              const providerKey = getProviderFromModelName(r.modelName || r.actualModelName)
+              const modelName = r.modelName || r.actualModelName || 'Unknown'
+              const modelPart = modelName.includes('-') ? modelName.substring(modelName.indexOf('-') + 1) : modelName
+              return {
+                modelName: modelName,
+                isPipeline: false,
+                isJudge: false,
+                tokens: {
+                  provider: providerKey,
+                  model: modelPart,
+                  input: r.tokens.input || 0,
+                  output: r.tokens.output || 0,
+                  total: r.tokens.total || ((r.tokens.input || 0) + (r.tokens.output || 0)),
+                  reasoningTokens: r.tokens.reasoningTokens || 0,
+                  source: r.tokens.source || 'api_response',
+                  breakdown: r.tokens.breakdown || null,
+                },
+              }
+            })
 
           return (
-            <div style={{
-              background: currentTheme.buttonBackground,
-              border: `1px solid ${currentTheme.borderLight}`,
-              borderRadius: '12px', padding: '16px', marginBottom: '16px',
-            }}>
-              <div style={{ fontSize: '0.75rem', color: currentTheme.accent, fontWeight: '600', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Token Usage
-              </div>
-
-              {/* Per-model breakdown */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-                {responsesWithTokens.map((r, idx) => {
-                  const providerKey = getProviderFromModelName(r.modelName || r.actualModelName)
-                  const providerInfo = PROVIDER_MAP[providerKey] || { name: providerKey, color: '#888' }
-                  const modelTokens = r.tokens
-                  const modelTotal = modelTokens.total || (modelTokens.input || 0) + (modelTokens.output || 0)
-                  return (
-                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: providerInfo.color, flexShrink: 0 }} />
-                        <span style={{ color: currentTheme.text, fontSize: '0.82rem', fontWeight: '500' }}>
-                          {providerInfo.name}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                        <span style={{ color: currentTheme.textMuted, fontSize: '0.75rem' }}>
-                          {formatTokens(modelTokens.input || 0)} in
-                        </span>
-                        <span style={{ color: currentTheme.textMuted, fontSize: '0.75rem' }}>
-                          {formatTokens(modelTokens.output || 0)} out
-                        </span>
-                        <span style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', fontWeight: '600', minWidth: '50px', textAlign: 'right' }}>
-                          {formatTokens(modelTotal)}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Total row */}
+            <div style={{ marginBottom: '16px' }}>
               <div style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '8px 10px',
-                borderTop: `1px solid ${currentTheme.borderLight}`,
+                display: 'flex', gap: '8px', marginBottom: '12px',
               }}>
-                <span style={{ color: currentTheme.text, fontSize: '0.85rem', fontWeight: '600' }}>Total</span>
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <span style={{ color: currentTheme.textMuted, fontSize: '0.75rem' }}>
-                    {formatTokens(totalInput)} in
-                  </span>
-                  <span style={{ color: currentTheme.textMuted, fontSize: '0.75rem' }}>
-                    {formatTokens(totalOutput)} out
-                  </span>
-                  <span style={{
-                    fontSize: '0.85rem', fontWeight: '700', minWidth: '50px', textAlign: 'right',
-                    background: currentTheme.accentGradient,
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    color: currentTheme.accent,
-                  }}>
-                    {formatTokens(totalTokens)}
-                  </span>
-                </div>
+                <motion.button
+                  onClick={() => setDetailTokenTab(detailTokenTab === 'tokens' ? null : 'tokens')}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    background: detailTokenTab === 'tokens' ? 'rgba(93, 173, 226, 0.15)' : currentTheme.buttonBackground,
+                    border: `1px solid ${detailTokenTab === 'tokens' ? 'rgba(93, 173, 226, 0.5)' : currentTheme.borderLight}`,
+                    borderRadius: '10px',
+                    color: detailTokenTab === 'tokens' ? '#5dade2' : currentTheme.textSecondary,
+                    fontSize: '0.82rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <Coins size={14} />
+                  Token Usage
+                </motion.button>
+                <motion.button
+                  onClick={() => setDetailTokenTab(detailTokenTab === 'cost' ? null : 'cost')}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    background: detailTokenTab === 'cost' ? 'rgba(255, 215, 0, 0.12)' : currentTheme.buttonBackground,
+                    border: `1px solid ${detailTokenTab === 'cost' ? 'rgba(255, 215, 0, 0.4)' : currentTheme.borderLight}`,
+                    borderRadius: '10px',
+                    color: detailTokenTab === 'cost' ? '#ffd700' : currentTheme.textSecondary,
+                    fontSize: '0.82rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <DollarSign size={14} />
+                  Cost Breakdown
+                </motion.button>
               </div>
+
+              <AnimatePresence mode="wait">
+                {detailTokenTab === 'tokens' && (
+                  <motion.div
+                    key="token-usage"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    style={{
+                      overflow: 'hidden',
+                      border: '1px solid rgba(93, 173, 226, 0.3)',
+                      borderRadius: '12px',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                    }}
+                  >
+                    <TokenUsageWindow
+                      isOpen={true}
+                      onClose={() => setDetailTokenTab(null)}
+                      tokenData={historyTokenData}
+                      inline={true}
+                    />
+                  </motion.div>
+                )}
+                {detailTokenTab === 'cost' && (
+                  <motion.div
+                    key="cost-breakdown"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    style={{
+                      overflow: 'hidden',
+                      border: '1px solid rgba(255, 215, 0, 0.3)',
+                      borderRadius: '12px',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                    }}
+                  >
+                    <CostBreakdownWindow
+                      isOpen={true}
+                      onClose={() => setDetailTokenTab(null)}
+                      tokenData={historyTokenData}
+                      queryCount={0}
+                      inline={true}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )
         })()}
@@ -1087,7 +1143,7 @@ const SavedConversationsView = () => {
           borderBottom: `1px solid ${currentTheme.borderLight}`,
         }}>
           <button
-            onClick={() => { setActiveSubTab('history'); setSelectedConvo(null); setExpandAllDetailSections(false) }}
+            onClick={() => { setActiveSubTab('history'); setSelectedConvo(null); setExpandAllDetailSections(false); setDetailTokenTab(null) }}
             style={{
               flex: 1,
               padding: '12px 24px',
@@ -1109,7 +1165,7 @@ const SavedConversationsView = () => {
             Chat History
           </button>
           <button
-            onClick={() => { setActiveSubTab('categories'); setSelectedConvo(null); setExpandAllDetailSections(false) }}
+            onClick={() => { setActiveSubTab('categories'); setSelectedConvo(null); setExpandAllDetailSections(false); setDetailTokenTab(null) }}
             style={{
               flex: 1,
               padding: '12px 24px',
@@ -1366,6 +1422,7 @@ const SavedConversationsView = () => {
             onClick={() => {
               setSelectedConvo(null)
               setExpandAllDetailSections(false)
+              setDetailTokenTab(null)
             }}
             style={{
               position: 'fixed',
