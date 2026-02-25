@@ -254,6 +254,13 @@ const StatisticsView = () => {
   const [followersListData, setFollowersListData] = useState([])
   const [loadingFollowersList, setLoadingFollowersList] = useState(false)
   const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false)
+  const [editIsPrivate, setEditIsPrivate] = useState(false)
+  const [notifications, setNotifications] = useState([])
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0)
+  const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const [followRequests, setFollowRequests] = useState([])
+  const [loadingFollowRequests, setLoadingFollowRequests] = useState(false)
+  const [processingRequestId, setProcessingRequestId] = useState(null)
   const fileInputRef = useRef(null)
 
   // Handle successful usage purchase
@@ -361,6 +368,7 @@ const StatisticsView = () => {
       await axios.put(`${API_URL}/api/profile/${currentUser.id}`, {
         bio: editBio,
         isAnonymous: editIsAnonymous,
+        isPrivate: editIsPrivate,
         profileImage: editProfileImage,
       })
       await fetchOwnProfile()
@@ -370,6 +378,69 @@ const StatisticsView = () => {
       alert(error.response?.data?.error || 'Failed to save profile')
     } finally {
       setSavingProfile(false)
+    }
+  }
+
+  const fetchNotifications = async () => {
+    if (!currentUser?.id) return
+    setLoadingNotifications(true)
+    try {
+      const res = await axios.get(`${API_URL}/api/notifications/${currentUser.id}?limit=50`)
+      setNotifications(res.data.notifications || [])
+      setUnreadNotifCount(res.data.unreadCount || 0)
+    } catch (err) {
+      console.error('Error fetching notifications:', err)
+    } finally {
+      setLoadingNotifications(false)
+    }
+  }
+
+  const fetchFollowRequests = async () => {
+    if (!currentUser?.id) return
+    setLoadingFollowRequests(true)
+    try {
+      const res = await axios.get(`${API_URL}/api/users/${currentUser.id}/follow-requests`)
+      setFollowRequests(res.data.requests || [])
+    } catch (err) {
+      console.error('Error fetching follow requests:', err)
+    } finally {
+      setLoadingFollowRequests(false)
+    }
+  }
+
+  const handleAcceptFollowRequest = async (requesterId) => {
+    setProcessingRequestId(requesterId)
+    try {
+      await axios.post(`${API_URL}/api/users/${currentUser.id}/follow/accept`, { requesterId })
+      setFollowRequests(prev => prev.filter(r => r.userId !== requesterId))
+      await fetchOwnProfile()
+    } catch (err) {
+      console.error('Error accepting follow request:', err)
+    } finally {
+      setProcessingRequestId(null)
+    }
+  }
+
+  const handleDenyFollowRequest = async (requesterId) => {
+    setProcessingRequestId(requesterId)
+    try {
+      await axios.post(`${API_URL}/api/users/${currentUser.id}/follow/deny`, { requesterId })
+      setFollowRequests(prev => prev.filter(r => r.userId !== requesterId))
+    } catch (err) {
+      console.error('Error denying follow request:', err)
+    } finally {
+      setProcessingRequestId(null)
+    }
+  }
+
+  const handleMarkAllNotificationsRead = async () => {
+    if (!currentUser?.id) return
+    try {
+      await axios.post(`${API_URL}/api/notifications/mark-read`, { userId: currentUser.id })
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+      setUnreadNotifCount(0)
+    } catch (err) {
+      console.error('Error marking notifications read:', err)
     }
   }
 
@@ -428,6 +499,10 @@ const StatisticsView = () => {
     if (isViewingOther || !currentUser?.id) return
     if (activeTab === 'leaderboard' || activeTab === 'badges') {
       fetchLeaderboardStats()
+    }
+    if (activeTab === 'leaderboard') {
+      fetchNotifications()
+      if (ownProfileData?.isPrivate) fetchFollowRequests()
     }
     if (activeTab === 'profile') {
       fetchProfilePrompts()
@@ -872,18 +947,27 @@ const StatisticsView = () => {
                       </h2>
 
                       {/* Follow / Edit Profile button */}
-                      {isViewingOther ? (
+                      {isViewingOther ? (() => {
+                        const hasRequested = publicProfile?.hasRequestedFollow || false
+                        const followLabel = isFollowing ? 'Following' : hasRequested ? 'Requested' : 'Follow'
+                        const followIcon = isFollowing ? <UserCheck size={15} /> : hasRequested ? <Users size={15} /> : <UserPlus size={15} />
+                        const handleClick = () => {
+                          if (isFollowing) setShowUnfollowConfirm(true)
+                          else if (hasRequested) handleUnfollow(viewingProfile.userId)
+                          else handleFollow(viewingProfile.userId)
+                        }
+                        return (
                         <motion.button
-                          onClick={() => isFollowing ? setShowUnfollowConfirm(true) : handleFollow(viewingProfile.userId)}
+                          onClick={handleClick}
                           disabled={followLoading}
                           whileHover={{ scale: 1.03 }}
                           whileTap={{ scale: 0.97 }}
                           style={{
                             padding: '6px 20px',
-                            background: isFollowing ? 'transparent' : currentTheme.accentGradient,
-                            border: isFollowing ? `1px solid ${currentTheme.borderLight}` : 'none',
+                            background: isFollowing || hasRequested ? 'transparent' : currentTheme.accentGradient,
+                            border: isFollowing || hasRequested ? `1px solid ${currentTheme.borderLight}` : 'none',
                             borderRadius: '8px',
-                            color: isFollowing ? currentTheme.textSecondary : '#fff',
+                            color: isFollowing || hasRequested ? currentTheme.textSecondary : '#fff',
                             fontSize: '0.85rem',
                             fontWeight: '600',
                             cursor: followLoading ? 'wait' : 'pointer',
@@ -893,13 +977,16 @@ const StatisticsView = () => {
                             opacity: followLoading ? 0.6 : 1,
                           }}
                         >
-                          {isFollowing ? <><UserCheck size={15} /> Following</> : <><UserPlus size={15} /> Follow</>}
+                          {followIcon} {followLabel}
                         </motion.button>
+                        )
+                      })()
                       ) : (
                         <motion.button
                           onClick={() => {
                             setEditBio(ownProfileData?.bio || '')
                             setEditIsAnonymous(ownProfileData?.isAnonymous || false)
+                            setEditIsPrivate(ownProfileData?.isPrivate || false)
                             setEditProfileImage(ownProfileData?.profileImage || null)
                             setShowEditProfile(true)
                           }}
@@ -1066,8 +1153,8 @@ const StatisticsView = () => {
               gap: '8px',
             }}
           >
-            <Trophy size={20} />
-            Prompt Feed
+            <Bell size={20} />
+            Notifications
           </button>
           <button
             onClick={() => handleTabChange('profile')}
@@ -1941,163 +2028,246 @@ const StatisticsView = () => {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
-              {loadingLeaderboardStats ? (
-                <div style={{ textAlign: 'center', padding: '40px' }}>
-                  <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>Loading Prompt Feed stats...</p>
-                </div>
-              ) : currentUser ? (
-                <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                  {/* Wins Card */}
-                  <div
-                    style={{
-                      background: currentTheme.backgroundOverlay,
-                      border: `1px solid ${currentTheme.borderLight}`,
-                      borderRadius: '16px',
-                      padding: '24px',
-                      flex: 1,
-                      minWidth: '300px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                      <Trophy size={24} color={currentTheme.accent} />
-                      <h3 style={{ color: currentTheme.accent, fontSize: '1.2rem', margin: 0 }}>Your Wins</h3>
-                    </div>
-                    <p 
-                      key={`your-wins-${theme}`}
-                      style={{ 
-                      fontSize: '2rem', 
-                      fontWeight: 'bold', 
-                      margin: '0 0 8px 0',
-                      background: currentTheme.accentGradient,
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      color: currentTheme.accent,
-                      display: 'inline-block',
-                    }}>
-                      {leaderboardStats?.winCount || 0}
-                    </p>
-                    {leaderboardStats?.wins && leaderboardStats.wins.length > 0 ? (
-                      <div style={{ marginTop: '12px' }}>
-                        <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', marginBottom: '8px' }}>Recent Wins:</p>
-                        {leaderboardStats.wins.slice(0, 3).map((win, index) => (
-                          <div key={index} style={{ marginBottom: '8px', padding: '8px', background: currentTheme.backgroundTertiary, borderRadius: '6px' }}>
-                            <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: '0 0 4px 0' }}>{win.promptText}</p>
-                            <p style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0 }}>{formatDate(win.date)} • {win.likes} likes</p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={{ marginTop: '12px' }}>
-                        <p style={{ color: currentTheme.textMuted, fontSize: '0.9rem', fontStyle: 'italic' }}>
-                          No wins yet. Submit prompts and get likes to win!
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Additional Stats Card */}
-                  <div
-                    style={{
-                      background: currentTheme.backgroundOverlay,
-                      border: '1px solid rgba(72, 201, 176, 0.3)',
-                      borderRadius: '16px',
-                      padding: '24px',
-                      flex: 1,
-                      minWidth: '300px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                      <Trophy size={24} color={currentTheme.accent} />
-                      <h3 style={{ color: currentTheme.accent, fontSize: '1.2rem', margin: 0 }}>Your Stats</h3>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <div>
-                        <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: '0 0 4px 0' }}>Total Prompts Submitted</p>
-                        <p 
-                          key={`total-prompts-submitted-${theme}`}
-                          style={{ 
-                          fontSize: '1.5rem', 
-                          fontWeight: 'bold', 
-                          margin: 0,
-                          background: currentTheme.accentGradient,
-                          WebkitBackgroundClip: 'text',
-                          WebkitTextFillColor: 'transparent',
-                          color: currentTheme.accent,
-                          display: 'inline-block',
-                        }}>
-                          {leaderboardStats?.totalPrompts || 0}
-                        </p>
-                      </div>
-                      <div>
-                        <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: '0 0 4px 0' }}>Total Likes Received</p>
-                        <p 
-                          key={`total-likes-received-${theme}`}
-                          style={{ 
-                          fontSize: '1.5rem', 
-                          fontWeight: 'bold', 
-                          margin: 0,
-                          background: currentTheme.accentGradient,
-                          WebkitBackgroundClip: 'text',
-                          WebkitTextFillColor: 'transparent',
-                          color: currentTheme.accent,
-                          display: 'inline-block',
-                        }}>
-                          {leaderboardStats?.totalLikes || 0}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Notifications Card */}
-                  <div
-                    style={{
-                      background: currentTheme.backgroundOverlay,
-                      border: `1px solid ${currentTheme.borderLight}`,
-                      borderRadius: '16px',
-                      padding: '24px',
-                      flex: 1,
-                      minWidth: '300px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                      <Bell size={24} color={currentTheme.accent} />
-                      <h3 style={{ color: currentTheme.accent, fontSize: '1.2rem', margin: 0 }}>Recent Updates</h3>
-                    </div>
-                    {leaderboardStats?.notifications && leaderboardStats.notifications.length > 0 ? (
-                      <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                        {leaderboardStats.notifications.map((notif, index) => (
-                          <div key={index} style={{ marginBottom: '12px', padding: '12px', background: 'rgba(93, 173, 226, 0.05)', borderRadius: '8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                              <Heart size={16} color="#ff6b6b" fill="#ff6b6b" />
-                              <p style={{ color: '#ffffff', fontSize: '0.9rem', margin: 0, fontWeight: '600' }}>
-                                {notif.count} {notif.count === 1 ? 'person liked' : 'people liked'} your prompt
-                              </p>
-                            </div>
-                            <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: '0 0 4px 0' }}>{notif.promptText}</p>
-                            <p style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0 }}>{formatDate(notif.timestamp)}</p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p style={{ color: '#888888', fontSize: '0.9rem', fontStyle: 'italic' }}>
-                        No recent notifications. When people like, comment on, or share your prompts, you'll see updates here!
-                      </p>
-                    )}
-                  </div>
+              {!currentUser ? (
+                <div style={{
+                  background: currentTheme.backgroundOverlay,
+                  border: `1px solid ${currentTheme.borderLight}`,
+                  borderRadius: '16px',
+                  padding: '40px',
+                  textAlign: 'center',
+                }}>
+                  <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem' }}>
+                    Please sign in to view your notifications.
+                  </p>
                 </div>
               ) : (
-                <div
-                  style={{
-                    background: currentTheme.backgroundOverlay,
-                    border: `1px solid ${currentTheme.borderLight}`,
-                    borderRadius: '16px',
-                    padding: '40px',
-                    textAlign: 'center',
-                  }}
-                >
-                  <p style={{ color: '#888888', fontSize: '1.1rem' }}>
-                    Please sign in to view your Prompt Feed stats.
-                  </p>
+                <div>
+                  {/* Follow Requests Section (only for private accounts with pending requests) */}
+                  {ownProfileData?.isPrivate && followRequests.length > 0 && (
+                    <div style={{
+                      background: currentTheme.backgroundOverlay,
+                      border: `1px solid ${currentTheme.accent}30`,
+                      borderRadius: '16px',
+                      padding: '20px',
+                      marginBottom: '20px',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                        <UserPlus size={20} color={currentTheme.accent} />
+                        <h3 style={{ color: currentTheme.accent, fontSize: '1.1rem', margin: 0 }}>
+                          Follow Requests
+                        </h3>
+                        <span style={{
+                          background: currentTheme.accent,
+                          color: '#fff',
+                          fontSize: '0.75rem',
+                          fontWeight: '700',
+                          padding: '2px 8px',
+                          borderRadius: '10px',
+                          minWidth: '20px',
+                          textAlign: 'center',
+                        }}>
+                          {followRequests.length}
+                        </span>
+                      </div>
+                      {loadingFollowRequests ? (
+                        <p style={{ color: currentTheme.textSecondary, fontSize: '0.9rem' }}>Loading...</p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {followRequests.map(req => (
+                            <div key={req.userId} style={{
+                              display: 'flex', alignItems: 'center', gap: '12px',
+                              padding: '12px', borderRadius: '10px',
+                              background: `${currentTheme.accent}08`,
+                            }}>
+                              <div style={{
+                                width: '40px', height: '40px', borderRadius: '50%',
+                                background: req.profileImage ? 'none' : currentTheme.accentGradient,
+                                overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                              }}>
+                                {req.profileImage ? (
+                                  <img src={req.profileImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  <User size={18} color="#fff" />
+                                )}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ color: currentTheme.text, fontSize: '0.9rem', fontWeight: '600', margin: 0 }}>
+                                  {req.username}
+                                </p>
+                                {req.bio && (
+                                  <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: '2px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {req.bio}
+                                  </p>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                                <motion.button
+                                  onClick={() => handleAcceptFollowRequest(req.userId)}
+                                  disabled={processingRequestId === req.userId}
+                                  whileHover={{ scale: 1.05 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  style={{
+                                    padding: '6px 16px', background: currentTheme.accentGradient,
+                                    border: 'none', borderRadius: '8px', color: '#fff',
+                                    fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer',
+                                    opacity: processingRequestId === req.userId ? 0.6 : 1,
+                                  }}
+                                >
+                                  Accept
+                                </motion.button>
+                                <motion.button
+                                  onClick={() => handleDenyFollowRequest(req.userId)}
+                                  disabled={processingRequestId === req.userId}
+                                  whileHover={{ scale: 1.05 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  style={{
+                                    padding: '6px 16px', background: 'transparent',
+                                    border: `1px solid ${currentTheme.borderLight}`, borderRadius: '8px',
+                                    color: currentTheme.textSecondary, fontSize: '0.8rem', fontWeight: '500', cursor: 'pointer',
+                                    opacity: processingRequestId === req.userId ? 0.6 : 1,
+                                  }}
+                                >
+                                  Deny
+                                </motion.button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* All Notifications */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    marginBottom: '16px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Bell size={22} color={currentTheme.accent} />
+                      <h3 style={{ color: currentTheme.text, fontSize: '1.2rem', margin: 0 }}>Notifications</h3>
+                      {unreadNotifCount > 0 && (
+                        <span style={{
+                          background: '#ff6b6b',
+                          color: '#fff',
+                          fontSize: '0.72rem',
+                          fontWeight: '700',
+                          padding: '2px 7px',
+                          borderRadius: '10px',
+                        }}>
+                          {unreadNotifCount} new
+                        </span>
+                      )}
+                    </div>
+                    {unreadNotifCount > 0 && (
+                      <button
+                        onClick={handleMarkAllNotificationsRead}
+                        style={{
+                          background: 'transparent', border: 'none', color: currentTheme.accent,
+                          fontSize: '0.82rem', fontWeight: '500', cursor: 'pointer',
+                          padding: '4px 8px', borderRadius: '6px',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                        onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                      >
+                        Mark all as read
+                      </button>
+                    )}
+                  </div>
+
+                  {loadingNotifications ? (
+                    <div style={{ textAlign: 'center', padding: '40px' }}>
+                      <p style={{ color: currentTheme.textSecondary, fontSize: '1rem' }}>Loading notifications...</p>
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <div style={{
+                      background: currentTheme.backgroundOverlay,
+                      border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '16px',
+                      padding: '40px',
+                      textAlign: 'center',
+                    }}>
+                      <Bell size={40} color={currentTheme.textMuted} style={{ marginBottom: '12px', opacity: 0.4 }} />
+                      <p style={{ color: currentTheme.textSecondary, fontSize: '1rem', margin: '0 0 6px 0' }}>No notifications yet</p>
+                      <p style={{ color: currentTheme.textMuted, fontSize: '0.85rem', margin: 0 }}>
+                        When people like, comment on, or follow you, you'll see it here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {notifications.map((notif) => {
+                        const notifIcon = {
+                          like: <Heart size={16} color="#ff6b6b" fill="#ff6b6b" />,
+                          comment: <MessageSquare size={16} color={currentTheme.accent} />,
+                          reply: <MessageSquare size={16} color="#a78bfa" />,
+                          follow: <UserPlus size={16} color="#22c55e" />,
+                          follow_request: <UserPlus size={16} color={currentTheme.accent} />,
+                          follow_accepted: <UserCheck size={16} color="#22c55e" />,
+                        }[notif.type] || <Bell size={16} color={currentTheme.textSecondary} />
+
+                        const notifText = {
+                          like: 'liked your prompt',
+                          comment: 'commented on your prompt',
+                          reply: 'replied to your comment',
+                          follow: 'started following you',
+                          follow_request: 'requested to follow you',
+                          follow_accepted: 'accepted your follow request',
+                        }[notif.type] || 'interacted with you'
+
+                        return (
+                          <div key={notif._id} style={{
+                            display: 'flex', alignItems: 'flex-start', gap: '12px',
+                            padding: '14px 16px', borderRadius: '12px',
+                            background: notif.read ? 'transparent' : `${currentTheme.accent}08`,
+                            border: notif.read ? 'none' : `1px solid ${currentTheme.accent}15`,
+                            transition: 'background 0.2s',
+                          }}>
+                            <div style={{
+                              width: '36px', height: '36px', borderRadius: '50%',
+                              background: notif.fromProfileImage ? 'none' : currentTheme.accentGradient,
+                              overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                            }}>
+                              {notif.fromProfileImage ? (
+                                <img src={notif.fromProfileImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : (
+                                <User size={16} color="#fff" />
+                              )}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ color: currentTheme.text, fontSize: '0.88rem', margin: 0, lineHeight: '1.4' }}>
+                                <span style={{ fontWeight: '600' }}>{notif.fromUsername}</span>{' '}
+                                {notifText}
+                              </p>
+                              {notif.promptText && (
+                                <p style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', margin: '4px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  "{notif.promptText}"
+                                </p>
+                              )}
+                              {notif.commentText && (
+                                <p style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', margin: '4px 0 0 0', fontStyle: 'italic' }}>
+                                  "{notif.commentText}"
+                                </p>
+                              )}
+                              <p style={{ color: currentTheme.textMuted, fontSize: '0.72rem', margin: '4px 0 0 0' }}>
+                                {(() => {
+                                  const d = new Date(notif.createdAt)
+                                  const now = new Date()
+                                  const diff = now - d
+                                  if (diff < 60000) return 'Just now'
+                                  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+                                  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+                                  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`
+                                  return d.toLocaleDateString()
+                                })()}
+                              </p>
+                            </div>
+                            <div style={{ flexShrink: 0, marginTop: '2px' }}>
+                              {notifIcon}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>
@@ -2606,6 +2776,66 @@ const StatisticsView = () => {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
+              {/* Stats Summary Row */}
+              {!isViewingOther && leaderboardStats && (
+                <div style={{ display: 'flex', gap: '14px', marginBottom: '24px', flexWrap: 'wrap' }}>
+                  <div style={{
+                    flex: 1, minWidth: '140px',
+                    background: currentTheme.backgroundOverlay,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '14px', padding: '18px 20px',
+                    display: 'flex', alignItems: 'center', gap: '14px',
+                  }}>
+                    <Trophy size={22} color={currentTheme.accent} />
+                    <div>
+                      <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: 0 }}>Wins</p>
+                      <p key={`stat-wins-${theme}`} style={{
+                        fontSize: '1.4rem', fontWeight: '700', margin: 0,
+                        background: currentTheme.accentGradient,
+                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                        color: currentTheme.accent, display: 'inline-block',
+                      }}>{leaderboardStats.winCount || 0}</p>
+                    </div>
+                  </div>
+                  <div style={{
+                    flex: 1, minWidth: '140px',
+                    background: currentTheme.backgroundOverlay,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '14px', padding: '18px 20px',
+                    display: 'flex', alignItems: 'center', gap: '14px',
+                  }}>
+                    <Rocket size={22} color={currentTheme.accent} />
+                    <div>
+                      <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: 0 }}>Total Prompts</p>
+                      <p key={`stat-prompts-${theme}`} style={{
+                        fontSize: '1.4rem', fontWeight: '700', margin: 0,
+                        background: currentTheme.accentGradient,
+                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                        color: currentTheme.accent, display: 'inline-block',
+                      }}>{leaderboardStats.totalPrompts || 0}</p>
+                    </div>
+                  </div>
+                  <div style={{
+                    flex: 1, minWidth: '140px',
+                    background: currentTheme.backgroundOverlay,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '14px', padding: '18px 20px',
+                    display: 'flex', alignItems: 'center', gap: '14px',
+                  }}>
+                    <Heart size={22} color="#ff6b6b" />
+                    <div>
+                      <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: 0 }}>Total Likes</p>
+                      <p key={`stat-likes-${theme}`} style={{
+                        fontSize: '1.4rem', fontWeight: '700', margin: 0,
+                        background: currentTheme.accentGradient,
+                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                        color: currentTheme.accent, display: 'inline-block',
+                      }}>{leaderboardStats.totalLikes || 0}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div style={{ marginBottom: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
                   <User size={28} color={currentTheme.accent} />
@@ -2908,7 +3138,7 @@ const StatisticsView = () => {
                 <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '12px 14px', background: currentTheme.buttonBackground,
-                  border: `1px solid ${currentTheme.borderLight}`, borderRadius: '10px', marginBottom: '20px',
+                  border: `1px solid ${currentTheme.borderLight}`, borderRadius: '10px', marginBottom: '12px',
                 }}>
                   <div>
                     <p style={{ color: currentTheme.text, fontSize: '0.9rem', fontWeight: '500', margin: 0 }}>Anonymous Mode</p>
@@ -2928,6 +3158,35 @@ const StatisticsView = () => {
                       width: '20px', height: '20px', borderRadius: '50%', background: '#fff',
                       position: 'absolute', top: '2px',
                       left: editIsAnonymous ? '22px' : '2px',
+                      transition: 'left 0.2s',
+                    }} />
+                  </button>
+                </div>
+
+                {/* Private Account toggle */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '12px 14px', background: currentTheme.buttonBackground,
+                  border: `1px solid ${currentTheme.borderLight}`, borderRadius: '10px', marginBottom: '20px',
+                }}>
+                  <div>
+                    <p style={{ color: currentTheme.text, fontSize: '0.9rem', fontWeight: '500', margin: 0 }}>Private Account</p>
+                    <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: '2px 0 0 0' }}>
+                      Require approval before others can follow you
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setEditIsPrivate(!editIsPrivate)}
+                    style={{
+                      width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: 'pointer',
+                      background: editIsPrivate ? currentTheme.accent : (currentTheme.borderLight || '#444'),
+                      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                    }}
+                  >
+                    <div style={{
+                      width: '20px', height: '20px', borderRadius: '50%', background: '#fff',
+                      position: 'absolute', top: '2px',
+                      left: editIsPrivate ? '22px' : '2px',
                       transition: 'left 0.2s',
                     }} />
                   </button>

@@ -52,6 +52,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [postActiveTab, setPostActiveTab] = useState(null)
   const [postIncludeSummary, setPostIncludeSummary] = useState(true)
   const [postExcludedResponses, setPostExcludedResponses] = useState(new Set())
+  const [postVisibility, setPostVisibility] = useState('public')
+  const [userIsPrivate, setUserIsPrivate] = useState(false)
   const [showCouncilTooltip, setShowCouncilTooltip] = useState(false)
 
   // Inline conversation state (moved from SummaryWindow)
@@ -100,10 +102,15 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const singleConvoAbortControllerRef = useRef(null)
   const responseAreaRef = useRef(null)
 
-  // Fetch streak data
+  // Fetch streak data and privacy setting
   useEffect(() => {
     if (currentUser?.id) {
       fetchStreak()
+      axios.get(`${API_URL}/api/profile/${currentUser.id}`).then(res => {
+        const isPriv = res.data?.isPrivate || false
+        setUserIsPrivate(isPriv)
+        if (isPriv) setPostVisibility('followers')
+      }).catch(() => {})
     }
   }, [currentUser, statsRefreshTrigger])
 
@@ -4378,7 +4385,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       <AnimatePresence>
         {showPostWindow && (
           <div
-            onClick={() => { if (!isSubmittingToVote) { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null); setPostIncludeSummary(true); setPostExcludedResponses(new Set()) } }}
+            onClick={() => { if (!isSubmittingToVote) { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null); setPostIncludeSummary(true); setPostExcludedResponses(new Set()); setPostVisibility(userIsPrivate ? 'followers' : 'public') } }}
             style={{
               position: 'fixed',
               top: 0,
@@ -4774,6 +4781,39 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     </div>
                   )}
 
+                  {/* Post Visibility Selector (for private accounts) */}
+                  {userIsPrivate && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      marginBottom: '12px', padding: '10px 12px',
+                      background: currentTheme.buttonBackground,
+                      border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '10px',
+                    }}>
+                      <Lock size={15} color={currentTheme.textSecondary} />
+                      <span style={{ color: currentTheme.textSecondary, fontSize: '0.82rem', marginRight: 'auto' }}>Visibility:</span>
+                      {['public', 'followers'].map(v => (
+                        <button
+                          key={v}
+                          onClick={() => setPostVisibility(v)}
+                          style={{
+                            padding: '5px 14px',
+                            background: postVisibility === v ? currentTheme.accentGradient : 'transparent',
+                            border: postVisibility === v ? 'none' : `1px solid ${currentTheme.borderLight}`,
+                            borderRadius: '8px',
+                            color: postVisibility === v ? '#fff' : currentTheme.textSecondary,
+                            fontSize: '0.8rem',
+                            fontWeight: postVisibility === v ? '600' : '400',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {v === 'public' ? 'Public' : 'Followers Only'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Submit button */}
                   {(() => {
                     const includedResponseCount = responses ? responses.filter((_, idx) => !postExcludedResponses.has(idx)).length : 0
@@ -4826,6 +4866,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           promptText: lastSubmittedPrompt.trim(),
                           category: lastSubmittedCategory || 'General Knowledge/Other',
                           description: postDescription.trim() || null,
+                          visibility: userIsPrivate ? postVisibility : 'public',
                           responses: (() => {
                             const filtered = responses ? responses.filter((_, idx) => !postExcludedResponses.has(idx)) : []
                             return filtered.length > 0 ? filtered.map(r => ({

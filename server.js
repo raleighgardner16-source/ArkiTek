@@ -9915,7 +9915,7 @@ app.post('/api/history/restore-context', async (req, res) => {
 app.post('/api/leaderboard/submit', async (req, res) => {
   console.log('[Leaderboard] Submit endpoint hit:', { userId: req.body?.userId, hasPromptText: !!req.body?.promptText })
   try {
-    const { userId, promptText, category, responses, summary, facts, sources, description } = req.body
+    const { userId, promptText, category, responses, summary, facts, sources, description, visibility } = req.body
     
     if (!userId || !promptText || !promptText.trim()) {
       console.log('[Leaderboard] Missing required fields:', { userId: !!userId, promptText: !!promptText })
@@ -9948,6 +9948,7 @@ app.post('/api/leaderboard/submit', async (req, res) => {
       username: user.username || 'Anonymous',
       promptText: promptText.trim(),
       category: category || 'General Knowledge/Other',
+      visibility: visibility || 'public',
       likes: [],
       likeCount: 0,
       createdAt: new Date().toISOString(),
@@ -10022,6 +10023,18 @@ app.get('/api/leaderboard', (req, res) => {
       }
     })
     
+    // Filter out followers-only posts for non-followers
+    if (userId) {
+      const viewer = users[userId]
+      prompts = prompts.filter(prompt => {
+        if (prompt.visibility !== 'followers') return true
+        if (prompt.userId === userId) return true
+        return (viewer?.following || []).includes(prompt.userId)
+      })
+    } else {
+      prompts = prompts.filter(prompt => prompt.visibility !== 'followers')
+    }
+
     // Apply filters based on query parameter
     if (filter === 'today') {
       // Today's Favorites: All prompts from today
@@ -10154,13 +10167,25 @@ app.post('/api/leaderboard/like', (req, res) => {
     const likeIndex = prompt.likes.indexOf(userId)
     
     if (likeIndex > -1) {
-      // Unlike: remove the like
       prompt.likes.splice(likeIndex, 1)
       console.log(`[Leaderboard] User ${userId} unliked prompt ${promptId}`)
     } else {
-      // Like: add the like
       prompt.likes.push(userId)
       console.log(`[Leaderboard] User ${userId} liked prompt ${promptId}`)
+      // Create notification for the prompt owner
+      if (prompt.userId !== userId) {
+        const users = readUsers()
+        const liker = users[userId]
+        createNotification({
+          userId: prompt.userId,
+          type: 'like',
+          fromUserId: userId,
+          fromUsername: liker?.username || 'Someone',
+          fromProfileImage: liker?.profileImage || null,
+          promptId,
+          promptText: (prompt.promptText || '').substring(0, 80),
+        })
+      }
     }
     
     prompt.likeCount = prompt.likes.length
@@ -10343,6 +10368,7 @@ app.get('/api/profile/:userId', async (req, res) => {
     const followers = user.followers || []
     const following = user.following || []
     const isFollowing = viewerId ? followers.includes(viewerId) : false
+    const hasRequestedFollow = viewerId ? (user.followRequests || []).includes(viewerId) : false
 
     res.json({
       userId,
@@ -10351,10 +10377,12 @@ app.get('/api/profile/:userId', async (req, res) => {
       bio: user.bio || '',
       profileImage: user.profileImage || null,
       isAnonymous: user.isAnonymous || false,
+      isPrivate: user.isPrivate || false,
       createdAt: user.createdAt || null,
       followersCount: followers.length,
       followingCount: following.length,
       isFollowing,
+      hasRequestedFollow,
       earnedBadges: userUsage.earnedBadges || [],
       leaderboard: {
         totalPosts: userPrompts.length,
@@ -10391,11 +10419,11 @@ app.get('/api/profile/:userId', async (req, res) => {
   }
 })
 
-// Update user profile (bio, profileImage, isAnonymous)
+// Update user profile (bio, profileImage, isAnonymous, isPrivate)
 app.put('/api/profile/:userId', async (req, res) => {
   try {
     const { userId } = req.params
-    const { bio, profileImage, isAnonymous } = req.body
+    const { bio, profileImage, isAnonymous, isPrivate } = req.body
 
     await ensureUserInCache(userId)
     const users = readUsers()
@@ -10418,6 +10446,40 @@ app.put('/api/profile/:userId', async (req, res) => {
     if (isAnonymous !== undefined) {
       updates.isAnonymous = !!isAnonymous
     }
+    if (isPrivate !== undefined) {
+      const wasPrivate = !!user.isPrivate
+      updates.isPrivate = !!isPrivate
+      // When switching from private to public, auto-approve all pending follow requests
+      if (wasPrivate && !updates.isPrivate && user.followRequests && user.followRequests.length > 0) {
+        if (!user.followers) user.followers = []
+        const dbInstance = await db.getDb()
+        for (const requesterId of user.followRequests) {
+          await ensureUserInCache(requesterId)
+          const requester = users[requesterId]
+          if (requester) {
+            if (!requester.following) requester.following = []
+            if (!requester.following.includes(userId)) requester.following.push(userId)
+            requester.sentFollowRequests = (requester.sentFollowRequests || []).filter(id => id !== userId)
+            try {
+              await dbInstance.collection('users').updateOne({ _id: requesterId }, {
+                $addToSet: { following: userId },
+                $pull: { sentFollowRequests: userId },
+              })
+            } catch (e) { /* non-critical */ }
+          }
+          if (!user.followers.includes(requesterId)) user.followers.push(requesterId)
+        }
+        user.followRequests = []
+        updates.followRequests = []
+        updates.followers = user.followers
+        try {
+          await dbInstance.collection('users').updateOne({ _id: userId }, {
+            $set: { followRequests: [], followers: user.followers },
+          })
+        } catch (e) { /* non-critical */ }
+        console.log(`[Profile] Auto-approved ${user.followers.length} pending follow requests for ${userId} (switched to public)`)
+      }
+    }
 
     Object.assign(user, updates)
     writeUsers(users, userId)
@@ -10436,7 +10498,7 @@ app.put('/api/profile/:userId', async (req, res) => {
   }
 })
 
-// Follow a user
+// Follow a user (or send a follow request if target is private)
 app.post('/api/users/:targetUserId/follow', async (req, res) => {
   try {
     const { targetUserId } = req.params
@@ -10463,9 +10525,52 @@ app.post('/api/users/:targetUserId/follow', async (req, res) => {
     if (!targetUser.followers) targetUser.followers = []
 
     if (currentUser.following.includes(targetUserId)) {
-      return res.json({ success: true, alreadyFollowing: true })
+      return res.json({ success: true, status: 'following', alreadyFollowing: true })
     }
 
+    // If target account is private, create a follow request instead
+    if (targetUser.isPrivate) {
+      if (!targetUser.followRequests) targetUser.followRequests = []
+      if (!currentUser.sentFollowRequests) currentUser.sentFollowRequests = []
+
+      if (targetUser.followRequests.includes(userId)) {
+        return res.json({ success: true, status: 'requested', alreadyRequested: true })
+      }
+
+      targetUser.followRequests.push(userId)
+      currentUser.sentFollowRequests.push(targetUserId)
+      writeUsers(users, userId)
+
+      try {
+        const dbInstance = await db.getDb()
+        await Promise.all([
+          dbInstance.collection('users').updateOne(
+            { _id: targetUserId },
+            { $addToSet: { followRequests: userId } }
+          ),
+          dbInstance.collection('users').updateOne(
+            { _id: userId },
+            { $addToSet: { sentFollowRequests: targetUserId } }
+          ),
+        ])
+      } catch (dbErr) {
+        console.warn('[Social] MongoDB follow request update failed:', dbErr.message)
+      }
+
+      // Notify the target about the follow request
+      createNotification({
+        userId: targetUserId,
+        type: 'follow_request',
+        fromUserId: userId,
+        fromUsername: currentUser.username || 'Someone',
+        fromProfileImage: currentUser.profileImage || null,
+      })
+
+      console.log(`[Social] User ${userId} sent follow request to private account ${targetUserId}`)
+      return res.json({ success: true, status: 'requested' })
+    }
+
+    // Public account — follow directly
     currentUser.following.push(targetUserId)
     targetUser.followers.push(userId)
     writeUsers(users, userId)
@@ -10486,9 +10591,19 @@ app.post('/api/users/:targetUserId/follow', async (req, res) => {
       console.warn('[Social] MongoDB follow update failed:', dbErr.message)
     }
 
+    // Notify the target about the new follower
+    createNotification({
+      userId: targetUserId,
+      type: 'follow',
+      fromUserId: userId,
+      fromUsername: currentUser.username || 'Someone',
+      fromProfileImage: currentUser.profileImage || null,
+    })
+
     console.log(`[Social] User ${userId} followed ${targetUserId}`)
     res.json({
       success: true,
+      status: 'following',
       followersCount: targetUser.followers.length,
       followingCount: currentUser.following.length,
     })
@@ -10498,7 +10613,7 @@ app.post('/api/users/:targetUserId/follow', async (req, res) => {
   }
 })
 
-// Unfollow a user
+// Unfollow a user (or cancel a pending follow request)
 app.post('/api/users/:targetUserId/unfollow', async (req, res) => {
   try {
     const { targetUserId } = req.params
@@ -10521,8 +10636,17 @@ app.post('/api/users/:targetUserId/unfollow', async (req, res) => {
     if (!currentUser.following) currentUser.following = []
     if (!targetUser.followers) targetUser.followers = []
 
+    // Remove from following/followers
     currentUser.following = currentUser.following.filter(id => id !== targetUserId)
     targetUser.followers = targetUser.followers.filter(id => id !== userId)
+
+    // Also cancel any pending follow request
+    if (targetUser.followRequests) {
+      targetUser.followRequests = targetUser.followRequests.filter(id => id !== userId)
+    }
+    if (currentUser.sentFollowRequests) {
+      currentUser.sentFollowRequests = currentUser.sentFollowRequests.filter(id => id !== targetUserId)
+    }
     writeUsers(users, userId)
 
     try {
@@ -10530,18 +10654,18 @@ app.post('/api/users/:targetUserId/unfollow', async (req, res) => {
       await Promise.all([
         dbInstance.collection('users').updateOne(
           { _id: userId },
-          { $pull: { following: targetUserId } }
+          { $pull: { following: targetUserId, sentFollowRequests: targetUserId } }
         ),
         dbInstance.collection('users').updateOne(
           { _id: targetUserId },
-          { $pull: { followers: userId } }
+          { $pull: { followers: userId, followRequests: userId } }
         ),
       ])
     } catch (dbErr) {
       console.warn('[Social] MongoDB unfollow update failed:', dbErr.message)
     }
 
-    console.log(`[Social] User ${userId} unfollowed ${targetUserId}`)
+    console.log(`[Social] User ${userId} unfollowed/cancelled request to ${targetUserId}`)
     res.json({
       success: true,
       followersCount: targetUser.followers.length,
@@ -10550,6 +10674,153 @@ app.post('/api/users/:targetUserId/unfollow', async (req, res) => {
   } catch (error) {
     console.error('[Social] Error unfollowing user:', error)
     res.status(500).json({ error: 'Failed to unfollow user' })
+  }
+})
+
+// Accept a follow request
+app.post('/api/users/:targetUserId/follow/accept', async (req, res) => {
+  try {
+    const { targetUserId } = req.params // targetUserId is the account owner accepting the request
+    const { requesterId } = req.body    // requesterId is the person who requested to follow
+
+    if (!targetUserId || !requesterId) {
+      return res.status(400).json({ error: 'targetUserId and requesterId are required' })
+    }
+
+    await ensureUserInCache(targetUserId)
+    await ensureUserInCache(requesterId)
+    const users = readUsers()
+    const owner = users[targetUserId]
+    const requester = users[requesterId]
+
+    if (!owner || !requester) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    if (!owner.followRequests || !owner.followRequests.includes(requesterId)) {
+      return res.status(400).json({ error: 'No pending follow request from this user' })
+    }
+
+    // Move from followRequests to followers/following
+    owner.followRequests = owner.followRequests.filter(id => id !== requesterId)
+    if (!owner.followers) owner.followers = []
+    if (!owner.followers.includes(requesterId)) owner.followers.push(requesterId)
+
+    if (!requester.following) requester.following = []
+    if (!requester.following.includes(targetUserId)) requester.following.push(targetUserId)
+    requester.sentFollowRequests = (requester.sentFollowRequests || []).filter(id => id !== targetUserId)
+
+    writeUsers(users, targetUserId)
+
+    try {
+      const dbInstance = await db.getDb()
+      await Promise.all([
+        dbInstance.collection('users').updateOne(
+          { _id: targetUserId },
+          { $pull: { followRequests: requesterId }, $addToSet: { followers: requesterId } }
+        ),
+        dbInstance.collection('users').updateOne(
+          { _id: requesterId },
+          { $pull: { sentFollowRequests: targetUserId }, $addToSet: { following: targetUserId } }
+        ),
+      ])
+    } catch (dbErr) {
+      console.warn('[Social] MongoDB accept follow update failed:', dbErr.message)
+    }
+
+    // Notify the requester that their follow was accepted
+    createNotification({
+      userId: requesterId,
+      type: 'follow_accepted',
+      fromUserId: targetUserId,
+      fromUsername: owner.username || 'Someone',
+      fromProfileImage: owner.profileImage || null,
+    })
+
+    console.log(`[Social] User ${targetUserId} accepted follow request from ${requesterId}`)
+    res.json({ success: true, followersCount: owner.followers.length })
+  } catch (error) {
+    console.error('[Social] Error accepting follow request:', error)
+    res.status(500).json({ error: 'Failed to accept follow request' })
+  }
+})
+
+// Deny a follow request
+app.post('/api/users/:targetUserId/follow/deny', async (req, res) => {
+  try {
+    const { targetUserId } = req.params
+    const { requesterId } = req.body
+
+    if (!targetUserId || !requesterId) {
+      return res.status(400).json({ error: 'targetUserId and requesterId are required' })
+    }
+
+    await ensureUserInCache(targetUserId)
+    await ensureUserInCache(requesterId)
+    const users = readUsers()
+    const owner = users[targetUserId]
+    const requester = users[requesterId]
+
+    if (!owner) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    owner.followRequests = (owner.followRequests || []).filter(id => id !== requesterId)
+    if (requester) {
+      requester.sentFollowRequests = (requester.sentFollowRequests || []).filter(id => id !== targetUserId)
+    }
+    writeUsers(users, targetUserId)
+
+    try {
+      const dbInstance = await db.getDb()
+      await Promise.all([
+        dbInstance.collection('users').updateOne(
+          { _id: targetUserId },
+          { $pull: { followRequests: requesterId } }
+        ),
+        dbInstance.collection('users').updateOne(
+          { _id: requesterId },
+          { $pull: { sentFollowRequests: targetUserId } }
+        ),
+      ])
+    } catch (dbErr) {
+      console.warn('[Social] MongoDB deny follow update failed:', dbErr.message)
+    }
+
+    console.log(`[Social] User ${targetUserId} denied follow request from ${requesterId}`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[Social] Error denying follow request:', error)
+    res.status(500).json({ error: 'Failed to deny follow request' })
+  }
+})
+
+// Get pending follow requests for a user
+app.get('/api/users/:userId/follow-requests', async (req, res) => {
+  try {
+    const { userId } = req.params
+    await ensureUserInCache(userId)
+    const users = readUsers()
+    const user = users[userId]
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    const requests = (user.followRequests || []).map(rId => {
+      const r = users[rId]
+      return r ? {
+        userId: rId,
+        username: r.isAnonymous ? 'Anonymous' : (r.username || 'Anonymous'),
+        profileImage: r.profileImage || null,
+        bio: (r.bio || '').substring(0, 100),
+      } : null
+    }).filter(Boolean)
+
+    res.json({ requests })
+  } catch (error) {
+    console.error('[Social] Error fetching follow requests:', error)
+    res.status(500).json({ error: 'Failed to fetch follow requests' })
   }
 })
 
@@ -10696,6 +10967,20 @@ app.post('/api/leaderboard/comment', (req, res) => {
     prompt.comments.push(comment)
     writeLeaderboard(leaderboard)
     
+    // Notify prompt owner about the comment
+    if (prompt.userId !== userId) {
+      createNotification({
+        userId: prompt.userId,
+        type: 'comment',
+        fromUserId: userId,
+        fromUsername: user.username || 'Someone',
+        fromProfileImage: user.profileImage || null,
+        promptId,
+        promptText: (prompt.promptText || '').substring(0, 80),
+        commentText: commentText.trim().substring(0, 120),
+      })
+    }
+    
     console.log(`[Leaderboard] Comment added by user ${userId} on prompt ${promptId}`)
     res.json({ success: true, comment })
   } catch (error) {
@@ -10747,6 +11032,20 @@ app.post('/api/leaderboard/comment/reply', (req, res) => {
     
     comment.replies.push(reply)
     writeLeaderboard(leaderboard)
+    
+    // Notify the original commenter about the reply
+    if (comment.userId !== userId) {
+      createNotification({
+        userId: comment.userId,
+        type: 'reply',
+        fromUserId: userId,
+        fromUsername: user.username || 'Someone',
+        fromProfileImage: user.profileImage || null,
+        promptId,
+        promptText: (prompt.promptText || '').substring(0, 80),
+        commentText: replyText.trim().substring(0, 120),
+      })
+    }
     
     console.log(`[Leaderboard] Reply added by user ${userId} to comment ${commentId}`)
     res.json({ success: true, reply })
@@ -10904,6 +11203,68 @@ app.post('/api/leaderboard/comment/like', (req, res) => {
   } catch (error) {
     console.error('[Leaderboard] Error liking comment:', error)
     res.status(500).json({ error: 'Failed to like/unlike comment' })
+  }
+})
+
+// ==================== NOTIFICATIONS ENDPOINTS ====================
+
+// Helper: create a notification (fire-and-forget — non-blocking)
+const createNotification = async (notification) => {
+  try {
+    const dbInstance = await db.getDb()
+    await dbInstance.collection('notifications').insertOne({
+      ...notification,
+      _id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      createdAt: new Date(),
+      read: false,
+    })
+  } catch (error) {
+    console.error('[Notifications] Error creating notification:', error.message)
+  }
+}
+
+// Get notifications for a user
+app.get('/api/notifications/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params
+    const limit = parseInt(req.query.limit) || 50
+
+    const dbInstance = await db.getDb()
+    const notifications = await dbInstance.collection('notifications')
+      .find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray()
+
+    const unreadCount = await dbInstance.collection('notifications')
+      .countDocuments({ userId, read: false })
+
+    res.json({ notifications, unreadCount })
+  } catch (error) {
+    console.error('[Notifications] Error fetching notifications:', error)
+    res.status(500).json({ error: 'Failed to fetch notifications' })
+  }
+})
+
+// Mark notifications as read
+app.post('/api/notifications/mark-read', async (req, res) => {
+  try {
+    const { userId, notificationIds } = req.body
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+
+    const dbInstance = await db.getDb()
+    const filter = { userId }
+    if (notificationIds && notificationIds.length > 0) {
+      filter._id = { $in: notificationIds }
+    }
+
+    await dbInstance.collection('notifications').updateMany(filter, { $set: { read: true } })
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[Notifications] Error marking notifications read:', error)
+    res.status(500).json({ error: 'Failed to mark notifications as read' })
   }
 })
 

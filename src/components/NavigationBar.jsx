@@ -25,19 +25,18 @@ const NavigationBar = () => {
   
   const currentTheme = getTheme(theme)
 
-  // Fetch notification count for the Profile badge
+  // Fetch notification count from the notifications system
   useEffect(() => {
     if (!currentUser?.id) return
     const fetchNotifications = () => {
-      axios.get(`${API_URL}/api/leaderboard/user-stats/${currentUser.id}`)
+      axios.get(`${API_URL}/api/notifications/${currentUser.id}?limit=1`)
         .then(res => {
-          const count = res.data?.notifications?.length || 0
-          setNotificationCount(count)
+          setNotificationCount(res.data?.unreadCount || 0)
         })
         .catch(() => {})
     }
     fetchNotifications()
-    const interval = setInterval(fetchNotifications, 60000)
+    const interval = setInterval(fetchNotifications, 30000)
     return () => clearInterval(interval)
   }, [currentUser?.id])
 
