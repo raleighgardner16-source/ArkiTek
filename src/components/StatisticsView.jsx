@@ -980,8 +980,7 @@ const StatisticsView = () => {
                           {followIcon} {followLabel}
                         </motion.button>
                         )
-                      })()
-                      ) : (
+                      })() : (
                         <motion.button
                           onClick={() => {
                             setEditBio(ownProfileData?.bio || '')
