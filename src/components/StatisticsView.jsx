@@ -617,6 +617,7 @@ const StatisticsView = () => {
     remainingFreeAllocation: 0,
     freeUsagePercentage: 100,
     totalAvailableBalance: 0,
+    effectiveAllocation: 0,
     purchasedCredits: { total: 0, remaining: 0, purchaseCount: 0, lastPurchase: null },
     dailyUsage: [],
     providers: {},
@@ -1297,9 +1298,17 @@ const StatisticsView = () => {
 
               {/* Center: Daily Usage Bar Graph */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <p style={{ fontSize: '0.9rem', color: currentTheme.textSecondary, marginBottom: '12px', textAlign: 'center' }}>
+                <p style={{ fontSize: '0.9rem', color: currentTheme.textSecondary, marginBottom: '4px', textAlign: 'center' }}>
                   Daily Usage Percentage (This Month)
                 </p>
+                {(userStats.effectiveAllocation || 0) > 0 && (
+                  <p style={{ fontSize: '0.7rem', color: currentTheme.textMuted, marginBottom: '10px', textAlign: 'center' }}>
+                    Budget: ${(userStats.effectiveAllocation || 0).toFixed(2)}
+                    {(userStats.purchasedCredits?.remaining || 0) > 0 && (
+                      <span style={{ color: '#00cc66' }}> (includes ${(userStats.purchasedCredits.remaining).toFixed(2)} purchased)</span>
+                    )}
+                  </p>
+                )}
                 <div style={{ display: 'flex', gap: '8px', height: '220px' }}>
                   {/* Y-axis labels (percentage scale) */}
                   <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', paddingRight: '8px', minWidth: '40px' }}>
@@ -1383,9 +1392,15 @@ const StatisticsView = () => {
                                   zIndex: 20,
                                   pointerEvents: 'none',
                                   boxShadow: `0 4px 12px ${currentTheme.shadow}`,
+                                  textAlign: 'center',
                                 }}
                               >
-                                {percentage.toFixed(1)}% used
+                                <div>{percentage.toFixed(1)}% used</div>
+                                {(day.cost || 0) > 0 && (
+                                  <div style={{ fontSize: '0.65rem', color: currentTheme.textSecondary, fontWeight: 'normal', marginTop: '2px' }}>
+                                    ${day.cost.toFixed(2)} spent
+                                  </div>
+                                )}
                               </div>
                             )}
                             

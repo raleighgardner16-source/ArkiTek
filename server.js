@@ -2914,6 +2914,10 @@ app.get('/api/stats/:userId', async (req, res) => {
   // No need to update it here - it's already accumulated as usage happens
 
   // Calculate daily usage with costs and percentages
+  // Effective allocation = total budget for the month (spent + remaining).
+  // This dynamically adjusts when the user buys extra credits: the denominator
+  // increases, so all daily percentages shrink proportionally.
+  const effectiveAllocation = monthlyCost + totalAvailableBalance
   const dailyUsage = []
   const { year: tzYear, month: tzMonth } = getUserLocalDate(tz)
   const daysInMonth = new Date(tzYear, tzMonth, 0).getDate()
@@ -2943,7 +2947,6 @@ app.get('/api/stats/:userId', async (req, res) => {
         dayCost += queryCost
       }
       
-      const effectiveAllocation = FREE_MONTHLY_ALLOCATION + (purchasedCredits.total || 0)
       const dayPercentage = effectiveAllocation > 0 ? (dayCost / effectiveAllocation) * 100 : 0
       
       dailyUsage.push({
@@ -2997,6 +3000,7 @@ app.get('/api/stats/:userId', async (req, res) => {
     remainingFreeAllocation: roundCents(remainingFreeAllocation),
     freeUsagePercentage: Math.round(freeUsagePercentage * 100) / 100,
     totalAvailableBalance: roundCents(totalAvailableBalance),
+    effectiveAllocation: roundCents(effectiveAllocation),
     purchasedCredits: {
       total: roundCents(purchasedCredits.total),
       remaining: roundCents(purchasedCreditsRemaining),
