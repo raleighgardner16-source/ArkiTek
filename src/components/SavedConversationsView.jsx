@@ -64,6 +64,9 @@ const SavedConversationsView = () => {
   // Tooltip that follows cursor on category prompt hover
   const [promptTooltip, setPromptTooltip] = useState({ visible: false, x: 0, y: 0 })
 
+  // Track how many prompts are visible per category (default 5)
+  const [categoryVisibleCount, setCategoryVisibleCount] = useState({})
+
   useEffect(() => {
     if (currentUser?.id) {
       fetchHistory()
@@ -242,8 +245,9 @@ const SavedConversationsView = () => {
     setExpandedMonths((prev) => ({ ...prev, [monthKey]: true }))
     setExpandedDays((prev) => ({ ...prev, [dayKey]: true }))
 
-    // Open detail and auto-expand model/judge sections for this jump.
-    setExpandAllDetailSections(true)
+    // Open detail but keep sections collapsed — user clicks to expand, same as normal history flow.
+    setExpandAllDetailSections(false)
+    setDetailTokenTab(null)
     await fetchDetail(matchedConvo.id)
   }
 
@@ -941,7 +945,13 @@ const SavedConversationsView = () => {
                 <div
                   key={`category-clickable-${category}-${theme}`}
                   onClick={() => {
-                    setExpandedCategories((prev) => ({ ...prev, [category]: !prev[category] }))
+                    setExpandedCategories((prev) => {
+                      const wasExpanded = prev[category]
+                      if (wasExpanded) {
+                        setCategoryVisibleCount(prev2 => ({ ...prev2, [category]: 5 }))
+                      }
+                      return { ...prev, [category]: !wasExpanded }
+                    })
                   }}
                   style={{
                     padding: '16px 20px',
@@ -1038,64 +1048,128 @@ const SavedConversationsView = () => {
                                 <span style={{ color: '#ff6b6b', fontSize: '0.75rem' }}>Clear Prompts</span>
                               </button>
                             </div>
-                            {recentPrompts.map((prompt, index) => {
-                              const promptDate = new Date(prompt.timestamp)
-                              const formattedDate = promptDate.toLocaleDateString('en-US', {
-                                month: 'short', day: 'numeric', year: 'numeric',
-                                hour: '2-digit', minute: '2-digit',
-                              })
+                            {(() => {
+                              const visibleCount = categoryVisibleCount[category] || 5
+                              const visiblePrompts = recentPrompts.slice(0, visibleCount)
+                              const hasMore = recentPrompts.length > visibleCount
+                              const remaining = recentPrompts.length - visibleCount
+                              const isShowingExtra = visibleCount > 5
+
                               return (
-                                <div
-                                  key={`${category}-prompt-${index}-${theme}`}
-                                  onDoubleClick={() => handleOpenPromptInHistory(prompt)}
-                                  onMouseEnter={() => setPromptTooltip(prev => ({ ...prev, visible: true }))}
-                                  onMouseMove={(e) => setPromptTooltip({ visible: true, x: e.clientX, y: e.clientY })}
-                                  onMouseLeave={() => setPromptTooltip({ visible: false, x: 0, y: 0 })}
-                                  style={{
-                                    background: theme === 'light' ? '#ffffff' : 'rgba(20, 20, 30, 0.9)',
-                                    border: `1px solid ${currentTheme.borderLight}`,
-                                    borderRadius: '8px',
-                                    padding: '12px 16px',
-                                    boxShadow: theme === 'light'
-                                      ? '0 2px 8px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06)'
-                                      : '0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3)',
-                                    position: 'relative',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleDeleteSinglePrompt(category, index)
-                                    }}
-                                    style={{
-                                      position: 'absolute', top: '8px', right: '8px',
-                                      background: 'transparent', border: 'none', cursor: 'pointer',
-                                      padding: '4px', borderRadius: '4px',
-                                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                      opacity: 0.4, transition: 'all 0.2s ease',
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.opacity = '1'
-                                      e.currentTarget.style.background = 'rgba(255, 107, 107, 0.15)'
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.opacity = '0.4'
-                                      e.currentTarget.style.background = 'transparent'
-                                    }}
-                                    title="Delete this prompt"
-                                  >
-                                    <X size={14} color="#ff6b6b" />
-                                  </button>
-                                  <p key={`${category}-prompt-text-${index}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: '0.9rem', margin: '0 0 6px 0', lineHeight: '1.4', paddingRight: '24px' }}>
-                                    {prompt.text}
-                                  </p>
-                                  <p key={`${category}-prompt-date-${index}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0 }}>
-                                    {formattedDate}
-                                  </p>
-                                </div>
+                                <>
+                                  {visiblePrompts.map((prompt, index) => {
+                                    const promptDate = new Date(prompt.timestamp)
+                                    const formattedDate = promptDate.toLocaleDateString('en-US', {
+                                      month: 'short', day: 'numeric', year: 'numeric',
+                                      hour: '2-digit', minute: '2-digit',
+                                    })
+                                    return (
+                                      <div
+                                        key={`${category}-prompt-${index}-${theme}`}
+                                        onDoubleClick={() => handleOpenPromptInHistory(prompt)}
+                                        onMouseEnter={() => setPromptTooltip(prev => ({ ...prev, visible: true }))}
+                                        onMouseMove={(e) => setPromptTooltip({ visible: true, x: e.clientX, y: e.clientY })}
+                                        onMouseLeave={() => setPromptTooltip({ visible: false, x: 0, y: 0 })}
+                                        style={{
+                                          background: theme === 'light' ? '#ffffff' : 'rgba(20, 20, 30, 0.9)',
+                                          border: `1px solid ${currentTheme.borderLight}`,
+                                          borderRadius: '8px',
+                                          padding: '12px 16px',
+                                          boxShadow: theme === 'light'
+                                            ? '0 2px 8px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06)'
+                                            : '0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3)',
+                                          position: 'relative',
+                                          cursor: 'pointer',
+                                        }}
+                                      >
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            handleDeleteSinglePrompt(category, index)
+                                          }}
+                                          style={{
+                                            position: 'absolute', top: '8px', right: '8px',
+                                            background: 'transparent', border: 'none', cursor: 'pointer',
+                                            padding: '4px', borderRadius: '4px',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            opacity: 0.4, transition: 'all 0.2s ease',
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.currentTarget.style.opacity = '1'
+                                            e.currentTarget.style.background = 'rgba(255, 107, 107, 0.15)'
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.currentTarget.style.opacity = '0.4'
+                                            e.currentTarget.style.background = 'transparent'
+                                          }}
+                                          title="Delete this prompt"
+                                        >
+                                          <X size={14} color="#ff6b6b" />
+                                        </button>
+                                        <p key={`${category}-prompt-text-${index}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: '0.9rem', margin: '0 0 6px 0', lineHeight: '1.4', paddingRight: '24px' }}>
+                                          {prompt.text}
+                                        </p>
+                                        <p key={`${category}-prompt-date-${index}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.75rem', margin: 0 }}>
+                                          {formattedDate}
+                                        </p>
+                                      </div>
+                                    )
+                                  })}
+
+                                  {/* View more / Close buttons */}
+                                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '8px' }}>
+                                    {hasMore && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setCategoryVisibleCount(prev => ({
+                                            ...prev,
+                                            [category]: visibleCount + 5,
+                                          }))
+                                        }}
+                                        style={{
+                                          background: 'transparent',
+                                          border: 'none',
+                                          cursor: 'pointer',
+                                          color: currentTheme.accent,
+                                          fontSize: '0.82rem',
+                                          fontWeight: '500',
+                                          padding: '6px 12px',
+                                        }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.7' }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+                                      >
+                                        View {Math.min(5, remaining)} more
+                                      </button>
+                                    )}
+                                    {isShowingExtra && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setCategoryVisibleCount(prev => ({
+                                            ...prev,
+                                            [category]: 5,
+                                          }))
+                                        }}
+                                        style={{
+                                          background: 'transparent',
+                                          border: 'none',
+                                          cursor: 'pointer',
+                                          color: currentTheme.textMuted,
+                                          fontSize: '0.78rem',
+                                          fontWeight: '400',
+                                          padding: '6px 8px',
+                                        }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.7' }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+                                      >
+                                        Close
+                                      </button>
+                                    )}
+                                  </div>
+                                </>
                               )
-                            })}
+                            })()}
                           </div>
                         ) : (
                           <p key={`${category}-no-prompts-msg-${theme}`} style={{ color: currentTheme.textMuted, fontSize: '0.9rem', textAlign: 'center', padding: '20px', fontStyle: 'italic' }}>
