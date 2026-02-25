@@ -23,7 +23,7 @@ import { MongoClient } from 'mongodb'
 let client = null
 let database = null
 
-const DB_NAME = 'ADMIN'
+const DB_NAME = process.env.ADMIN_DB_NAME || 'Arkitek'
 
 // ============================================================================
 // CONNECTION MANAGEMENT
