@@ -57,6 +57,9 @@ const SavedConversationsView = () => {
   const [showClearCategoryConfirm, setShowClearCategoryConfirm] = useState(false)
   const [categoryToClear, setCategoryToClear] = useState(null)
 
+  // Tooltip that follows cursor on category prompt hover
+  const [promptTooltip, setPromptTooltip] = useState({ visible: false, x: 0, y: 0 })
+
   useEffect(() => {
     if (currentUser?.id) {
       fetchHistory()
@@ -527,13 +530,12 @@ const SavedConversationsView = () => {
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: 20 }}
         style={{
-          flex: 1,
           background: currentTheme.backgroundOverlay,
           border: `1px solid ${currentTheme.borderLight}`,
           borderRadius: '16px',
-          padding: '24px',
+          padding: '24px 24px 14px 24px',
           overflowY: 'auto',
-          maxHeight: 'calc(100vh - 220px)',
+          maxHeight: 'calc(100vh - 100px)',
         }}
       >
         {/* Header */}
@@ -648,7 +650,7 @@ const SavedConversationsView = () => {
           })
 
           return (
-            <div style={{ marginBottom: '20px' }}>
+            <div style={{ marginBottom: '0' }}>
               <h3 style={{ fontSize: '1rem', color: currentTheme.text, marginBottom: '12px' }}>
                 {selectedConvo.responses.length > 1 ? `Council Responses (${selectedConvo.responses.length} models)` : 'Model Response'}
               </h3>
@@ -710,7 +712,7 @@ const SavedConversationsView = () => {
       }
       const recentPrompts = categoryInfo?.recentPrompts || []
       const count = categoryInfo?.count || (typeof categoryInfo === 'number' ? categoryInfo : 0)
-      return { category, count, recentPrompts: recentPrompts.slice(0, 5) }
+      return { category, count, recentPrompts }
     })
     categoriesWithData.sort((a, b) => {
       if (b.count !== a.count) return b.count - a.count
@@ -841,7 +843,7 @@ const SavedConversationsView = () => {
                                 <span style={{ color: '#ff6b6b', fontSize: '0.75rem' }}>Clear Prompts</span>
                               </button>
                             </div>
-                            {recentPrompts.slice(0, 5).map((prompt, index) => {
+                            {recentPrompts.map((prompt, index) => {
                               const promptDate = new Date(prompt.timestamp)
                               const formattedDate = promptDate.toLocaleDateString('en-US', {
                                 month: 'short', day: 'numeric', year: 'numeric',
@@ -851,7 +853,9 @@ const SavedConversationsView = () => {
                                 <div
                                   key={`${category}-prompt-${index}-${theme}`}
                                   onDoubleClick={() => handleOpenPromptInHistory(prompt)}
-                                  title="Double-click to open this conversation in Chat History"
+                                  onMouseEnter={() => setPromptTooltip(prev => ({ ...prev, visible: true }))}
+                                  onMouseMove={(e) => setPromptTooltip({ visible: true, x: e.clientX, y: e.clientY })}
+                                  onMouseLeave={() => setPromptTooltip({ visible: false, x: 0, y: 0 })}
                                   style={{
                                     background: theme === 'light' ? '#ffffff' : 'rgba(20, 20, 30, 0.9)',
                                     border: `1px solid ${currentTheme.borderLight}`,
@@ -1189,19 +1193,27 @@ const SavedConversationsView = () => {
               })}
             </div>
 
-            {/* Right: Detail panel */}
-            <AnimatePresence mode="wait">
-              {loadingDetail ? (
-                <div style={{
-                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: currentTheme.textMuted,
-                }}>
-                  Loading...
-                </div>
-              ) : selectedConvo ? (
-                renderDetail()
-              ) : null}
-            </AnimatePresence>
+            {/* Right: Detail panel — sticky so it stays visible while scrolling the list */}
+            <div style={{
+              flex: 1,
+              position: 'sticky',
+              top: '40px',
+              alignSelf: 'flex-start',
+              maxHeight: 'calc(100vh - 80px)',
+            }}>
+              <AnimatePresence mode="wait">
+                {loadingDetail ? (
+                  <div style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: currentTheme.textMuted,
+                  }}>
+                    Loading...
+                  </div>
+                ) : selectedConvo ? (
+                  renderDetail()
+                ) : null}
+              </AnimatePresence>
+            </div>
           </div>
         )}
           </>
@@ -1255,6 +1267,30 @@ const SavedConversationsView = () => {
           </motion.div>
         )}
       </div>
+
+      {/* Cursor-following tooltip for category prompts */}
+      {promptTooltip.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            left: promptTooltip.x + 14,
+            top: promptTooltip.y - 36,
+            background: 'rgba(0, 0, 0, 0.88)',
+            border: `1px solid ${currentTheme.accent}40`,
+            borderRadius: '8px',
+            padding: '6px 12px',
+            pointerEvents: 'none',
+            zIndex: 9999,
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          <span style={{ color: '#ffffff', fontSize: '0.75rem', fontWeight: '500' }}>
+            Double-click to view in Chat History
+          </span>
+        </div>
+      )}
 
       {/* Confirmation Modal for clearing category prompts */}
       <ConfirmationModal
