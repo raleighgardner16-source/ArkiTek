@@ -1380,7 +1380,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const showSummaryStreamingPhase = hasSummaryTokens && (isGeneratingSummary || (summary && summary.isStreaming))
   const showProcessingView = showCouncilLoading || showCouncilColumns || showSingleModelStreamingPhase || showSummaryStreamingPhase
   const canGenerateSummary = !isLoading && !isGeneratingSummary && !summary && responses.filter(r => !r.error && r.text).length >= 2
-  const topBarVisible = canGenerateSummary || canToggleResultViews
+  const topBarVisible = canGenerateSummary || canToggleResultViews || canShowCouncilSideBySideButton
   const normalViewTopPadding = topBarVisible ? '140px' : '100px'
   const processingTopPadding = topBarVisible ? 150 : 80
   const maximizedCouncilResponse = maximizedCouncilResponseId
@@ -1555,7 +1555,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           zIndex: 10,
         }}
       >
-        {(canGenerateSummary || (canShowCouncilSideBySideButton && resultViewMode === 'summary')) && (
+        {canGenerateSummary && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1604,13 +1604,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
                 <motion.button
-                  onClick={() => {
-                    if (canGenerateSummary) {
-                      triggerGenerateSummary()
-                    } else {
-                      setResultViewMode('council')
-                    }
-                  }}
+                  onClick={() => triggerGenerateSummary()}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   style={{
@@ -1631,30 +1625,28 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     pointerEvents: 'auto',
                     letterSpacing: '0.3px',
                   }}
-                  title={canGenerateSummary ? 'Generate summary from the current council responses' : 'Show side-by-side model responses'}
+                  title="Generate summary from the current council responses"
                 >
                   <Sparkles size={16} />
-                  {canGenerateSummary ? 'Generate Summary' : 'Council Side by Side View'}
+                  Generate Summary
                 </motion.button>
-                {canGenerateSummary && (
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      color: theme === 'light' ? currentTheme.textMuted : 'rgba(255, 255, 255, 0.5)',
-                      textAlign: 'center',
-                      background: theme === 'light' ? '#ffffff' : '#0d1520',
-                      border: theme === 'light' ? '1px solid rgba(0, 150, 200, 0.2)' : '1px solid rgba(93, 173, 226, 0.3)',
-                      borderRadius: '999px',
-                      padding: '3px 10px',
-                      boxShadow: theme === 'light'
-                        ? '0 2px 8px rgba(0, 0, 0, 0.08)'
-                        : '0 2px 10px rgba(0, 0, 0, 0.4)',
-                      pointerEvents: 'auto',
-                    }}
-                  >
-                    PRESS ENTER TO GENERATE
-                  </span>
-                )}
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    color: theme === 'light' ? currentTheme.textMuted : 'rgba(255, 255, 255, 0.5)',
+                    textAlign: 'center',
+                    background: theme === 'light' ? '#ffffff' : '#0d1520',
+                    border: theme === 'light' ? '1px solid rgba(0, 150, 200, 0.2)' : '1px solid rgba(93, 173, 226, 0.3)',
+                    borderRadius: '999px',
+                    padding: '3px 10px',
+                    boxShadow: theme === 'light'
+                      ? '0 2px 8px rgba(0, 0, 0, 0.08)'
+                      : '0 2px 10px rgba(0, 0, 0, 0.4)',
+                    pointerEvents: 'auto',
+                  }}
+                >
+                  PRESS ENTER TO GENERATE
+                </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                 <motion.button
@@ -1687,13 +1679,13 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             </div>
           </motion.div>
         )}
-        {canToggleResultViews && resultViewMode === 'council' && (
+        {(canToggleResultViews || canShowCouncilSideBySideButton) && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             style={{
               position: 'absolute',
-              top: '20px',
+              top: '16px',
               left: 0,
               right: 0,
               zIndex: 30,
@@ -1707,56 +1699,157 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '4px',
-                padding: '5px',
-                borderRadius: '14px',
-                border: theme === 'light' ? '1px solid rgba(0, 150, 200, 0.25)' : '1px solid rgba(93, 173, 226, 0.35)',
-                background: theme === 'light' ? '#ffffff' : '#0d1520',
+                gap: '6px',
+                padding: '8px 12px',
+                borderRadius: '16px',
+                border: theme === 'light' ? '1px solid rgba(0, 0, 0, 0.1)' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: theme === 'light' ? '#ffffff' : '#111827',
                 boxShadow: theme === 'light'
-                  ? '0 4px 20px rgba(0, 0, 0, 0.15), 0 1px 4px rgba(0, 0, 0, 0.08)'
-                  : '0 4px 24px rgba(0, 0, 0, 0.6), 0 0 15px rgba(93, 173, 226, 0.12)',
+                  ? '0 4px 20px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.06)'
+                  : '0 4px 24px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.4)',
                 pointerEvents: 'auto',
               }}
             >
               <motion.button
-                onClick={() => setResultViewMode('summary')}
-                whileHover={{ scale: 1.03 }}
+                onClick={() => setShowSingleTokenUsage(true)}
+                whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 style={{
-                  padding: '8px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '8px 12px',
                   borderRadius: '10px',
                   border: 'none',
-                  background: resultViewMode === 'summary'
-                    ? currentTheme.accentGradient
-                    : (theme === 'light' ? '#f0f0f0' : '#1a2332'),
-                  color: resultViewMode === 'summary' ? '#ffffff' : currentTheme.textSecondary,
-                  fontSize: '0.78rem',
+                  background: theme === 'light' ? '#f3f4f6' : '#1f2937',
+                  color: currentTheme.accent,
+                  fontSize: '0.76rem',
                   fontWeight: '600',
                   cursor: 'pointer',
                 }}
-                title="Show summary response"
+                title="Open prompt token usage"
               >
-                Summary View
+                <Coins size={13} />
+                Token Usage
               </motion.button>
               <motion.button
-                onClick={() => setResultViewMode('council')}
-                whileHover={{ scale: 1.03 }}
+                onClick={() => setShowTopCostBreakdown(true)}
+                whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 style={{
-                  padding: '8px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '8px 12px',
                   borderRadius: '10px',
                   border: 'none',
-                  background: resultViewMode === 'council'
-                    ? currentTheme.accentGradient
-                    : (theme === 'light' ? '#f0f0f0' : '#1a2332'),
-                  color: resultViewMode === 'council' ? '#ffffff' : currentTheme.textSecondary,
-                  fontSize: '0.78rem',
+                  background: theme === 'light' ? '#f3f4f6' : '#1f2937',
+                  color: currentTheme.accent,
+                  fontSize: '0.76rem',
                   fontWeight: '600',
                   cursor: 'pointer',
                 }}
-                title="Show side-by-side model responses"
+                title="Open prompt cost breakdown"
               >
-                Council View
+                <DollarSign size={13} />
+                Cost Breakdown
+              </motion.button>
+
+              <div style={{
+                width: '1px',
+                height: '24px',
+                background: theme === 'light' ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.1)',
+                margin: '0 2px',
+              }} />
+
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                  padding: '3px',
+                  borderRadius: '10px',
+                  background: theme === 'light' ? '#f3f4f6' : '#1f2937',
+                }}
+              >
+                <motion.button
+                  onClick={() => setResultViewMode('summary')}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.95 }}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: resultViewMode === 'summary'
+                      ? currentTheme.accentGradient
+                      : 'transparent',
+                    color: resultViewMode === 'summary' ? '#ffffff' : currentTheme.textSecondary,
+                    fontSize: '0.76rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  title="Show summary response"
+                >
+                  Summary View
+                </motion.button>
+                <motion.button
+                  onClick={() => setResultViewMode('council')}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.95 }}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: resultViewMode === 'council'
+                      ? currentTheme.accentGradient
+                      : 'transparent',
+                    color: resultViewMode === 'council' ? '#ffffff' : currentTheme.textSecondary,
+                    fontSize: '0.76rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  title="Show side-by-side model responses"
+                >
+                  Council Side by Side View
+                </motion.button>
+              </div>
+
+              <div style={{
+                width: '1px',
+                height: '24px',
+                background: theme === 'light' ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.1)',
+                margin: '0 2px',
+              }} />
+
+              <motion.button
+                onClick={() => {
+                  if (!currentUser?.id) {
+                    alert('Please sign in to submit prompts to the Prompt Feed')
+                    return
+                  }
+                  setShowPostWindow(true)
+                }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: theme === 'light' ? 'rgba(255, 140, 0, 0.9)' : 'rgba(255, 170, 0, 0.15)',
+                  color: theme === 'light' ? '#fff' : '#ffaa00',
+                  fontSize: '0.76rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+                title="Submit your prompt and the council's response to the Prompt Feed"
+              >
+                <Trophy size={13} />
+                Post Prompt
               </motion.button>
             </div>
           </motion.div>
@@ -2877,129 +2970,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           </div>
                         </div>
 
-                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
-                        <motion.button
-                          onClick={() => {
-                            if (!currentUser?.id) {
-                              alert('Please sign in to submit prompts to the Prompt Feed')
-                              return
-                            }
-                            setShowPostWindow(true)
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: '4px 6px',
-                            background: theme === 'light' ? 'rgba(255, 140, 0, 0.85)' : 'rgba(255, 170, 0, 0.15)',
-                            border: theme === 'light' ? '1px solid rgba(200, 100, 0, 0.8)' : '1px solid rgba(255, 170, 0, 0.4)',
-                            borderRadius: '12px',
-                            color: theme === 'light' ? '#fff' : '#ffaa00',
-                            fontSize: '0.7rem',
-                            fontWeight: '500',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px',
-                            transition: 'all 0.2s ease',
-                            whiteSpace: 'nowrap',
-                            height: '28px',
-                          }}
-                          whileHover={{ 
-                            background: theme === 'light' ? 'rgba(255, 120, 0, 0.95)' : 'rgba(255, 170, 0, 0.25)',
-                          }}
-                          whileTap={{ scale: 0.96 }}
-                        >
-                          <Trophy size={12} />
-                          Post Prompt
-                        </motion.button>
-                          <div
-                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
-                            onMouseEnter={() => setShowPostPromptTooltip(true)}
-                            onMouseLeave={() => setShowPostPromptTooltip(false)}
-                          >
-                            <Info size={10} color={currentTheme.textMuted} />
-                            {showPostPromptTooltip && (
-                              <div style={{
-                                position: 'absolute',
-                                bottom: '16px',
-                                right: 0,
-                                background: currentTheme.backgroundOverlay,
-                                border: `1px solid ${currentTheme.borderLight}`,
-                                borderRadius: '8px',
-                                padding: '6px 10px',
-                                fontSize: '0.7rem',
-                                color: currentTheme.textSecondary,
-                                width: '180px',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                                zIndex: 100,
-                              }}>
-                                Submit your prompt and the council's response to the Prompt Feed.
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Model Responses toggle button */}
-                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
-                          <motion.button
-                            onClick={toggleCouncilPanel}
-                            style={{
-                              flex: 1,
-                              padding: '4px 6px',
-                              background: showCouncilPanel 
-                                ? (theme === 'light' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.2)')
-                                : currentTheme.buttonBackground,
-                              border: `1px solid ${showCouncilPanel ? 'rgba(59, 130, 246, 0.5)' : currentTheme.borderLight}`,
-                              borderRadius: '12px',
-                              color: showCouncilPanel ? '#60a5fa' : currentTheme.textSecondary,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '4px',
-                              transition: 'all 0.2s ease',
-                              whiteSpace: 'nowrap',
-                              height: '28px',
-                              fontSize: '0.7rem',
-                              fontWeight: '500',
-                            }}
-                            whileHover={{ 
-                              background: showCouncilPanel 
-                                ? (theme === 'light' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.3)')
-                                : (theme === 'light' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.15)'),
-                            }}
-                            whileTap={{ scale: 0.96 }}
-                            title={showCouncilPanel ? 'Hide Model Responses' : 'Show Model Responses'}
-                          >
-                            <LayoutGrid size={12} />
-                            {showCouncilPanel ? 'Hide Model Responses' : 'Show Model Responses'}
-                          </motion.button>
-                          <div
-                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
-                            onMouseEnter={() => setShowCouncilTooltip(true)}
-                            onMouseLeave={() => setShowCouncilTooltip(false)}
-                          >
-                            <Info size={10} color={currentTheme.textMuted} />
-                            {showCouncilTooltip && (
-                              <div style={{
-                                position: 'absolute',
-                                bottom: '16px',
-                                right: 0,
-                                background: currentTheme.backgroundOverlay,
-                                border: `1px solid ${currentTheme.borderLight}`,
-                                borderRadius: '8px',
-                                padding: '6px 10px',
-                                fontSize: '0.7rem',
-                                color: currentTheme.textSecondary,
-                                width: '180px',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                                zIndex: 100,
-                              }}>
-                                Toggle the panel to view individual responses from each AI model.
-                              </div>
-                            )}
-                          </div>
-                        </div>
                       </div>
 
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
