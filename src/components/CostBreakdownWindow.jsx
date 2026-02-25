@@ -144,59 +144,229 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
     groupedByProvider[item.provider].totalCost += item.totalCost
   })
 
-  // If inline mode, render without modal overlay
+  // If inline mode, render without modal overlay (full pricing detail like the modal)
   if (inline) {
     return (
-      <div style={{ padding: '16px' }}>
-        <h3 style={{ color: '#5dade2', fontSize: '1.2rem', margin: '0 0 16px 0', fontWeight: 'bold' }}>
-          Prompt Cost Breakdown
-        </h3>
+      <div style={{ padding: '20px' }}>
         {loading ? (
           <div style={{ color: '#aaaaaa', textAlign: 'center', padding: '20px' }}>Loading pricing data...</div>
         ) : (
           <>
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
-                  <strong style={{ color: '#5dade2' }}>Total Cost:</strong> ${totalCost.toFixed(4)}
-                </div>
-                <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
-                  <strong style={{ color: '#5dade2' }}>Model Cost:</strong> ${totalModelCost.toFixed(4)}
-                </div>
-                {queryCost > 0 && (
-                  <div style={{ color: '#aaaaaa', fontSize: '0.9rem' }}>
-                    <strong style={{ color: '#48c9b0' }}>Search Queries ({queryCount}):</strong> ${queryCost.toFixed(4)}
-                  </div>
-                )}
+            {/* Total Cost Summary */}
+            <div
+              style={{
+                background: 'rgba(93, 173, 226, 0.1)',
+                border: '1px solid rgba(93, 173, 226, 0.3)',
+                borderRadius: '12px',
+                padding: '16px',
+                marginBottom: '20px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ color: '#ffffff', fontSize: '1rem', fontWeight: '600' }}>Total Cost</span>
+                <span style={{ color: '#5dade2', fontSize: '1.4rem', fontWeight: 'bold' }}>
+                  ${totalCost.toFixed(4)}
+                </span>
               </div>
-              {Object.entries(groupedByProvider).map(([provider, data]) => (
-                <div key={provider} style={{ marginBottom: '20px', padding: '12px', background: 'rgba(93, 173, 226, 0.05)', borderRadius: '8px', border: '1px solid rgba(93, 173, 226, 0.2)' }}>
-                  <h4 style={{ color: '#5dade2', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
-                    {provider === 'openai' ? 'ChatGPT' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
-                  </h4>
-                  <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', fontSize: '0.85rem', color: '#aaaaaa' }}>
-                    <div><strong style={{ color: '#5dade2' }}>Total Cost:</strong> ${data.totalCost.toFixed(4)}</div>
-                    <div><strong style={{ color: '#5dade2' }}>Tokens:</strong> {data.totalTokens.toLocaleString()}</div>
-                  </div>
-                  {data.models.map((item, idx) => (
-                    <div key={idx} style={{ marginLeft: '12px', marginBottom: '8px', fontSize: '0.8rem', color: '#cccccc' }}>
-                      {item.modelName}: ${item.totalCost.toFixed(4)} ({item.totalTokens.toLocaleString()} tokens)
-                    </div>
-                  ))}
-                </div>
-              ))}
-              {judgeCostBreakdown.length > 0 && judgeTotalTokens > 0 && (
-                <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(168, 85, 247, 0.05)', borderRadius: '8px', border: '1px solid rgba(168, 85, 247, 0.2)' }}>
-                  <h4 style={{ color: '#a855f7', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
-                    Judge Model
-                  </h4>
-                  <div style={{ display: 'flex', gap: '16px', marginBottom: '4px', flexWrap: 'wrap', fontSize: '0.85rem', color: '#aaaaaa' }}>
-                    <div><strong style={{ color: '#a855f7' }}>Total Cost:</strong> ${judgeTotalCost.toFixed(4)}</div>
-                    <div><strong style={{ color: '#a855f7' }}>Tokens:</strong> {judgeTotalTokens.toLocaleString()}</div>
-                  </div>
-                </div>
-              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#aaaaaa' }}>
+                <span>Model Costs: ${totalModelCost.toFixed(4)}</span>
+                {queryCount > 0 && <span>Query Costs: ${queryCost.toFixed(4)} ({queryCount} queries)</span>}
+              </div>
             </div>
+
+            {/* Cost Breakdown by Provider */}
+            {Object.entries(groupedByProvider).map(([provider, providerData]) => (
+              <div
+                key={provider}
+                style={{
+                  background: 'rgba(93, 173, 226, 0.05)',
+                  border: '1px solid rgba(93, 173, 226, 0.2)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '12px',
+                }}
+              >
+                <h4
+                  style={{
+                    color: '#5dade2',
+                    fontSize: '1rem',
+                    margin: '0 0 12px 0',
+                    fontWeight: '600',
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {provider === 'openai' ? 'ChatGPT' : provider === 'anthropic' ? 'Claude' : provider === 'google' ? 'Gemini' : provider === 'xai' ? 'Grok' : provider}
+                </h4>
+
+                {/* Provider Total */}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '12px',
+                    paddingBottom: '10px',
+                    borderBottom: '1px solid rgba(93, 173, 226, 0.2)',
+                  }}
+                >
+                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '0.9rem' }}>Provider Total</span>
+                  <span style={{ color: '#5dade2', fontWeight: 'bold', fontSize: '1rem' }}>
+                    ${providerData.totalCost.toFixed(4)}
+                  </span>
+                </div>
+
+                {/* Models with full pricing detail */}
+                {providerData.models.map((item, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      borderRadius: '8px',
+                      padding: '14px',
+                      marginBottom: '10px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '0.9rem' }}>{item.modelName}</span>
+                      <span style={{ color: '#5dade2', fontWeight: 'bold' }}>
+                        ${item.totalCost.toFixed(4)}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: item.reasoningTokens > 0 ? '1fr 1fr 1fr' : '1fr 1fr', gap: '12px', fontSize: '0.85rem' }}>
+                      <div>
+                        <div style={{ color: '#aaaaaa', marginBottom: '4px' }}>Input Tokens</div>
+                        <div style={{ color: '#ffffff' }}>
+                          {item.inputTokens.toLocaleString()} tokens
+                        </div>
+                        <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: '2px' }}>
+                          @ ${item.inputPrice.toFixed(2)}/1M = ${item.inputCost.toFixed(4)}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: '#aaaaaa', marginBottom: '4px' }}>Output Tokens</div>
+                        <div style={{ color: '#ffffff' }}>
+                          {item.outputTokens.toLocaleString()} tokens
+                        </div>
+                        <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: '2px' }}>
+                          @ ${item.outputPrice.toFixed(2)}/1M = ${item.outputCost.toFixed(4)}
+                        </div>
+                      </div>
+                      {item.reasoningTokens > 0 && (
+                        <div>
+                          <div style={{ color: '#5dade2', marginBottom: '4px', fontWeight: '500' }}>Reasoning Tokens</div>
+                          <div style={{ color: '#5dade2', fontWeight: 'bold' }}>
+                            {item.reasoningTokens.toLocaleString()} tokens
+                          </div>
+                          <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: '2px', fontStyle: 'italic' }}>
+                            (included in API total, not billed separately)
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {/* Judge Model */}
+            {judgeCostBreakdown.length > 0 && judgeTotalTokens > 0 && (
+              <div
+                style={{
+                  background: 'rgba(168, 85, 247, 0.05)',
+                  border: '1px solid rgba(168, 85, 247, 0.2)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '12px',
+                }}
+              >
+                <h4 style={{ color: '#a855f7', fontSize: '1rem', margin: '0 0 12px 0', fontWeight: '600' }}>
+                  Judge Model
+                </h4>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '12px',
+                    paddingBottom: '10px',
+                    borderBottom: '1px solid rgba(168, 85, 247, 0.2)',
+                  }}
+                >
+                  <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '0.9rem' }}>Judge Total</span>
+                  <span style={{ color: '#a855f7', fontWeight: 'bold', fontSize: '1rem' }}>
+                    ${judgeTotalCost.toFixed(4)}
+                  </span>
+                </div>
+                {judgeCostBreakdown.map((item, index) => (
+                  <div
+                    key={`judge-${index}`}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      borderRadius: '8px',
+                      padding: '14px',
+                      marginBottom: '10px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ color: '#ffffff', fontWeight: '600', fontSize: '0.9rem' }}>Judge Model</span>
+                      <span style={{ color: '#a855f7', fontWeight: 'bold' }}>
+                        ${item.totalCost.toFixed(4)}
+                      </span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.85rem' }}>
+                      <div>
+                        <div style={{ color: '#aaaaaa', marginBottom: '4px' }}>Input Tokens</div>
+                        <div style={{ color: '#ffffff' }}>
+                          {item.inputTokens.toLocaleString()} tokens
+                        </div>
+                        <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: '2px' }}>
+                          @ ${item.inputPrice.toFixed(2)}/1M = ${item.inputCost.toFixed(4)}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: '#aaaaaa', marginBottom: '4px' }}>Output Tokens</div>
+                        <div style={{ color: '#ffffff' }}>
+                          {item.outputTokens.toLocaleString()} tokens
+                        </div>
+                        <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: '2px' }}>
+                          @ ${item.outputPrice.toFixed(2)}/1M = ${item.outputCost.toFixed(4)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Query Costs */}
+            {queryCount > 0 && (
+              <div
+                style={{
+                  background: 'rgba(93, 173, 226, 0.05)',
+                  border: '1px solid rgba(93, 173, 226, 0.2)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                }}
+              >
+                <h4 style={{ color: '#5dade2', fontSize: '1rem', margin: '0 0 10px 0', fontWeight: '600' }}>
+                  Serper Search Queries
+                </h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ color: '#ffffff', fontWeight: '600', marginBottom: '4px', fontSize: '0.9rem' }}>
+                      {queryCount} {queryCount === 1 ? 'query' : 'queries'}
+                    </div>
+                    <div style={{ color: '#888888', fontSize: '0.8rem' }}>
+                      @ $1.00 per 1,000 queries
+                    </div>
+                  </div>
+                  <span style={{ color: '#5dade2', fontWeight: 'bold', fontSize: '1.1rem' }}>
+                    ${queryCost.toFixed(4)}
+                  </span>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

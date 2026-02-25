@@ -969,7 +969,8 @@ const StatisticsView = () => {
           })()}
         </div>
 
-        {/* Tab Buttons — evenly distributed */}
+        {/* Tab Buttons — evenly distributed (hidden when viewing another user's profile) */}
+        {!isViewingOther && (
         <div
           style={{
             display: 'flex',
@@ -977,7 +978,6 @@ const StatisticsView = () => {
             borderBottom: `1px solid ${currentTheme.borderLight}`,
           }}
         >
-          {!isViewingOther && (
           <button
             onClick={() => handleTabChange('tokens')}
             style={{
@@ -1000,7 +1000,6 @@ const StatisticsView = () => {
             <Database size={20} />
             Token Usage
           </button>
-          )}
           <button
             onClick={() => handleTabChange('badges')}
             style={{
@@ -1023,7 +1022,6 @@ const StatisticsView = () => {
             <Award size={20} />
             Badges
           </button>
-          {!isViewingOther && (
           <button
             onClick={() => handleTabChange('ratings')}
             style={{
@@ -1046,8 +1044,6 @@ const StatisticsView = () => {
             <Star size={20} />
             Ratings & Models
           </button>
-          )}
-          {!isViewingOther && (
           <button
             onClick={() => handleTabChange('leaderboard')}
             style={{
@@ -1070,7 +1066,6 @@ const StatisticsView = () => {
             <Trophy size={20} />
             Prompt Feed
           </button>
-          )}
           <button
             onClick={() => handleTabChange('profile')}
             style={{
@@ -1091,9 +1086,10 @@ const StatisticsView = () => {
             }}
           >
             <User size={20} />
-            {isViewingOther ? 'Posts' : 'My Posts'}
+            My Posts
           </button>
         </div>
+        )}
 
         {/* Tab Content */}
         <AnimatePresence mode="popLayout">
@@ -2104,7 +2100,7 @@ const StatisticsView = () => {
             </motion.div>
           )}
 
-          {activeTab === 'badges' && (
+          {activeTab === 'badges' && !isViewingOther && (
             <motion.div
               key="badges"
               initial={{ opacity: 0 }}
