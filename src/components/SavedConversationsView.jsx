@@ -294,15 +294,28 @@ const SavedConversationsView = () => {
   const hierarchy = buildHierarchy()
   const sortedYears = Object.keys(hierarchy).sort((a, b) => b - a)
 
-  // Auto-expand all years by default so months are visible
+  // Auto-expand all years, and today's month + day so current chats are visible immediately
   useEffect(() => {
     if (sortedYears.length > 0) {
+      const now = new Date()
+      const todayYear = now.getFullYear()
+      const todayMonthKey = `${todayYear}-${String(now.getMonth() + 1).padStart(2, '0')}`
+      const todayDayKey = now.toISOString().split('T')[0]
+
       setExpandedYears(prev => {
         const updated = { ...prev }
         sortedYears.forEach(year => {
           if (updated[year] === undefined) updated[year] = true
         })
         return updated
+      })
+      setExpandedMonths(prev => {
+        if (prev[todayMonthKey] === undefined) return { ...prev, [todayMonthKey]: true }
+        return prev
+      })
+      setExpandedDays(prev => {
+        if (prev[todayDayKey] === undefined) return { ...prev, [todayDayKey]: true }
+        return prev
       })
     }
   }, [history])
@@ -526,9 +539,10 @@ const SavedConversationsView = () => {
     return (
       <motion.div
         ref={detailPanelRef}
-        initial={{ opacity: 0, x: 20 }}
+        initial={{ opacity: 0, x: 16 }}
         animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: 20 }}
+        exit={{ opacity: 0, x: 16 }}
+        transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
         style={{
           background: currentTheme.backgroundOverlay,
           border: `1px solid ${currentTheme.borderLight}`,
@@ -536,48 +550,27 @@ const SavedConversationsView = () => {
           padding: '24px 24px 14px 24px',
           overflowY: 'auto',
           maxHeight: 'calc(100vh - 100px)',
+          willChange: 'transform, opacity',
         }}
       >
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-          <div style={{ flex: 1 }}>
-            <h2 style={{ fontSize: '1.4rem', color: currentTheme.text, margin: '0 0 8px 0', lineHeight: '1.3' }}>
-              {selectedConvo.title}
-            </h2>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{
-                padding: '4px 10px',
-                background: selectedConvo.responses?.length > 1 ? 'rgba(59, 130, 246, 0.15)' : 'rgba(168, 85, 247, 0.15)',
-                border: `1px solid ${selectedConvo.responses?.length > 1 ? 'rgba(59, 130, 246, 0.4)' : 'rgba(168, 85, 247, 0.4)'}`,
-                borderRadius: '6px', fontSize: '0.75rem',
-                color: selectedConvo.responses?.length > 1 ? '#60a5fa' : '#a855f7',
-                fontWeight: '600',
-              }}>
-                {selectedConvo.responses?.length > 1
-                  ? `Council (${selectedModelCount} models ${selectedHasSummary ? 'and summary' : 'no summary'})`
-                  : 'Single Model'}
-              </span>
-              <span style={{ fontSize: '0.8rem', color: currentTheme.textMuted }}>
-                {formatDate(selectedConvo.savedAt)}
-              </span>
-              {selectedConvo.category && selectedConvo.category !== 'General Knowledge/Other' && (
-                <span style={{
-                  padding: '3px 8px', background: currentTheme.buttonBackground,
-                  borderRadius: '4px', fontSize: '0.75rem', color: currentTheme.textSecondary,
-                }}>
-                  {selectedConvo.category}
-                </span>
-              )}
-            </div>
-          </div>
+        {/* Sticky close button — stays visible while scrolling through responses */}
+        <div style={{
+          position: 'sticky',
+          top: '0px',
+          zIndex: 10,
+          display: 'flex',
+          justifyContent: 'flex-end',
+          pointerEvents: 'none',
+          marginBottom: '-34px',
+        }}>
           <button
             onClick={() => {
               setSelectedConvo(null)
               setExpandAllDetailSections(false)
             }}
             style={{
-              background: 'rgba(255, 107, 107, 0.1)',
-              border: '1px solid rgba(255, 107, 107, 0.3)',
+              background: 'rgba(255, 107, 107, 0.12)',
+              border: '1px solid rgba(255, 107, 107, 0.35)',
               borderRadius: '8px',
               cursor: 'pointer',
               padding: '6px',
@@ -587,19 +580,54 @@ const SavedConversationsView = () => {
               justifyContent: 'center',
               transition: 'all 0.2s ease',
               flexShrink: 0,
+              pointerEvents: 'auto',
+              backdropFilter: 'blur(8px)',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(255, 107, 107, 0.25)'
+              e.currentTarget.style.background = 'rgba(255, 107, 107, 0.28)'
               e.currentTarget.style.borderColor = 'rgba(255, 107, 107, 0.6)'
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(255, 107, 107, 0.1)'
-              e.currentTarget.style.borderColor = 'rgba(255, 107, 107, 0.3)'
+              e.currentTarget.style.background = 'rgba(255, 107, 107, 0.12)'
+              e.currentTarget.style.borderColor = 'rgba(255, 107, 107, 0.35)'
             }}
             title="Close"
           >
             <X size={18} />
           </button>
+        </div>
+
+        {/* Header */}
+        <div style={{ marginBottom: '20px', paddingRight: '36px' }}>
+          <h2 style={{ fontSize: '1.4rem', color: currentTheme.text, margin: '0 0 8px 0', lineHeight: '1.3' }}>
+            {selectedConvo.title}
+          </h2>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{
+              padding: '4px 10px',
+              background: selectedConvo.responses?.length > 1 ? 'rgba(59, 130, 246, 0.15)' : 'rgba(168, 85, 247, 0.15)',
+              border: `1px solid ${selectedConvo.responses?.length > 1 ? 'rgba(59, 130, 246, 0.4)' : 'rgba(168, 85, 247, 0.4)'}`,
+              borderRadius: '6px', fontSize: '0.75rem',
+              color: selectedConvo.responses?.length > 1 ? '#60a5fa' : '#a855f7',
+              fontWeight: '600',
+            }}>
+              {selectedConvo.responses?.length > 1
+                ? `Council (${selectedModelCount} models ${selectedHasSummary ? 'and summary' : 'no summary'})`
+                : 'Single Model'}
+            </span>
+            <span style={{ fontSize: '0.8rem', color: currentTheme.textMuted }}>
+              {formatDate(selectedConvo.savedAt)}
+            </span>
+            {selectedConvo.category && selectedConvo.category !== 'General Knowledge/Other' && (
+              <span style={{
+                padding: '3px 8px', background: currentTheme.buttonBackground,
+                borderRadius: '4px', fontSize: '0.75rem', color: currentTheme.textSecondary,
+              }}>
+                {selectedConvo.category}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Original Prompt */}
@@ -1024,7 +1052,7 @@ const SavedConversationsView = () => {
             <div style={{
               width: selectedConvo ? '360px' : '100%',
               minWidth: selectedConvo ? '360px' : undefined,
-              transition: 'width 0.3s ease',
+              flexShrink: 0,
             }}>
               {sortedYears.map((year) => {
                 const yearData = hierarchy[year]
@@ -1201,7 +1229,7 @@ const SavedConversationsView = () => {
               alignSelf: 'flex-start',
               maxHeight: 'calc(100vh - 80px)',
             }}>
-              <AnimatePresence mode="wait">
+              <AnimatePresence>
                 {loadingDetail ? (
                   <div style={{
                     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
