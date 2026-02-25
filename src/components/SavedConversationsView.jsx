@@ -50,6 +50,7 @@ const SavedConversationsView = () => {
   const [expandedTitles, setExpandedTitles] = useState({})
   const [expandAllDetailSections, setExpandAllDetailSections] = useState(false)
   const detailPanelRef = useRef(null)
+  const convoCardClickedRef = useRef(false)
 
   // Categories state
   const [categoriesData, setCategoriesData] = useState(null)
@@ -72,6 +73,10 @@ const SavedConversationsView = () => {
     if (activeSubTab !== 'history' || !selectedConvo) return
 
     const handleOutsideClick = (event) => {
+      if (convoCardClickedRef.current) {
+        convoCardClickedRef.current = false
+        return
+      }
       if (!detailPanelRef.current) return
       if (detailPanelRef.current.contains(event.target)) return
       setSelectedConvo(null)
@@ -336,8 +341,8 @@ const SavedConversationsView = () => {
     return (
       <motion.div
       key={convo.id}
+      onMouseDown={() => { convoCardClickedRef.current = true }}
       onClick={() => {
-        // Toggle: if this convo is already selected, close the detail panel
         if (selectedConvo?.id === convo.id) {
           setSelectedConvo(null)
           setExpandAllDetailSections(false)
