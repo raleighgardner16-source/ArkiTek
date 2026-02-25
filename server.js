@@ -552,6 +552,11 @@ const ensureUserInCache = async (userId) => {
       timezone: dbUser.timezone || null,
       signupIp: dbUser.signupIp || null,
       deviceFingerprint: dbUser.deviceFingerprint || null,
+      bio: dbUser.bio || '',
+      profileImage: dbUser.profileImage || null,
+      isAnonymous: dbUser.isAnonymous || false,
+      followers: dbUser.followers || [],
+      following: dbUser.following || [],
     }
     console.log(`[Cache Fallback] Loaded user ${userId} from MongoDB into cache`)
     return usersCache[userId]
@@ -1440,8 +1445,8 @@ app.use(cors(ALLOWED_ORIGINS ? {
 // This must be BEFORE express.json() middleware
 app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }))
 
-// JSON parsing for all other routes
-app.use(express.json())
+// JSON parsing for all other routes (2mb limit to support profile image uploads)
+app.use(express.json({ limit: '2mb' }))
 
 // Health/version check endpoint
 app.get('/api/health', (req, res) => {
@@ -1571,6 +1576,11 @@ app.post('/api/auth/signup', async (req, res) => {
       signupIp,
       deviceFingerprint: fingerprint || null,
       timezone: timezone || null,
+      bio: '',
+      profileImage: null,
+      isAnonymous: false,
+      followers: [],
+      following: [],
     }
     usersCache = users
 
@@ -2823,8 +2833,10 @@ app.get('/api/stats/:userId', async (req, res) => {
   const createdAt = user?.createdAt || null
 
   // Calculate monthly cost and remaining free allocation
-  // Free trial users only get their $0.50 purchasedCredits — no monthly allocation
-  const FREE_MONTHLY_ALLOCATION = (user?.plan === 'free_trial') ? 0 : 7.50
+  // Free trial users only get their $0.50 purchasedCredits — no monthly allocation.
+  // Defensive: trialing users with no Stripe subscription are free trial users even if plan field is missing.
+  const isFreeTrial = user?.plan === 'free_trial' || (user?.subscriptionStatus === 'trialing' && !user?.stripeSubscriptionId)
+  const FREE_MONTHLY_ALLOCATION = isFreeTrial ? 0 : 7.50
   
   // Get the tracked monthly cost from users cache (incremental counter)
   let cachedMonthlyCost = user?.monthlyUsageCost?.[currentMonth] || 0
@@ -4751,6 +4763,23 @@ const checkSubscriptionStatus = async (userId) => {
         return { hasAccess: false, reason: 'Subscription has expired' }
       }
     }
+
+    // Free trial users: enforce spending limit (purchased credits only, no $7.50 monthly allocation)
+    // Defensive: trialing users with no Stripe subscription are free trial users even if plan field is missing
+    const isFreeTrial = user.plan === 'free_trial' || (status === 'trialing' && !user.stripeSubscriptionId)
+    if (isFreeTrial) {
+      const tz = getUserTimezone(userId)
+      const currentMonth = getMonthForUser(tz)
+      const monthlyCost = user.monthlyUsageCost?.[currentMonth] || 0
+      const usage = readUsage()
+      const purchasedCreditsTotal = usage[userId]?.purchasedCredits?.total || 0
+
+      if (monthlyCost >= purchasedCreditsTotal) {
+        console.log(`[Subscription Check] Free trial budget exhausted for user ${userId}: spent $${monthlyCost.toFixed(4)}, total credits: $${purchasedCreditsTotal.toFixed(2)}`)
+        return { hasAccess: false, reason: 'Your free trial credits have been used up. Please upgrade to a Pro plan to continue.' }
+      }
+    }
+
     console.log(`[Subscription Check] Access granted for user ${userId}`)
     return { hasAccess: true }
   }
@@ -9224,6 +9253,7 @@ app.get('/api/admin/costs', requireAdmin, (req, res) => {
         email: user?.email || '',
         firstName: user?.firstName || '',
         lastName: user?.lastName || '',
+        plan: user?.plan || null,
         totalInputTokens: userUsage.totalInputTokens || 0,
         totalOutputTokens: userUsage.totalOutputTokens || 0,
         totalTokens: userUsage.totalTokens || 0,
@@ -9894,7 +9924,8 @@ app.get('/api/leaderboard', (req, res) => {
       const user = users[prompt.userId]
       return {
         ...prompt,
-        username: user?.username || user?.email || 'Anonymous',
+        username: user?.isAnonymous ? 'Anonymous' : (user?.username || user?.email || 'Anonymous'),
+        profileImage: user?.profileImage || null,
         likeCount: prompt.likes?.length || 0,
       }
     })
@@ -10161,6 +10192,7 @@ app.get('/api/leaderboard/user-stats/:userId', (req, res) => {
 app.get('/api/profile/:userId', async (req, res) => {
   try {
     const { userId } = req.params
+    const { viewerId } = req.query
     await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
@@ -10188,18 +10220,27 @@ app.get('/api/profile/:userId', async (req, res) => {
       })
     })
 
-    // Public profile data only — no spending, credits, tokens, or private stats
+    const followers = user.followers || []
+    const following = user.following || []
+    const isFollowing = viewerId ? followers.includes(viewerId) : false
+
     res.json({
-      username: user.username || 'Anonymous',
-      firstName: user.firstName || null,
+      userId,
+      username: user.isAnonymous ? 'Anonymous' : (user.username || 'Anonymous'),
+      firstName: user.isAnonymous ? null : (user.firstName || null),
+      bio: user.bio || '',
+      profileImage: user.profileImage || null,
+      isAnonymous: user.isAnonymous || false,
       createdAt: user.createdAt || null,
+      followersCount: followers.length,
+      followingCount: following.length,
+      isFollowing,
       earnedBadges: userUsage.earnedBadges || [],
       leaderboard: {
         totalPosts: userPrompts.length,
         totalLikes,
         totalComments,
       },
-      // Return their leaderboard posts (public)
       posts: userPrompts.map(p => ({
         id: p.id,
         promptText: p.promptText,
@@ -10217,6 +10258,271 @@ app.get('/api/profile/:userId', async (req, res) => {
   } catch (error) {
     console.error('[Profile] Error fetching public profile:', error)
     res.status(500).json({ error: 'Failed to fetch profile' })
+  }
+})
+
+// Update user profile (bio, profileImage, isAnonymous)
+app.put('/api/profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params
+    const { bio, profileImage, isAnonymous } = req.body
+
+    await ensureUserInCache(userId)
+    const users = readUsers()
+    const user = users[userId]
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    const updates = {}
+    if (bio !== undefined) {
+      updates.bio = (bio || '').substring(0, 300)
+    }
+    if (profileImage !== undefined) {
+      if (profileImage && profileImage.length > 500000) {
+        return res.status(400).json({ error: 'Profile image too large. Please use a smaller image.' })
+      }
+      updates.profileImage = profileImage
+    }
+    if (isAnonymous !== undefined) {
+      updates.isAnonymous = !!isAnonymous
+    }
+
+    Object.assign(user, updates)
+    writeUsers(users, userId)
+
+    try {
+      await db.users.update(userId, updates)
+    } catch (dbErr) {
+      console.warn('[Profile] MongoDB update failed (non-critical):', dbErr.message)
+    }
+
+    console.log(`[Profile] Updated profile for user ${userId}:`, Object.keys(updates))
+    res.json({ success: true, ...updates })
+  } catch (error) {
+    console.error('[Profile] Error updating profile:', error)
+    res.status(500).json({ error: 'Failed to update profile' })
+  }
+})
+
+// Follow a user
+app.post('/api/users/:targetUserId/follow', async (req, res) => {
+  try {
+    const { targetUserId } = req.params
+    const { userId } = req.body
+
+    if (!userId || !targetUserId) {
+      return res.status(400).json({ error: 'userId and targetUserId are required' })
+    }
+    if (userId === targetUserId) {
+      return res.status(400).json({ error: 'You cannot follow yourself' })
+    }
+
+    await ensureUserInCache(userId)
+    await ensureUserInCache(targetUserId)
+    const users = readUsers()
+    const currentUser = users[userId]
+    const targetUser = users[targetUserId]
+
+    if (!currentUser || !targetUser) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    if (!currentUser.following) currentUser.following = []
+    if (!targetUser.followers) targetUser.followers = []
+
+    if (currentUser.following.includes(targetUserId)) {
+      return res.json({ success: true, alreadyFollowing: true })
+    }
+
+    currentUser.following.push(targetUserId)
+    targetUser.followers.push(userId)
+    writeUsers(users, userId)
+
+    try {
+      const dbInstance = await db.getDb()
+      await Promise.all([
+        dbInstance.collection('users').updateOne(
+          { _id: userId },
+          { $addToSet: { following: targetUserId } }
+        ),
+        dbInstance.collection('users').updateOne(
+          { _id: targetUserId },
+          { $addToSet: { followers: userId } }
+        ),
+      ])
+    } catch (dbErr) {
+      console.warn('[Social] MongoDB follow update failed:', dbErr.message)
+    }
+
+    console.log(`[Social] User ${userId} followed ${targetUserId}`)
+    res.json({
+      success: true,
+      followersCount: targetUser.followers.length,
+      followingCount: currentUser.following.length,
+    })
+  } catch (error) {
+    console.error('[Social] Error following user:', error)
+    res.status(500).json({ error: 'Failed to follow user' })
+  }
+})
+
+// Unfollow a user
+app.post('/api/users/:targetUserId/unfollow', async (req, res) => {
+  try {
+    const { targetUserId } = req.params
+    const { userId } = req.body
+
+    if (!userId || !targetUserId) {
+      return res.status(400).json({ error: 'userId and targetUserId are required' })
+    }
+
+    await ensureUserInCache(userId)
+    await ensureUserInCache(targetUserId)
+    const users = readUsers()
+    const currentUser = users[userId]
+    const targetUser = users[targetUserId]
+
+    if (!currentUser || !targetUser) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    if (!currentUser.following) currentUser.following = []
+    if (!targetUser.followers) targetUser.followers = []
+
+    currentUser.following = currentUser.following.filter(id => id !== targetUserId)
+    targetUser.followers = targetUser.followers.filter(id => id !== userId)
+    writeUsers(users, userId)
+
+    try {
+      const dbInstance = await db.getDb()
+      await Promise.all([
+        dbInstance.collection('users').updateOne(
+          { _id: userId },
+          { $pull: { following: targetUserId } }
+        ),
+        dbInstance.collection('users').updateOne(
+          { _id: targetUserId },
+          { $pull: { followers: userId } }
+        ),
+      ])
+    } catch (dbErr) {
+      console.warn('[Social] MongoDB unfollow update failed:', dbErr.message)
+    }
+
+    console.log(`[Social] User ${userId} unfollowed ${targetUserId}`)
+    res.json({
+      success: true,
+      followersCount: targetUser.followers.length,
+      followingCount: currentUser.following.length,
+    })
+  } catch (error) {
+    console.error('[Social] Error unfollowing user:', error)
+    res.status(500).json({ error: 'Failed to unfollow user' })
+  }
+})
+
+// Get followers list
+app.get('/api/users/:userId/followers', async (req, res) => {
+  try {
+    const { userId } = req.params
+    await ensureUserInCache(userId)
+    const users = readUsers()
+    const user = users[userId]
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    const followers = (user.followers || []).map(fId => {
+      const f = users[fId]
+      return f ? {
+        userId: fId,
+        username: f.isAnonymous ? 'Anonymous' : (f.username || 'Anonymous'),
+        profileImage: f.profileImage || null,
+        bio: (f.bio || '').substring(0, 100),
+      } : null
+    }).filter(Boolean)
+
+    res.json({ followers })
+  } catch (error) {
+    console.error('[Social] Error fetching followers:', error)
+    res.status(500).json({ error: 'Failed to fetch followers' })
+  }
+})
+
+// Get following list
+app.get('/api/users/:userId/following', async (req, res) => {
+  try {
+    const { userId } = req.params
+    await ensureUserInCache(userId)
+    const users = readUsers()
+    const user = users[userId]
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    const following = (user.following || []).map(fId => {
+      const f = users[fId]
+      return f ? {
+        userId: fId,
+        username: f.isAnonymous ? 'Anonymous' : (f.username || 'Anonymous'),
+        profileImage: f.profileImage || null,
+        bio: (f.bio || '').substring(0, 100),
+      } : null
+    }).filter(Boolean)
+
+    res.json({ following })
+  } catch (error) {
+    console.error('[Social] Error fetching following:', error)
+    res.status(500).json({ error: 'Failed to fetch following' })
+  }
+})
+
+// Search users by username
+app.get('/api/users/search', async (req, res) => {
+  try {
+    const { q } = req.query
+    if (!q || q.trim().length < 1) {
+      return res.json({ users: [] })
+    }
+
+    const query = q.trim().toLowerCase()
+    const users = readUsers()
+    const results = []
+
+    for (const [uid, user] of Object.entries(users)) {
+      if (user.isAnonymous) continue
+      const username = (user.username || '').toLowerCase()
+      const firstName = (user.firstName || '').toLowerCase()
+      const lastName = (user.lastName || '').toLowerCase()
+      if (username.includes(query) || firstName.includes(query) || lastName.includes(query)) {
+        results.push({
+          userId: uid,
+          username: user.username || 'Anonymous',
+          firstName: user.firstName || null,
+          profileImage: user.profileImage || null,
+          bio: (user.bio || '').substring(0, 100),
+          followersCount: (user.followers || []).length,
+        })
+      }
+      if (results.length >= 20) break
+    }
+
+    results.sort((a, b) => {
+      const aExact = a.username.toLowerCase() === query
+      const bExact = b.username.toLowerCase() === query
+      if (aExact && !bExact) return -1
+      if (!aExact && bExact) return 1
+      return b.followersCount - a.followersCount
+    })
+
+    res.json({ users: results })
+  } catch (error) {
+    console.error('[Search] Error searching users:', error)
+    res.status(500).json({ error: 'Failed to search users' })
   }
 })
 
@@ -11760,7 +12066,8 @@ const calculateAndRecordOverage = async (userId, month) => {
     
     // Calculate monthly cost
     // Free trial users have no monthly allocation (they only get purchasedCredits)
-    const FREE_MONTHLY_ALLOCATION = (user?.plan === 'free_trial') ? 0 : 7.50
+    const isFreeTrial = user?.plan === 'free_trial' || (user?.subscriptionStatus === 'trialing' && !user?.stripeSubscriptionId)
+    const FREE_MONTHLY_ALLOCATION = isFreeTrial ? 0 : 7.50
     const pricing = getPricingData()
     const dailyData = userUsage.dailyUsage?.[month] || {}
     let monthlyCost = 0
@@ -11789,7 +12096,7 @@ const calculateAndRecordOverage = async (userId, month) => {
       }
     })
     
-    // Calculate overage (cost above $7.50 free allocation)
+    // Calculate overage (cost above free allocation — $7.50 for pro, $0 for free trial)
     const overage = Math.max(0, monthlyCost - FREE_MONTHLY_ALLOCATION)
     
     // Update user's monthly usage cost

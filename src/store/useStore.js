@@ -228,6 +228,10 @@ export const useStore = create(
       statsRefreshTrigger: 0,
       triggerStatsRefresh: () => set((state) => ({ statsRefreshTrigger: state.statsRefreshTrigger + 1 })),
 
+      // Notification badge count for profile tab (social interactions)
+      notificationCount: 0,
+      setNotificationCount: (count) => set({ notificationCount: count }),
+
       // Navigation bar expanded state
       isNavExpanded: false,
       setNavExpanded: (expanded) => set({ isNavExpanded: expanded }),

@@ -71,6 +71,12 @@ export const usersSchema = {
   signupIp: 'string',         // IP address at signup (for rate limiting free trials)
   deviceFingerprint: 'string', // Browser fingerprint at signup (blocks same device re-trials)
   plan: 'string',             // 'free_trial' | 'pro' | null
+  // --- Social profile fields ---
+  bio: 'string',               // User bio (max 300 chars)
+  profileImage: 'string',      // Base64 data URL for profile avatar (null if not set)
+  isAnonymous: 'boolean',      // If true, username/name hidden from public profile
+  followers: ['string'],       // Array of userIds who follow this user
+  following: ['string'],       // Array of userIds this user follows
 }
 
 /**
@@ -450,6 +456,7 @@ export const indexes = {
     { key: { lastActiveAt: -1 } },                 // For activity sorting
     { key: { signupIp: 1, plan: 1 } },             // For IP-based free trial rate limiting
     { key: { deviceFingerprint: 1, plan: 1 }, options: { sparse: true } }, // For fingerprint-based trial detection
+    { key: { username: 'text', firstName: 'text', lastName: 'text' } }, // For user search
   ],
   
   user_stats: [

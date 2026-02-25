@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield, Trash2, ArrowLeft } from 'lucide-react'
+import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield, Trash2, ArrowLeft, Camera, Edit3, UserPlus, UserCheck, Users } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -240,6 +240,18 @@ const StatisticsView = () => {
   // Public profile data for another user
   const [publicProfile, setPublicProfile] = useState(null)
   const [loadingPublicProfile, setLoadingPublicProfile] = useState(false)
+  // Profile editing state
+  const [showEditProfile, setShowEditProfile] = useState(false)
+  const [editBio, setEditBio] = useState('')
+  const [editIsAnonymous, setEditIsAnonymous] = useState(false)
+  const [editProfileImage, setEditProfileImage] = useState(null)
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [ownProfileData, setOwnProfileData] = useState(null)
+  const [followLoading, setFollowLoading] = useState(false)
+  const [showFollowersList, setShowFollowersList] = useState(null)
+  const [followersListData, setFollowersListData] = useState([])
+  const [loadingFollowersList, setLoadingFollowersList] = useState(false)
+  const fileInputRef = useRef(null)
 
   // Handle successful usage purchase
   const handleUsagePurchaseSuccess = (data) => {
@@ -281,7 +293,8 @@ const StatisticsView = () => {
       if (!hasLoadedProfile) {
         setLoadingPublicProfile(true)
       }
-      const response = await axios.get(`${API_URL}/api/profile/${userId}`)
+      const viewerId = currentUser?.id || ''
+      const response = await axios.get(`${API_URL}/api/profile/${userId}?viewerId=${viewerId}`)
       setPublicProfile(response.data)
       setProfilePrompts(response.data.posts || [])
     } catch (error) {
@@ -292,6 +305,108 @@ const StatisticsView = () => {
       setLoadingPublicProfile(false)
       setLoadingProfile(false)
       setHasLoadedProfile(true)
+    }
+  }
+
+  const fetchOwnProfile = async () => {
+    if (!currentUser?.id) return
+    try {
+      const response = await axios.get(`${API_URL}/api/profile/${currentUser.id}?viewerId=${currentUser.id}`)
+      setOwnProfileData(response.data)
+    } catch (error) {
+      console.error('Error fetching own profile:', error)
+    }
+  }
+
+  useEffect(() => {
+    if (currentUser?.id && !isViewingOther) {
+      fetchOwnProfile()
+    }
+  }, [currentUser?.id, isViewingOther, statsRefreshTrigger])
+
+  const handleFollow = async (targetUserId) => {
+    if (!currentUser?.id || followLoading) return
+    setFollowLoading(true)
+    try {
+      await axios.post(`${API_URL}/api/users/${targetUserId}/follow`, { userId: currentUser.id })
+      await fetchPublicProfile(targetUserId)
+    } catch (error) {
+      console.error('Error following user:', error)
+    } finally {
+      setFollowLoading(false)
+    }
+  }
+
+  const handleUnfollow = async (targetUserId) => {
+    if (!currentUser?.id || followLoading) return
+    setFollowLoading(true)
+    try {
+      await axios.post(`${API_URL}/api/users/${targetUserId}/unfollow`, { userId: currentUser.id })
+      await fetchPublicProfile(targetUserId)
+    } catch (error) {
+      console.error('Error unfollowing user:', error)
+    } finally {
+      setFollowLoading(false)
+    }
+  }
+
+  const handleSaveProfile = async () => {
+    if (!currentUser?.id || savingProfile) return
+    setSavingProfile(true)
+    try {
+      await axios.put(`${API_URL}/api/profile/${currentUser.id}`, {
+        bio: editBio,
+        isAnonymous: editIsAnonymous,
+        profileImage: editProfileImage,
+      })
+      await fetchOwnProfile()
+      setShowEditProfile(false)
+    } catch (error) {
+      console.error('Error saving profile:', error)
+      alert(error.response?.data?.error || 'Failed to save profile')
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 500000) {
+      alert('Image too large. Please use an image under 500KB.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const size = 200
+        canvas.width = size
+        canvas.height = size
+        const ctx = canvas.getContext('2d')
+        const min = Math.min(img.width, img.height)
+        const sx = (img.width - min) / 2
+        const sy = (img.height - min) / 2
+        ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size)
+        setEditProfileImage(canvas.toDataURL('image/jpeg', 0.8))
+      }
+      img.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const fetchFollowersList = async (userId, type) => {
+    setShowFollowersList(type)
+    setLoadingFollowersList(true)
+    try {
+      const response = await axios.get(`${API_URL}/api/users/${userId}/${type}`)
+      setFollowersListData(response.data[type] || [])
+    } catch (error) {
+      console.error(`Error fetching ${type}:`, error)
+      setFollowersListData([])
+    } finally {
+      setLoadingFollowersList(false)
     }
   }
 
@@ -645,8 +760,8 @@ const StatisticsView = () => {
           margin: '0 auto',
         }}
       >
-        {/* Header */}
-        <div style={{ marginBottom: '40px' }}>
+        {/* Profile Header */}
+        <div style={{ marginBottom: '32px' }}>
           {isViewingOther && (
             <motion.button
               onClick={() => clearViewingProfile()}
@@ -671,37 +786,163 @@ const StatisticsView = () => {
               Back to My Profile
             </motion.button>
           )}
-          <h1
-            key={`title-${theme}-${viewingProfile?.userId || 'self'}`}
-            style={{
-              fontSize: '2.5rem',
-              marginBottom: '12px',
-              background: currentTheme.accentGradient,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              color: currentTheme.accent,
-              display: 'inline-block',
-            }}
-          >
-            {isViewingOther
-              ? `${viewingProfile.username}'s Profile`
-              : `${currentUser?.firstName || currentUser?.username || 'Your'}'s Profile`}
-          </h1>
-          {!isViewingOther && stats?.createdAt && (
-            <p style={{ color: currentTheme.textSecondary, fontSize: '1rem', marginBottom: '8px' }}>
-              Member for: {formatAccountAge(stats.createdAt)}
-            </p>
-          )}
-          {isViewingOther && publicProfile?.createdAt && (
-            <p style={{ color: currentTheme.textSecondary, fontSize: '1rem', marginBottom: '8px' }}>
-              Member for: {formatAccountAge(publicProfile.createdAt)}
-            </p>
-          )}
-          <p style={{ color: currentTheme.textSecondary, fontSize: '1.1rem', marginBottom: '8px' }}>
-            {isViewingOther
-              ? `Viewing ${viewingProfile.username}'s public profile`
-              : 'Track your usage and performance across all providers and models'}
-          </p>
+
+          {/* Instagram-style profile card */}
+          {(() => {
+            const profileData = isViewingOther ? publicProfile : ownProfileData
+            const displayUsername = isViewingOther
+              ? (publicProfile?.username || viewingProfile?.username || 'User')
+              : (currentUser?.username || 'You')
+            const displayBio = profileData?.bio || ''
+            const displayImage = profileData?.profileImage || null
+            const followersCount = profileData?.followersCount || 0
+            const followingCount = profileData?.followingCount || 0
+            const postsCount = profileData?.leaderboard?.totalPosts || 0
+            const isFollowing = publicProfile?.isFollowing || false
+            const memberSince = profileData?.createdAt || stats?.createdAt
+
+            return (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '20px',
+                padding: '28px',
+                background: currentTheme.buttonBackground,
+                border: `1px solid ${currentTheme.borderLight}`,
+                borderRadius: '16px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
+                  {/* Avatar */}
+                  <div style={{
+                    width: '88px',
+                    height: '88px',
+                    borderRadius: '50%',
+                    background: displayImage ? 'none' : currentTheme.accentGradient,
+                    border: `3px solid ${currentTheme.accent}40`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                  }}>
+                    {displayImage ? (
+                      <img src={displayImage} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <User size={36} color="#fff" />
+                    )}
+                  </div>
+
+                  {/* Info + Stats */}
+                  <div style={{ flex: 1, minWidth: '200px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                      <h2 style={{
+                        fontSize: '1.5rem',
+                        fontWeight: '700',
+                        margin: 0,
+                        color: currentTheme.text,
+                      }}>
+                        {displayUsername}
+                      </h2>
+
+                      {/* Follow / Edit Profile button */}
+                      {isViewingOther ? (
+                        <motion.button
+                          onClick={() => isFollowing ? handleUnfollow(viewingProfile.userId) : handleFollow(viewingProfile.userId)}
+                          disabled={followLoading}
+                          whileHover={{ scale: 1.03 }}
+                          whileTap={{ scale: 0.97 }}
+                          style={{
+                            padding: '6px 20px',
+                            background: isFollowing ? 'transparent' : currentTheme.accentGradient,
+                            border: isFollowing ? `1px solid ${currentTheme.borderLight}` : 'none',
+                            borderRadius: '8px',
+                            color: isFollowing ? currentTheme.textSecondary : '#fff',
+                            fontSize: '0.85rem',
+                            fontWeight: '600',
+                            cursor: followLoading ? 'wait' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            opacity: followLoading ? 0.6 : 1,
+                          }}
+                        >
+                          {isFollowing ? <><UserCheck size={15} /> Following</> : <><UserPlus size={15} /> Follow</>}
+                        </motion.button>
+                      ) : (
+                        <motion.button
+                          onClick={() => {
+                            setEditBio(ownProfileData?.bio || '')
+                            setEditIsAnonymous(ownProfileData?.isAnonymous || false)
+                            setEditProfileImage(ownProfileData?.profileImage || null)
+                            setShowEditProfile(true)
+                          }}
+                          whileHover={{ scale: 1.03 }}
+                          whileTap={{ scale: 0.97 }}
+                          style={{
+                            padding: '6px 16px',
+                            background: 'transparent',
+                            border: `1px solid ${currentTheme.borderLight}`,
+                            borderRadius: '8px',
+                            color: currentTheme.textSecondary,
+                            fontSize: '0.85rem',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <Edit3 size={14} /> Edit Profile
+                        </motion.button>
+                      )}
+                    </div>
+
+                    {/* Stats row: Posts | Followers | Following */}
+                    <div style={{ display: 'flex', gap: '24px', marginBottom: '8px' }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <span style={{ fontWeight: '700', fontSize: '1.05rem', color: currentTheme.text }}>{postsCount}</span>
+                        <span style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', marginLeft: '4px' }}>posts</span>
+                      </div>
+                      <div
+                        onClick={() => fetchFollowersList(isViewingOther ? viewingProfile.userId : currentUser?.id, 'followers')}
+                        style={{ textAlign: 'center', cursor: 'pointer' }}
+                      >
+                        <span style={{ fontWeight: '700', fontSize: '1.05rem', color: currentTheme.text }}>{followersCount}</span>
+                        <span style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', marginLeft: '4px' }}>followers</span>
+                      </div>
+                      <div
+                        onClick={() => fetchFollowersList(isViewingOther ? viewingProfile.userId : currentUser?.id, 'following')}
+                        style={{ textAlign: 'center', cursor: 'pointer' }}
+                      >
+                        <span style={{ fontWeight: '700', fontSize: '1.05rem', color: currentTheme.text }}>{followingCount}</span>
+                        <span style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', marginLeft: '4px' }}>following</span>
+                      </div>
+                    </div>
+
+                    {/* Bio */}
+                    {displayBio && (
+                      <p style={{
+                        color: currentTheme.text,
+                        fontSize: '0.9rem',
+                        lineHeight: '1.5',
+                        margin: 0,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                      }}>
+                        {displayBio}
+                      </p>
+                    )}
+
+                    {memberSince && (
+                      <p style={{ color: currentTheme.textMuted || currentTheme.textSecondary, fontSize: '0.78rem', margin: '4px 0 0 0' }}>
+                        Member for {formatAccountAge(memberSince)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Tab Buttons */}
@@ -890,7 +1131,7 @@ const StatisticsView = () => {
                     gap: '8px',
                   }}
                 >
-                  ${(userStats.totalAvailableBalance || userStats.remainingFreeAllocation || 5).toFixed(2)}
+                  ${(userStats.totalAvailableBalance ?? userStats.remainingFreeAllocation ?? 0).toFixed(2)}
                   <span style={{ fontSize: '1.2rem', fontWeight: '500' }}>credit left</span>
                 </p>
                 
@@ -1746,7 +1987,7 @@ const StatisticsView = () => {
                           color: currentTheme.accent,
                           display: 'inline-block',
                         }}>
-                          {leaderboardStats?.totalPrompts || 0}
+                          {userStats.totalPrompts || 0}
                         </p>
                       </div>
                       <div>
@@ -1801,7 +2042,7 @@ const StatisticsView = () => {
                       </div>
                     ) : (
                       <p style={{ color: '#888888', fontSize: '0.9rem', fontStyle: 'italic' }}>
-                        No recent notifications. When people like your prompts, you'll see updates here!
+                        No recent notifications. When people like, comment on, or share your prompts, you'll see updates here!
                       </p>
                     )}
                   </div>
@@ -2584,6 +2825,280 @@ const StatisticsView = () => {
           onClose={() => setShowBuyUsageModal(false)}
           onSuccess={handleUsagePurchaseSuccess}
         />
+
+        {/* Edit Profile Modal */}
+        <AnimatePresence>
+          {showEditProfile && (
+            <div
+              onClick={() => !savingProfile && setShowEditProfile(false)}
+              style={{
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(4px)',
+              }}
+            >
+              <motion.div
+                onClick={(e) => e.stopPropagation()}
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                style={{
+                  background: currentTheme.backgroundOverlay,
+                  border: `1px solid ${currentTheme.border}`,
+                  borderRadius: '16px',
+                  padding: '30px',
+                  maxWidth: '480px',
+                  width: 'calc(100% - 40px)',
+                  maxHeight: '85vh',
+                  overflowY: 'auto',
+                  position: 'relative',
+                }}
+              >
+                <h2 style={{
+                  fontSize: '1.3rem', margin: '0 0 20px 0',
+                  background: currentTheme.accentGradient,
+                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                }}>
+                  Edit Profile
+                </h2>
+
+                {/* Profile image */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      width: '100px', height: '100px', borderRadius: '50%',
+                      background: editProfileImage ? 'none' : currentTheme.accentGradient,
+                      border: `3px solid ${currentTheme.accent}40`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      overflow: 'hidden', cursor: 'pointer', position: 'relative',
+                    }}
+                  >
+                    {editProfileImage ? (
+                      <img src={editProfileImage} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <User size={40} color="#fff" />
+                    )}
+                    <div style={{
+                      position: 'absolute', bottom: 0, left: 0, right: 0,
+                      background: 'rgba(0,0,0,0.5)', padding: '4px 0',
+                      display: 'flex', justifyContent: 'center',
+                    }}>
+                      <Camera size={14} color="#fff" />
+                    </div>
+                  </div>
+                  <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{
+                        padding: '6px 14px', background: 'transparent',
+                        border: `1px solid ${currentTheme.borderLight}`, borderRadius: '8px',
+                        color: currentTheme.accent, fontSize: '0.8rem', cursor: 'pointer',
+                      }}
+                    >
+                      Upload Photo
+                    </button>
+                    {editProfileImage && (
+                      <button
+                        onClick={() => setEditProfileImage(null)}
+                        style={{
+                          padding: '6px 14px', background: 'transparent',
+                          border: `1px solid ${currentTheme.borderLight}`, borderRadius: '8px',
+                          color: '#ff6b6b', fontSize: '0.8rem', cursor: 'pointer',
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bio */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{
+                    color: currentTheme.textSecondary, fontSize: '0.75rem', fontWeight: '500',
+                    textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '6px',
+                  }}>Bio</label>
+                  <textarea
+                    value={editBio}
+                    onChange={(e) => setEditBio(e.target.value)}
+                    placeholder="Tell people about yourself..."
+                    maxLength={300}
+                    style={{
+                      width: '100%', minHeight: '80px', padding: '10px 12px',
+                      background: currentTheme.buttonBackground, border: `1px solid ${currentTheme.borderLight}`,
+                      borderRadius: '10px', color: currentTheme.text, fontSize: '0.9rem',
+                      lineHeight: '1.5', resize: 'vertical', outline: 'none', fontFamily: 'inherit',
+                      boxSizing: 'border-box',
+                    }}
+                    onFocus={(e) => { e.target.style.borderColor = currentTheme.accent }}
+                    onBlur={(e) => { e.target.style.borderColor = currentTheme.borderLight }}
+                  />
+                  <p style={{ color: currentTheme.textMuted || currentTheme.textSecondary, fontSize: '0.72rem', margin: '4px 0 0 0', textAlign: 'right' }}>
+                    {editBio.length}/300
+                  </p>
+                </div>
+
+                {/* Anonymous toggle */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '12px 14px', background: currentTheme.buttonBackground,
+                  border: `1px solid ${currentTheme.borderLight}`, borderRadius: '10px', marginBottom: '20px',
+                }}>
+                  <div>
+                    <p style={{ color: currentTheme.text, fontSize: '0.9rem', fontWeight: '500', margin: 0 }}>Anonymous Mode</p>
+                    <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: '2px 0 0 0' }}>
+                      Hide your name and username from other users
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setEditIsAnonymous(!editIsAnonymous)}
+                    style={{
+                      width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: 'pointer',
+                      background: editIsAnonymous ? currentTheme.accent : (currentTheme.borderLight || '#444'),
+                      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                    }}
+                  >
+                    <div style={{
+                      width: '20px', height: '20px', borderRadius: '50%', background: '#fff',
+                      position: 'absolute', top: '2px',
+                      left: editIsAnonymous ? '22px' : '2px',
+                      transition: 'left 0.2s',
+                    }} />
+                  </button>
+                </div>
+
+                {/* Save / Cancel */}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <motion.button
+                    onClick={() => setShowEditProfile(false)}
+                    whileHover={{ scale: 1.02 }}
+                    style={{
+                      flex: 1, padding: '10px', background: 'transparent',
+                      border: `1px solid ${currentTheme.borderLight}`, borderRadius: '10px',
+                      color: currentTheme.textSecondary, fontSize: '0.9rem', cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </motion.button>
+                  <motion.button
+                    onClick={handleSaveProfile}
+                    disabled={savingProfile}
+                    whileHover={{ scale: 1.02 }}
+                    style={{
+                      flex: 1, padding: '10px', background: currentTheme.accentGradient,
+                      border: 'none', borderRadius: '10px', color: '#fff',
+                      fontSize: '0.9rem', fontWeight: '600', cursor: savingProfile ? 'wait' : 'pointer',
+                      opacity: savingProfile ? 0.7 : 1,
+                    }}
+                  >
+                    {savingProfile ? 'Saving...' : 'Save Profile'}
+                  </motion.button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Followers / Following List Modal */}
+        <AnimatePresence>
+          {showFollowersList && (
+            <div
+              onClick={() => setShowFollowersList(null)}
+              style={{
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(4px)',
+              }}
+            >
+              <motion.div
+                onClick={(e) => e.stopPropagation()}
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                style={{
+                  background: currentTheme.backgroundOverlay,
+                  border: `1px solid ${currentTheme.border}`,
+                  borderRadius: '16px',
+                  padding: '24px',
+                  maxWidth: '400px',
+                  width: 'calc(100% - 40px)',
+                  maxHeight: '70vh',
+                  overflowY: 'auto',
+                  position: 'relative',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                  <h3 style={{ margin: 0, color: currentTheme.text, fontSize: '1.1rem', textTransform: 'capitalize' }}>
+                    {showFollowersList}
+                  </h3>
+                  <button
+                    onClick={() => setShowFollowersList(null)}
+                    style={{ background: 'none', border: 'none', color: currentTheme.textSecondary, cursor: 'pointer', padding: '4px' }}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                {loadingFollowersList ? (
+                  <p style={{ color: currentTheme.textSecondary, textAlign: 'center', padding: '20px 0' }}>Loading...</p>
+                ) : followersListData.length === 0 ? (
+                  <p style={{ color: currentTheme.textSecondary, textAlign: 'center', padding: '20px 0', fontSize: '0.9rem' }}>
+                    No {showFollowersList} yet
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {followersListData.map((person) => (
+                      <div
+                        key={person.userId}
+                        onClick={() => {
+                          setShowFollowersList(null)
+                          if (person.userId === currentUser?.id) {
+                            clearViewingProfile()
+                          } else {
+                            const setViewingProfile = useStore.getState().setViewingProfile
+                            const setActiveTab = useStore.getState().setActiveTab
+                            setViewingProfile({ userId: person.userId, username: person.username })
+                            setActiveTab('statistics')
+                          }
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '12px',
+                          padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
+                          background: currentTheme.buttonBackground,
+                          border: `1px solid ${currentTheme.borderLight}`,
+                        }}
+                      >
+                        <div style={{
+                          width: '40px', height: '40px', borderRadius: '50%',
+                          background: person.profileImage ? 'none' : currentTheme.accentGradient,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          overflow: 'hidden', flexShrink: 0,
+                        }}>
+                          {person.profileImage ? (
+                            <img src={person.profileImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <User size={18} color="#fff" />
+                          )}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ color: currentTheme.text, fontSize: '0.9rem', fontWeight: '500', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {person.username}
+                          </p>
+                          {person.bio && (
+                            <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: '2px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {person.bio}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   )

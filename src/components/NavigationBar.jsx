@@ -17,11 +17,29 @@ const NavigationBar = () => {
   const toggleTheme = useStore((state) => state.toggleTheme)
   const setNavExpanded = useStore((state) => state.setNavExpanded)
   const clearViewingProfile = useStore((state) => state.clearViewingProfile)
+  const notificationCount = useStore((state) => state.notificationCount)
+  const setNotificationCount = useStore((state) => state.setNotificationCount)
   const [isExpanded, setIsExpanded] = useState(true) // Nav starts expanded by default
   const [showCollapseTooltip, setShowCollapseTooltip] = useState(false)
   const [showExpandTooltip, setShowExpandTooltip] = useState(false)
   
   const currentTheme = getTheme(theme)
+
+  // Fetch notification count for the Profile badge
+  useEffect(() => {
+    if (!currentUser?.id) return
+    const fetchNotifications = () => {
+      axios.get(`${API_URL}/api/leaderboard/user-stats/${currentUser.id}`)
+        .then(res => {
+          const count = res.data?.notifications?.length || 0
+          setNotificationCount(count)
+        })
+        .catch(() => {})
+    }
+    fetchNotifications()
+    const interval = setInterval(fetchNotifications, 60000)
+    return () => clearInterval(interval)
+  }, [currentUser?.id])
 
   // Debug: Log when tab changes
 
@@ -246,6 +264,8 @@ const NavigationBar = () => {
                 }
                 // Clear any viewed profile when navigating away from statistics
                 if (tab.id !== 'statistics') clearViewingProfile()
+                // Clear notification badge when visiting the Profile tab
+                if (tab.id === 'statistics') setNotificationCount(0)
                 setActiveTab(tab.id)
               }}
               onMouseEnter={() => setIsTabHovered(true)}
@@ -271,7 +291,30 @@ const NavigationBar = () => {
               }}
               whileTap={{ scale: 0.95 }}
             >
-              <Icon size={24} style={{ flexShrink: 0 }} />
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <Icon size={24} />
+                {tab.id === 'statistics' && notificationCount > 0 && activeTab !== 'statistics' && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '-4px',
+                    right: '-6px',
+                    minWidth: '16px',
+                    height: '16px',
+                    borderRadius: '8px',
+                    background: '#ff4757',
+                    color: '#fff',
+                    fontSize: '0.6rem',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 4px',
+                    lineHeight: 1,
+                  }}>
+                    {notificationCount > 9 ? '9+' : notificationCount}
+                  </div>
+                )}
+              </div>
               {isExpanded && (
                 <motion.span
                   initial={{ opacity: 0, x: -10 }}

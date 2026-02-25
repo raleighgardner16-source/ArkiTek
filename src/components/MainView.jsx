@@ -50,6 +50,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [postDescription, setPostDescription] = useState('')
   const [postPromptExpanded, setPostPromptExpanded] = useState(false)
   const [postActiveTab, setPostActiveTab] = useState(null)
+  const [postIncludeSummary, setPostIncludeSummary] = useState(true)
+  const [postExcludedResponses, setPostExcludedResponses] = useState(new Set())
   const [showCouncilTooltip, setShowCouncilTooltip] = useState(false)
 
   // Inline conversation state (moved from SummaryWindow)
@@ -1561,7 +1563,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             animate={{ opacity: 1, y: 0 }}
             style={{
               position: 'absolute',
-              top: '20px',
+              top: '16px',
               left: 0,
               right: 0,
               zIndex: 30,
@@ -1573,110 +1575,107 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               pointerEvents: 'none',
             }}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'start', columnGap: '10px', width: 'min(980px, calc(100% - 32px))' }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <motion.button
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 12px',
+                borderRadius: '16px',
+                border: theme === 'light' ? '1px solid rgba(0, 0, 0, 0.1)' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: theme === 'light' ? '#ffffff' : '#111827',
+                boxShadow: theme === 'light'
+                  ? '0 4px 20px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.06)'
+                  : '0 4px 24px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.4)',
+                pointerEvents: 'auto',
+              }}
+            >
+              <motion.button
                 onClick={() => setShowSingleTokenUsage(true)}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  padding: '10px 16px',
-                  borderRadius: '12px',
-                  border: theme === 'light' ? '1px solid rgba(0, 150, 200, 0.3)' : '1px solid rgba(93, 173, 226, 0.4)',
-                  background: theme === 'light' ? '#ffffff' : '#0d1520',
+                  gap: '5px',
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: theme === 'light' ? '#f3f4f6' : '#1f2937',
                   color: currentTheme.accent,
-                  fontSize: '0.8rem',
+                  fontSize: '0.76rem',
                   fontWeight: '600',
                   cursor: 'pointer',
-                  boxShadow: theme === 'light'
-                    ? '0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08)'
-                    : '0 4px 20px rgba(0, 0, 0, 0.5), 0 0 15px rgba(93, 173, 226, 0.15)',
-                  pointerEvents: 'auto',
                 }}
                 title="Open prompt token usage"
               >
-                <Coins size={14} />
-                Prompt Token Usage
+                <Coins size={13} />
+                Token Usage
               </motion.button>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                <motion.button
-                  onClick={() => triggerGenerateSummary()}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '11px 22px',
-                    borderRadius: '12px',
-                    border: 'none',
-                    background: currentTheme.accentGradient,
-                    color: '#ffffff',
-                    fontSize: '0.88rem',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    boxShadow: theme === 'light'
-                      ? '0 4px 20px rgba(0, 136, 204, 0.35), 0 2px 8px rgba(0, 0, 0, 0.1)'
-                      : '0 4px 24px rgba(93, 173, 226, 0.4), 0 0 20px rgba(72, 201, 176, 0.2)',
-                    pointerEvents: 'auto',
-                    letterSpacing: '0.3px',
-                  }}
-                  title="Generate summary from the current council responses"
-                >
-                  <Sparkles size={16} />
-                  Generate Summary
-                </motion.button>
-                <span
-                  style={{
-                    fontSize: '0.72rem',
-                    color: theme === 'light' ? currentTheme.textMuted : 'rgba(255, 255, 255, 0.5)',
-                    textAlign: 'center',
-                    background: theme === 'light' ? '#ffffff' : '#0d1520',
-                    border: theme === 'light' ? '1px solid rgba(0, 150, 200, 0.2)' : '1px solid rgba(93, 173, 226, 0.3)',
-                    borderRadius: '999px',
-                    padding: '3px 10px',
-                    boxShadow: theme === 'light'
-                      ? '0 2px 8px rgba(0, 0, 0, 0.08)'
-                      : '0 2px 10px rgba(0, 0, 0, 0.4)',
-                    pointerEvents: 'auto',
-                  }}
-                >
-                  PRESS ENTER TO GENERATE
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <motion.button
+              <motion.button
                 onClick={() => setShowTopCostBreakdown(true)}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  padding: '10px 16px',
-                  borderRadius: '12px',
-                  border: theme === 'light' ? '1px solid rgba(0, 150, 200, 0.3)' : '1px solid rgba(93, 173, 226, 0.4)',
-                  background: theme === 'light' ? '#ffffff' : '#0d1520',
+                  gap: '5px',
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: theme === 'light' ? '#f3f4f6' : '#1f2937',
                   color: currentTheme.accent,
-                  fontSize: '0.8rem',
+                  fontSize: '0.76rem',
                   fontWeight: '600',
                   cursor: 'pointer',
-                  boxShadow: theme === 'light'
-                    ? '0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08)'
-                    : '0 4px 20px rgba(0, 0, 0, 0.5), 0 0 15px rgba(93, 173, 226, 0.15)',
-                  pointerEvents: 'auto',
                 }}
                 title="Open prompt cost breakdown"
               >
-                <DollarSign size={14} />
-                Prompt Cost Breakdown
+                <DollarSign size={13} />
+                Cost Breakdown
               </motion.button>
-              </div>
+
+              <div style={{
+                width: '1px',
+                height: '24px',
+                background: theme === 'light' ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.1)',
+                margin: '0 2px',
+              }} />
+
+              <motion.button
+                onClick={() => triggerGenerateSummary()}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 16px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: currentTheme.accentGradient,
+                  color: '#ffffff',
+                  fontSize: '0.76rem',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  letterSpacing: '0.3px',
+                }}
+                title="Generate summary from the current council responses (Enter)"
+              >
+                <Sparkles size={14} />
+                Generate Summary
+              </motion.button>
             </div>
+            <span
+              style={{
+                fontSize: '0.68rem',
+                color: theme === 'light' ? currentTheme.textMuted : 'rgba(255, 255, 255, 0.4)',
+                textAlign: 'center',
+                pointerEvents: 'auto',
+              }}
+            >
+              PRESS ENTER TO GENERATE
+            </span>
           </motion.div>
         )}
         {(canToggleResultViews || canShowCouncilSideBySideButton) && (
@@ -2885,93 +2884,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 </motion.span>
               </motion.div>
                     )}
-                    <div style={{ display: 'flex', justifyContent: 'stretch', gap: '6px', marginBottom: '8px', width: '100%' }}>
-                        {/* Clear Summary Button */}
-                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
-                        <motion.button
-                          onClick={() => {
-                            // Finalize the active history entry before clearing
-                            if (currentHistoryId && currentUser?.id) {
-                              axios.post(`${API_URL}/api/history/finalize`, {
-                                historyId: currentHistoryId,
-                                userId: currentUser.id,
-                              }).catch(err => console.error('[History] Error finalizing:', err.message))
-                            }
-                            clearResponses()
-                            clearLastSubmittedPrompt()
-                            // Clear judge and model conversation context
-                            if (currentUser?.id) {
-                              axios.post(`${API_URL}/api/judge/clear-context`, {
-                                userId: currentUser.id
-                              }).catch(err => console.error('[Clear Context] Error:', err))
-                              axios.post(`${API_URL}/api/model/clear-context`, {
-                                userId: currentUser.id
-                              }).catch(err => console.error('[Clear Model Context] Error:', err))
-                            }
-                            // Reset inline conversation state
-                            setConversationInput('')
-                            setConversationContext([])
-                            // Reset per-turn sources
-                            setSummaryConvoSources({})
-                            setShowSummaryConvoSources({})
-                            setSingleConvoSources({})
-                            setShowSingleConvoSources({})
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: '4px 6px',
-                            background: theme === 'light' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.12)',
-                            border: theme === 'light' ? '1px solid rgba(200, 200, 200, 0.8)' : '1px solid rgba(255, 255, 255, 0.3)',
-                            borderRadius: '12px',
-                            color: theme === 'light' ? '#333' : '#ffffff',
-                            fontSize: '0.7rem',
-                            fontWeight: '500',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px',
-                            transition: 'all 0.2s ease',
-                            whiteSpace: 'nowrap',
-                            height: '28px',
-                          }}
-                          whileHover={{ 
-                            background: theme === 'light' ? 'rgba(240, 240, 240, 1)' : 'rgba(255, 255, 255, 0.2)',
-                          }}
-                          whileTap={{ scale: 0.96 }}
-                        >
-                          <MessageSquarePlus size={12} />
-                          New Chat
-                        </motion.button>
-                          <div
-                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
-                            onMouseEnter={() => setShowClearSummaryTooltip(true)}
-                            onMouseLeave={() => setShowClearSummaryTooltip(false)}
-                          >
-                            <Info size={10} color={currentTheme.textMuted} />
-                            {showClearSummaryTooltip && (
-                              <div style={{
-                                position: 'absolute',
-                                bottom: '16px',
-                                right: 0,
-                                background: currentTheme.backgroundOverlay,
-                                border: `1px solid ${currentTheme.borderLight}`,
-                                borderRadius: '8px',
-                                padding: '6px 10px',
-                                fontSize: '0.7rem',
-                                color: currentTheme.textSecondary,
-                                width: '180px',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                                zIndex: 100,
-                              }}>
-                                Start a new chat and clear the current conversation.
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                      </div>
-
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
                       <div style={{ flex: 1, position: 'relative' }}>
                         <textarea
@@ -4470,7 +4382,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       <AnimatePresence>
         {showPostWindow && (
           <div
-            onClick={() => { if (!isSubmittingToVote) { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null) } }}
+            onClick={() => { if (!isSubmittingToVote) { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null); setPostIncludeSummary(true); setPostExcludedResponses(new Set()) } }}
             style={{
               position: 'fixed',
               top: 0,
@@ -4506,7 +4418,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             >
               {/* Close button */}
               <button
-                onClick={() => { if (!isSubmittingToVote) { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null) } }}
+                onClick={() => { if (!isSubmittingToVote) { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null); setPostIncludeSummary(true); setPostExcludedResponses(new Set()) } }}
                 style={{
                   position: 'absolute',
                   top: '16px',
@@ -4543,7 +4455,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     Posted to Prompt Feed!
                   </p>
                   <motion.button
-                    onClick={() => { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null) }}
+                    onClick={() => { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null); setPostIncludeSummary(true); setPostExcludedResponses(new Set()) }}
                     style={{
                       marginTop: '4px',
                       padding: '10px 28px',
@@ -4687,38 +4599,84 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     )
                   })()}
 
-                  {/* Response pull-down containers — each separate */}
+                  {/* Response pull-down containers — each with include/exclude toggle */}
                   {(summary || (responses && responses.length > 0)) && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                    <div style={{ marginBottom: '20px' }}>
+                      <label style={{
+                        color: currentTheme.textSecondary,
+                        fontSize: '0.75rem',
+                        fontWeight: '500',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        display: 'block',
+                        marginBottom: '8px',
+                      }}>
+                        Include in Post
+                      </label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {/* Summary pull-down */}
                       {summary && (
                         <div style={{
                           background: currentTheme.buttonBackground,
-                          border: `1px solid ${currentTheme.borderLight}`,
+                          border: `1px solid ${postIncludeSummary ? currentTheme.accent + '55' : currentTheme.borderLight}`,
                           borderRadius: '8px',
                           overflow: 'hidden',
+                          opacity: postIncludeSummary ? 1 : 0.5,
+                          transition: 'opacity 0.2s, border-color 0.2s',
                         }}>
-                          <button
-                            onClick={() => setPostActiveTab(postActiveTab === 'summary' ? null : 'summary')}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              background: 'transparent',
-                              border: 'none',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              cursor: 'pointer',
-                              color: currentTheme.text,
-                            }}
-                          >
-                            <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>Summary Response</span>
-                            {postActiveTab === 'summary' ? (
-                              <ChevronUp size={16} color={currentTheme.accent} />
-                            ) : (
-                              <ChevronDown size={16} color={currentTheme.accent} />
-                            )}
-                          </button>
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0',
+                          }}>
+                            <button
+                              onClick={() => setPostIncludeSummary(!postIncludeSummary)}
+                              style={{
+                                padding: '10px 0 10px 12px',
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <div style={{
+                                width: '20px',
+                                height: '20px',
+                                borderRadius: '5px',
+                                border: postIncludeSummary ? 'none' : `2px solid ${currentTheme.textMuted || currentTheme.textSecondary}`,
+                                background: postIncludeSummary ? currentTheme.accentGradient : 'transparent',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s',
+                              }}>
+                                {postIncludeSummary && <Check size={14} color="#fff" strokeWidth={3} />}
+                              </div>
+                            </button>
+                            <button
+                              onClick={() => setPostActiveTab(postActiveTab === 'summary' ? null : 'summary')}
+                              style={{
+                                flex: 1,
+                                padding: '10px 12px',
+                                background: 'transparent',
+                                border: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                cursor: 'pointer',
+                                color: currentTheme.text,
+                              }}
+                            >
+                              <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>Summary Response</span>
+                              {postActiveTab === 'summary' ? (
+                                <ChevronUp size={16} color={currentTheme.accent} />
+                              ) : (
+                                <ChevronDown size={16} color={currentTheme.accent} />
+                              )}
+                            </button>
+                          </div>
                           {postActiveTab === 'summary' && (
                             <div style={{ padding: '12px', borderTop: `1px solid ${currentTheme.borderLight}`, maxHeight: '200px', overflowY: 'auto' }}>
                               <MarkdownRenderer
@@ -4732,34 +4690,77 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         </div>
                       )}
                       {/* Individual model pull-downs */}
-                      {responses && responses.map((r, idx) => (
+                      {responses && responses.map((r, idx) => {
+                        const isIncluded = !postExcludedResponses.has(idx)
+                        return (
                         <div key={idx} style={{
                           background: currentTheme.buttonBackground,
-                          border: `1px solid ${currentTheme.borderLight}`,
+                          border: `1px solid ${isIncluded ? currentTheme.accent + '55' : currentTheme.borderLight}`,
                           borderRadius: '8px',
                           overflow: 'hidden',
+                          opacity: isIncluded ? 1 : 0.5,
+                          transition: 'opacity 0.2s, border-color 0.2s',
                         }}>
-                          <button
-                            onClick={() => setPostActiveTab(postActiveTab === idx ? null : idx)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              background: 'transparent',
-                              border: 'none',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              cursor: 'pointer',
-                              color: currentTheme.text,
-                            }}
-                          >
-                            <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>{r.modelName || `Model ${idx + 1}`} Response</span>
-                            {postActiveTab === idx ? (
-                              <ChevronUp size={16} color={currentTheme.accent} />
-                            ) : (
-                              <ChevronDown size={16} color={currentTheme.accent} />
-                            )}
-                          </button>
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0',
+                          }}>
+                            <button
+                              onClick={() => {
+                                setPostExcludedResponses(prev => {
+                                  const next = new Set(prev)
+                                  if (next.has(idx)) next.delete(idx)
+                                  else next.add(idx)
+                                  return next
+                                })
+                              }}
+                              style={{
+                                padding: '10px 0 10px 12px',
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <div style={{
+                                width: '20px',
+                                height: '20px',
+                                borderRadius: '5px',
+                                border: isIncluded ? 'none' : `2px solid ${currentTheme.textMuted || currentTheme.textSecondary}`,
+                                background: isIncluded ? currentTheme.accentGradient : 'transparent',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s',
+                              }}>
+                                {isIncluded && <Check size={14} color="#fff" strokeWidth={3} />}
+                              </div>
+                            </button>
+                            <button
+                              onClick={() => setPostActiveTab(postActiveTab === idx ? null : idx)}
+                              style={{
+                                flex: 1,
+                                padding: '10px 12px',
+                                background: 'transparent',
+                                border: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                cursor: 'pointer',
+                                color: currentTheme.text,
+                              }}
+                            >
+                              <span style={{ fontSize: '0.9rem', fontWeight: '500' }}>{r.modelName || `Model ${idx + 1}`} Response</span>
+                              {postActiveTab === idx ? (
+                                <ChevronUp size={16} color={currentTheme.accent} />
+                              ) : (
+                                <ChevronDown size={16} color={currentTheme.accent} />
+                              )}
+                            </button>
+                          </div>
                           {postActiveTab === idx && (
                             <div style={{ padding: '12px', borderTop: `1px solid ${currentTheme.borderLight}`, maxHeight: '200px', overflowY: 'auto' }}>
                               <MarkdownRenderer
@@ -4771,13 +4772,33 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                             </div>
                           )}
                         </div>
-                      ))}
+                        )
+                      })}
+                      </div>
                     </div>
                   )}
 
                   {/* Submit button */}
+                  {(() => {
+                    const includedResponseCount = responses ? responses.filter((_, idx) => !postExcludedResponses.has(idx)).length : 0
+                    const includedSummary = summary && postIncludeSummary
+                    const nothingIncluded = includedResponseCount === 0 && !includedSummary
+                    return nothingIncluded ? (
+                      <p style={{
+                        color: '#ff6b6b',
+                        fontSize: '0.78rem',
+                        textAlign: 'center',
+                        margin: '0 0 8px 0',
+                      }}>
+                        Select at least one response or the summary to include in your post
+                      </p>
+                    ) : null
+                  })()}
                   <motion.button
                     onClick={async () => {
+                      const includedResponseCount = responses ? responses.filter((_, idx) => !postExcludedResponses.has(idx)).length : 0
+                      const includedSummary = summary && postIncludeSummary
+                      if (includedResponseCount === 0 && !includedSummary) return
                       setIsSubmittingToVote(true)
                       try {
                         let facts = null
@@ -4809,15 +4830,18 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           promptText: lastSubmittedPrompt.trim(),
                           category: lastSubmittedCategory || 'General Knowledge/Other',
                           description: postDescription.trim() || null,
-                          responses: responses.length > 0 ? responses.map(r => ({
-                            modelName: r.modelName,
-                            actualModelName: r.actualModelName,
-                            originalModelName: r.originalModelName,
-                            text: r.text,
-                            error: r.error || false,
-                            tokens: r.tokens || null,
-                          })) : null,
-                          summary: summary || null,
+                          responses: (() => {
+                            const filtered = responses ? responses.filter((_, idx) => !postExcludedResponses.has(idx)) : []
+                            return filtered.length > 0 ? filtered.map(r => ({
+                              modelName: r.modelName,
+                              actualModelName: r.actualModelName,
+                              originalModelName: r.originalModelName,
+                              text: r.text,
+                              error: r.error || false,
+                              tokens: r.tokens || null,
+                            })) : null
+                          })(),
+                          summary: (summary && postIncludeSummary) ? summary : null,
                           facts: facts,
                           sources: sources,
                         })
