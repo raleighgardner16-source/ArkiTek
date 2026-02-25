@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare, Coins, DollarSign } from 'lucide-react'
+import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare, Coins, DollarSign, Star, Play } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -35,6 +35,16 @@ const SavedConversationsView = () => {
   const currentUser = useStore((state) => state.currentUser)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
+  const setActiveTab = useStore((state) => state.setActiveTab)
+  const clearResponses = useStore((state) => state.clearResponses)
+  const addResponse = useStore((state) => state.addResponse)
+  const setSummary = useStore((state) => state.setSummary)
+  const setCurrentPrompt = useStore((state) => state.setCurrentPrompt)
+  const setCurrentHistoryId = useStore((state) => state.setCurrentHistoryId)
+  const setSearchSources = useStore((state) => state.setSearchSources)
+  const setLastSubmittedPrompt = useStore((state) => state.setLastSubmittedPrompt)
+  const setLastSubmittedCategory = useStore((state) => state.setLastSubmittedCategory)
+  const setSummaryMinimized = useStore((state) => state.setSummaryMinimized)
 
   // Sub-tab state: 'history' or 'categories'
   const [activeSubTab, setActiveSubTab] = useState('history')
@@ -66,6 +76,9 @@ const SavedConversationsView = () => {
 
   // Track how many prompts are visible per category (default 5)
   const [categoryVisibleCount, setCategoryVisibleCount] = useState({})
+
+  // Starred section expanded
+  const [starredExpanded, setStarredExpanded] = useState(true)
 
   useEffect(() => {
     if (currentUser?.id) {
@@ -273,6 +286,94 @@ const SavedConversationsView = () => {
     }
   }
 
+  const handleToggleStar = async (convoId, e) => {
+    if (e) { e.stopPropagation(); e.preventDefault() }
+    const convo = history.find(c => c.id === convoId)
+    if (!convo) return
+    const newStarred = !convo.starred
+    setHistory(prev => prev.map(c => c.id === convoId ? { ...c, starred: newStarred } : c))
+    try {
+      await axios.post(`${API_URL}/api/history/star`, {
+        historyId: convoId,
+        userId: currentUser.id,
+        starred: newStarred,
+      })
+    } catch (error) {
+      console.error('[History] Error toggling star:', error)
+      setHistory(prev => prev.map(c => c.id === convoId ? { ...c, starred: !newStarred } : c))
+    }
+  }
+
+  const handleContinueConversation = async (convoId, e) => {
+    if (e) { e.stopPropagation(); e.preventDefault() }
+    try {
+      const res = await axios.get(`${API_URL}/api/history/detail/${convoId}`)
+      const convo = res.data.conversation
+      if (!convo) return
+
+      // Clear current state first
+      clearResponses()
+
+      // Restore server-side conversation context
+      await axios.post(`${API_URL}/api/history/restore-context`, {
+        historyId: convoId,
+        userId: currentUser.id,
+      })
+
+      // Restore responses into the store
+      ;(convo.responses || []).forEach(r => {
+        addResponse({
+          id: `${r.modelName}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          modelName: r.modelName,
+          actualModelName: r.actualModelName || r.modelName,
+          originalModelName: r.modelName,
+          text: r.text || '',
+          error: r.error || false,
+          tokens: r.tokens || null,
+          isStreaming: false,
+          sources: convo.sources || [],
+        })
+      })
+
+      // Restore summary
+      if (convo.summary) {
+        const judgeTurns = (convo.conversationTurns || []).filter(t => t.type === 'judge')
+        setSummary({
+          text: convo.summary.text || '',
+          consensus: convo.summary.consensus || null,
+          agreements: convo.summary.agreements || [],
+          disagreements: convo.summary.disagreements || [],
+          differences: convo.summary.differences || [],
+          singleModel: convo.summary.singleModel || false,
+          modelName: convo.summary.modelName || null,
+          conversationHistory: judgeTurns.map(t => ({
+            user: t.user,
+            assistant: t.assistant,
+            timestamp: t.timestamp,
+          })),
+        })
+      }
+
+      // Restore sources
+      if (convo.sources && convo.sources.length > 0) {
+        setSearchSources(convo.sources)
+      }
+
+      // Set prompt and history tracking
+      setLastSubmittedPrompt(convo.originalPrompt || '')
+      setLastSubmittedCategory(convo.category || '')
+      setCurrentHistoryId(convoId)
+      setCurrentPrompt('')
+      setSummaryMinimized(false)
+
+      // Navigate to chat
+      setActiveTab('home')
+    } catch (error) {
+      console.error('[History] Error continuing conversation:', error)
+      alert('Failed to load conversation. Please try again.')
+    }
+  }
+
   // --- Date helpers ---
   const getYear = (dateStr) => new Date(dateStr).getFullYear()
   const getMonthKey = (dateStr) => {
@@ -445,8 +546,8 @@ const SavedConversationsView = () => {
             )}
           </div>
         </div>
-        {/* Delete button */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+        {/* Actions: star, continue, delete */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
           {confirmDeleteId === convo.id ? (
             <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
               <button
@@ -475,10 +576,39 @@ const SavedConversationsView = () => {
           ) : (
             <>
               <button
+                onClick={(e) => handleToggleStar(convo.id, e)}
+                style={{
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  padding: '4px', borderRadius: '4px', opacity: convo.starred ? 1 : 0.35,
+                  transition: 'opacity 0.15s',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = convo.starred ? '1' : '0.35' }}
+                title={convo.starred ? 'Unstar' : 'Star'}
+              >
+                <Star size={14} color="#f59e0b" fill={convo.starred ? '#f59e0b' : 'none'} />
+              </button>
+              <button
+                onClick={(e) => handleContinueConversation(convo.id, e)}
+                style={{
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  padding: '4px', borderRadius: '4px', opacity: 0.4,
+                  transition: 'opacity 0.15s',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.4' }}
+                title="Continue conversation"
+              >
+                <Play size={13} color={currentTheme.accent} />
+              </button>
+              <button
                 onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(convo.id) }}
                 style={{
                   background: 'transparent', border: 'none', cursor: 'pointer',
                   padding: '4px', borderRadius: '4px', opacity: 0.4, transition: 'opacity 0.15s',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
                 onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.4' }}
@@ -670,6 +800,34 @@ const SavedConversationsView = () => {
               </span>
             )}
           </div>
+          {/* Continue Conversation button */}
+          <button
+            onClick={() => handleContinueConversation(selectedConvo._id || selectedConvo.id)}
+            style={{
+              marginTop: '12px',
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '10px 20px',
+              background: `${currentTheme.accent}15`,
+              border: `1px solid ${currentTheme.accent}40`,
+              borderRadius: '10px',
+              color: currentTheme.accent,
+              fontSize: '0.85rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = `${currentTheme.accent}25`
+              e.currentTarget.style.borderColor = `${currentTheme.accent}60`
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = `${currentTheme.accent}15`
+              e.currentTarget.style.borderColor = `${currentTheme.accent}40`
+            }}
+          >
+            <Play size={16} />
+            Continue Conversation
+          </button>
         </div>
 
         {/* Original Prompt */}
@@ -1291,12 +1449,63 @@ const SavedConversationsView = () => {
           </div>
         ) : (
           <div style={{ display: 'flex', gap: '24px' }}>
-            {/* Left: Year → Month → Day hierarchy */}
+            {/* Left: Starred + Year → Month → Day hierarchy */}
             <div style={{
               width: selectedConvo ? '360px' : '100%',
               minWidth: selectedConvo ? '360px' : undefined,
               flexShrink: 0,
             }}>
+              {/* Starred / Favorites section */}
+              {history.some(c => c.starred) && (
+                <div style={{ marginBottom: '12px' }}>
+                  <button
+                    onClick={() => setStarredExpanded(prev => !prev)}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center',
+                      justifyContent: 'space-between', padding: '14px 18px',
+                      background: starredExpanded ? 'rgba(245, 158, 11, 0.08)' : currentTheme.backgroundOverlay,
+                      border: `1px solid ${starredExpanded ? 'rgba(245, 158, 11, 0.3)' : currentTheme.borderLight}`,
+                      borderRadius: starredExpanded ? '14px 14px 0 0' : '14px',
+                      cursor: 'pointer', transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Star size={18} color="#f59e0b" fill="#f59e0b" />
+                      <span style={{ fontSize: '1.1rem', fontWeight: '700', color: currentTheme.text }}>
+                        Starred
+                      </span>
+                      <span style={{
+                        padding: '2px 10px', background: 'rgba(245, 158, 11, 0.12)',
+                        borderRadius: '10px', fontSize: '0.75rem', color: '#f59e0b', fontWeight: '600',
+                      }}>
+                        {history.filter(c => c.starred).length}
+                      </span>
+                    </div>
+                    {starredExpanded ? <ChevronUp size={18} color={currentTheme.textMuted} /> : <ChevronDown size={18} color={currentTheme.textMuted} />}
+                  </button>
+                  <AnimatePresence>
+                    {starredExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        style={{
+                          overflow: 'hidden',
+                          borderLeft: '1px solid rgba(245, 158, 11, 0.2)',
+                          borderRight: '1px solid rgba(245, 158, 11, 0.2)',
+                          borderBottom: '1px solid rgba(245, 158, 11, 0.2)',
+                          borderRadius: '0 0 14px 14px',
+                          padding: '8px',
+                        }}
+                      >
+                        {history.filter(c => c.starred).map(convo => renderConvoCard(convo))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
               {sortedYears.map((year) => {
                 const yearData = hierarchy[year]
                 const isYearOpen = expandedYears[year]

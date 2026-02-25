@@ -9773,6 +9773,7 @@ app.get('/api/history/:userId', async (req, res) => {
         originalPrompt: 1,
         category: 1,
         savedAt: 1,
+        starred: 1,
         'responses.modelName': 1,
         'responses.error': 1,
         'summary.consensus': 1,
@@ -9786,11 +9787,11 @@ app.get('/api/history/:userId', async (req, res) => {
       originalPrompt: c.originalPrompt,
       category: c.category,
       savedAt: c.savedAt,
+      starred: !!c.starred,
       modelCount: c.responses?.length || 0,
       modelNames: (c.responses || []).filter(r => !r.error).map(r => r.modelName),
       consensus: c.summary?.consensus || null,
       isSingleModel: c.summary?.singleModel || (c.responses?.length === 1),
-      // Explicit flag for UI badges/labels so summary status isn't inferred from partial fields.
       hasSummary: !!c.summary,
     }))
 
@@ -9826,6 +9827,82 @@ app.delete('/api/history/:historyId', async (req, res) => {
   } catch (error) {
     console.error('[History] Error deleting:', error)
     res.status(500).json({ error: 'Failed to delete history entry' })
+  }
+})
+
+// Toggle starred/favorite status on a history entry
+app.post('/api/history/star', async (req, res) => {
+  try {
+    const { historyId, userId, starred } = req.body
+    if (!historyId || !userId) {
+      return res.status(400).json({ error: 'historyId and userId are required' })
+    }
+
+    const dbInstance = await db.getDb()
+    const result = await dbInstance.collection('conversation_history').updateOne(
+      { _id: historyId, userId },
+      { $set: { starred: !!starred } }
+    )
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'History entry not found or not owned by this user' })
+    }
+
+    res.json({ success: true, starred: !!starred })
+  } catch (error) {
+    console.error('[History] Error toggling star:', error)
+    res.status(500).json({ error: 'Failed to toggle star status' })
+  }
+})
+
+// Restore server-side conversation context from a saved history entry
+// This rebuilds judgeConversationContext and modelConversationContext so the user
+// can continue chatting seamlessly.
+app.post('/api/history/restore-context', async (req, res) => {
+  try {
+    const { historyId, userId } = req.body
+    if (!historyId || !userId) {
+      return res.status(400).json({ error: 'historyId and userId are required' })
+    }
+
+    const dbInstance = await db.getDb()
+    const entry = await dbInstance.collection('conversation_history').findOne({ _id: historyId, userId })
+    if (!entry) {
+      return res.status(404).json({ error: 'History entry not found' })
+    }
+
+    const usage = readUsage()
+    if (!usage[userId]) usage[userId] = {}
+
+    // Rebuild judge conversation context from the summary + judge conversation turns
+    const judgeTurns = (entry.conversationTurns || []).filter(t => t.type === 'judge')
+    const judgeContext = judgeTurns.map(t => ({
+      role: 'user',
+      content: t.user,
+      response: t.assistant,
+    }))
+    usage[userId].judgeConversationContext = judgeContext
+
+    // Rebuild model conversation context from model conversation turns
+    const modelContexts = {}
+    ;(entry.conversationTurns || []).forEach(turn => {
+      if (turn.type !== 'judge' && turn.modelName) {
+        if (!modelContexts[turn.modelName]) modelContexts[turn.modelName] = []
+        modelContexts[turn.modelName].push({
+          role: 'user',
+          content: turn.user,
+          response: turn.assistant,
+        })
+      }
+    })
+    usage[userId].modelConversationContext = modelContexts
+
+    writeUsage(usage)
+    console.log(`[History] Restored context for user ${userId} from ${historyId} (${judgeTurns.length} judge turns, ${Object.keys(modelContexts).length} model contexts)`)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[History] Error restoring context:', error)
+    res.status(500).json({ error: 'Failed to restore conversation context' })
   }
 })
 
