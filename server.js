@@ -9617,9 +9617,33 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
       // purchases collection may not exist yet
     }
 
-    const subscriptionPrice = 3.99
-    const estimatedSubscriptionRevenue = newSubscriptions * subscriptionPrice
-    const totalRevenue = estimatedSubscriptionRevenue + totalCreditRevenue
+    const subscriptionPrice = 19.95
+    const renewedSubscriptions = Math.max(0, activeSubscriptions - newSubscriptions)
+    const newSubscriptionRevenue = newSubscriptions * subscriptionPrice
+    const renewalRevenue = renewedSubscriptions * subscriptionPrice
+    const totalSubscriptionRevenue = newSubscriptionRevenue + renewalRevenue
+    const totalRevenue = totalSubscriptionRevenue + totalCreditRevenue
+
+    let storePurchases = []
+    let totalStoreRevenue = 0
+    try {
+      const storeOrders = await dbInstance.collection('storePurchases')
+        .find({ timestamp: { $gte: startDate, $lt: endDate }, status: 'succeeded' })
+        .sort({ timestamp: -1 })
+        .toArray()
+      storePurchases = storeOrders.map(p => ({
+        userId: p.userId,
+        username: users[p.userId]?.username || 'Unknown',
+        item: p.itemName || p.item || 'Unknown Item',
+        total: p.total || p.amount || 0,
+        date: p.timestamp,
+      }))
+      totalStoreRevenue = storePurchases.reduce((sum, p) => sum + (p.total || 0), 0)
+    } catch (e) {
+      // storePurchases collection may not exist yet
+    }
+
+    const grandTotalRevenue = totalSubscriptionRevenue + totalCreditRevenue + totalStoreRevenue
 
     res.json({
       success: true,
@@ -9629,13 +9653,19 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
         endDate: endDate.toISOString(),
         activeSubscriptions,
         newSubscriptions,
+        renewedSubscriptions,
         canceledSubscriptions,
         subscriptionPrice,
-        estimatedSubscriptionRevenue,
+        newSubscriptionRevenue,
+        renewalRevenue,
+        totalSubscriptionRevenue,
         creditPurchases,
         creditPurchaseCount: creditPurchases.length,
         totalCreditRevenue,
-        totalRevenue,
+        storePurchases,
+        storePurchaseCount: storePurchases.length,
+        totalStoreRevenue,
+        totalRevenue: grandTotalRevenue,
         subscriptionUsers,
       },
     })
@@ -9655,8 +9685,8 @@ app.get('/api/admin/expenses/aggregate', requireAdmin, async (req, res) => {
     const allExpenseDocs = await adminDb.expenses.getAll()
     const relevantMonths = []
     const expenseFields = [
-      'stripeFees', 'openaiCost', 'anthropicCost', 'googleCost', 'metaCost',
-      'deepseekCost', 'mistralCost', 'xaiCost', 'serperCost', 'resendCost',
+      'stripeFees', 'openaiCost', 'anthropicCost', 'googleCost',
+      'xaiCost', 'serperCost', 'resendCost',
       'mongoDbCost', 'vercelCost', 'domainCost',
     ]
 
@@ -9679,7 +9709,7 @@ app.get('/api/admin/expenses/aggregate', requireAdmin, async (req, res) => {
       }
     }
 
-    const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'metaCost', 'deepseekCost', 'mistralCost', 'xaiCost']
+    const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'xaiCost']
       .reduce((sum, key) => sum + aggregated[key], 0)
     const grandTotal = Object.values(aggregated).reduce((sum, val) => sum + val, 0)
 
