@@ -229,6 +229,8 @@ const SavedConversationsView = () => {
   }
 
   const handleOpenPromptInHistory = async (prompt) => {
+    setPromptTooltip({ visible: false, x: 0, y: 0 })
+
     const matchedConvo = findBestHistoryMatchForPrompt(prompt)
     if (!matchedConvo) {
       alert('Could not find this prompt in Chat History yet.')

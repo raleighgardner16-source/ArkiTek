@@ -274,6 +274,7 @@ const StatisticsView = () => {
   useEffect(() => {
     if (isViewingOther) {
       setActiveTab('profile') // Default to their posts when viewing another user
+      setLoading(false) // Don't wait for own stats — public profile fetch handles this view
       setHasLoadedProfile(false)
       setProfilePrompts([])
       fetchPublicProfile(viewingProfile.userId)
