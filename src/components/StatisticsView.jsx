@@ -2413,7 +2413,7 @@ const StatisticsView = () => {
                   name: 'The Architect',
                   emoji: '🌌',
                   color: '#FFD700',
-                  desc: 'Earn all 100 badges to become The Architect',
+                  desc: 'Earn all badges to become The Architect',
                   earned: allOtherBadgesEarned,
                 }
 
@@ -2502,7 +2502,7 @@ const StatisticsView = () => {
                           margin: 0,
                           fontStyle: 'italic',
                         }}>
-                          {allOtherBadgesEarned ? 'You have mastered all disciplines.' : 'Earn all 100 badges to become The ArkiTek'}
+                          {allOtherBadgesEarned ? 'You have mastered all disciplines.' : 'Earn all badges to become The ArkiTek'}
                         </p>
                       </div>
 
