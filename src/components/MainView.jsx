@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus, Coins, DollarSign, Maximize2, X } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus, Coins, DollarSign, Maximize2, X, MessageCircle, Swords } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 import { detectCategory } from '../utils/categoryDetector'
+import { DEBATE_ROLES, getRoleByKey } from '../utils/debateRoles'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
@@ -55,6 +56,11 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [postVisibility, setPostVisibility] = useState('public')
   const [userIsPrivate, setUserIsPrivate] = useState(false)
   const [showCouncilTooltip, setShowCouncilTooltip] = useState(false)
+  const promptMode = useStore((state) => state.promptMode)
+  const setPromptMode = useStore((state) => state.setPromptMode)
+  const modelRoles = useStore((state) => state.modelRoles)
+  const setModelRole = useStore((state) => state.setModelRole)
+  const clearModelRoles = useStore((state) => state.clearModelRoles)
 
   // Inline conversation state (moved from SummaryWindow)
   const [conversationInput, setConversationInput] = useState('')
@@ -101,6 +107,17 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const singleConvoTextareaRef = useRef(null)
   const singleConvoAbortControllerRef = useRef(null)
   const responseAreaRef = useRef(null)
+
+  // Auto-assign default 'neutral' role to selected models when entering debate mode
+  useEffect(() => {
+    if (promptMode === 'debate' && selectedModels.length > 0) {
+      selectedModels.forEach((modelId) => {
+        if (!modelRoles[modelId]) {
+          setModelRole(modelId, 'neutral')
+        }
+      })
+    }
+  }, [promptMode, selectedModels])
 
   // Fetch streak data and privacy setting
   useEffect(() => {
@@ -640,12 +657,21 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     if (selectedModels.includes(modelId)) {
       setSelectedModels(selectedModels.filter((id) => id !== modelId))
     } else {
+      const replacedModelId = selectedModels.find(id => {
+        const m = availableModels.find(am => am.id === id)
+        return m && m.provider === providerKey
+      })
       const newSelectedModels = selectedModels.filter(id => {
         const m = availableModels.find(am => am.id === id)
         return !m || m.provider !== providerKey
       })
       
       setSelectedModels([...newSelectedModels, modelId])
+      
+      if (promptMode === 'debate') {
+        const inheritedRole = replacedModelId ? (modelRoles[replacedModelId] || 'neutral') : 'neutral'
+        setModelRole(modelId, inheritedRole)
+      }
       
       setAutoSmartProviders((prev) => {
         const newState = { ...prev }
@@ -3646,6 +3672,59 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 </div>
               )}
 
+              {/* Mode Toggle: General / Debate */}
+              {responses.length === 0 && !isPromptLocked && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '8px 16px 0 16px',
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    background: currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+                    borderRadius: '10px',
+                    padding: '3px',
+                    border: `1px solid ${currentTheme.borderLight}`,
+                  }}>
+                    {[
+                      { key: 'general', label: 'General', icon: <MessageCircle size={13} /> },
+                      { key: 'debate', label: 'Debate', icon: <Swords size={13} /> },
+                    ].map((mode) => (
+                      <button
+                        key={mode.key}
+                        onClick={() => {
+                          setPromptMode(mode.key)
+                          if (mode.key === 'general') clearModelRoles()
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '5px 12px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '0.78rem',
+                          fontWeight: promptMode === mode.key ? '600' : '500',
+                          color: promptMode === mode.key
+                            ? (currentTheme.name === 'dark' ? '#fff' : '#1a365d')
+                            : currentTheme.textMuted,
+                          background: promptMode === mode.key
+                            ? (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.10)' : 'rgba(44, 82, 130, 0.10)')
+                            : 'transparent',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {mode.icon}
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Textarea */}
               <textarea
                 ref={textareaRef}
@@ -3875,6 +3954,157 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   })()}
                           </div>
                     </div>
+
+              {/* Debate Mode: Role Assignment */}
+              <AnimatePresence>
+                {promptMode === 'debate' && selectedModels.length > 0 && responses.length === 0 && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <div style={{
+                      padding: '8px 14px 10px 14px',
+                      borderTop: `1px solid ${currentTheme.borderLight}`,
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginBottom: '6px',
+                      }}>
+                        <Swords size={12} style={{ color: currentTheme.accent }} />
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: '600',
+                          color: currentTheme.textSecondary,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                        }}>
+                          Assign Roles
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                        {selectedModels.map((modelId) => {
+                          const modelInfo = allModels.find(m => m.id === modelId)
+                          const currentRole = modelRoles[modelId] || 'neutral'
+                          const currentRoleDef = getRoleByKey(currentRole)
+                          return (
+                            <div
+                              key={modelId}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '5px 8px',
+                                borderRadius: '8px',
+                                background: currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+                              }}
+                            >
+                              <span style={{
+                                fontSize: '0.78rem',
+                                fontWeight: '500',
+                                color: currentTheme.text,
+                                minWidth: '100px',
+                                flexShrink: 0,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}>
+                                {modelInfo?.providerName || modelId}
+                              </span>
+                              <div style={{ position: 'relative', flex: 1 }}>
+                                <select
+                                  value={currentRole}
+                                  onChange={(e) => setModelRole(modelId, e.target.value)}
+                                  style={{
+                                    width: '100%',
+                                    padding: '4px 28px 4px 8px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${currentTheme.borderLight}`,
+                                    background: currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 255, 255, 0.9)',
+                                    color: currentTheme.text,
+                                    fontSize: '0.76rem',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    outline: 'none',
+                                    appearance: 'none',
+                                    WebkitAppearance: 'none',
+                                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${currentTheme.name === 'dark' ? '%23999' : '%23666'}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+                                    backgroundRepeat: 'no-repeat',
+                                    backgroundPosition: 'right 6px center',
+                                  }}
+                                >
+                                  {DEBATE_ROLES.map((role) => (
+                                    <option key={role.key} value={role.key}>
+                                      {role.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div
+                                style={{ position: 'relative', flexShrink: 0 }}
+                                onMouseEnter={(e) => {
+                                  const tooltip = e.currentTarget.querySelector('[data-role-tooltip]')
+                                  if (tooltip) tooltip.style.display = 'block'
+                                }}
+                                onMouseLeave={(e) => {
+                                  const tooltip = e.currentTarget.querySelector('[data-role-tooltip]')
+                                  if (tooltip) tooltip.style.display = 'none'
+                                }}
+                              >
+                                <Info
+                                  size={14}
+                                  style={{
+                                    color: currentTheme.textMuted,
+                                    cursor: 'help',
+                                    opacity: 0.6,
+                                  }}
+                                />
+                                <div
+                                  data-role-tooltip
+                                  style={{
+                                    display: 'none',
+                                    position: 'absolute',
+                                    right: 0,
+                                    bottom: '100%',
+                                    marginBottom: '6px',
+                                    width: '220px',
+                                    padding: '8px 10px',
+                                    borderRadius: '8px',
+                                    background: currentTheme.name === 'dark' ? '#1a1a2e' : '#fff',
+                                    border: `1px solid ${currentTheme.borderLight}`,
+                                    boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+                                    zIndex: 100,
+                                  }}
+                                >
+                                  <div style={{
+                                    fontSize: '0.74rem',
+                                    fontWeight: '600',
+                                    color: currentTheme.accent,
+                                    marginBottom: '3px',
+                                  }}>
+                                    {currentRoleDef?.label}
+                                  </div>
+                                  <div style={{
+                                    fontSize: '0.7rem',
+                                    color: currentTheme.textSecondary,
+                                    lineHeight: '1.4',
+                                  }}>
+                                    {currentRoleDef?.description}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </div>

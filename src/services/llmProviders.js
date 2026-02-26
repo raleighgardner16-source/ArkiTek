@@ -196,21 +196,23 @@ export const callLLM = async (providerKey, model, prompt, userId = null, isSumma
 
 // Streaming version of callLLM — uses SSE to stream tokens
 // onToken is called for each token, returns final metadata on completion
-export const callLLMStream = async (providerKey, model, prompt, userId = null, isSummary = false, onToken = () => {}, signal = null) => {
-  // Track accumulated text from streamed tokens as a fallback
+export const callLLMStream = async (providerKey, model, prompt, userId = null, isSummary = false, onToken = () => {}, signal = null, rolePrompt = null) => {
   let accumulatedText = ''
   const wrappedOnToken = (token) => {
     accumulatedText += token
     onToken(token)
   }
 
-  const finalData = await streamFetch(`${BACKEND_URL}/api/llm/stream`, {
+  const body = {
     provider: providerKey,
     model,
     prompt,
     userId,
     isSummary,
-  }, {
+  }
+  if (rolePrompt) body.rolePrompt = rolePrompt
+
+  const finalData = await streamFetch(`${BACKEND_URL}/api/llm/stream`, body, {
     onToken: wrappedOnToken,
     onStatus: () => {},
     onError: (message) => {

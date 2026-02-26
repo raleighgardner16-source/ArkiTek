@@ -21,6 +21,7 @@ import { ShoppingBag } from 'lucide-react'
 import { callLLM, callLLMStream, getAllModels, searchWithSerper } from './services/llmProviders'
 import { streamFetch } from './utils/streamFetch'
 import { detectCategory } from './utils/categoryDetector'
+import { getRoleSystemPrompt, getRoleByKey } from './utils/debateRoles'
 import { getTheme } from './utils/theme'
 import axios from 'axios'
 import { API_URL } from './utils/config'
@@ -202,6 +203,9 @@ function App() {
   const currentHistoryId = useStore((state) => state.currentHistoryId)
   const setCurrentHistoryId = useStore((state) => state.setCurrentHistoryId)
   const setQueryCount = useStore((state) => state.setQueryCount)
+  const promptMode = useStore((state) => state.promptMode)
+  const modelRoles = useStore((state) => state.modelRoles)
+  const clearModelRoles = useStore((state) => state.clearModelRoles)
 
   const [isLoading, setIsLoading] = useState(false)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
@@ -530,6 +534,10 @@ Important: Only include each section label followed by a colon and content.`
     let ragData = null // Store RAG data for token collection
     let ragResponsesAlreadyInStore = false
 
+    // Snapshot debate mode state for this submission
+    const isDebateMode = promptMode === 'debate'
+    const submittedRoles = isDebateMode ? { ...modelRoles } : {}
+
     // If web search is needed (needsSearch === true), use RAG pipeline
     // The RAG pipeline will perform Serper query → Refiner → Council → Judge
     if (needsSearch) {
@@ -575,6 +583,8 @@ Important: Only include each section label followed by a colon and content.`
         modelsToUse.forEach((modelId) => {
           const id = `${modelId}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
           responseIds[modelId] = id
+          const roleKey = submittedRoles[modelId]
+          const roleDef = roleKey ? getRoleByKey(roleKey) : null
           addResponse({
             id,
             modelName: modelId,
@@ -585,15 +595,26 @@ Important: Only include each section label followed by a colon and content.`
             tokens: null,
             isStreaming: true,
             sources: [],
+            debateRole: roleDef ? { key: roleDef.key, label: roleDef.label } : null,
           })
         })
         ragResponsesAlreadyInStore = true
+
+        // Build role prompts map for the RAG pipeline (modelId -> system prompt string)
+        const rolePromptsForRag = {}
+        if (isDebateMode) {
+          modelsToUse.forEach((modelId) => {
+            const rp = getRoleSystemPrompt(submittedRoles[modelId])
+            if (rp) rolePromptsForRag[modelId] = rp
+          })
+        }
 
         const ragFinalData = await streamFetch(`${API_URL}/api/rag/stream`, {
           query: currentPrompt,
           selectedModels: modelsToUse,
           userId: userId,
-          needsContext: needsContext
+          needsContext: needsContext,
+          rolePrompts: Object.keys(rolePromptsForRag).length > 0 ? rolePromptsForRag : undefined,
         }, {
           onToken: () => {},
           onStatus: () => {},
@@ -807,7 +828,8 @@ Important: Only include each section label followed by a colon and content.`
       modelsToUse.forEach((modelId) => {
         const id = `${modelId}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
         responseIds[modelId] = id
-        // Add placeholder response to store immediately so cards appear
+        const roleKey = submittedRoles[modelId]
+        const roleDef = roleKey ? getRoleByKey(roleKey) : null
         addResponse({
           id,
           modelName: modelId,
@@ -817,6 +839,7 @@ Important: Only include each section label followed by a colon and content.`
           error: false,
           tokens: null,
           isStreaming: true,
+          debateRole: roleDef ? { key: roleDef.key, label: roleDef.label } : null,
         })
       })
 
@@ -846,12 +869,12 @@ Important: Only include each section label followed by a colon and content.`
         
         try {
           const userId = currentUser?.id || null
+          const rolePrompt = isDebateMode ? getRoleSystemPrompt(submittedRoles[modelId]) : null
           const llmResponse = await callLLMStream(providerKey, model, enhancedPrompt, userId, false, (token) => {
-            // Update the response text incrementally as tokens arrive
             updateResponse(responseId, {
               text: (useStore.getState().responses.find(r => r.id === responseId)?.text || '') + token,
             })
-          }, abortController.signal)
+          }, abortController.signal, rolePrompt)
           
           const responseText = llmResponse.text
           const actualModel = llmResponse.model || modelId

@@ -259,6 +259,18 @@ export const useStore = create(
       setViewingProfile: (profile) => set({ viewingProfile: profile }),
       clearViewingProfile: () => set({ viewingProfile: null }),
 
+      // Prompt mode: 'general' or 'debate'
+      promptMode: 'general',
+      setPromptMode: (mode) => set({ promptMode: mode }),
+
+      // Debate mode role assignments: { [modelId]: roleKey }
+      modelRoles: {},
+      setModelRole: (modelId, roleKey) =>
+        set((state) => ({
+          modelRoles: { ...state.modelRoles, [modelId]: roleKey },
+        })),
+      clearModelRoles: () => set({ modelRoles: {} }),
+
       // Theme: 'light' or 'dark'
       theme: 'dark',
       setTheme: (theme) => set({ theme }),
@@ -276,6 +288,7 @@ export const useStore = create(
         apiKeys: state.apiKeys,
         selectedModels: state.selectedModels,
         autoSmartProviders: state.autoSmartProviders,
+        promptMode: state.promptMode,
       }),
     }
   )

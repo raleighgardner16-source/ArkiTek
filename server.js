@@ -5464,7 +5464,7 @@ app.post('/api/llm/stream', async (req, res) => {
     try { res.write(': heartbeat\n\n') } catch (e) { clearInterval(heartbeat) }
   }, 15000)
 
-  const { provider, model, prompt, userId, isSummary } = req.body || {}
+  const { provider, model, prompt, userId, isSummary, rolePrompt } = req.body || {}
 
   try {
     if (!provider || !model || !prompt) {
@@ -5518,11 +5518,15 @@ app.post('/api/llm/stream', async (req, res) => {
       const modelsWithFixedTemperature = ['gpt-5-mini']
       const shouldUseDefaultTemperature = modelsWithFixedTemperature.includes(mappedModel) || modelsWithFixedTemperature.includes(model)
 
+      const messages = []
+      if (rolePrompt) messages.push({ role: 'system', content: rolePrompt })
+      messages.push({ role: 'user', content: prompt })
+
       const streamResponse = await axios.post(
         `${baseUrls[provider]}/chat/completions`,
         {
           model: mappedModel,
-          messages: [{ role: 'user', content: prompt }],
+          messages,
           ...(shouldUseDefaultTemperature ? {} : { temperature: 0.7 }),
           stream: true,
           stream_options: { include_usage: true }
@@ -5563,14 +5567,17 @@ app.post('/api/llm/stream', async (req, res) => {
       }
 
     } else if (provider === 'anthropic') {
+      const anthropicBody = {
+        model: mappedModel,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }],
+        stream: true
+      }
+      if (rolePrompt) anthropicBody.system = rolePrompt
+
       const streamResponse = await axios.post(
         'https://api.anthropic.com/v1/messages',
-        {
-          model: mappedModel,
-          max_tokens: 4096,
-          messages: [{ role: 'user', content: prompt }],
-          stream: true
-        },
+        anthropicBody,
         {
           headers: {
             'x-api-key': apiKey,
@@ -5647,11 +5654,16 @@ app.post('/api/llm/stream', async (req, res) => {
       const apiVersion = isPreviewModel ? 'v1beta' : 'v1'
       const baseUrl = `https://generativelanguage.googleapis.com/${apiVersion}`
 
+      const geminiBody = {
+        contents: [{ parts: [{ text: prompt }] }],
+      }
+      if (rolePrompt) {
+        geminiBody.systemInstruction = { parts: [{ text: rolePrompt }] }
+      }
+
       const streamResponse = await axios.post(
         `${baseUrl}/models/${mappedModel}:streamGenerateContent?key=${apiKey}&alt=sse`,
-        {
-          contents: [{ parts: [{ text: prompt }] }],
-        },
+        geminiBody,
         { responseType: 'stream' }
       )
 
@@ -8624,6 +8636,7 @@ async function streamRagCouncilModel({
   memoryContextString,
   userId,
   sendSSE,
+  rolePrompt,
 }) {
   const firstDashIndex = modelId.indexOf('-')
   if (firstDashIndex === -1) {
@@ -8653,7 +8666,7 @@ async function streamRagCouncilModel({
   }
   const mappedModel = modelMappings[model] || model
 
-  const councilPrompt = `Today's date is ${getCurrentDateStringForUser(userId)}.
+  const baseCouncilPrompt = `Today's date is ${getCurrentDateStringForUser(userId)}.
 ${memoryContextString ? `\n${memoryContextString}` : ''}
 Web Sources (background reference material):
 ${rawSourcesData.formatted}
@@ -8661,6 +8674,10 @@ ${rawSourcesData.formatted}
 The above sources are from a real-time web search and may contain useful context. Use them as reference where relevant, but DO NOT cite by number (do not write "source 1", "source 3", etc.). Instead, cite where information came from using the source's publication/site name, title, or URL/domain. Answer primarily from your own knowledge and expertise, and do not limit your response to only what the sources cover.
 
 User Query: ${query}`
+
+  const councilPrompt = rolePrompt
+    ? `${rolePrompt}\n\n${baseCouncilPrompt}`
+    : baseCouncilPrompt
 
   sendSSE('model_start', {
     model_name: modelId,
@@ -8692,11 +8709,15 @@ User Query: ${query}`
       const modelsWithFixedTemperature = ['gpt-5-mini']
       const shouldUseDefaultTemperature = modelsWithFixedTemperature.includes(mappedModel) || modelsWithFixedTemperature.includes(model)
 
+      const councilMessages = []
+      if (rolePrompt) councilMessages.push({ role: 'system', content: rolePrompt })
+      councilMessages.push({ role: 'user', content: rolePrompt ? baseCouncilPrompt : councilPrompt })
+
       const streamResponse = await axios.post(
         `${baseUrls[providerKey]}/chat/completions`,
         {
           model: mappedModel,
-          messages: [{ role: 'user', content: councilPrompt }],
+          messages: councilMessages,
           ...(shouldUseDefaultTemperature ? {} : { temperature: 0.7 }),
           stream: true,
         },
@@ -8755,14 +8776,17 @@ User Query: ${query}`
         fullResponse = cleanMistralResponse(fullResponse)
       }
     } else if (providerKey === 'anthropic') {
+      const anthropicCouncilBody = {
+        model: mappedModel,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: rolePrompt ? baseCouncilPrompt : councilPrompt }],
+        stream: true,
+      }
+      if (rolePrompt) anthropicCouncilBody.system = rolePrompt
+
       const streamResponse = await axios.post(
         'https://api.anthropic.com/v1/messages',
-        {
-          model: mappedModel,
-          max_tokens: 4096,
-          messages: [{ role: 'user', content: councilPrompt }],
-          stream: true,
-        },
+        anthropicCouncilBody,
         {
           headers: {
             'x-api-key': apiKey,
@@ -8826,12 +8850,16 @@ User Query: ${query}`
       const isPreviewModel = mappedModel.includes('-preview')
       const apiVersion = isPreviewModel ? 'v1beta' : 'v1'
       const baseUrl = `https://generativelanguage.googleapis.com/${apiVersion}`
+      const geminiCouncilBody = {
+        contents: [{ parts: [{ text: rolePrompt ? baseCouncilPrompt : councilPrompt }] }],
+        generationConfig: { maxOutputTokens: 4096 },
+      }
+      if (rolePrompt) {
+        geminiCouncilBody.systemInstruction = { parts: [{ text: rolePrompt }] }
+      }
       const streamResponse = await axios.post(
         `${baseUrl}/models/${mappedModel}:streamGenerateContent?key=${apiKey}&alt=sse`,
-        {
-          contents: [{ parts: [{ text: councilPrompt }] }],
-          generationConfig: { maxOutputTokens: 4096 },
-        },
+        geminiCouncilBody,
         { responseType: 'stream' }
       )
 
@@ -8956,7 +8984,7 @@ app.post('/api/rag/stream', async (req, res) => {
   }, 15000)
 
   try {
-    const { query, selectedModels, userId, needsContext: needsContextHint } = req.body || {}
+    const { query, selectedModels, userId, needsContext: needsContextHint, rolePrompts } = req.body || {}
 
     if (userId) {
       const subscriptionCheck = await checkSubscriptionStatus(userId)
@@ -9074,6 +9102,7 @@ app.post('/api/rag/stream', async (req, res) => {
         memoryContextString,
         userId,
         sendSSE,
+        rolePrompt: rolePrompts?.[modelId] || null,
       }))
     )
 
@@ -9568,6 +9597,7 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
 
     let activeSubscriptions = 0
     let newSubscriptions = 0
+    let renewedSubscriptions = 0
     let canceledSubscriptions = 0
     let activeFreeTrials = 0
     let newFreeTrials = 0
@@ -9584,26 +9614,47 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
         activeFreeTrials++
       }
 
-      if (user.subscriptionStartedDate) {
-        const started = new Date(user.subscriptionStartedDate)
-        if (started >= startDate && started < endDate) {
-          if (isTrial) {
-            newFreeTrials++
-            freeTrialUsers.push({
-              username: user.username || 'Anonymous',
-              date: user.subscriptionStartedDate,
-            })
-          } else {
-            newSubscriptions++
-            subscriptionUsers.push({
-              username: user.username || 'Anonymous',
-              type: 'new_subscription',
-              plan: user.plan || 'pro',
-              date: user.subscriptionStartedDate,
-            })
-          }
+      const isNewInPeriod = user.subscriptionStartedDate &&
+        new Date(user.subscriptionStartedDate) >= startDate &&
+        new Date(user.subscriptionStartedDate) < endDate
+
+      if (isNewInPeriod) {
+        if (isTrial) {
+          newFreeTrials++
+          freeTrialUsers.push({
+            username: user.username || 'Anonymous',
+            date: user.subscriptionStartedDate,
+          })
+        } else {
+          newSubscriptions++
+          subscriptionUsers.push({
+            username: user.username || 'Anonymous',
+            type: 'new_subscription',
+            plan: user.plan || 'pro',
+            date: user.subscriptionStartedDate,
+          })
         }
       }
+
+      // Count renewals: active paid subs whose monthly billing date falls in this period
+      // (only if they started BEFORE this period — new subs aren't renewals)
+      if (user.subscriptionStatus === 'active' && user.subscriptionStartedDate && !isNewInPeriod) {
+        const started = new Date(user.subscriptionStartedDate)
+        const billingDay = started.getDate()
+        // Walk month-by-month from subscription start, check if any renewal falls in range
+        let renewalDate = new Date(started)
+        renewalDate.setMonth(renewalDate.getMonth() + 1)
+        renewalDate.setDate(Math.min(billingDay, new Date(renewalDate.getFullYear(), renewalDate.getMonth() + 1, 0).getDate()))
+        while (renewalDate < endDate) {
+          if (renewalDate >= startDate) {
+            renewedSubscriptions++
+            break // count each user at most once per period query
+          }
+          renewalDate.setMonth(renewalDate.getMonth() + 1)
+          renewalDate.setDate(Math.min(billingDay, new Date(renewalDate.getFullYear(), renewalDate.getMonth() + 1, 0).getDate()))
+        }
+      }
+
       if (user.cancellationHistory?.length > 0) {
         user.cancellationHistory.forEach(c => {
           const cancelDate = new Date(c.canceledAt || c.date)
@@ -9634,7 +9685,6 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
     }
 
     const subscriptionPrice = 19.95
-    const renewedSubscriptions = Math.max(0, activeSubscriptions - newSubscriptions)
     const newSubscriptionRevenue = newSubscriptions * subscriptionPrice
     const renewalRevenue = renewedSubscriptions * subscriptionPrice
     const totalSubscriptionRevenue = newSubscriptionRevenue + renewalRevenue
