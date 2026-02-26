@@ -61,6 +61,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const modelRoles = useStore((state) => state.modelRoles)
   const setModelRole = useStore((state) => state.setModelRole)
   const clearModelRoles = useStore((state) => state.clearModelRoles)
+  const autoSmartProviders = useStore((state) => state.autoSmartProviders)
+  const setAutoSmartProviders = useStore((state) => state.setAutoSmartProviders)
 
   // Inline conversation state (moved from SummaryWindow)
   const [conversationInput, setConversationInput] = useState('')
@@ -189,8 +191,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
   // Track which provider tab is expanded (only one at a time) - now click-based
   const [expandedProviders, setExpandedProviders] = useState({})
-  const autoSmartProviders = useStore((state) => state.autoSmartProviders)
-  const setAutoSmartProviders = useStore((state) => state.setAutoSmartProviders)
 
   // Build debate role entries from both selected models and Auto Smart providers
   const debateRoleEntries = useMemo(() => {
