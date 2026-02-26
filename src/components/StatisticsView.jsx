@@ -2516,7 +2516,7 @@ const StatisticsView = () => {
                           { name: 'Bronze', min: 0, max: 25, color: '#CD7F32', glow: 'rgba(205,127,50,0.12)', reward: 0.25 },
                           { name: 'Silver', min: 26, max: 50, color: '#C0C0C0', glow: 'rgba(192,192,192,0.12)', reward: 0.50 },
                           { name: 'Gold', min: 51, max: 75, color: '#FFD700', glow: 'rgba(255,215,0,0.12)', reward: 0.75 },
-                          { name: 'Platinum', min: 76, max: Infinity, color: '#E5E4E2', glow: 'rgba(229,228,226,0.18)', reward: 1.00 },
+                          { name: 'Platinum', min: 76, max: Infinity, color: '#00E5FF', glow: 'rgba(0,229,255,0.15)', reward: 1.00 },
                         ]
                         const currentTier = TIERS.find(t => totalEarned >= t.min && totalEarned <= t.max) || TIERS[0]
                         const currentTierIndex = TIERS.indexOf(currentTier)
@@ -2659,8 +2659,8 @@ const StatisticsView = () => {
                       {showBadgeScrollHint && (
                         <div style={{
                           position: 'absolute',
-                          bottom: '14px',
-                          right: '20px',
+                          top: '14px',
+                          left: '20px',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '6px',

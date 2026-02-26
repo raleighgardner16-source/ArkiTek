@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { MessageSquare, Settings, User, LogOut, Trophy, Sun, Moon, History, MessageSquarePlus, ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react'
+import { MessageSquare, Settings, User, LogOut, Trophy, Sun, Moon, History, MessageSquarePlus, ChevronLeft, ChevronRight, ShoppingBag, Info, Mail, X } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -22,6 +22,7 @@ const NavigationBar = () => {
   const [isExpanded, setIsExpanded] = useState(true) // Nav starts expanded by default
   const [showCollapseTooltip, setShowCollapseTooltip] = useState(false)
   const [showExpandTooltip, setShowExpandTooltip] = useState(false)
+  const [showSupportPopup, setShowSupportPopup] = useState(false)
   
   const currentTheme = getTheme(theme)
 
@@ -354,6 +355,122 @@ const NavigationBar = () => {
         })}
       </div>
 
+      {/* Customer Support Button */}
+      <div style={{ position: 'relative', marginTop: 'auto' }}>
+        <motion.button
+          onClick={() => setShowSupportPopup(!showSupportPopup)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            padding: '14px 20px',
+            background: showSupportPopup ? currentTheme.buttonBackgroundActive : 'transparent',
+            border: 'none',
+            borderTop: `1px solid ${currentTheme.border}`,
+            color: currentTheme.accent,
+            cursor: 'pointer',
+            textAlign: 'left',
+            width: '100%',
+            transition: 'all 0.2s ease',
+          }}
+          whileHover={{
+            background: currentTheme.buttonBackgroundHover,
+          }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <Info size={24} style={{ flexShrink: 0 }} />
+          {isExpanded && (
+            <motion.span
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              style={{ fontSize: '1rem' }}
+            >
+              Support
+            </motion.span>
+          )}
+        </motion.button>
+
+        {showSupportPopup && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+            style={{
+              position: 'absolute',
+              bottom: '100%',
+              left: isExpanded ? '10px' : '60px',
+              marginBottom: '8px',
+              width: '300px',
+              background: currentTheme.backgroundOverlay,
+              border: `1px solid ${currentTheme.borderLight}`,
+              borderRadius: '12px',
+              padding: '20px',
+              zIndex: 300,
+              backdropFilter: 'blur(20px)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <span style={{
+                fontSize: '0.95rem',
+                fontWeight: '600',
+                background: currentTheme.accentGradient,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}>
+                Customer Support
+              </span>
+              <button
+                onClick={() => setShowSupportPopup(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: currentTheme.textSecondary,
+                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  borderRadius: '4px',
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p style={{
+              color: currentTheme.textSecondary,
+              fontSize: '0.85rem',
+              lineHeight: '1.5',
+              margin: '0 0 16px 0',
+            }}>
+              Please contact us if you have any issues or questions. Feel free to give us any feedback on how we can make ArkiTek better and your experience so far.
+            </p>
+            <a
+              href="mailto:support@arkitek.site"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                color: currentTheme.accent,
+                fontSize: '0.85rem',
+                fontWeight: '500',
+                textDecoration: 'none',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: currentTheme.buttonBackgroundActive,
+                transition: 'opacity 0.2s ease',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+            >
+              <Mail size={16} />
+              support@arkitek.site
+            </a>
+          </motion.div>
+        )}
+      </div>
+
       {/* Theme Toggle Button */}
       <motion.button
         onClick={toggleTheme}
@@ -369,7 +486,6 @@ const NavigationBar = () => {
           cursor: 'pointer',
           textAlign: 'left',
           width: '100%',
-          marginTop: 'auto',
           transition: 'all 0.2s ease',
         }}
         whileHover={{

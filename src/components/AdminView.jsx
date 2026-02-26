@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Users, DollarSign, Shield, TrendingUp, Database, CreditCard, Lock, User, Package, Receipt, ArrowLeft, Search, ChevronDown, ChevronRight, ChevronLeft, BarChart3, MessageSquare, Award } from 'lucide-react'
+import { Users, DollarSign, Shield, TrendingUp, Database, CreditCard, Lock, User, Package, Receipt, ArrowLeft, Search, ChevronDown, ChevronRight, ChevronLeft, BarChart3, MessageSquare, Award, Trophy } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
@@ -60,6 +60,8 @@ const AdminView = () => {
   const [expensesSubSection, setExpensesSubSection] = useState(null)
   const [userListTab, setUserListTab] = useState(null)
   const [userListVisibleCount, setUserListVisibleCount] = useState({ active: 5, freeTrial: 5, inactive: 5 })
+  const [revenueListOpen, setRevenueListOpen] = useState({})
+  const [revenueListVisible, setRevenueListVisible] = useState({})
 
   const periodOptions = [
     { value: 'day', label: 'Day' },
@@ -130,6 +132,10 @@ const AdminView = () => {
 
   // Effective grand total: use aggregated for non-month periods, calculated for month
   const effectiveGrandTotal = timePeriod === 'month' ? grandTotal : (aggregatedExpenses?.grandTotal || 0)
+
+  const dailyFavoritesRewardPerDay = 25
+  const dailyFavoritesDaysMultiplier = { day: 1, week: 7, month: 30, quarter: 90, year: 365, all: 365 }
+  const dailyFavoritesHypothetical = dailyFavoritesRewardPerDay * (dailyFavoritesDaysMultiplier[timePeriod] || 30)
 
   // Load expenses from ADMIN database for the selected month (editable, month view only)
   const loadExpenses = async (month) => {
@@ -2288,20 +2294,52 @@ const AdminView = () => {
                           </span>
                         </div>
                       </div>
-                      {revenueData.subscriptionUsers?.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(72, 201, 176, 0.1)' }}>
-                          <p style={{ color: '#6b7280', fontSize: '0.8rem', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '1px' }}>New subscribers</p>
-                          {revenueData.subscriptionUsers.map((u, i) => (
-                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(93, 173, 226, 0.06)', borderRadius: '8px' }}>
-                              <span style={{ color: '#cccccc', fontSize: '0.9rem' }}>
-                                <User size={14} style={{ marginRight: '6px', verticalAlign: 'middle', opacity: 0.6 }} />
-                                {u.username}
-                              </span>
-                              <span style={{ color: '#666666', fontSize: '0.8rem' }}>{new Date(u.date).toLocaleDateString()}</span>
+                      {revenueData.subscriptionUsers?.length > 0 && (() => {
+                        const isOpen = revenueListOpen.newSubs
+                        const visible = revenueListVisible.newSubs ?? 10
+                        const users = revenueData.subscriptionUsers
+                        const shown = users.slice(0, visible)
+                        return (
+                          <>
+                            <div
+                              onClick={() => setRevenueListOpen(prev => ({ ...prev, newSubs: !prev.newSubs }))}
+                              style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(72, 201, 176, 0.1)', cursor: 'pointer', userSelect: 'none' }}
+                              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
+                              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                            >
+                              {isOpen ? <ChevronDown size={14} color="#6b7280" /> : <ChevronRight size={14} color="#6b7280" />}
+                              <p style={{ color: '#6b7280', fontSize: '0.8rem', margin: 0, textTransform: 'uppercase', letterSpacing: '1px' }}>New subscribers ({users.length})</p>
                             </div>
-                          ))}
-                        </div>
-                      )}
+                            {isOpen && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                                {shown.map((u, i) => (
+                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(93, 173, 226, 0.06)', borderRadius: '8px' }}>
+                                    <span style={{ color: '#cccccc', fontSize: '0.9rem' }}>
+                                      <User size={14} style={{ marginRight: '6px', verticalAlign: 'middle', opacity: 0.6 }} />
+                                      {u.username}
+                                    </span>
+                                    <span style={{ color: '#666666', fontSize: '0.8rem' }}>{new Date(u.date).toLocaleDateString()}</span>
+                                  </div>
+                                ))}
+                                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '6px' }}>
+                                  {visible < users.length && (
+                                    <div onClick={() => setRevenueListVisible(prev => ({ ...prev, newSubs: (prev.newSubs ?? 10) + 10 }))}
+                                      style={{ padding: '6px 16px', borderRadius: '8px', background: 'rgba(72, 201, 176, 0.1)', border: '1px solid rgba(72, 201, 176, 0.2)', color: '#48c9b0', fontSize: '0.8rem', cursor: 'pointer' }}>
+                                      Show More ({users.length - visible} remaining)
+                                    </div>
+                                  )}
+                                  {visible > 10 && (
+                                    <div onClick={() => setRevenueListVisible(prev => ({ ...prev, newSubs: 10 }))}
+                                      style={{ padding: '6px 16px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#999999', fontSize: '0.8rem', cursor: 'pointer' }}>
+                                      Show Less
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )
+                      })()}
                     </div>
 
                     {/* Free Trials */}
@@ -2310,100 +2348,58 @@ const AdminView = () => {
                         <User size={20} color="#fbbf24" />
                         Free Trials
                       </h3>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
-                          {revenueData.newFreeTrials ?? 0} new trial{(revenueData.newFreeTrials ?? 0) !== 1 ? 's' : ''} this period @ $0.50/trial cost
-                        </span>
-                        <span style={{ color: '#f87171', fontSize: '1.1rem', fontWeight: '600', fontFamily: 'monospace' }}>
-                          -${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)} expense
+                          {revenueData.newFreeTrials ?? 0} new trial{(revenueData.newFreeTrials ?? 0) !== 1 ? 's' : ''} this period
                         </span>
                       </div>
-                      {revenueData.freeTrialUsers?.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(251, 191, 36, 0.1)' }}>
-                          <p style={{ color: '#6b7280', fontSize: '0.8rem', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '1px' }}>New trial users</p>
-                          {revenueData.freeTrialUsers.map((u, i) => (
-                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(251, 191, 36, 0.06)', borderRadius: '8px' }}>
-                              <span style={{ color: '#cccccc', fontSize: '0.9rem' }}>
-                                <User size={14} style={{ marginRight: '6px', verticalAlign: 'middle', opacity: 0.6 }} />
-                                {u.username}
-                              </span>
-                              <span style={{ color: '#666666', fontSize: '0.8rem' }}>{new Date(u.date).toLocaleDateString()}</span>
+                      {revenueData.freeTrialUsers?.length > 0 && (() => {
+                        const isOpen = revenueListOpen.freeTrials
+                        const visible = revenueListVisible.freeTrials ?? 10
+                        const users = revenueData.freeTrialUsers
+                        const shown = users.slice(0, visible)
+                        return (
+                          <>
+                            <div
+                              onClick={() => setRevenueListOpen(prev => ({ ...prev, freeTrials: !prev.freeTrials }))}
+                              style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(251, 191, 36, 0.1)', cursor: 'pointer', userSelect: 'none' }}
+                              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
+                              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                            >
+                              {isOpen ? <ChevronDown size={14} color="#6b7280" /> : <ChevronRight size={14} color="#6b7280" />}
+                              <p style={{ color: '#6b7280', fontSize: '0.8rem', margin: 0, textTransform: 'uppercase', letterSpacing: '1px' }}>New trial users ({users.length})</p>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Badge Tier Rewards Cost */}
-                    {revenueData.badgeTierUsers?.length > 0 && (
-                      <div style={{ background: 'rgba(205, 127, 50, 0.06)', border: '1px solid rgba(205, 127, 50, 0.15)', borderRadius: '14px', padding: '24px' }}>
-                        <h3 style={{ fontSize: '1.15rem', color: '#CD7F32', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <Award size={20} color="#CD7F32" />
-                          Badge Tier Rewards
-                        </h3>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                          <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
-                            {revenueData.badgeTierUsers.length} user{revenueData.badgeTierUsers.length !== 1 ? 's' : ''} with badge tier rewards
-                          </span>
-                          <span style={{ color: '#f87171', fontSize: '1.1rem', fontWeight: '600', fontFamily: 'monospace' }}>
-                            -${(revenueData.totalBadgeTierCost ?? 0).toFixed(2)}/mo expense
-                          </span>
-                        </div>
-
-                        {/* Tier summary counts */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '16px' }}>
-                          {[
-                            { name: 'Bronze', color: '#CD7F32', count: revenueData.badgeTierSummary?.Bronze ?? 0, reward: '$0.25' },
-                            { name: 'Silver', color: '#C0C0C0', count: revenueData.badgeTierSummary?.Silver ?? 0, reward: '$0.50' },
-                            { name: 'Gold', color: '#FFD700', count: revenueData.badgeTierSummary?.Gold ?? 0, reward: '$0.75' },
-                            { name: 'Platinum', color: '#E5E4E2', count: revenueData.badgeTierSummary?.Platinum ?? 0, reward: '$1.00' },
-                          ].map(({ name, color, count, reward }) => (
-                            <div key={name} style={{
-                              padding: '10px',
-                              background: `${color}08`,
-                              border: `1px solid ${color}25`,
-                              borderRadius: '10px',
-                              textAlign: 'center',
-                            }}>
-                              <p style={{ color, fontSize: '0.8rem', fontWeight: '700', margin: '0 0 2px 0' }}>{name}</p>
-                              <p style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', margin: '0 0 2px 0' }}>{count}</p>
-                              <p style={{ color: '#888888', fontSize: '0.65rem', margin: 0 }}>{reward}/mo each</p>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* User list */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '12px', borderTop: '1px solid rgba(205, 127, 50, 0.1)' }}>
-                          <p style={{ color: '#6b7280', fontSize: '0.8rem', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '1px' }}>Users by tier</p>
-                          {revenueData.badgeTierUsers.map((u, i) => {
-                            const tierColors = { Bronze: '#CD7F32', Silver: '#C0C0C0', Gold: '#FFD700', Platinum: '#E5E4E2' }
-                            return (
-                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(205, 127, 50, 0.04)', borderRadius: '8px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <User size={14} style={{ opacity: 0.6, color: '#cccccc' }} />
-                                  <span style={{ color: '#cccccc', fontSize: '0.9rem' }}>{u.username}</span>
-                                  <span style={{
-                                    padding: '2px 8px',
-                                    borderRadius: '6px',
-                                    fontSize: '0.65rem',
-                                    fontWeight: '700',
-                                    color: tierColors[u.tier] || '#cccccc',
-                                    background: `${tierColors[u.tier] || '#cccccc'}15`,
-                                    border: `1px solid ${tierColors[u.tier] || '#cccccc'}30`,
-                                  }}>
-                                    {u.tier}
-                                  </span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                                  <span style={{ color: '#888888', fontSize: '0.75rem' }}>{u.badgeCount} badges</span>
-                                  <span style={{ color: '#f87171', fontSize: '0.85rem', fontWeight: '600', fontFamily: 'monospace' }}>-${u.reward.toFixed(2)}/mo</span>
+                            {isOpen && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                                {shown.map((u, i) => (
+                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(251, 191, 36, 0.06)', borderRadius: '8px' }}>
+                                    <span style={{ color: '#cccccc', fontSize: '0.9rem' }}>
+                                      <User size={14} style={{ marginRight: '6px', verticalAlign: 'middle', opacity: 0.6 }} />
+                                      {u.username}
+                                    </span>
+                                    <span style={{ color: '#666666', fontSize: '0.8rem' }}>{new Date(u.date).toLocaleDateString()}</span>
+                                  </div>
+                                ))}
+                                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '6px' }}>
+                                  {visible < users.length && (
+                                    <div onClick={() => setRevenueListVisible(prev => ({ ...prev, freeTrials: (prev.freeTrials ?? 10) + 10 }))}
+                                      style={{ padding: '6px 16px', borderRadius: '8px', background: 'rgba(251, 191, 36, 0.1)', border: '1px solid rgba(251, 191, 36, 0.2)', color: '#fbbf24', fontSize: '0.8rem', cursor: 'pointer' }}>
+                                      Show More ({users.length - visible} remaining)
+                                    </div>
+                                  )}
+                                  {visible > 10 && (
+                                    <div onClick={() => setRevenueListVisible(prev => ({ ...prev, freeTrials: 10 }))}
+                                      style={{ padding: '6px 16px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#999999', fontSize: '0.8rem', cursor: 'pointer' }}>
+                                      Show Less
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
+                            )}
+                          </>
+                        )
+                      })()}
+                    </div>
 
                     {/* Credit Purchases Revenue */}
                     <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
@@ -2606,7 +2602,7 @@ const AdminView = () => {
 
                     {/* Net Profit / Loss */}
                     {(() => {
-                      const totalExpensesWithTrials = effectiveGrandTotal + (revenueData.totalFreeTrialCost ?? 0)
+                      const totalExpensesWithTrials = effectiveGrandTotal + (revenueData.totalFreeTrialCost ?? 0) + (revenueData.totalBadgeTierCost ?? 0)
                       const netAmount = (revenueData.totalRevenue || 0) - totalExpensesWithTrials
                       const isProfit = netAmount >= 0
                       return (
@@ -2842,6 +2838,66 @@ const AdminView = () => {
                       </div>
                     )}
 
+                    {revenueData?.badgeTierUsers?.length > 0 && (
+                      <div style={{ background: 'rgba(205, 127, 50, 0.08)', border: '1px solid rgba(205, 127, 50, 0.20)', borderRadius: '14px', padding: '24px' }}>
+                        <h3 style={{ fontSize: '1.15rem', color: '#CD7F32', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <Award size={20} color="#CD7F32" />
+                          Badge Tier Rewards
+                        </h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                          {[
+                            { name: 'Bronze', color: '#CD7F32', count: revenueData.badgeTierSummary?.Bronze ?? 0, reward: '$0.25' },
+                            { name: 'Silver', color: '#C0C0C0', count: revenueData.badgeTierSummary?.Silver ?? 0, reward: '$0.50' },
+                            { name: 'Gold', color: '#FFD700', count: revenueData.badgeTierSummary?.Gold ?? 0, reward: '$0.75' },
+                            { name: 'Platinum', color: '#E5E4E2', count: revenueData.badgeTierSummary?.Platinum ?? 0, reward: '$1.00' },
+                          ].map(({ name, color, count, reward }) => (
+                            <div key={name} style={{ padding: '8px', background: `${color}08`, border: `1px solid ${color}25`, borderRadius: '8px', textAlign: 'center' }}>
+                              <p style={{ color, fontSize: '0.75rem', fontWeight: '700', margin: 0 }}>{name}</p>
+                              <p style={{ color: '#ffffff', fontSize: '1.1rem', fontWeight: '700', margin: '2px 0' }}>{count}</p>
+                              <p style={{ color: '#888888', fontSize: '0.6rem', margin: 0 }}>{reward}/mo</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(205, 127, 50, 0.04)', borderRadius: '10px' }}>
+                          <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
+                            {revenueData.badgeTierUsers.length} user{revenueData.badgeTierUsers.length !== 1 ? 's' : ''} with rewards
+                          </span>
+                          <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>
+                            ${(revenueData.totalBadgeTierCost ?? 0).toFixed(2)}/mo
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ background: 'rgba(168, 85, 247, 0.06)', border: '1px solid rgba(168, 85, 247, 0.20)', borderRadius: '14px', padding: '24px', position: 'relative', opacity: 0.7 }}>
+                      <div style={{ position: 'absolute', top: '12px', right: '16px', background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '6px', padding: '3px 10px' }}>
+                        <span style={{ color: '#a855f7', fontSize: '0.7rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Not Yet Enabled</span>
+                      </div>
+                      <h3 style={{ fontSize: '1.15rem', color: '#a855f7', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <Trophy size={20} color="#a855f7" />
+                        Daily Favorites Rewards
+                        <span style={{ fontSize: '0.75rem', color: '#7c3aed', fontWeight: '500' }}>(hypothetical)</span>
+                      </h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.04)', borderRadius: '10px' }}>
+                          <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
+                            Top 5 users × $5.00/day free usage
+                          </span>
+                          <span style={{ color: '#cccccc', fontSize: '1rem', fontWeight: '600', fontFamily: 'monospace' }}>
+                            $25.00/day
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.06)', borderRadius: '10px' }}>
+                          <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
+                            Projected for this {timePeriod === 'month' ? 'month (~30 days)' : 'period'}
+                          </span>
+                          <span style={{ color: '#a855f7', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>
+                            ${dailyFavoritesHypothetical.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
                     <div style={{
                       background: 'linear-gradient(135deg, rgba(93, 173, 226, 0.12), rgba(72, 201, 176, 0.08))',
                       border: '1px solid rgba(93, 173, 226, 0.3)',
@@ -2855,7 +2911,7 @@ const AdminView = () => {
                         <Receipt size={24} color="#5dade2" />
                         <span style={{ color: '#5dade2', fontSize: '1.25rem', fontWeight: '700' }}>Total Expenses</span>
                       </div>
-                      <span style={{ color: '#ffffff', fontSize: '1.6rem', fontWeight: '800', fontFamily: 'monospace' }}>${(grandTotal + (revenueData?.totalFreeTrialCost ?? 0)).toFixed(2)}</span>
+                      <span style={{ color: '#ffffff', fontSize: '1.6rem', fontWeight: '800', fontFamily: 'monospace' }}>${(grandTotal + (revenueData?.totalFreeTrialCost ?? 0) + (revenueData?.totalBadgeTierCost ?? 0)).toFixed(2)}</span>
                     </div>
                   </div>
                 )}
@@ -2979,6 +3035,35 @@ const AdminView = () => {
                               </div>
                             </div>
                           )}
+
+                          <div style={{ background: 'rgba(168, 85, 247, 0.06)', border: '1px solid rgba(168, 85, 247, 0.20)', borderRadius: '14px', padding: '24px', position: 'relative', opacity: 0.7 }}>
+                            <div style={{ position: 'absolute', top: '12px', right: '16px', background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '6px', padding: '3px 10px' }}>
+                              <span style={{ color: '#a855f7', fontSize: '0.7rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Not Yet Enabled</span>
+                            </div>
+                            <h3 style={{ fontSize: '1.15rem', color: '#a855f7', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <Trophy size={20} color="#a855f7" />
+                              Daily Favorites Rewards
+                              <span style={{ fontSize: '0.75rem', color: '#7c3aed', fontWeight: '500' }}>(hypothetical)</span>
+                            </h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.04)', borderRadius: '10px' }}>
+                                <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
+                                  Top 5 users × $5.00/day free usage
+                                </span>
+                                <span style={{ color: '#cccccc', fontSize: '1rem', fontWeight: '600', fontFamily: 'monospace' }}>
+                                  $25.00/day
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.06)', borderRadius: '10px' }}>
+                                <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
+                                  Projected for this {timePeriod === 'day' ? 'day' : timePeriod === 'week' ? 'week (~7 days)' : timePeriod === 'quarter' ? 'quarter (~90 days)' : timePeriod === 'year' ? 'year (~365 days)' : 'period'}
+                                </span>
+                                <span style={{ color: '#a855f7', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>
+                                  ${dailyFavoritesHypothetical.toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
 
                           <div style={{
                             background: 'linear-gradient(135deg, rgba(93, 173, 226, 0.12), rgba(72, 201, 176, 0.08))',
