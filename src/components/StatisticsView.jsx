@@ -164,13 +164,13 @@ const BADGE_CATEGORIES = [
     unit: 'debates',
     badges: [
       { name: 'Opening Statement', threshold: 1, emoji: '🎤', color: '#E74C3C', desc: '1 debate' },
-      { name: 'Devil\'s Advocate', threshold: 5, emoji: '😈', color: '#C0392B', desc: '5 debates' },
-      { name: 'Cross-Examiner', threshold: 10, emoji: '🔍', color: '#A93226', desc: '10 debates' },
-      { name: 'Rhetorician', threshold: 25, emoji: '📜', color: '#922B21', desc: '25 debates' },
-      { name: 'Master Debater', threshold: 50, emoji: '🎯', color: '#7B241C', desc: '50 debates' },
-      { name: 'Grand Orator', threshold: 100, emoji: '🏛️', color: '#641E16', desc: '100 debates' },
-      { name: 'Supreme Dialectician', threshold: 250, emoji: '⚔️', color: '#4A1711', desc: '250 debates' },
-      { name: 'Eternal Challenger', threshold: 500, emoji: '🔥', color: '#30100B', desc: '500 debates' },
+      { name: 'Devil\'s Advocate', threshold: 25, emoji: '😈', color: '#C0392B', desc: '25 debates' },
+      { name: 'Cross-Examiner', threshold: 100, emoji: '🔍', color: '#A93226', desc: '100 debates' },
+      { name: 'Rhetorician', threshold: 250, emoji: '📜', color: '#922B21', desc: '250 debates' },
+      { name: 'Master Debater', threshold: 1000, emoji: '🎯', color: '#7B241C', desc: '1K debates' },
+      { name: 'Grand Orator', threshold: 5000, emoji: '🏛️', color: '#641E16', desc: '5K debates' },
+      { name: 'Supreme Dialectician', threshold: 10000, emoji: '⚔️', color: '#4A1711', desc: '10K debates' },
+      { name: 'Eternal Challenger', threshold: 25000, emoji: '🔥', color: '#30100B', desc: '25K debates' },
     ]
   },
   {
