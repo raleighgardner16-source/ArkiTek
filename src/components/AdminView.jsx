@@ -2065,10 +2065,10 @@ const AdminView = () => {
                     style={{
                       flex: 1,
                       padding: '14px 12px',
-                      background: expensesSubSection === 'revenue' ? 'rgba(72, 201, 176, 0.08)' : 'transparent',
+                      background: expensesSubSection === 'revenue' ? 'rgba(93, 173, 226, 0.08)' : 'transparent',
                       border: 'none',
-                      borderBottom: expensesSubSection === 'revenue' ? '2px solid #48c9b0' : '2px solid transparent',
-                      color: expensesSubSection === 'revenue' ? '#48c9b0' : '#6b7280',
+                      borderBottom: expensesSubSection === 'revenue' ? '2px solid #5dade2' : '2px solid transparent',
+                      color: expensesSubSection === 'revenue' ? '#5dade2' : '#6b7280',
                       fontSize: '1rem',
                       fontWeight: expensesSubSection === 'revenue' ? '600' : '400',
                       cursor: 'pointer',
@@ -2254,8 +2254,8 @@ const AdminView = () => {
                       {[
                         { label: 'New Paid Subs', value: revenueData.newSubscriptions },
                         { label: 'Renewed', value: revenueData.renewedSubscriptions ?? 0 },
-                        { label: 'Canceled', value: revenueData.canceledSubscriptions },
                         { label: 'New Free Trials', value: revenueData.newFreeTrials ?? 0 },
+                        { label: 'Canceled', value: revenueData.canceledSubscriptions },
                       ].map(({ label, value }) => (
                         <div key={label} style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
                           <p style={{ color: '#cccccc', fontSize: '0.85rem', margin: '0 0 8px 0' }}>{label}</p>
@@ -2755,19 +2755,6 @@ const AdminView = () => {
                 {timePeriod === 'month' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
-                      <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <CreditCard size={20} color="#5dade2" />
-                        Stripe Fees
-                      </h3>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ color: '#cccccc', fontSize: '1.1rem' }}>$</span>
-                        <input type="text" value={expenses.stripeFees} onChange={(e) => handleExpenseChange('stripeFees', e.target.value)} placeholder="0.00"
-                          style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(93, 173, 226, 0.3)', borderRadius: '10px', padding: '12px 16px', color: '#ffffff', fontSize: '1.1rem', width: '200px', outline: 'none', transition: 'border-color 0.2s ease' }}
-                          onFocus={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.7)'} onBlur={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.3)'} />
-                      </div>
-                    </div>
-
-                    <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
                       <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <BarChart3 size={20} color="#5dade2" />
                         API Costs Per Provider
@@ -2793,6 +2780,19 @@ const AdminView = () => {
                       <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(93, 173, 226, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: '#5dade2', fontSize: '1.15rem', fontWeight: '600' }}>Total API Cost</span>
                         <span style={{ color: '#ffffff', fontSize: '1.3rem', fontWeight: '700', fontFamily: 'monospace' }}>${totalApiCost.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
+                      <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <CreditCard size={20} color="#5dade2" />
+                        Stripe Fees
+                      </h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ color: '#cccccc', fontSize: '1.1rem' }}>$</span>
+                        <input type="text" value={expenses.stripeFees} onChange={(e) => handleExpenseChange('stripeFees', e.target.value)} placeholder="0.00"
+                          style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(93, 173, 226, 0.3)', borderRadius: '10px', padding: '12px 16px', color: '#ffffff', fontSize: '1.1rem', width: '200px', outline: 'none', transition: 'border-color 0.2s ease' }}
+                          onFocus={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.7)'} onBlur={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.3)'} />
                       </div>
                     </div>
 
@@ -2940,18 +2940,6 @@ const AdminView = () => {
                       ]
                       return (
                         <>
-                          {(agg.stripeFees || 0) > 0 && (
-                            <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <h3 style={{ fontSize: '1.15rem', color: '#5dade2', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <CreditCard size={20} color="#5dade2" />
-                                  Stripe Fees
-                                </h3>
-                                <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>${(agg.stripeFees || 0).toFixed(2)}</span>
-                              </div>
-                            </div>
-                          )}
-
                           <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
                             <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                               <BarChart3 size={20} color="#5dade2" />
@@ -2970,6 +2958,18 @@ const AdminView = () => {
                               <span style={{ color: '#ffffff', fontSize: '1.3rem', fontWeight: '700', fontFamily: 'monospace' }}>${aggApiTotal.toFixed(2)}</span>
                             </div>
                           </div>
+
+                          {(agg.stripeFees || 0) > 0 && (
+                            <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h3 style={{ fontSize: '1.15rem', color: '#5dade2', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <CreditCard size={20} color="#5dade2" />
+                                  Stripe Fees
+                                </h3>
+                                <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>${(agg.stripeFees || 0).toFixed(2)}</span>
+                              </div>
+                            </div>
+                          )}
 
                           {otherServices.map(({ key, label }) => (
                             <div key={key} style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
