@@ -108,16 +108,22 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const singleConvoAbortControllerRef = useRef(null)
   const responseAreaRef = useRef(null)
 
-  // Auto-assign default 'neutral' role to selected models when entering debate mode
+  // Auto-assign default 'neutral' role when entering debate mode
   useEffect(() => {
-    if (promptMode === 'debate' && selectedModels.length > 0) {
+    if (promptMode === 'debate') {
       selectedModels.forEach((modelId) => {
         if (!modelRoles[modelId]) {
           setModelRole(modelId, 'neutral')
         }
       })
+      Object.entries(autoSmartProviders).forEach(([providerKey, enabled]) => {
+        const autoKey = `autoSmart-${providerKey}`
+        if (enabled && !modelRoles[autoKey]) {
+          setModelRole(autoKey, 'neutral')
+        }
+      })
     }
-  }, [promptMode, selectedModels])
+  }, [promptMode, selectedModels, autoSmartProviders])
 
   // Fetch streak data and privacy setting
   useEffect(() => {
@@ -845,6 +851,17 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           })
           
           setSelectedModels(finalModels)
+
+          if (promptMode === 'debate') {
+            finalModels.forEach(modelId => {
+              const model = availableModels.find(m => m.id === modelId)
+              if (model && !modelRoles[modelId]) {
+                const autoSmartKey = `autoSmart-${model.provider}`
+                const inheritedRole = modelRoles[autoSmartKey] || 'neutral'
+                setModelRole(modelId, inheritedRole)
+              }
+            })
+          }
           
           setTimeout(() => {
       triggerSubmit()
@@ -3957,7 +3974,37 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
               {/* Debate Mode: Role Assignment */}
               <AnimatePresence>
-                {promptMode === 'debate' && selectedModels.length > 0 && responses.length === 0 && (
+                {promptMode === 'debate' && responses.length === 0 && (() => {
+                  const activeAutoSmartProviders = Object.entries(autoSmartProviders)
+                    .filter(([_, enabled]) => enabled)
+                    .map(([providerKey]) => providerKey)
+                  const hasEntries = selectedModels.length > 0 || activeAutoSmartProviders.length > 0
+                  if (!hasEntries) return null
+
+                  const roleEntries = []
+                  const coveredProviders = new Set()
+
+                  selectedModels.forEach((modelId) => {
+                    const modelInfo = allModels.find(m => m.id === modelId)
+                    if (modelInfo) coveredProviders.add(modelInfo.provider)
+                    roleEntries.push({
+                      key: modelId,
+                      label: modelInfo?.providerName || modelId,
+                      roleStoreKey: modelId,
+                    })
+                  })
+
+                  activeAutoSmartProviders.forEach((providerKey) => {
+                    if (coveredProviders.has(providerKey)) return
+                    const providerData = modelsByProvider[providerKey]
+                    roleEntries.push({
+                      key: `autoSmart-${providerKey}`,
+                      label: providerData?.providerName || providerKey,
+                      roleStoreKey: `autoSmart-${providerKey}`,
+                    })
+                  })
+
+                  return (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
@@ -3987,13 +4034,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         </span>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                        {selectedModels.map((modelId) => {
-                          const modelInfo = allModels.find(m => m.id === modelId)
-                          const currentRole = modelRoles[modelId] || 'neutral'
+                        {roleEntries.map(({ key, label, roleStoreKey }) => {
+                          const currentRole = modelRoles[roleStoreKey] || 'neutral'
                           const currentRoleDef = getRoleByKey(currentRole)
                           return (
                             <div
-                              key={modelId}
+                              key={key}
                               style={{
                                 display: 'flex',
                                 alignItems: 'center',
@@ -4013,12 +4059,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
                               }}>
-                                {modelInfo?.providerName || modelId}
+                                {label}
                               </span>
                               <div style={{ position: 'relative', flex: 1 }}>
                                 <select
                                   value={currentRole}
-                                  onChange={(e) => setModelRole(modelId, e.target.value)}
+                                  onChange={(e) => setModelRole(roleStoreKey, e.target.value)}
                                   style={{
                                     width: '100%',
                                     padding: '4px 28px 4px 8px',
@@ -4103,7 +4149,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       </div>
                     </div>
                   </motion.div>
-                )}
+                  )
+                })()}
               </AnimatePresence>
             </div>
           </div>
