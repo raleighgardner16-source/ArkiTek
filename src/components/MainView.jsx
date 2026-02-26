@@ -192,6 +192,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   // Track which provider tab is expanded (only one at a time) - now click-based
   const [expandedProviders, setExpandedProviders] = useState({})
 
+  const [openRoleDropdown, setOpenRoleDropdown] = useState(null)
+  const [roleTooltip, setRoleTooltip] = useState({ visible: false, roleKey: null, x: 0, y: 0 })
+  const roleDropdownRef = useRef(null)
+
   // Build debate role entries from both selected models and Auto Smart providers
   const debateRoleEntries = useMemo(() => {
     if (promptMode !== 'debate') return []
@@ -422,6 +426,18 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [expandedProviders])
+
+  useEffect(() => {
+    if (!openRoleDropdown) return
+    const handleClick = (e) => {
+      if (roleDropdownRef.current && !roleDropdownRef.current.contains(e.target)) {
+        setOpenRoleDropdown(null)
+        setRoleTooltip({ visible: false, roleKey: null, x: 0, y: 0 })
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [openRoleDropdown])
 
   // Recalculate dropdown positions after expanding
   useEffect(() => {
@@ -4006,11 +4022,11 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 {promptMode === 'debate' && debateRoleEntries.length > 0 && responses.length === 0 && (
                   <motion.div
                     key="debate-role-assignment"
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    style={{ overflow: 'hidden' }}
+                    style={{ overflow: 'visible' }}
                   >
                     <div style={{
                       padding: '8px 14px 10px 14px',
@@ -4037,6 +4053,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         {debateRoleEntries.map(({ key, label, roleStoreKey }) => {
                           const currentRole = modelRoles[roleStoreKey] || 'neutral'
                           const currentRoleDef = getRoleByKey(currentRole)
+                          const isOpen = openRoleDropdown === roleStoreKey
                           return (
                             <div
                               key={key}
@@ -4061,87 +4078,119 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                               }}>
                                 {label}
                               </span>
-                              <div style={{ position: 'relative', flex: 1 }}>
-                                <select
-                                  value={currentRole}
-                                  onChange={(e) => setModelRole(roleStoreKey, e.target.value)}
+                              <div
+                                ref={isOpen ? roleDropdownRef : undefined}
+                                style={{ position: 'relative', flex: 1 }}
+                              >
+                                <button
+                                  onClick={() => setOpenRoleDropdown(isOpen ? null : roleStoreKey)}
                                   style={{
                                     width: '100%',
                                     padding: '4px 28px 4px 8px',
                                     borderRadius: '6px',
-                                    border: `1px solid ${currentTheme.borderLight}`,
+                                    border: `1px solid ${isOpen ? currentTheme.accent : currentTheme.borderLight}`,
                                     background: currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 255, 255, 0.9)',
                                     color: currentTheme.text,
                                     fontSize: '0.76rem',
                                     fontWeight: '500',
                                     cursor: 'pointer',
                                     outline: 'none',
-                                    appearance: 'none',
-                                    WebkitAppearance: 'none',
+                                    textAlign: 'left',
                                     backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${currentTheme.name === 'dark' ? '%23999' : '%23666'}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
                                     backgroundRepeat: 'no-repeat',
                                     backgroundPosition: 'right 6px center',
                                   }}
                                 >
-                                  {DEBATE_ROLES.map((role) => (
-                                    <option key={role.key} value={role.key}>
-                                      {role.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div
-                                style={{ position: 'relative', flexShrink: 0 }}
-                                onMouseEnter={(e) => {
-                                  const tooltip = e.currentTarget.querySelector('[data-role-tooltip]')
-                                  if (tooltip) tooltip.style.display = 'block'
-                                }}
-                                onMouseLeave={(e) => {
-                                  const tooltip = e.currentTarget.querySelector('[data-role-tooltip]')
-                                  if (tooltip) tooltip.style.display = 'none'
-                                }}
-                              >
-                                <Info
-                                  size={14}
-                                  style={{
-                                    color: currentTheme.textMuted,
-                                    cursor: 'help',
-                                    opacity: 0.6,
-                                  }}
-                                />
-                                <div
-                                  data-role-tooltip
-                                  style={{
-                                    display: 'none',
+                                  {currentRoleDef?.label || 'Select role'}
+                                </button>
+                                {isOpen && (
+                                  <div style={{
                                     position: 'absolute',
-                                    right: 0,
                                     bottom: '100%',
-                                    marginBottom: '6px',
-                                    width: '220px',
-                                    padding: '8px 10px',
+                                    left: 0,
+                                    right: 0,
+                                    marginBottom: '4px',
                                     borderRadius: '8px',
-                                    background: currentTheme.name === 'dark' ? '#1a1a2e' : '#fff',
                                     border: `1px solid ${currentTheme.borderLight}`,
-                                    boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
-                                    zIndex: 100,
-                                  }}
-                                >
-                                  <div style={{
-                                    fontSize: '0.74rem',
-                                    fontWeight: '600',
-                                    color: currentTheme.accent,
-                                    marginBottom: '3px',
+                                    background: currentTheme.name === 'dark' ? '#1a1a2e' : '#fff',
+                                    boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+                                    zIndex: 1000,
+                                    maxHeight: '260px',
+                                    overflowY: 'auto',
+                                    padding: '4px',
                                   }}>
-                                    {currentRoleDef?.label}
+                                    {DEBATE_ROLES.map((role) => (
+                                      <div
+                                        key={role.key}
+                                        onClick={() => {
+                                          setModelRole(roleStoreKey, role.key)
+                                          setOpenRoleDropdown(null)
+                                          setRoleTooltip({ visible: false, roleKey: null, x: 0, y: 0 })
+                                        }}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          padding: '7px 10px',
+                                          borderRadius: '6px',
+                                          cursor: 'pointer',
+                                          background: role.key === currentRole
+                                            ? (currentTheme.name === 'dark' ? 'rgba(147, 130, 220, 0.15)' : 'rgba(107, 70, 193, 0.08)')
+                                            : 'transparent',
+                                          transition: 'background 0.15s',
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (role.key !== currentRole) {
+                                            e.currentTarget.style.background = currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)'
+                                          }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          if (role.key !== currentRole) {
+                                            e.currentTarget.style.background = 'transparent'
+                                          }
+                                        }}
+                                      >
+                                        <span style={{
+                                          fontSize: '0.76rem',
+                                          fontWeight: role.key === currentRole ? '600' : '400',
+                                          color: role.key === currentRole
+                                            ? (currentTheme.name === 'dark' ? '#b8a9e8' : '#6b46c1')
+                                            : currentTheme.text,
+                                        }}>
+                                          {role.label}
+                                        </span>
+                                        <div
+                                          onClick={(e) => e.stopPropagation()}
+                                          onMouseEnter={(e) => {
+                                            const rect = e.currentTarget.getBoundingClientRect()
+                                            setRoleTooltip({
+                                              visible: true,
+                                              roleKey: role.key,
+                                              x: rect.right + 8,
+                                              y: rect.top - 4,
+                                            })
+                                          }}
+                                          onMouseLeave={() => {
+                                            setRoleTooltip({ visible: false, roleKey: null, x: 0, y: 0 })
+                                          }}
+                                          style={{
+                                            padding: '2px',
+                                            cursor: 'help',
+                                            flexShrink: 0,
+                                          }}
+                                        >
+                                          <Info
+                                            size={13}
+                                            style={{
+                                              color: currentTheme.textMuted,
+                                              opacity: 0.5,
+                                            }}
+                                          />
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
-                                  <div style={{
-                                    fontSize: '0.7rem',
-                                    color: currentTheme.textSecondary,
-                                    lineHeight: '1.4',
-                                  }}>
-                                    {currentRoleDef?.description}
-                                  </div>
-                                </div>
+                                )}
                               </div>
                             </div>
                           )
@@ -5313,6 +5362,49 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         tokenData={tokenData}
         queryCount={queryCount}
       />
+
+      {roleTooltip.visible && (() => {
+        const role = getRoleByKey(roleTooltip.roleKey)
+        if (!role) return null
+        const tooltipWidth = 240
+        const tooltipX = roleTooltip.x + tooltipWidth > window.innerWidth
+          ? roleTooltip.x - tooltipWidth - 24
+          : roleTooltip.x
+        const tooltipY = roleTooltip.y < 10 ? 10 : roleTooltip.y
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              left: tooltipX,
+              top: tooltipY,
+              width: tooltipWidth,
+              padding: '10px 12px',
+              borderRadius: '8px',
+              background: currentTheme.name === 'dark' ? '#1a1a2e' : '#fff',
+              border: `1px solid ${currentTheme.borderLight}`,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+              zIndex: 10000,
+              pointerEvents: 'none',
+            }}
+          >
+            <div style={{
+              fontSize: '0.76rem',
+              fontWeight: '600',
+              color: currentTheme.accent,
+              marginBottom: '4px',
+            }}>
+              {role.label}
+            </div>
+            <div style={{
+              fontSize: '0.72rem',
+              color: currentTheme.textSecondary,
+              lineHeight: '1.5',
+            }}>
+              {role.description}
+            </div>
+          </div>
+        )
+      })()}
     </>
   )
 }
