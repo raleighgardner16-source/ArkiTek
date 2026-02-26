@@ -356,6 +356,7 @@ const syncUserStatsToMongo = async (userId) => {
           totalQueries: usageData.totalQueries || 0,
           totalPrompts: usageData.totalPrompts || 0,
           councilPrompts: usageData.councilPrompts || 0,
+          debatePrompts: usageData.debatePrompts || 0,
           providers: usageData.providers || {},
           models: usageData.models || {},
         },
@@ -989,6 +990,15 @@ const trackPrompt = async (userId, promptText, category, promptData = {}) => {
   if (responseCount >= 3) {
     userUsage.councilPrompts = (userUsage.councilPrompts || 0) + 1
     console.log(`[Prompt Tracking] User ${userId}: Council prompt detected (${responseCount} models). Total council prompts: ${userUsage.councilPrompts}`)
+  }
+
+  // Track debate prompts
+  if (promptData?.promptMode === 'debate') {
+    if (userUsage.debatePrompts === undefined) {
+      userUsage.debatePrompts = 0
+    }
+    userUsage.debatePrompts = (userUsage.debatePrompts || 0) + 1
+    console.log(`[Prompt Tracking] User ${userId}: Debate prompt detected. Total debate prompts: ${userUsage.debatePrompts}`)
   }
 
   // Count 1 prompt per user submission (regardless of how many models are in the council)
@@ -2524,8 +2534,8 @@ app.post('/api/stats/prompt', async (req, res) => {
       return res.status(400).json({ error: 'userId is required' })
     }
 
-    const { promptText, category, responses, summary, facts, sources } = req.body
-    console.log('[Prompt Tracking] Received prompt tracking request for user:', userId, 'category:', category)
+    const { promptText, category, responses, summary, facts, sources, promptMode } = req.body
+    console.log('[Prompt Tracking] Received prompt tracking request for user:', userId, 'category:', category, 'mode:', promptMode || 'general')
     console.log('[Prompt Tracking] Additional data:', {
       hasResponses: !!responses,
       responseCount: responses?.length || 0,
@@ -2535,7 +2545,7 @@ app.post('/api/stats/prompt', async (req, res) => {
       hasSources: !!sources,
       sourcesCount: sources?.length || 0,
     })
-    await trackPrompt(userId, promptText, category, { responses, summary, facts, sources })
+    await trackPrompt(userId, promptText, category, { responses, summary, facts, sources, promptMode })
     console.log('[Prompt Tracking] Prompt tracking completed for user:', userId)
     
     // CRITICAL: Flush to MongoDB IMMEDIATELY (not debounced).
@@ -3041,6 +3051,7 @@ app.get('/api/stats/:userId', async (req, res) => {
     ratings: userUsage.ratings || {},
     streakDays: userUsage.streakDays || 0,
     councilPrompts: userUsage.councilPrompts || 0,
+    debatePrompts: userUsage.debatePrompts || 0,
     createdAt: createdAt,
     earnedBadges: userUsage.earnedBadges || [],
   })

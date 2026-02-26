@@ -2754,13 +2754,18 @@ const AdminView = () => {
 
                     {/* Free Trial Costs */}
                     {revenueData && (revenueData.newFreeTrials ?? 0) > 0 && (
-                      <div style={{ background: 'rgba(251, 191, 36, 0.06)', border: '1px solid rgba(251, 191, 36, 0.15)', borderRadius: '14px', padding: '24px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <h3 style={{ fontSize: '1.15rem', color: '#fbbf24', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <User size={20} color="#fbbf24" />
-                            Free Trial Costs ({revenueData.newFreeTrials} trial{revenueData.newFreeTrials !== 1 ? 's' : ''} @ $0.50)
-                          </h3>
-                          <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)}</span>
+                      <div style={{ background: 'rgba(251, 191, 36, 0.08)', border: '1px solid rgba(251, 191, 36, 0.20)', borderRadius: '14px', padding: '24px' }}>
+                        <h3 style={{ fontSize: '1.15rem', color: '#fbbf24', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <User size={20} color="#fbbf24" />
+                          Free Trial Costs
+                        </h3>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(251, 191, 36, 0.04)', borderRadius: '10px' }}>
+                          <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
+                            {revenueData.newFreeTrials} trial user{revenueData.newFreeTrials !== 1 ? 's' : ''} @ $0.50 each
+                          </span>
+                          <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>
+                            ${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -2854,13 +2859,18 @@ const AdminView = () => {
 
                           {/* Free Trial Costs */}
                           {revenueData && (revenueData.newFreeTrials ?? 0) > 0 && (
-                            <div style={{ background: 'rgba(251, 191, 36, 0.06)', border: '1px solid rgba(251, 191, 36, 0.15)', borderRadius: '14px', padding: '24px' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <h3 style={{ fontSize: '1.15rem', color: '#fbbf24', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <User size={20} color="#fbbf24" />
-                                  Free Trial Costs ({revenueData.newFreeTrials} trial{revenueData.newFreeTrials !== 1 ? 's' : ''} @ $0.50)
-                                </h3>
-                                <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)}</span>
+                            <div style={{ background: 'rgba(251, 191, 36, 0.08)', border: '1px solid rgba(251, 191, 36, 0.20)', borderRadius: '14px', padding: '24px' }}>
+                              <h3 style={{ fontSize: '1.15rem', color: '#fbbf24', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <User size={20} color="#fbbf24" />
+                                Free Trial Costs
+                              </h3>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(251, 191, 36, 0.04)', borderRadius: '10px' }}>
+                                <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
+                                  {revenueData.newFreeTrials} trial user{revenueData.newFreeTrials !== 1 ? 's' : ''} @ $0.50 each
+                                </span>
+                                <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>
+                                  ${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)}
+                                </span>
                               </div>
                             </div>
                           )}

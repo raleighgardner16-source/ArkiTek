@@ -1007,6 +1007,7 @@ Important: Only include each section label followed by a colon and content.`
           summary: summary || null,
           facts: facts,
           sources: sources,
+          promptMode: promptMode,
         })
         // Trigger stats refresh after tracking prompt
         useStore.getState().triggerStatsRefresh()

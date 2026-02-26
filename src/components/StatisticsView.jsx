@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield, Trash2, ArrowLeft, Camera, Edit3, UserPlus, UserCheck, Users, Calendar } from 'lucide-react'
+import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield, Trash2, ArrowLeft, Camera, Edit3, UserPlus, UserCheck, Users, Calendar, Swords } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -153,6 +153,24 @@ const BADGE_CATEGORIES = [
       { name: 'Council Overlord', threshold: 5000, emoji: '⚡', color: '#0E3B54', desc: '5K assemblies' },
       { name: 'Council Immortal', threshold: 10000, emoji: '💎', color: '#082E44', desc: '10K assemblies' },
       { name: 'Eternal Arbiter', threshold: 25000, emoji: '🌌', color: '#041E2E', desc: '25K assemblies' },
+    ]
+  },
+  {
+    id: 'debate',
+    name: 'Debate Master',
+    icon: Swords,
+    description: 'Use Debate Mode to pit models against each other',
+    statKey: 'debatePrompts',
+    unit: 'debates',
+    badges: [
+      { name: 'Opening Statement', threshold: 1, emoji: '🎤', color: '#E74C3C', desc: '1 debate' },
+      { name: 'Devil\'s Advocate', threshold: 5, emoji: '😈', color: '#C0392B', desc: '5 debates' },
+      { name: 'Cross-Examiner', threshold: 10, emoji: '🔍', color: '#A93226', desc: '10 debates' },
+      { name: 'Rhetorician', threshold: 25, emoji: '📜', color: '#922B21', desc: '25 debates' },
+      { name: 'Master Debater', threshold: 50, emoji: '🎯', color: '#7B241C', desc: '50 debates' },
+      { name: 'Grand Orator', threshold: 100, emoji: '🏛️', color: '#641E16', desc: '100 debates' },
+      { name: 'Supreme Dialectician', threshold: 250, emoji: '⚔️', color: '#4A1711', desc: '250 debates' },
+      { name: 'Eternal Challenger', threshold: 500, emoji: '🔥', color: '#30100B', desc: '500 debates' },
     ]
   },
   {
@@ -2314,6 +2332,7 @@ const StatisticsView = () => {
                   totalRatings: ratingsStats?.totalRatings || 0,
                   totalComments: isViewingOther ? (publicProfile?.leaderboard?.totalComments || 0) : (leaderboardStats?.totalComments || 0),
                   councilPrompts: userStats.councilPrompts || 0,
+                  debatePrompts: userStats.debatePrompts || 0,
                   provider_openai_prompts: providers.openai?.totalPrompts || 0,
                   provider_anthropic_prompts: providers.anthropic?.totalPrompts || 0,
                   provider_google_prompts: providers.google?.totalPrompts || 0,
