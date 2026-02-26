@@ -9603,27 +9603,50 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
     let newFreeTrials = 0
     const subscriptionUsers = []
     const freeTrialUsers = []
+    const activeUsersList = []
+    const freeTrialUsersList = []
+    const inactiveUsersList = []
+
+    // Use UTC-based date parsing to avoid timezone mismatches
+    const toUTCDayStart = (dateVal) => {
+      const d = new Date(dateVal)
+      return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+    }
+    const periodStartUTC = toUTCDayStart(startDate)
+    const periodEndUTC = toUTCDayStart(endDate)
 
     for (const [userId, user] of Object.entries(users)) {
-      if (!user.subscriptionStatus || user.subscriptionStatus === 'inactive') continue
-      const isTrial = user.plan === 'free_trial' || user.subscriptionStatus === 'trialing'
+      const status = user.subscriptionStatus
+      if (!status || status === 'pending_verification') continue
+      const isTrial = user.plan === 'free_trial' || status === 'trialing'
+      const uInfo = { username: user.username || 'Anonymous', date: user.subscriptionStartedDate || user.createdAt || null, email: user.email || '' }
 
-      if (user.subscriptionStatus === 'active') {
+      if (status === 'active') {
         activeSubscriptions++
-      } else if (user.subscriptionStatus === 'trialing') {
+        activeUsersList.push(uInfo)
+      } else if (status === 'trialing') {
         activeFreeTrials++
+        freeTrialUsersList.push(uInfo)
+      } else if (status === 'inactive' || status === 'canceled') {
+        inactiveUsersList.push({ ...uInfo, status })
       }
 
-      const isNewInPeriod = user.subscriptionStartedDate &&
-        new Date(user.subscriptionStartedDate) >= startDate &&
-        new Date(user.subscriptionStartedDate) < endDate
+      if (status === 'inactive') continue
+
+      // Check subscriptionStartedDate OR createdAt as fallback for when the sub started
+      const startedRaw = user.subscriptionStartedDate || user.createdAt
+      let isNewInPeriod = false
+      if (startedRaw) {
+        const startedUTC = toUTCDayStart(startedRaw)
+        isNewInPeriod = startedUTC >= periodStartUTC && startedUTC < periodEndUTC
+      }
 
       if (isNewInPeriod) {
         if (isTrial) {
           newFreeTrials++
           freeTrialUsers.push({
             username: user.username || 'Anonymous',
-            date: user.subscriptionStartedDate,
+            date: startedRaw,
           })
         } else {
           newSubscriptions++
@@ -9631,34 +9654,33 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
             username: user.username || 'Anonymous',
             type: 'new_subscription',
             plan: user.plan || 'pro',
-            date: user.subscriptionStartedDate,
+            date: startedRaw,
           })
         }
       }
 
       // Count renewals: active paid subs whose monthly billing date falls in this period
-      // (only if they started BEFORE this period — new subs aren't renewals)
-      if (user.subscriptionStatus === 'active' && user.subscriptionStartedDate && !isNewInPeriod) {
-        const started = new Date(user.subscriptionStartedDate)
-        const billingDay = started.getDate()
-        // Walk month-by-month from subscription start, check if any renewal falls in range
-        let renewalDate = new Date(started)
-        renewalDate.setMonth(renewalDate.getMonth() + 1)
-        renewalDate.setDate(Math.min(billingDay, new Date(renewalDate.getFullYear(), renewalDate.getMonth() + 1, 0).getDate()))
-        while (renewalDate < endDate) {
-          if (renewalDate >= startDate) {
+      if (status === 'active' && startedRaw && !isNewInPeriod) {
+        const started = new Date(startedRaw)
+        const billingDay = started.getUTCDate()
+        let renewalDate = new Date(Date.UTC(started.getUTCFullYear(), started.getUTCMonth() + 1, 1))
+        renewalDate.setUTCDate(Math.min(billingDay, new Date(Date.UTC(renewalDate.getUTCFullYear(), renewalDate.getUTCMonth() + 1, 0)).getUTCDate()))
+        while (renewalDate < periodEndUTC) {
+          if (renewalDate >= periodStartUTC) {
             renewedSubscriptions++
-            break // count each user at most once per period query
+            break
           }
-          renewalDate.setMonth(renewalDate.getMonth() + 1)
-          renewalDate.setDate(Math.min(billingDay, new Date(renewalDate.getFullYear(), renewalDate.getMonth() + 1, 0).getDate()))
+          const nextMonth = renewalDate.getUTCMonth() + 1
+          renewalDate = new Date(Date.UTC(renewalDate.getUTCFullYear(), nextMonth, 1))
+          renewalDate.setUTCDate(Math.min(billingDay, new Date(Date.UTC(renewalDate.getUTCFullYear(), renewalDate.getUTCMonth() + 1, 0)).getUTCDate()))
         }
       }
 
+      // Count cancellations in this period (check all users, including canceled ones)
       if (user.cancellationHistory?.length > 0) {
         user.cancellationHistory.forEach(c => {
-          const cancelDate = new Date(c.canceledAt || c.date)
-          if (cancelDate >= startDate && cancelDate < endDate) {
+          const cancelUTC = toUTCDayStart(c.canceledAt || c.date)
+          if (cancelUTC >= periodStartUTC && cancelUTC < periodEndUTC) {
             canceledSubscriptions++
           }
         })
@@ -9685,9 +9707,11 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
     }
 
     const subscriptionPrice = 19.95
+    const freeTrialCost = 0.50
     const newSubscriptionRevenue = newSubscriptions * subscriptionPrice
     const renewalRevenue = renewedSubscriptions * subscriptionPrice
     const totalSubscriptionRevenue = newSubscriptionRevenue + renewalRevenue
+    const totalFreeTrialCost = newFreeTrials * freeTrialCost
     const totalRevenue = totalSubscriptionRevenue + totalCreditRevenue
 
     let storePurchases = []
@@ -9735,7 +9759,12 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
         subscriptionUsers,
         activeFreeTrials,
         newFreeTrials,
+        freeTrialCost,
+        totalFreeTrialCost,
         freeTrialUsers,
+        activeUsersList,
+        freeTrialUsersList,
+        inactiveUsersList,
       },
     })
   } catch (error) {

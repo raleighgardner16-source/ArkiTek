@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Users, DollarSign, Shield, TrendingUp, Database, CreditCard, Lock, User, Package, Receipt, ArrowLeft, Search, ChevronDown, ChevronRight, BarChart3, MessageSquare } from 'lucide-react'
+import { Users, DollarSign, Shield, TrendingUp, Database, CreditCard, Lock, User, Package, Receipt, ArrowLeft, Search, ChevronDown, ChevronRight, ChevronLeft, BarChart3, MessageSquare } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
@@ -58,6 +58,8 @@ const AdminView = () => {
   const [aggregatedExpenses, setAggregatedExpenses] = useState(null)
   const [loadingAggExpenses, setLoadingAggExpenses] = useState(false)
   const [expensesSubSection, setExpensesSubSection] = useState(null)
+  const [userListTab, setUserListTab] = useState(null)
+  const [userListVisibleCount, setUserListVisibleCount] = useState({ active: 5, freeTrial: 5, inactive: 5 })
 
   const periodOptions = [
     { value: 'day', label: 'Day' },
@@ -92,6 +94,30 @@ const AdminView = () => {
       case 'all': return 'All Time'
       default: return ''
     }
+  }
+
+  const shiftPeriod = (direction) => {
+    if (timePeriod === 'all') return
+    const ref = new Date(referenceDate + 'T00:00:00')
+    const d = direction === 'next' ? 1 : -1
+    switch (timePeriod) {
+      case 'day': ref.setDate(ref.getDate() + d); break
+      case 'week': ref.setDate(ref.getDate() + (7 * d)); break
+      case 'month': ref.setMonth(ref.getMonth() + d); break
+      case 'quarter': ref.setMonth(ref.getMonth() + (3 * d)); break
+      case 'year': ref.setFullYear(ref.getFullYear() + d); break
+      default: break
+    }
+    const y = ref.getFullYear()
+    const m = String(ref.getMonth() + 1).padStart(2, '0')
+    const dd = String(ref.getDate()).padStart(2, '0')
+    const newRef = `${y}-${m}-${dd}`
+    setReferenceDate(newRef)
+    if (timePeriod === 'month') {
+      setExpenseMonth(`${y}-${m}`)
+      setExpensesLoaded(false)
+    }
+    loadPeriodData(timePeriod, newRef)
   }
 
   // Calculate total API cost (sum of all provider costs)
@@ -155,6 +181,8 @@ const AdminView = () => {
       const response = await axios.get(`${API_URL}/api/admin/revenue`, { params: adminParams })
       if (response.data.success) {
         setRevenueData(response.data.revenue)
+        setUserListTab(null)
+        setUserListVisibleCount({ active: 5, freeTrial: 5, inactive: 5 })
       }
     } catch (error) {
       console.error('Error loading revenue:', error)
@@ -2076,90 +2104,6 @@ const AdminView = () => {
             {expensesSubSection === 'revenue' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
-                {/* Period Selector */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                    <div style={{ position: 'relative' }}>
-                      <div
-                        onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
-                        style={{
-                          background: 'rgba(93, 173, 226, 0.1)',
-                          border: '1px solid rgba(93, 173, 226, 0.3)',
-                          borderRadius: '10px',
-                          padding: '10px 16px',
-                          color: '#ffffff',
-                          fontSize: '1rem',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          minWidth: '130px',
-                          justifyContent: 'space-between',
-                          transition: 'all 0.2s ease',
-                        }}
-                      >
-                        <span>{periodOptions.find(o => o.value === timePeriod)?.label}</span>
-                        <ChevronDown size={16} style={{ transition: 'transform 0.2s ease', transform: periodDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                      </div>
-                      {periodDropdownOpen && (
-                        <>
-                          <div onClick={() => setPeriodDropdownOpen(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
-                          <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, background: '#0a0a0a', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '12px', padding: '6px', zIndex: 100, minWidth: '160px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
-                            {periodOptions.map(opt => (
-                              <div
-                                key={opt.value}
-                                onClick={() => { setTimePeriod(opt.value); setPeriodDropdownOpen(false); loadPeriodData(opt.value, referenceDate) }}
-                                style={{ padding: '10px 14px', borderRadius: '8px', cursor: 'pointer', color: timePeriod === opt.value ? '#ffffff' : '#cccccc', background: timePeriod === opt.value ? 'rgba(93, 173, 226, 0.25)' : 'transparent', fontSize: '0.95rem', transition: 'all 0.15s ease' }}
-                                onMouseEnter={(e) => { if (timePeriod !== opt.value) e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)' }}
-                                onMouseLeave={(e) => { if (timePeriod !== opt.value) e.currentTarget.style.background = 'transparent' }}
-                              >
-                                {opt.label}
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    {timePeriod === 'day' && (
-                      <input type="date" value={referenceDate} onChange={(e) => { setReferenceDate(e.target.value); loadPeriodData('day', e.target.value) }}
-                        style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', outline: 'none', cursor: 'pointer', colorScheme: 'dark' }} />
-                    )}
-                    {timePeriod === 'week' && (
-                      <input type="date" value={referenceDate} onChange={(e) => { setReferenceDate(e.target.value); loadPeriodData('week', e.target.value) }}
-                        style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', outline: 'none', cursor: 'pointer', colorScheme: 'dark' }} />
-                    )}
-                    {timePeriod === 'month' && (
-                      <input type="month" value={expenseMonth} onChange={(e) => { const m = e.target.value; setExpenseMonth(m); setReferenceDate(m + '-01'); setExpensesLoaded(false); loadPeriodData('month', m + '-01') }}
-                        style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', outline: 'none', cursor: 'pointer', colorScheme: 'dark' }} />
-                    )}
-                    {timePeriod === 'quarter' && (() => {
-                      const ref = new Date(referenceDate + 'T00:00:00')
-                      const currentQ = Math.ceil((ref.getMonth() + 1) / 3)
-                      const currentY = ref.getFullYear()
-                      return (
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <select value={currentQ} onChange={(e) => { const q = parseInt(e.target.value); const nd = `${currentY}-${String((q - 1) * 3 + 1).padStart(2, '0')}-01`; setReferenceDate(nd); loadPeriodData('quarter', nd) }}
-                            style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', outline: 'none', cursor: 'pointer', colorScheme: 'dark' }}>
-                            <option value={1} style={{ background: '#0a0a0a' }}>Q1 (Jan–Mar)</option>
-                            <option value={2} style={{ background: '#0a0a0a' }}>Q2 (Apr–Jun)</option>
-                            <option value={3} style={{ background: '#0a0a0a' }}>Q3 (Jul–Sep)</option>
-                            <option value={4} style={{ background: '#0a0a0a' }}>Q4 (Oct–Dec)</option>
-                          </select>
-                          <input type="number" value={currentY} min={2024} max={2035} onChange={(e) => { const nd = `${e.target.value}-${String((currentQ - 1) * 3 + 1).padStart(2, '0')}-01`; setReferenceDate(nd); loadPeriodData('quarter', nd) }}
-                            style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', width: '100px', outline: 'none', colorScheme: 'dark' }} />
-                        </div>
-                      )
-                    })()}
-                    {timePeriod === 'year' && (
-                      <input type="number" value={new Date(referenceDate + 'T00:00:00').getFullYear()} min={2024} max={2035} onChange={(e) => { const nd = `${e.target.value}-01-01`; setReferenceDate(nd); loadPeriodData('year', nd) }}
-                        style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', width: '110px', outline: 'none', colorScheme: 'dark' }} />
-                    )}
-
-                    <span style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic' }}>{getPeriodLabel()}</span>
-                  </div>
-                </div>
-
                 {loadingRevenue ? (
                   <div style={{ textAlign: 'center', padding: '40px', color: '#cccccc' }}>Loading revenue data...</div>
                 ) : !revenueData ? (
@@ -2167,37 +2111,145 @@ const AdminView = () => {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-                    {/* Total Users Summary */}
+                    {/* Current Totals (always global) */}
                     <div style={{
-                      background: 'linear-gradient(135deg, rgba(72, 201, 176, 0.1), rgba(93, 173, 226, 0.06))',
-                      border: '1px solid rgba(72, 201, 176, 0.25)',
-                      borderRadius: '14px',
-                      padding: '24px',
+                      background: 'rgba(93, 173, 226, 0.04)',
+                      border: '1px solid rgba(93, 173, 226, 0.15)',
+                      borderRadius: '12px',
+                      padding: '16px 24px',
                       display: 'flex',
                       justifyContent: 'space-around',
                       alignItems: 'center',
                       gap: '16px',
                       flexWrap: 'wrap',
                     }}>
+                      <span style={{ color: '#6b7280', fontSize: '0.85rem' }}>Current totals:</span>
                       {[
-                        { label: 'Total Active Users', value: (revenueData.activeSubscriptions ?? 0) + (revenueData.activeFreeTrials ?? 0), color: '#ffffff' },
-                        { label: 'Paid Subscribers', value: revenueData.activeSubscriptions ?? 0, color: '#48c9b0' },
-                        { label: 'Free Trial Users', value: revenueData.activeFreeTrials ?? 0, color: '#fbbf24' },
+                        { label: 'Total Active', value: (revenueData.activeSubscriptions ?? 0) + (revenueData.activeFreeTrials ?? 0), color: '#ffffff' },
+                        { label: 'Paid', value: revenueData.activeSubscriptions ?? 0, color: '#48c9b0' },
+                        { label: 'Free Trial', value: revenueData.activeFreeTrials ?? 0, color: '#fbbf24' },
                       ].map(({ label, value, color }) => (
-                        <div key={label} style={{ textAlign: 'center', minWidth: '140px' }}>
-                          <p style={{ color: '#999999', fontSize: '0.8rem', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</p>
-                          <p style={{ color, fontSize: '2.2rem', fontWeight: '800', margin: 0, fontFamily: 'monospace' }}>{value}</p>
+                        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ color: '#999999', fontSize: '0.8rem' }}>{label}</span>
+                          <span style={{ color, fontSize: '1.4rem', fontWeight: '700', fontFamily: 'monospace' }}>{value}</span>
                         </div>
                       ))}
                     </div>
 
-                    {/* Period Activity Stats */}
+                    {/* Period Selector */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        <div style={{ position: 'relative' }}>
+                          <div
+                            onClick={() => setPeriodDropdownOpen(!periodDropdownOpen)}
+                            style={{
+                              background: 'rgba(93, 173, 226, 0.1)',
+                              border: '1px solid rgba(93, 173, 226, 0.3)',
+                              borderRadius: '10px',
+                              padding: '10px 16px',
+                              color: '#ffffff',
+                              fontSize: '1rem',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              minWidth: '130px',
+                              justifyContent: 'space-between',
+                              transition: 'all 0.2s ease',
+                            }}
+                          >
+                            <span>{periodOptions.find(o => o.value === timePeriod)?.label}</span>
+                            <ChevronDown size={16} style={{ transition: 'transform 0.2s ease', transform: periodDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                          </div>
+                          {periodDropdownOpen && (
+                            <>
+                              <div onClick={() => setPeriodDropdownOpen(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} />
+                              <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, background: '#0a0a0a', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '12px', padding: '6px', zIndex: 100, minWidth: '160px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
+                                {periodOptions.map(opt => (
+                                  <div
+                                    key={opt.value}
+                                    onClick={() => { setTimePeriod(opt.value); setPeriodDropdownOpen(false); loadPeriodData(opt.value, referenceDate) }}
+                                    style={{ padding: '10px 14px', borderRadius: '8px', cursor: 'pointer', color: timePeriod === opt.value ? '#ffffff' : '#cccccc', background: timePeriod === opt.value ? 'rgba(93, 173, 226, 0.25)' : 'transparent', fontSize: '0.95rem', transition: 'all 0.15s ease' }}
+                                    onMouseEnter={(e) => { if (timePeriod !== opt.value) e.currentTarget.style.background = 'rgba(93, 173, 226, 0.1)' }}
+                                    onMouseLeave={(e) => { if (timePeriod !== opt.value) e.currentTarget.style.background = 'transparent' }}
+                                  >
+                                    {opt.label}
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {timePeriod === 'day' && (
+                          <input type="date" value={referenceDate} onChange={(e) => { setReferenceDate(e.target.value); loadPeriodData('day', e.target.value) }}
+                            style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', outline: 'none', cursor: 'pointer', colorScheme: 'dark' }} />
+                        )}
+                        {timePeriod === 'week' && (
+                          <input type="date" value={referenceDate} onChange={(e) => { setReferenceDate(e.target.value); loadPeriodData('week', e.target.value) }}
+                            style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', outline: 'none', cursor: 'pointer', colorScheme: 'dark' }} />
+                        )}
+                        {timePeriod === 'month' && (
+                          <input type="month" value={expenseMonth} onChange={(e) => { const m = e.target.value; setExpenseMonth(m); setReferenceDate(m + '-01'); setExpensesLoaded(false); loadPeriodData('month', m + '-01') }}
+                            style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', outline: 'none', cursor: 'pointer', colorScheme: 'dark' }} />
+                        )}
+                        {timePeriod === 'quarter' && (() => {
+                          const ref = new Date(referenceDate + 'T00:00:00')
+                          const currentQ = Math.ceil((ref.getMonth() + 1) / 3)
+                          const currentY = ref.getFullYear()
+                          return (
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <select value={currentQ} onChange={(e) => { const q = parseInt(e.target.value); const nd = `${currentY}-${String((q - 1) * 3 + 1).padStart(2, '0')}-01`; setReferenceDate(nd); loadPeriodData('quarter', nd) }}
+                                style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', outline: 'none', cursor: 'pointer', colorScheme: 'dark' }}>
+                                <option value={1} style={{ background: '#0a0a0a' }}>Q1 (Jan–Mar)</option>
+                                <option value={2} style={{ background: '#0a0a0a' }}>Q2 (Apr–Jun)</option>
+                                <option value={3} style={{ background: '#0a0a0a' }}>Q3 (Jul–Sep)</option>
+                                <option value={4} style={{ background: '#0a0a0a' }}>Q4 (Oct–Dec)</option>
+                              </select>
+                              <input type="number" value={currentY} min={2024} max={2035} onChange={(e) => { const nd = `${e.target.value}-${String((currentQ - 1) * 3 + 1).padStart(2, '0')}-01`; setReferenceDate(nd); loadPeriodData('quarter', nd) }}
+                                style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', width: '100px', outline: 'none', colorScheme: 'dark' }} />
+                            </div>
+                          )
+                        })()}
+                        {timePeriod === 'year' && (
+                          <input type="number" value={new Date(referenceDate + 'T00:00:00').getFullYear()} min={2024} max={2035} onChange={(e) => { const nd = `${e.target.value}-01-01`; setReferenceDate(nd); loadPeriodData('year', nd) }}
+                            style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', width: '110px', outline: 'none', colorScheme: 'dark' }} />
+                        )}
+
+                        {timePeriod !== 'all' && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div
+                              onClick={() => shiftPeriod('prev')}
+                              style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(93, 173, 226, 0.08)', border: '1px solid rgba(93, 173, 226, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s ease' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(93, 173, 226, 0.2)' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(93, 173, 226, 0.08)' }}
+                            >
+                              <ChevronLeft size={16} color="#5dade2" />
+                            </div>
+                            <span style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic', minWidth: '120px', textAlign: 'center' }}>{getPeriodLabel()}</span>
+                            <div
+                              onClick={() => shiftPeriod('next')}
+                              style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(93, 173, 226, 0.08)', border: '1px solid rgba(93, 173, 226, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s ease' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(93, 173, 226, 0.2)' }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(93, 173, 226, 0.08)' }}
+                            >
+                              <ChevronRight size={16} color="#5dade2" />
+                            </div>
+                          </div>
+                        )}
+                        {timePeriod === 'all' && (
+                          <span style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic' }}>{getPeriodLabel()}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Period-Specific Stats */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '16px' }}>
                       {[
-                        { label: `New Subs (${periodOptions.find(o => o.value === timePeriod)?.label})`, value: revenueData.newSubscriptions, color: '#5dade2' },
-                        { label: `Renewed (${periodOptions.find(o => o.value === timePeriod)?.label})`, value: revenueData.renewedSubscriptions ?? 0, color: '#a78bfa' },
-                        { label: `Canceled (${periodOptions.find(o => o.value === timePeriod)?.label})`, value: revenueData.canceledSubscriptions, color: '#f87171' },
-                        { label: `New Trials (${periodOptions.find(o => o.value === timePeriod)?.label})`, value: revenueData.newFreeTrials ?? 0, color: '#f59e0b' },
+                        { label: 'New Paid Subs', value: revenueData.newSubscriptions, color: '#48c9b0' },
+                        { label: 'Renewed', value: revenueData.renewedSubscriptions ?? 0, color: '#a78bfa' },
+                        { label: 'Canceled', value: revenueData.canceledSubscriptions, color: '#f87171' },
+                        { label: 'New Free Trials', value: revenueData.newFreeTrials ?? 0, color: '#fbbf24' },
                       ].map(({ label, value, color }) => (
                         <div key={label} style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
                           <p style={{ color: '#cccccc', fontSize: '0.85rem', margin: '0 0 8px 0' }}>{label}</p>
@@ -2260,10 +2312,10 @@ const AdminView = () => {
                       </h3>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                         <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
-                          {revenueData.activeFreeTrials ?? 0} active trial{(revenueData.activeFreeTrials ?? 0) !== 1 ? 's' : ''} · {revenueData.newFreeTrials ?? 0} new this period
+                          {revenueData.newFreeTrials ?? 0} new trial{(revenueData.newFreeTrials ?? 0) !== 1 ? 's' : ''} this period @ $0.50/trial cost
                         </span>
-                        <span style={{ color: '#fbbf24', fontSize: '1.1rem', fontWeight: '600', fontFamily: 'monospace' }}>
-                          $0.00 (free)
+                        <span style={{ color: '#f87171', fontSize: '1.1rem', fontWeight: '600', fontFamily: 'monospace' }}>
+                          -${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)} expense
                         </span>
                       </div>
                       {revenueData.freeTrialUsers?.length > 0 && (
@@ -2373,9 +2425,118 @@ const AdminView = () => {
                       </span>
                     </div>
 
+                    {/* ── User Lists ── */}
+                    <div style={{ background: 'rgba(93, 173, 226, 0.04)', border: '1px solid rgba(93, 173, 226, 0.12)', borderRadius: '14px', overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', borderBottom: '1px solid rgba(93, 173, 226, 0.1)' }}>
+                        {[
+                          { key: 'active', label: 'Active Paid', count: revenueData.activeUsersList?.length ?? 0, color: '#48c9b0' },
+                          { key: 'freeTrial', label: 'Free Trial', count: revenueData.freeTrialUsersList?.length ?? 0, color: '#fbbf24' },
+                          { key: 'inactive', label: 'Inactive / Canceled', count: revenueData.inactiveUsersList?.length ?? 0, color: '#f87171' },
+                        ].map(({ key, label, count, color }) => {
+                          const isOpen = userListTab === key
+                          return (
+                            <div
+                              key={key}
+                              onClick={() => {
+                                if (isOpen) {
+                                  setUserListTab(null)
+                                } else {
+                                  setUserListTab(key)
+                                  setUserListVisibleCount(prev => ({ ...prev, [key]: 5 }))
+                                }
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: '14px 12px',
+                                textAlign: 'center',
+                                cursor: 'pointer',
+                                background: isOpen ? `${color}18` : 'transparent',
+                                borderBottom: isOpen ? `2px solid ${color}` : '2px solid transparent',
+                                transition: 'all 0.2s ease',
+                              }}
+                              onMouseEnter={(e) => { if (!isOpen) e.currentTarget.style.background = 'rgba(93, 173, 226, 0.06)' }}
+                              onMouseLeave={(e) => { if (!isOpen) e.currentTarget.style.background = 'transparent' }}
+                            >
+                              <span style={{ color: isOpen ? color : '#999999', fontSize: '0.85rem', fontWeight: isOpen ? '600' : '400', transition: 'color 0.2s ease' }}>
+                                {label}
+                              </span>
+                              <span style={{ color: isOpen ? color : '#666666', fontSize: '0.75rem', marginLeft: '6px', fontFamily: 'monospace' }}>({count})</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {userListTab && (() => {
+                        const listMap = {
+                          active: revenueData.activeUsersList ?? [],
+                          freeTrial: revenueData.freeTrialUsersList ?? [],
+                          inactive: revenueData.inactiveUsersList ?? [],
+                        }
+                        const colorMap = { active: '#48c9b0', freeTrial: '#fbbf24', inactive: '#f87171' }
+                        const users = listMap[userListTab]
+                        const color = colorMap[userListTab]
+                        const visibleCount = userListVisibleCount[userListTab] ?? 5
+                        const visibleUsers = users.slice(0, visibleCount)
+                        const hasMore = visibleCount < users.length
+                        const isExpanded = visibleCount > 5
+
+                        return (
+                          <div style={{ padding: '16px 20px' }}>
+                            {users.length === 0 ? (
+                              <div style={{ textAlign: 'center', padding: '24px', color: '#6b7280', fontSize: '0.9rem' }}>
+                                No users in this category
+                              </div>
+                            ) : (
+                              <>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {visibleUsers.map((u, i) => (
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(93, 173, 226, 0.04)', borderRadius: '10px', transition: 'background 0.15s ease' }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(93, 173, 226, 0.08)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(93, 173, 226, 0.04)'}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <User size={14} style={{ color: color, opacity: 0.7 }} />
+                                        <span style={{ color: '#dddddd', fontSize: '0.9rem' }}>{u.username}</span>
+                                        {u.email && <span style={{ color: '#555555', fontSize: '0.75rem' }}>{u.email}</span>}
+                                        {u.status && <span style={{ color: u.status === 'canceled' ? '#f87171' : '#999999', fontSize: '0.72rem', background: 'rgba(255,255,255,0.04)', padding: '2px 8px', borderRadius: '6px' }}>{u.status}</span>}
+                                      </div>
+                                      <span style={{ color: '#555555', fontSize: '0.78rem' }}>{u.date ? new Date(u.date).toLocaleDateString() : '—'}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '14px' }}>
+                                  {hasMore && (
+                                    <div
+                                      onClick={() => setUserListVisibleCount(prev => ({ ...prev, [userListTab]: prev[userListTab] + 10 }))}
+                                      style={{ padding: '8px 20px', borderRadius: '8px', background: `${color}15`, border: `1px solid ${color}30`, color, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s ease' }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.background = `${color}25` }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.background = `${color}15` }}
+                                    >
+                                      View More ({users.length - visibleCount} remaining)
+                                    </div>
+                                  )}
+                                  {isExpanded && (
+                                    <div
+                                      onClick={() => setUserListVisibleCount(prev => ({ ...prev, [userListTab]: 5 }))}
+                                      style={{ padding: '8px 20px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#999999', fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s ease' }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+                                    >
+                                      Show Less
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )
+                      })()}
+                    </div>
+
                     {/* Net Profit / Loss */}
                     {(() => {
-                      const netAmount = (revenueData.totalRevenue || 0) - effectiveGrandTotal
+                      const totalExpensesWithTrials = effectiveGrandTotal + (revenueData.totalFreeTrialCost ?? 0)
+                      const netAmount = (revenueData.totalRevenue || 0) - totalExpensesWithTrials
                       const isProfit = netAmount >= 0
                       return (
                         <div style={{
@@ -2393,7 +2554,7 @@ const AdminView = () => {
                                 Net {isProfit ? 'Profit' : 'Loss'}
                               </span>
                               <span style={{ color: '#666666', fontSize: '0.9rem' }}>
-                                Revenue ${revenueData.totalRevenue?.toFixed(2)} − Expenses ${effectiveGrandTotal.toFixed(2)}
+                                Revenue ${revenueData.totalRevenue?.toFixed(2)} − Expenses ${totalExpensesWithTrials.toFixed(2)}
                               </span>
                             </div>
                             <span style={{ color: isProfit ? '#48c9b0' : '#5dade2', fontSize: '2rem', fontWeight: '800', fontFamily: 'monospace' }}>
@@ -2492,7 +2653,30 @@ const AdminView = () => {
                         style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: '10px', padding: '10px 16px', color: '#ffffff', fontSize: '1rem', width: '110px', outline: 'none', colorScheme: 'dark' }} />
                     )}
 
-                    <span style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic' }}>{getPeriodLabel()}</span>
+                    {timePeriod !== 'all' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div
+                          onClick={() => shiftPeriod('prev')}
+                          style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(93, 173, 226, 0.08)', border: '1px solid rgba(93, 173, 226, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s ease' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(93, 173, 226, 0.2)' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(93, 173, 226, 0.08)' }}
+                        >
+                          <ChevronLeft size={16} color="#5dade2" />
+                        </div>
+                        <span style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic', minWidth: '120px', textAlign: 'center' }}>{getPeriodLabel()}</span>
+                        <div
+                          onClick={() => shiftPeriod('next')}
+                          style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(93, 173, 226, 0.08)', border: '1px solid rgba(93, 173, 226, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s ease' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(93, 173, 226, 0.2)' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(93, 173, 226, 0.08)' }}
+                        >
+                          <ChevronRight size={16} color="#5dade2" />
+                        </div>
+                      </div>
+                    )}
+                    {timePeriod === 'all' && (
+                      <span style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic' }}>{getPeriodLabel()}</span>
+                    )}
                   </div>
 
                   {timePeriod === 'month' && (
@@ -2568,6 +2752,19 @@ const AdminView = () => {
                       </div>
                     ))}
 
+                    {/* Free Trial Costs */}
+                    {revenueData && (revenueData.newFreeTrials ?? 0) > 0 && (
+                      <div style={{ background: 'rgba(251, 191, 36, 0.06)', border: '1px solid rgba(251, 191, 36, 0.15)', borderRadius: '14px', padding: '24px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <h3 style={{ fontSize: '1.15rem', color: '#fbbf24', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <User size={20} color="#fbbf24" />
+                            Free Trial Costs ({revenueData.newFreeTrials} trial{revenueData.newFreeTrials !== 1 ? 's' : ''} @ $0.50)
+                          </h3>
+                          <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{
                       background: 'linear-gradient(135deg, rgba(93, 173, 226, 0.12), rgba(72, 201, 176, 0.08))',
                       border: '1px solid rgba(93, 173, 226, 0.3)',
@@ -2581,7 +2778,7 @@ const AdminView = () => {
                         <Receipt size={24} color="#5dade2" />
                         <span style={{ color: '#5dade2', fontSize: '1.25rem', fontWeight: '700' }}>Total Expenses</span>
                       </div>
-                      <span style={{ color: '#ffffff', fontSize: '1.6rem', fontWeight: '800', fontFamily: 'monospace' }}>${grandTotal.toFixed(2)}</span>
+                      <span style={{ color: '#ffffff', fontSize: '1.6rem', fontWeight: '800', fontFamily: 'monospace' }}>${(grandTotal + (revenueData?.totalFreeTrialCost ?? 0)).toFixed(2)}</span>
                     </div>
                   </div>
                 )}
@@ -2655,6 +2852,19 @@ const AdminView = () => {
                             </div>
                           ))}
 
+                          {/* Free Trial Costs */}
+                          {revenueData && (revenueData.newFreeTrials ?? 0) > 0 && (
+                            <div style={{ background: 'rgba(251, 191, 36, 0.06)', border: '1px solid rgba(251, 191, 36, 0.15)', borderRadius: '14px', padding: '24px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h3 style={{ fontSize: '1.15rem', color: '#fbbf24', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <User size={20} color="#fbbf24" />
+                                  Free Trial Costs ({revenueData.newFreeTrials} trial{revenueData.newFreeTrials !== 1 ? 's' : ''} @ $0.50)
+                                </h3>
+                                <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)}</span>
+                              </div>
+                            </div>
+                          )}
+
                           <div style={{
                             background: 'linear-gradient(135deg, rgba(93, 173, 226, 0.12), rgba(72, 201, 176, 0.08))',
                             border: '1px solid rgba(93, 173, 226, 0.3)',
@@ -2668,7 +2878,7 @@ const AdminView = () => {
                               <Receipt size={24} color="#5dade2" />
                               <span style={{ color: '#5dade2', fontSize: '1.25rem', fontWeight: '700' }}>Total Expenses</span>
                             </div>
-                            <span style={{ color: '#ffffff', fontSize: '1.6rem', fontWeight: '800', fontFamily: 'monospace' }}>${aggGrand.toFixed(2)}</span>
+                            <span style={{ color: '#ffffff', fontSize: '1.6rem', fontWeight: '800', fontFamily: 'monospace' }}>${(aggGrand + (revenueData?.totalFreeTrialCost ?? 0)).toFixed(2)}</span>
                           </div>
 
                           {aggregatedExpenses?.months?.length > 0 && (
