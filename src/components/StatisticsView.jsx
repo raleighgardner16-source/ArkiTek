@@ -2470,8 +2470,68 @@ const StatisticsView = () => {
                       </div>
 
                       <p style={{ color: currentTheme.textSecondary, fontSize: '1rem', margin: '0 0 20px 0' }}>
-                        Unlock badges by using ArkiTek. Track your progress across all categories.
+                        Unlock badges by using ArkiTek. The more badges you earn, the greater the rewards.
                       </p>
+
+                      {/* Rewards tier indicator */}
+                      {(() => {
+                        const pct = totalBadges > 0 ? (totalEarned / totalBadges) * 100 : 0
+                        let tier, tierColor, tierGlow, tierDesc
+                        if (allOtherBadgesEarned) {
+                          tier = 'Legendary'; tierColor = '#FFD700'; tierGlow = 'rgba(255,215,0,0.25)'
+                          tierDesc = 'Maximum rewards unlocked — you are The ArkiTek.'
+                        } else if (pct >= 75) {
+                          tier = 'Diamond'; tierColor = '#B9F2FF'; tierGlow = 'rgba(185,242,255,0.2)'
+                          tierDesc = 'Elite status — exclusive perks and recognition await.'
+                        } else if (pct >= 50) {
+                          tier = 'Platinum'; tierColor = '#E5E4E2'; tierGlow = 'rgba(229,228,226,0.15)'
+                          tierDesc = 'Premium rewards unlocked — keep pushing for Diamond.'
+                        } else if (pct >= 25) {
+                          tier = 'Gold'; tierColor = '#FFD700'; tierGlow = 'rgba(255,215,0,0.12)'
+                          tierDesc = 'Solid progress — more badges mean bigger rewards.'
+                        } else if (pct >= 10) {
+                          tier = 'Silver'; tierColor = '#C0C0C0'; tierGlow = 'rgba(192,192,192,0.12)'
+                          tierDesc = 'You\'re on your way — earn more badges to level up your rewards.'
+                        } else {
+                          tier = 'Bronze'; tierColor = '#CD7F32'; tierGlow = 'rgba(205,127,50,0.12)'
+                          tierDesc = 'Just getting started — every badge earned brings new rewards.'
+                        }
+                        return (
+                          <div style={{
+                            display: 'inline-flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '12px 24px',
+                            borderRadius: '12px',
+                            background: tierGlow,
+                            border: `1px solid ${tierColor}40`,
+                            marginBottom: '20px',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Trophy size={16} color={tierColor} />
+                              <span style={{
+                                fontSize: '0.85rem',
+                                fontWeight: '700',
+                                color: tierColor,
+                                letterSpacing: '1px',
+                                textTransform: 'uppercase',
+                              }}>
+                                {tier} Tier
+                              </span>
+                              <Trophy size={16} color={tierColor} />
+                            </div>
+                            <span style={{
+                              fontSize: '0.75rem',
+                              color: currentTheme.textSecondary,
+                              fontStyle: 'italic',
+                            }}>
+                              {tierDesc}
+                            </span>
+                          </div>
+                        )
+                      })()}
+
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
