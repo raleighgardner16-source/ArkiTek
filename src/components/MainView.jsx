@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus, Coins, DollarSign, Maximize2, X, MessageCircle, Swords } from 'lucide-react'
 import { useStore } from '../store/useStore'
@@ -186,6 +186,35 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   }).map(([providerKey, providerData]) => {
     return [providerKey, providerData]
   })
+
+  // Build debate role entries from both selected models and Auto Smart providers
+  const debateRoleEntries = useMemo(() => {
+    if (promptMode !== 'debate') return []
+    const entries = []
+    const coveredProviders = new Set()
+
+    selectedModels.forEach((modelId) => {
+      const modelInfo = allModels.find(m => m.id === modelId)
+      if (modelInfo) coveredProviders.add(modelInfo.provider)
+      entries.push({
+        key: modelId,
+        label: modelInfo?.providerName || modelId,
+        roleStoreKey: modelId,
+      })
+    })
+
+    Object.entries(autoSmartProviders).forEach(([providerKey, enabled]) => {
+      if (!enabled || coveredProviders.has(providerKey)) return
+      const providerData = modelsByProvider[providerKey]
+      entries.push({
+        key: `autoSmart-${providerKey}`,
+        label: providerData?.providerName || providerKey,
+        roleStoreKey: `autoSmart-${providerKey}`,
+      })
+    })
+
+    return entries
+  }, [promptMode, selectedModels, autoSmartProviders, allModels, modelsByProvider])
 
   // Track which provider tab is expanded (only one at a time) - now click-based
   const [expandedProviders, setExpandedProviders] = useState({})
@@ -3974,38 +4003,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
               {/* Debate Mode: Role Assignment */}
               <AnimatePresence>
-                {promptMode === 'debate' && responses.length === 0 && (() => {
-                  const activeAutoSmartProviders = Object.entries(autoSmartProviders)
-                    .filter(([_, enabled]) => enabled)
-                    .map(([providerKey]) => providerKey)
-                  const hasEntries = selectedModels.length > 0 || activeAutoSmartProviders.length > 0
-                  if (!hasEntries) return null
-
-                  const roleEntries = []
-                  const coveredProviders = new Set()
-
-                  selectedModels.forEach((modelId) => {
-                    const modelInfo = allModels.find(m => m.id === modelId)
-                    if (modelInfo) coveredProviders.add(modelInfo.provider)
-                    roleEntries.push({
-                      key: modelId,
-                      label: modelInfo?.providerName || modelId,
-                      roleStoreKey: modelId,
-                    })
-                  })
-
-                  activeAutoSmartProviders.forEach((providerKey) => {
-                    if (coveredProviders.has(providerKey)) return
-                    const providerData = modelsByProvider[providerKey]
-                    roleEntries.push({
-                      key: `autoSmart-${providerKey}`,
-                      label: providerData?.providerName || providerKey,
-                      roleStoreKey: `autoSmart-${providerKey}`,
-                    })
-                  })
-
-                  return (
+                {promptMode === 'debate' && debateRoleEntries.length > 0 && responses.length === 0 && (
                   <motion.div
+                    key="debate-role-assignment"
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
@@ -4034,7 +4034,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         </span>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                        {roleEntries.map(({ key, label, roleStoreKey }) => {
+                        {debateRoleEntries.map(({ key, label, roleStoreKey }) => {
                           const currentRole = modelRoles[roleStoreKey] || 'neutral'
                           const currentRoleDef = getRoleByKey(currentRole)
                           return (
@@ -4149,8 +4149,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       </div>
                     </div>
                   </motion.div>
-                  )
-                })()}
+                )}
               </AnimatePresence>
             </div>
           </div>
