@@ -96,6 +96,7 @@ function App() {
 
   const activeTab = useStore((state) => state.activeTab || 'home')
   const setActiveTab = useStore((state) => state.setActiveTab)
+  const isNavExpanded = useStore((state) => state.isNavExpanded)
   
   // Listen for navigation changes
   useEffect(() => {
@@ -1685,14 +1686,19 @@ Important: Only include each section label followed by a colon and content.`
                 {activeTab === 'statistics' && <StatisticsView />}
                 {activeTab === 'store' && (
                   <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: isNavExpanded ? '240px' : '60px',
+                    width: `calc(100% - ${isNavExpanded ? '240px' : '60px'})`,
+                    height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    height: '100%',
-                    minHeight: '60vh',
                     gap: '16px',
                     padding: '40px',
+                    zIndex: 10,
+                    transition: 'left 0.3s ease, width 0.3s ease',
                   }}>
                     <ShoppingBag size={48} style={{ color: currentTheme.textMuted, opacity: 0.5 }} />
                     <h2 style={{

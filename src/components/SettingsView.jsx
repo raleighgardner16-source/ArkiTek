@@ -7,15 +7,15 @@ const SettingsView = () => {
   const currentUser = useStore((state) => state.currentUser)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
+  const isNavExpanded = useStore((state) => state.isNavExpanded)
 
   return (
     <div
       style={{
         position: 'fixed',
         top: 0,
-        left: 0,
-        right: 0,
-        width: '100%',
+        left: isNavExpanded ? '240px' : '60px',
+        width: `calc(100% - ${isNavExpanded ? '240px' : '60px'})`,
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
@@ -25,6 +25,7 @@ const SettingsView = () => {
         paddingBottom: '40px',
         overflowY: 'auto',
         zIndex: 10,
+        transition: 'left 0.3s ease, width 0.3s ease',
       }}
     >
       <div

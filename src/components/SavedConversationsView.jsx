@@ -35,6 +35,7 @@ const SavedConversationsView = () => {
   const currentUser = useStore((state) => state.currentUser)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
+  const isNavExpanded = useStore((state) => state.isNavExpanded)
   const setActiveTab = useStore((state) => state.setActiveTab)
   const clearResponses = useStore((state) => state.clearResponses)
   const addResponse = useStore((state) => state.addResponse)
@@ -1400,9 +1401,10 @@ const SavedConversationsView = () => {
   // --- Main render ---
   return (
     <div style={{
-      position: 'fixed', top: 0, left: '240px',
-      width: 'calc(100% - 240px)', height: '100%',
+      position: 'fixed', top: 0, left: isNavExpanded ? '240px' : '60px',
+      width: `calc(100% - ${isNavExpanded ? '240px' : '60px'})`, height: '100%',
       overflowY: 'auto', zIndex: 10, padding: '40px',
+      transition: 'left 0.3s ease, width 0.3s ease',
     }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {/* Header */}

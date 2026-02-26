@@ -444,7 +444,7 @@ const NavigationBar = () => {
               lineHeight: '1.5',
               margin: '0 0 16px 0',
             }}>
-              Please contact us if you have any issues or questions. Feel free to give us any feedback on how we can make ArkiTek better and your experience so far.
+              Please contact us if you have any issues or questions or want to tell us your experience so far! Feel free to give us any feedback on how we can make ArkiTek better!
             </p>
             <a
               href="mailto:support@arkitek.site"

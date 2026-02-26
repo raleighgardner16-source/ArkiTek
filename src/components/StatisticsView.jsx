@@ -254,6 +254,7 @@ const StatisticsView = () => {
   const leaderboardRefreshTrigger = useStore((state) => state.leaderboardRefreshTrigger)
   const setWinningPrompts = useStore((state) => state.setWinningPrompts)
   const winningPrompts = useStore((state) => state.winningPrompts)
+  const isNavExpanded = useStore((state) => state.isNavExpanded)
   const viewingProfile = useStore((state) => state.viewingProfile)
   const clearViewingProfile = useStore((state) => state.clearViewingProfile)
   const isViewingOther = viewingProfile && viewingProfile.userId !== currentUser?.id
@@ -724,13 +725,14 @@ const StatisticsView = () => {
         style={{
           position: 'fixed',
           top: '0',
-          left: '240px',
-          width: 'calc(100% - 240px)',
+          left: isNavExpanded ? '240px' : '60px',
+          width: `calc(100% - ${isNavExpanded ? '240px' : '60px'})`,
           height: '100%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 10,
+          transition: 'left 0.3s ease, width 0.3s ease',
         }}
       >
         <p style={{ color: currentTheme.text, fontSize: '1.2rem' }}>Loading statistics...</p>
@@ -901,8 +903,8 @@ const StatisticsView = () => {
       style={{
         position: 'fixed',
         top: '0',
-        left: '240px',
-        width: 'calc(100% - 240px)',
+        left: isNavExpanded ? '240px' : '60px',
+        width: `calc(100% - ${isNavExpanded ? '240px' : '60px'})`,
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
@@ -910,6 +912,7 @@ const StatisticsView = () => {
         overflowY: 'auto',
         zIndex: 10,
         color: currentTheme.text,
+        transition: 'left 0.3s ease, width 0.3s ease',
       }}
     >
       <div

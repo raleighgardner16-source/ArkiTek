@@ -28,6 +28,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
   const setActiveTab = useStore((state) => state.setActiveTab)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
+  const isNavExpanded = useStore((state) => state.isNavExpanded)
   const winningPrompts = useStore((state) => state.winningPrompts)
   const [activeSection, setActiveSection] = useState('myfeed') // 'myfeed', 'browse', 'search'
   const [selectedCategory, setSelectedCategory] = useState('All') // Category filter
@@ -1338,8 +1339,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
       style={{
         position: 'fixed',
         top: '0',
-        left: '240px',
-        width: 'calc(100% - 240px)',
+        left: isNavExpanded ? '240px' : '60px',
+        width: `calc(100% - ${isNavExpanded ? '240px' : '60px'})`,
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
@@ -1347,6 +1348,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
         overflowY: 'auto',
         zIndex: 10,
         color: currentTheme.text,
+        transition: 'left 0.3s ease, width 0.3s ease',
       }}
     >
       <div

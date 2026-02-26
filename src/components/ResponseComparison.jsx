@@ -621,30 +621,41 @@ const ResponseComparison = () => {
 
             <div style={{ marginBottom: '24px', paddingRight: '40px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <h2
-                  key={`single-response-maximized-title-${theme}`}
-                  style={{
-                    fontSize: '1.8rem',
-                    margin: 0,
-                    background: currentTheme.accentGradient,
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}
-                >
-                  {formatModelName(response.modelName)}
-                </h2>
-                {response.debateRole && (
-                  <span style={{
-                    fontSize: '0.75rem',
-                    fontWeight: '600',
-                    padding: '3px 10px',
-                    borderRadius: '6px',
-                    background: currentTheme.name === 'dark' ? 'rgba(147, 130, 220, 0.15)' : 'rgba(107, 70, 193, 0.10)',
-                    color: currentTheme.name === 'dark' ? '#b8a9e8' : '#6b46c1',
-                    border: `1px solid ${currentTheme.name === 'dark' ? 'rgba(147, 130, 220, 0.30)' : 'rgba(107, 70, 193, 0.25)'}`,
-                  }}>
-                    {response.debateRole.label}
-                  </span>
+                {response.debateRole ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <h2
+                      key={`single-response-maximized-title-${theme}`}
+                      style={{
+                        fontSize: '1.8rem',
+                        margin: 0,
+                        background: currentTheme.accentGradient,
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                      }}
+                    >
+                      {response.debateRole.label}
+                    </h2>
+                    <span style={{
+                      fontSize: '0.85rem',
+                      color: currentTheme.textMuted,
+                      fontWeight: '400',
+                    }}>
+                      {formatModelName(response.modelName)}
+                    </span>
+                  </div>
+                ) : (
+                  <h2
+                    key={`single-response-maximized-title-${theme}`}
+                    style={{
+                      fontSize: '1.8rem',
+                      margin: 0,
+                      background: currentTheme.accentGradient,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                    }}
+                  >
+                    {formatModelName(response.modelName)}
+                  </h2>
                 )}
               </div>
             </div>
@@ -1049,30 +1060,41 @@ const ResponseComparison = () => {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Move size={20} color={currentTheme.accent} style={{ opacity: 0.6 }} />
-            <h2
-              key={`single-response-popup-title-${theme}`}
-              style={{
-                fontSize: '1.4rem',
-                margin: 0,
-                background: currentTheme.accentGradient,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-              }}
-            >
-              {formatModelName(response.modelName)}
-            </h2>
-            {response.debateRole && (
-              <span style={{
-                fontSize: '0.72rem',
-                fontWeight: '600',
-                padding: '2px 9px',
-                borderRadius: '6px',
-                background: currentTheme.name === 'dark' ? 'rgba(147, 130, 220, 0.15)' : 'rgba(107, 70, 193, 0.10)',
-                color: currentTheme.name === 'dark' ? '#b8a9e8' : '#6b46c1',
-                border: `1px solid ${currentTheme.name === 'dark' ? 'rgba(147, 130, 220, 0.30)' : 'rgba(107, 70, 193, 0.25)'}`,
-              }}>
-                {response.debateRole.label}
-              </span>
+            {response.debateRole ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                <h2
+                  key={`single-response-popup-title-${theme}`}
+                  style={{
+                    fontSize: '1.4rem',
+                    margin: 0,
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  }}
+                >
+                  {response.debateRole.label}
+                </h2>
+                <span style={{
+                  fontSize: '0.78rem',
+                  color: currentTheme.textMuted,
+                  fontWeight: '400',
+                }}>
+                  {formatModelName(response.modelName)}
+                </span>
+              </div>
+            ) : (
+              <h2
+                key={`single-response-popup-title-${theme}`}
+                style={{
+                  fontSize: '1.4rem',
+                  margin: 0,
+                  background: currentTheme.accentGradient,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}
+              >
+                {formatModelName(response.modelName)}
+              </h2>
             )}
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1278,30 +1300,41 @@ const ResponseComparison = () => {
 
           <div style={{ marginBottom: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h3
-                key={`maximized-model-name-${response.id}-${theme}`}
-                style={{
-                  fontSize: '1.5rem',
-                  marginBottom: '0',
-                  background: currentTheme.accentGradient,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}
-              >
-                {formatModelName(response.modelName)}
-              </h3>
-              {response.debateRole && (
-                <span style={{
-                  fontSize: '0.72rem',
-                  fontWeight: '600',
-                  padding: '3px 9px',
-                  borderRadius: '6px',
-                  background: currentTheme.name === 'dark' ? 'rgba(147, 130, 220, 0.15)' : 'rgba(107, 70, 193, 0.10)',
-                  color: currentTheme.name === 'dark' ? '#b8a9e8' : '#6b46c1',
-                  border: `1px solid ${currentTheme.name === 'dark' ? 'rgba(147, 130, 220, 0.30)' : 'rgba(107, 70, 193, 0.25)'}`,
-                }}>
-                  {response.debateRole.label}
-                </span>
+              {response.debateRole ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                  <h3
+                    key={`maximized-model-name-${response.id}-${theme}`}
+                    style={{
+                      fontSize: '1.5rem',
+                      marginBottom: '0',
+                      background: currentTheme.accentGradient,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                    }}
+                  >
+                    {response.debateRole.label}
+                  </h3>
+                  <span style={{
+                    fontSize: '0.8rem',
+                    color: currentTheme.textMuted,
+                    fontWeight: '400',
+                  }}>
+                    {formatModelName(response.modelName)}
+                  </span>
+                </div>
+              ) : (
+                <h3
+                  key={`maximized-model-name-${response.id}-${theme}`}
+                  style={{
+                    fontSize: '1.5rem',
+                    marginBottom: '0',
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  }}
+                >
+                  {formatModelName(response.modelName)}
+                </h3>
               )}
             </div>
           </div>
@@ -1956,33 +1989,45 @@ const ResponseComparison = () => {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <h3
-                        key={`model-name-${response.id}-${theme}`}
-                        style={{
-                          fontSize: '0.9rem',
-                          background: currentTheme.accentGradient,
-                          WebkitBackgroundClip: 'text',
-                          WebkitTextFillColor: 'transparent',
-                          color: currentTheme.accent,
-                          margin: 0,
-                          fontWeight: '500',
-                        }}
-                      >
-                        {formatModelName(response.modelName)}
-                      </h3>
-                      {response.debateRole && (
-                        <span style={{
-                          fontSize: '0.65rem',
-                          fontWeight: '600',
-                          padding: '2px 7px',
-                          borderRadius: '6px',
-                          background: currentTheme.name === 'dark' ? 'rgba(147, 130, 220, 0.15)' : 'rgba(107, 70, 193, 0.10)',
-                          color: currentTheme.name === 'dark' ? '#b8a9e8' : '#6b46c1',
-                          border: `1px solid ${currentTheme.name === 'dark' ? 'rgba(147, 130, 220, 0.30)' : 'rgba(107, 70, 193, 0.25)'}`,
-                          whiteSpace: 'nowrap',
-                        }}>
-                          {response.debateRole.label}
-                        </span>
+                      {response.debateRole ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0px' }}>
+                          <h3
+                            key={`model-name-${response.id}-${theme}`}
+                            style={{
+                              fontSize: '0.9rem',
+                              background: currentTheme.accentGradient,
+                              WebkitBackgroundClip: 'text',
+                              WebkitTextFillColor: 'transparent',
+                              color: currentTheme.accent,
+                              margin: 0,
+                              fontWeight: '500',
+                            }}
+                          >
+                            {response.debateRole.label}
+                          </h3>
+                          <span style={{
+                            fontSize: '0.7rem',
+                            color: currentTheme.textMuted,
+                            fontWeight: '400',
+                          }}>
+                            {formatModelName(response.modelName)}
+                          </span>
+                        </div>
+                      ) : (
+                        <h3
+                          key={`model-name-${response.id}-${theme}`}
+                          style={{
+                            fontSize: '0.9rem',
+                            background: currentTheme.accentGradient,
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            color: currentTheme.accent,
+                            margin: 0,
+                            fontWeight: '500',
+                          }}
+                        >
+                          {formatModelName(response.modelName)}
+                        </h3>
                       )}
                     </div>
                     <ChevronRight size={16} color={currentTheme.accent} style={{ marginRight: '20px' }} />
@@ -2298,31 +2343,41 @@ const ResponseComparison = () => {
                     }} 
                     title="Drag to move"
                   />
-                  <h3
-                    key={`expanded-model-name-${response.id}-${theme}`}
-                    style={{
-                      fontSize: '1rem',
-                      background: currentTheme.accentGradient,
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      margin: 0,
-                    }}
-                  >
-                    {formatModelName(response.modelName)}
-                  </h3>
-                  {response.debateRole && (
-                    <span style={{
-                      fontSize: '0.68rem',
-                      fontWeight: '600',
-                      padding: '2px 8px',
-                      borderRadius: '6px',
-                      background: currentTheme.name === 'dark' ? 'rgba(147, 130, 220, 0.15)' : 'rgba(107, 70, 193, 0.10)',
-                      color: currentTheme.name === 'dark' ? '#b8a9e8' : '#6b46c1',
-                      border: `1px solid ${currentTheme.name === 'dark' ? 'rgba(147, 130, 220, 0.30)' : 'rgba(107, 70, 193, 0.25)'}`,
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {response.debateRole.label}
-                    </span>
+                  {response.debateRole ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0px' }}>
+                      <h3
+                        key={`expanded-model-name-${response.id}-${theme}`}
+                        style={{
+                          fontSize: '1rem',
+                          background: currentTheme.accentGradient,
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent',
+                          margin: 0,
+                        }}
+                      >
+                        {response.debateRole.label}
+                      </h3>
+                      <span style={{
+                        fontSize: '0.75rem',
+                        color: currentTheme.textMuted,
+                        fontWeight: '400',
+                      }}>
+                        {formatModelName(response.modelName)}
+                      </span>
+                    </div>
+                  ) : (
+                    <h3
+                      key={`expanded-model-name-${response.id}-${theme}`}
+                      style={{
+                        fontSize: '1rem',
+                        background: currentTheme.accentGradient,
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        margin: 0,
+                      }}
+                    >
+                      {formatModelName(response.modelName)}
+                    </h3>
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
