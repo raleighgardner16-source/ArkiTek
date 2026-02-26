@@ -2271,20 +2271,6 @@ const StatisticsView = () => {
                         </span>
                       )}
                     </div>
-                    {unreadNotifCount > 0 && (
-                      <button
-                        onClick={handleMarkAllNotificationsRead}
-                        style={{
-                          background: 'transparent', border: 'none', color: currentTheme.accent,
-                          fontSize: '0.82rem', fontWeight: '500', cursor: 'pointer',
-                          padding: '4px 8px', borderRadius: '6px',
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
-                        onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
-                      >
-                        Mark all as read
-                      </button>
-                    )}
                   </div>
 
                   {loadingNotifications ? (
