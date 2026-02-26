@@ -1091,6 +1091,23 @@ const SavedConversationsView = () => {
       'History/Geography', 'Philosophy/Religion', 'Arts/Culture',
       'Lifestyle/Self-Improvement', 'General Knowledge/Other',
     ]
+
+    // Build a lookup of prompts per category from the history data so that
+    // conversations visible in the History sub-tab also appear here even when
+    // the separate stats endpoint didn't capture them.
+    const historyByCategory = {}
+    ;(history || []).forEach(convo => {
+      const cat = convo.category
+      if (!cat) return
+      const matched = allCategories.find(c => c.toLowerCase() === cat.toLowerCase())
+      if (!matched) return
+      if (!historyByCategory[matched]) historyByCategory[matched] = []
+      historyByCategory[matched].push({
+        text: convo.title || convo.originalPrompt || '',
+        timestamp: convo.savedAt || convo.createdAt || new Date().toISOString(),
+      })
+    })
+
     const allDataCategories = Object.keys(categoriesData || {})
     const categoriesWithData = allCategories.map((category) => {
       let categoryInfo = categoriesData?.[category]
@@ -1098,8 +1115,18 @@ const SavedConversationsView = () => {
         const matchedKey = allDataCategories.find(key => key.toLowerCase() === category.toLowerCase())
         if (matchedKey) categoryInfo = categoriesData[matchedKey]
       }
-      const recentPrompts = categoryInfo?.recentPrompts || []
-      const count = categoryInfo?.count || (typeof categoryInfo === 'number' ? categoryInfo : 0)
+      const statsPrompts = categoryInfo?.recentPrompts || []
+      const statsCount = categoryInfo?.count || (typeof categoryInfo === 'number' ? categoryInfo : 0)
+
+      // Merge history-derived prompts that aren't already in the stats list
+      const historyPrompts = historyByCategory[category] || []
+      const statsTexts = new Set(statsPrompts.map(p => (p.text || '').trim().toLowerCase()))
+      const extraFromHistory = historyPrompts.filter(hp => !statsTexts.has((hp.text || '').trim().toLowerCase()))
+      const recentPrompts = [...statsPrompts, ...extraFromHistory].sort((a, b) =>
+        new Date(b.timestamp) - new Date(a.timestamp)
+      )
+      const count = Math.max(statsCount, recentPrompts.length)
+
       return { category, count, recentPrompts }
     })
     categoriesWithData.sort((a, b) => {

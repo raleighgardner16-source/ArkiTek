@@ -257,6 +257,7 @@ const StatisticsView = () => {
   const isNavExpanded = useStore((state) => state.isNavExpanded)
   const viewingProfile = useStore((state) => state.viewingProfile)
   const clearViewingProfile = useStore((state) => state.clearViewingProfile)
+  const notificationCount = useStore((state) => state.notificationCount)
   const setNotificationCount = useStore((state) => state.setNotificationCount)
   const isViewingOther = viewingProfile && viewingProfile.userId !== currentUser?.id
   const [stats, setStats] = useState(null)
@@ -1239,7 +1240,30 @@ const StatisticsView = () => {
               gap: '8px',
             }}
           >
-            <Bell size={20} />
+            <div style={{ position: 'relative', display: 'inline-flex' }}>
+              <Bell size={20} />
+              {notificationCount > 0 && activeTab !== 'leaderboard' && (
+                <div style={{
+                  position: 'absolute',
+                  top: '-6px',
+                  right: '-8px',
+                  minWidth: '16px',
+                  height: '16px',
+                  borderRadius: '8px',
+                  background: '#ff4757',
+                  color: '#fff',
+                  fontSize: '0.6rem',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 4px',
+                  lineHeight: 1,
+                }}>
+                  {notificationCount > 9 ? '9+' : notificationCount}
+                </div>
+              )}
+            </div>
             Notifications
           </button>
           <button
