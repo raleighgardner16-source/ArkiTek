@@ -2308,7 +2308,7 @@ const StatisticsView = () => {
                 const persistedBadges = new Set(earnedBadgesList)
                 const badgeStats = {
                   totalTokens: userStats.totalTokens || 0,
-                  totalPrompts: isViewingOther ? (publicProfile?.leaderboard?.totalPosts || 0) : (leaderboardStats?.totalPrompts || 0),
+                  totalPrompts: isViewingOther ? (publicProfile?.leaderboard?.totalPosts || 0) : (userStats.totalPrompts || 0),
                   streakDays: userStats.streakDays || 0,
                   totalLikes: isViewingOther ? (publicProfile?.leaderboard?.totalLikes || 0) : (leaderboardStats?.totalLikes || 0),
                   totalRatings: ratingsStats?.totalRatings || 0,
@@ -2336,10 +2336,12 @@ const StatisticsView = () => {
                     const range = badge.threshold - prevThreshold
                     const progressInRange = Math.max(0, currentValue - prevThreshold)
                     const relativeProgress = range > 0 ? Math.min(1, progressInRange / range) : 0
+                    const absoluteProgress = Math.min(1, currentValue / badge.threshold)
                     return {
                       ...badge,
                       earned,
-                      progress: relativeProgress,
+                      progress: absoluteProgress,
+                      relativeProgress,
                       prevThreshold,
                     }
                   })
@@ -2350,7 +2352,7 @@ const StatisticsView = () => {
                   for (let i = 0; i < badges.length; i++) {
                     if (!badges[i].earned) {
                       nextBadge = badges[i]
-                      nextBadgeProgress = badges[i].progress
+                      nextBadgeProgress = badges[i].relativeProgress
                       break
                     }
                   }
