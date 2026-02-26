@@ -2780,18 +2780,18 @@ const AdminView = () => {
                       </h3>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
                         {[
-                          { key: 'openaiCost', label: 'OpenAI (ChatGPT)', color: '#10a37f' },
-                          { key: 'anthropicCost', label: 'Anthropic (Claude)', color: '#d4a574' },
-                          { key: 'googleCost', label: 'Google (Gemini)', color: '#4285f4' },
-                          { key: 'xaiCost', label: 'xAI (Grok)', color: '#ffffff' },
-                        ].map(({ key, label, color }) => (
-                          <div key={key} style={{ background: 'rgba(255, 255, 255, 0.03)', border: `1px solid ${color}33`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <label style={{ color: color, fontSize: '0.95rem', fontWeight: '500' }}>{label}</label>
+                          { key: 'openaiCost', label: 'OpenAI (ChatGPT)' },
+                          { key: 'anthropicCost', label: 'Anthropic (Claude)' },
+                          { key: 'googleCost', label: 'Google (Gemini)' },
+                          { key: 'xaiCost', label: 'xAI (Grok)' },
+                        ].map(({ key, label }) => (
+                          <div key={key} style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <label style={{ color: '#ffffff', fontSize: '0.95rem', fontWeight: '500' }}>{label}</label>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <span style={{ color: '#aaaaaa', fontSize: '1rem' }}>$</span>
                               <input type="text" value={expenses[key]} onChange={(e) => handleExpenseChange(key, e.target.value)} placeholder="0.00"
-                                style={{ background: 'rgba(255, 255, 255, 0.06)', border: `1px solid ${color}44`, borderRadius: '8px', padding: '10px 14px', color: '#ffffff', fontSize: '1rem', width: '100%', outline: 'none', transition: 'border-color 0.2s ease' }}
-                                onFocus={(e) => e.target.style.borderColor = `${color}99`} onBlur={(e) => e.target.style.borderColor = `${color}44`} />
+                                style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(93, 173, 226, 0.25)', borderRadius: '8px', padding: '10px 14px', color: '#ffffff', fontSize: '1rem', width: '100%', outline: 'none', transition: 'border-color 0.2s ease' }}
+                                onFocus={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.6)'} onBlur={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.25)'} />
                             </div>
                           </div>
                         ))}
@@ -2803,22 +2803,22 @@ const AdminView = () => {
                     </div>
 
                     {[
-                      { key: 'serperCost', label: 'Serper API', icon: 'Search', color: '#f59e0b' },
-                      { key: 'resendCost', label: 'Resend Email', icon: 'Mail', color: '#6ee7b7' },
-                      { key: 'mongoDbCost', label: 'MongoDB Database', icon: 'Database', color: '#00ed64' },
-                      { key: 'vercelCost', label: 'Vercel Hosting', icon: 'Cloud', color: '#ffffff' },
-                      { key: 'domainCost', label: 'Domain Name', icon: 'Globe', color: '#38bdf8' },
-                    ].map(({ key, label, color }) => (
-                      <div key={key} style={{ background: `${color}08`, border: `1px solid ${color}20`, borderRadius: '14px', padding: '24px' }}>
-                        <h3 style={{ fontSize: '1.15rem', color, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <Package size={20} color={color} />
+                      { key: 'serperCost', label: 'Serper API' },
+                      { key: 'resendCost', label: 'Resend Email' },
+                      { key: 'mongoDbCost', label: 'MongoDB Database' },
+                      { key: 'vercelCost', label: 'Vercel Hosting' },
+                      { key: 'domainCost', label: 'Domain Name' },
+                    ].map(({ key, label }) => (
+                      <div key={key} style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
+                        <h3 style={{ fontSize: '1.15rem', color: '#ffffff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <Package size={20} color="#ffffff" />
                           {label}
                         </h3>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <span style={{ color: '#cccccc', fontSize: '1.1rem' }}>$</span>
                           <input type="text" value={expenses[key]} onChange={(e) => handleExpenseChange(key, e.target.value)} placeholder="0.00"
-                            style={{ background: 'rgba(255, 255, 255, 0.06)', border: `1px solid ${color}44`, borderRadius: '10px', padding: '12px 16px', color: '#ffffff', fontSize: '1.1rem', width: '200px', outline: 'none', transition: 'border-color 0.2s ease' }}
-                            onFocus={(e) => e.target.style.borderColor = `${color}99`} onBlur={(e) => e.target.style.borderColor = `${color}44`} />
+                            style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(93, 173, 226, 0.25)', borderRadius: '10px', padding: '12px 16px', color: '#ffffff', fontSize: '1.1rem', width: '200px', outline: 'none', transition: 'border-color 0.2s ease' }}
+                            onFocus={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.6)'} onBlur={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.25)'} />
                         </div>
                       </div>
                     ))}
@@ -2872,17 +2872,17 @@ const AdminView = () => {
                       const aggApiTotal = aggregatedExpenses.totalApiCost || 0
                       const aggGrand = aggregatedExpenses.grandTotal || 0
                       const apiProviders = [
-                        { key: 'openaiCost', label: 'OpenAI (ChatGPT)', color: '#10a37f' },
-                        { key: 'anthropicCost', label: 'Anthropic (Claude)', color: '#d4a574' },
-                        { key: 'googleCost', label: 'Google (Gemini)', color: '#4285f4' },
-                        { key: 'xaiCost', label: 'xAI (Grok)', color: '#ffffff' },
+                        { key: 'openaiCost', label: 'OpenAI (ChatGPT)' },
+                        { key: 'anthropicCost', label: 'Anthropic (Claude)' },
+                        { key: 'googleCost', label: 'Google (Gemini)' },
+                        { key: 'xaiCost', label: 'xAI (Grok)' },
                       ]
                       const otherServices = [
-                        { key: 'serperCost', label: 'Serper API', color: '#f59e0b' },
-                        { key: 'resendCost', label: 'Resend Email', color: '#6ee7b7' },
-                        { key: 'mongoDbCost', label: 'MongoDB Database', color: '#00ed64' },
-                        { key: 'vercelCost', label: 'Vercel Hosting', color: '#ffffff' },
-                        { key: 'domainCost', label: 'Domain Name', color: '#38bdf8' },
+                        { key: 'serperCost', label: 'Serper API' },
+                        { key: 'resendCost', label: 'Resend Email' },
+                        { key: 'mongoDbCost', label: 'MongoDB Database' },
+                        { key: 'vercelCost', label: 'Vercel Hosting' },
+                        { key: 'domainCost', label: 'Domain Name' },
                       ]
                       return (
                         <>
@@ -2904,9 +2904,9 @@ const AdminView = () => {
                               API Costs Per Provider
                             </h3>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-                              {apiProviders.map(({ key, label, color }) => (
-                                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'rgba(255, 255, 255, 0.03)', border: `1px solid ${color}22`, borderRadius: '10px' }}>
-                                  <span style={{ color, fontSize: '0.95rem', fontWeight: '500' }}>{label}</span>
+                              {apiProviders.map(({ key, label }) => (
+                                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '10px' }}>
+                                  <span style={{ color: '#ffffff', fontSize: '0.95rem', fontWeight: '500' }}>{label}</span>
                                   <span style={{ color: '#ffffff', fontSize: '1.05rem', fontWeight: '600', fontFamily: 'monospace' }}>${(agg[key] || 0).toFixed(2)}</span>
                                 </div>
                               ))}
@@ -2917,11 +2917,11 @@ const AdminView = () => {
                             </div>
                           </div>
 
-                          {otherServices.map(({ key, label, color }) => (
-                            <div key={key} style={{ background: `${color}08`, border: `1px solid ${color}20`, borderRadius: '14px', padding: '24px' }}>
+                          {otherServices.map(({ key, label }) => (
+                            <div key={key} style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <h3 style={{ fontSize: '1.15rem', color, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <Package size={20} color={color} />
+                                <h3 style={{ fontSize: '1.15rem', color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <Package size={20} color="#ffffff" />
                                   {label}
                                 </h3>
                                 <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>${(agg[key] || 0).toFixed(2)}</span>
