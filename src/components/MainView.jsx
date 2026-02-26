@@ -2209,18 +2209,45 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                               borderBottom: `1px solid ${currentTheme.borderLight}`,
                               minHeight: '32px',
                             }}>
-                              <div style={{
-                                fontSize: '0.75rem',
-                                fontWeight: '700',
-                                color: currentTheme.accent,
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.8px',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                              }}>
-                                {getProviderDisplayName(response.modelName)}
-                              </div>
+                              {response.debateRole ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
+                                  <div style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: '700',
+                                    color: currentTheme.accent,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.8px',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                  }}>
+                                    {response.debateRole.label}
+                                  </div>
+                                  <div style={{
+                                    fontSize: '0.65rem',
+                                    fontWeight: '500',
+                                    color: currentTheme.textMuted,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                  }}>
+                                    {getProviderDisplayName(response.modelName)}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{
+                                  fontSize: '0.75rem',
+                                  fontWeight: '700',
+                                  color: currentTheme.accent,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.8px',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                }}>
+                                  {getProviderDisplayName(response.modelName)}
+                                </div>
+                              )}
                               <button
                                 onClick={() => setMaximizedCouncilResponseId(response.id)}
                                 title="Expand response"
@@ -2398,7 +2425,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                       </motion.div>
                                     )}
                                     <div style={{ fontSize: '0.7rem', color: currentTheme.accent, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                                      {getProviderDisplayName(response.modelName)}
+                                      {response.debateRole ? `${response.debateRole.label} · ${getProviderDisplayName(response.modelName)}` : getProviderDisplayName(response.modelName)}
                                     </div>
                                     {turn.assistant ? (
                                       <div style={{ fontSize: '0.8rem', color: currentTheme.textSecondary, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
@@ -4255,18 +4282,42 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               </button>
 
               <div style={{ marginBottom: '14px', paddingRight: '36px' }}>
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: '1.25rem',
-                    fontWeight: '700',
-                    background: currentTheme.accentGradient,
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}
-                >
-                  {getProviderDisplayName(maximizedCouncilResponse.modelName)}
-                </h3>
+                {maximizedCouncilResponse.debateRole ? (
+                  <>
+                    <h3
+                      style={{
+                        margin: 0,
+                        fontSize: '1.25rem',
+                        fontWeight: '700',
+                        background: currentTheme.accentGradient,
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                      }}
+                    >
+                      {maximizedCouncilResponse.debateRole.label}
+                    </h3>
+                    <span style={{
+                      fontSize: '0.8rem',
+                      color: currentTheme.textMuted,
+                      fontWeight: '500',
+                    }}>
+                      {getProviderDisplayName(maximizedCouncilResponse.modelName)}
+                    </span>
+                  </>
+                ) : (
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: '1.25rem',
+                      fontWeight: '700',
+                      background: currentTheme.accentGradient,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                    }}
+                  >
+                    {getProviderDisplayName(maximizedCouncilResponse.modelName)}
+                  </h3>
+                )}
               </div>
 
               <MarkdownRenderer
