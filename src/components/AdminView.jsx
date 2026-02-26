@@ -2249,21 +2249,6 @@ const AdminView = () => {
                       </div>
                     </div>
 
-                    {/* Period-Specific Stats */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '16px' }}>
-                      {[
-                        { label: 'New Paid Subs', value: revenueData.newSubscriptions },
-                        { label: 'Renewed', value: revenueData.renewedSubscriptions ?? 0 },
-                        { label: 'New Free Trials', value: revenueData.newFreeTrials ?? 0 },
-                        { label: 'Canceled', value: revenueData.canceledSubscriptions },
-                      ].map(({ label, value }) => (
-                        <div key={label} style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
-                          <p style={{ color: '#cccccc', fontSize: '0.85rem', margin: '0 0 8px 0' }}>{label}</p>
-                          <p style={{ color: '#ffffff', fontSize: '1.8rem', fontWeight: '700', margin: 0, fontFamily: 'monospace' }}>{value}</p>
-                        </div>
-                      ))}
-                    </div>
-
                     {/* Subscriptions Revenue */}
                     <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
                       <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
