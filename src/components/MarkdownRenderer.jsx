@@ -208,10 +208,11 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
 
           // Table
           table: ({ children }) => (
-            <div style={{ overflowX: 'auto', margin: '10px 0' }}>
+            <div style={{ overflowX: 'auto', margin: '10px 0', maxWidth: '100%' }}>
               <table style={{
                 borderCollapse: 'collapse',
-                width: '100%',
+                minWidth: '100%',
+                width: 'max-content',
                 fontSize: '0.88em',
               }}>{children}</table>
             </div>
@@ -223,20 +224,20 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
           ),
           th: ({ children }) => (
             <th style={{
-              padding: '8px 12px',
+              padding: '8px 14px',
               textAlign: 'left',
               fontWeight: '600',
               color: theme.text,
               borderBottom: `1px solid ${theme.borderLight}`,
+              whiteSpace: 'nowrap',
             }}>{children}</th>
           ),
           td: ({ children }) => (
             <td style={{
-              padding: '6px 12px',
+              padding: '6px 14px',
               borderBottom: `1px solid ${theme.borderLight}`,
               color: theme.textSecondary,
-              overflowWrap: 'anywhere',
-              wordBreak: 'break-word',
+              minWidth: '100px',
             }}>{children}</td>
           ),
         }}

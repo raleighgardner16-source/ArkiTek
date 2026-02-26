@@ -299,6 +299,7 @@ const StatisticsView = () => {
   const [notifications, setNotifications] = useState([])
   const [unreadNotifCount, setUnreadNotifCount] = useState(0)
   const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const [hasLoadedNotifications, setHasLoadedNotifications] = useState(false)
   const [followingSet, setFollowingSet] = useState(new Set())
   const [followBackLoading, setFollowBackLoading] = useState(null)
   const [followRequests, setFollowRequests] = useState([])
@@ -431,7 +432,7 @@ const StatisticsView = () => {
 
   const fetchNotifications = async () => {
     if (!currentUser?.id) return
-    setLoadingNotifications(true)
+    if (!hasLoadedNotifications) setLoadingNotifications(true)
     try {
       const [notifRes, followingRes] = await Promise.all([
         axios.get(`${API_URL}/api/notifications/${currentUser.id}?limit=50`),
@@ -449,6 +450,7 @@ const StatisticsView = () => {
       console.error('Error fetching notifications:', err)
     } finally {
       setLoadingNotifications(false)
+      setHasLoadedNotifications(true)
     }
   }
 

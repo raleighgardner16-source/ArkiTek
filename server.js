@@ -127,22 +127,31 @@ async function ensureVectorSearchIndex() {
 }
 
 // Graceful shutdown — flush all pending data to MongoDB before closing
-process.on('SIGINT', async () => {
-  console.log('\n[Server] Shutting down gracefully...')
+const performGracefulShutdown = async (signal) => {
+  console.log(`\n[Server] ${signal} received, shutting down gracefully...`)
   if (usageSyncTimer) clearTimeout(usageSyncTimer)
   await flushUsageToMongo()
+  // Also flush ALL user cache entries to MongoDB to persist latest social/profile data
+  const allUsers = Object.entries(usersCache)
+  if (allUsers.length > 0) {
+    console.log(`[Server] Flushing ${allUsers.length} user records to MongoDB...`)
+    await Promise.allSettled(allUsers.map(([uid, data]) => syncUserToMongo(uid, data)))
+  }
   await db.close()
   await adminDb.close()
   process.exit(0)
-})
+}
 
-process.on('SIGTERM', async () => {
-  console.log('\n[Server] Received SIGTERM, shutting down...')
-  if (usageSyncTimer) clearTimeout(usageSyncTimer)
-  await flushUsageToMongo()
-  await db.close()
-  await adminDb.close()
-  process.exit(0)
+process.on('SIGINT', () => performGracefulShutdown('SIGINT'))
+process.on('SIGTERM', () => performGracefulShutdown('SIGTERM'))
+
+// Last-resort: 'beforeExit' fires when the event loop drains (e.g. process.exit not called).
+// Won't help on kill -9 or power-off, but catches additional graceful scenarios.
+process.on('beforeExit', async () => {
+  if (usageDirtyUsers.size > 0) {
+    console.log('[Server] beforeExit — flushing remaining dirty usage data...')
+    await flushUsageToMongo()
+  }
 })
 
 const app = express()
@@ -225,17 +234,27 @@ let cacheLoaded = false
 // --- Usage sync (debounced to batch rapid writes) ---
 let usageSyncTimer = null
 let usageDirtyUsers = new Set()
+let lastFlushTime = Date.now()
+const MAX_FLUSH_INTERVAL_MS = 15000 // Force flush at least every 15s even under continuous load
 
 const scheduleUsageSync = (userId) => {
   if (userId) usageDirtyUsers.add(userId)
+  // If we haven't flushed in a while, flush immediately to prevent data loss
+  // under continuous activity (the debounce timer keeps resetting otherwise).
+  if (Date.now() - lastFlushTime >= MAX_FLUSH_INTERVAL_MS) {
+    if (usageSyncTimer) clearTimeout(usageSyncTimer)
+    flushUsageToMongo()
+    return
+  }
   if (usageSyncTimer) clearTimeout(usageSyncTimer)
   usageSyncTimer = setTimeout(() => flushUsageToMongo(), 2000)
 }
 
 const flushUsageToMongo = async () => {
-  if (usageDirtyUsers.size === 0) return
+  if (usageDirtyUsers.size === 0) { lastFlushTime = Date.now(); return }
   const usersToSync = [...usageDirtyUsers]
   usageDirtyUsers.clear()
+  lastFlushTime = Date.now()
   
   try {
     const dbInstance = await db.getDb()
@@ -451,10 +470,27 @@ const loadCacheFromMongoDB = async () => {
     console.log(`[Cache] Loaded ${allUserStats.length} user_stats documents`)
     
     // 2. Load all usage data (full — includes dailyUsage, monthlyUsage, etc.)
+    // MERGE into usageCache instead of overwriting, so user_stats data loaded
+    // above (totalTokens, totalPrompts, purchasedCredits, etc.) is preserved.
+    // usage_data fields win for fields present in both (they are the fresher source
+    // for dailyUsage, models, providers, etc.), but user_stats fields that
+    // don't exist in usage_data are kept.
     const allUsage = await dbInstance.collection('usage_data').find({}).toArray()
     for (const doc of allUsage) {
       const { _id, updatedAt, ...data } = doc
-      usageCache[_id] = data
+      if (usageCache[_id]) {
+        // Merge: usage_data fields take precedence, but keep existing fields from user_stats
+        usageCache[_id] = { ...usageCache[_id], ...data }
+      } else {
+        usageCache[_id] = data
+      }
+    }
+    // Re-apply purchasedCredits from users collection (authoritative source) since
+    // usage_data may have a stale copy from a previous flush.
+    for (const user of allUsers) {
+      if (usageCache[user._id] && user.purchasedCredits) {
+        usageCache[user._id].purchasedCredits = user.purchasedCredits
+      }
     }
     
     // For users that exist but have no usage_data doc yet, initialize empty usage
@@ -582,8 +618,12 @@ const ensureUserInCache = async (userId) => {
       bio: dbUser.bio || '',
       profileImage: dbUser.profileImage || null,
       isAnonymous: dbUser.isAnonymous || false,
+      isPrivate: dbUser.isPrivate || false,
       followers: dbUser.followers || [],
       following: dbUser.following || [],
+      followRequests: dbUser.followRequests || [],
+      sentFollowRequests: dbUser.sentFollowRequests || [],
+      modelPreferences: dbUser.modelPreferences || null,
     }
     console.log(`[Cache Fallback] Loaded user ${userId} from MongoDB into cache`)
     return usersCache[userId]
@@ -620,9 +660,15 @@ const writeUsage = (usage, changedUserId = null) => {
     // atomically and writes the latest cache state.
     flushUsageToMongo().catch(err => console.error('[Usage Sync] Vercel immediate flush failed:', err.message))
   } else {
-    // On traditional server: debounce for efficiency (batches rapid writes)
-    if (usageSyncTimer) clearTimeout(usageSyncTimer)
-    usageSyncTimer = setTimeout(() => flushUsageToMongo(), 2000)
+    // On traditional server: debounce for efficiency (batches rapid writes).
+    // Force flush if we haven't flushed recently to prevent starvation under continuous load.
+    if (Date.now() - lastFlushTime >= MAX_FLUSH_INTERVAL_MS) {
+      if (usageSyncTimer) clearTimeout(usageSyncTimer)
+      flushUsageToMongo().catch(err => console.error('[Usage Sync] Forced flush failed:', err.message))
+    } else {
+      if (usageSyncTimer) clearTimeout(usageSyncTimer)
+      usageSyncTimer = setTimeout(() => flushUsageToMongo(), 2000)
+    }
   }
 }
 
@@ -1798,6 +1844,14 @@ app.post('/api/auth/signin', async (req, res) => {
         timezone: timezone || dbUser.timezone || null,
         signupIp: dbUser.signupIp || null,
         deviceFingerprint: dbUser.deviceFingerprint || null,
+        bio: dbUser.bio || '',
+        profileImage: dbUser.profileImage || null,
+        isAnonymous: dbUser.isAnonymous || false,
+        isPrivate: dbUser.isPrivate || false,
+        followers: dbUser.followers || [],
+        following: dbUser.following || [],
+        followRequests: dbUser.followRequests || [],
+        sentFollowRequests: dbUser.sentFollowRequests || [],
       }
       console.log('[Auth] Added missing user to cache:', userId)
     } else {
@@ -2261,6 +2315,10 @@ app.post('/api/auth/verify-email', async (req, res) => {
           plan: dbUser.plan || 'free_trial', emailVerified: true,
           timezone: dbUser.timezone || null, signupIp: dbUser.signupIp || null,
           deviceFingerprint: dbUser.deviceFingerprint || null,
+          bio: dbUser.bio || '', profileImage: dbUser.profileImage || null,
+          isAnonymous: dbUser.isAnonymous || false, isPrivate: dbUser.isPrivate || false,
+          followers: dbUser.followers || [], following: dbUser.following || [],
+          followRequests: dbUser.followRequests || [], sentFollowRequests: dbUser.sentFollowRequests || [],
         }
         console.log('[Auth] Added missing user to cache during verify-email:', userId)
       } else {
@@ -2334,6 +2392,10 @@ app.post('/api/auth/verify-email', async (req, res) => {
           plan: dbUser.plan || null, emailVerified: true,
           timezone: dbUser.timezone || null, signupIp: dbUser.signupIp || null,
           deviceFingerprint: dbUser.deviceFingerprint || null,
+          bio: dbUser.bio || '', profileImage: dbUser.profileImage || null,
+          isAnonymous: dbUser.isAnonymous || false, isPrivate: dbUser.isPrivate || false,
+          followers: dbUser.followers || [], following: dbUser.following || [],
+          followRequests: dbUser.followRequests || [], sentFollowRequests: dbUser.sentFollowRequests || [],
         }
         console.log('[Auth] Added missing user to cache during verify-email (pro):', userId)
       } else {
@@ -10936,9 +10998,15 @@ app.post('/api/users/:targetUserId/follow', async (req, res) => {
       targetUser.followRequests.push(userId)
       currentUser.sentFollowRequests.push(targetUserId)
       writeUsers(users, userId)
-      syncUserToMongo(targetUserId, targetUser)
+      await syncUserToMongo(targetUserId, targetUser)
 
-      // Notify the target about the follow request
+      // Atomic MongoDB write to guarantee follow request data persists
+      const dbI = await db.getDb()
+      await Promise.all([
+        dbI.collection('users').updateOne({ _id: targetUserId }, { $addToSet: { followRequests: userId } }),
+        dbI.collection('users').updateOne({ _id: userId }, { $addToSet: { sentFollowRequests: targetUserId } }),
+      ])
+
       createNotification({
         userId: targetUserId,
         type: 'follow_request',
@@ -10955,9 +11023,15 @@ app.post('/api/users/:targetUserId/follow', async (req, res) => {
     currentUser.following.push(targetUserId)
     targetUser.followers.push(userId)
     writeUsers(users, userId)
-    syncUserToMongo(targetUserId, targetUser)
+    await syncUserToMongo(targetUserId, targetUser)
 
-    // Notify the target about the new follower
+    // Atomic MongoDB write to guarantee follow data persists
+    const dbInst = await db.getDb()
+    await Promise.all([
+      dbInst.collection('users').updateOne({ _id: userId }, { $addToSet: { following: targetUserId } }),
+      dbInst.collection('users').updateOne({ _id: targetUserId }, { $addToSet: { followers: userId } }),
+    ])
+
     createNotification({
       userId: targetUserId,
       type: 'follow',
@@ -11014,7 +11088,18 @@ app.post('/api/users/:targetUserId/unfollow', async (req, res) => {
       currentUser.sentFollowRequests = currentUser.sentFollowRequests.filter(id => id !== targetUserId)
     }
     writeUsers(users, userId)
-    syncUserToMongo(targetUserId, targetUser)
+    await syncUserToMongo(targetUserId, targetUser)
+
+    // Atomic MongoDB write to guarantee unfollow data persists
+    const dbInst = await db.getDb()
+    await Promise.all([
+      dbInst.collection('users').updateOne({ _id: userId }, {
+        $pull: { following: targetUserId, sentFollowRequests: targetUserId },
+      }),
+      dbInst.collection('users').updateOne({ _id: targetUserId }, {
+        $pull: { followers: userId, followRequests: userId },
+      }),
+    ])
 
     console.log(`[Social] User ${userId} unfollowed/cancelled request to ${targetUserId}`)
     res.json({
@@ -11062,7 +11147,20 @@ app.post('/api/users/:targetUserId/follow/accept', async (req, res) => {
     requester.sentFollowRequests = (requester.sentFollowRequests || []).filter(id => id !== targetUserId)
 
     writeUsers(users, targetUserId)
-    syncUserToMongo(requesterId, requester)
+    await syncUserToMongo(requesterId, requester)
+
+    // Atomic MongoDB write to guarantee accept data persists
+    const dbInst = await db.getDb()
+    await Promise.all([
+      dbInst.collection('users').updateOne({ _id: targetUserId }, {
+        $pull: { followRequests: requesterId },
+        $addToSet: { followers: requesterId },
+      }),
+      dbInst.collection('users').updateOne({ _id: requesterId }, {
+        $pull: { sentFollowRequests: targetUserId },
+        $addToSet: { following: targetUserId },
+      }),
+    ])
 
     // Notify the requester that their follow was accepted
     createNotification({
@@ -11106,7 +11204,14 @@ app.post('/api/users/:targetUserId/follow/deny', async (req, res) => {
       requester.sentFollowRequests = (requester.sentFollowRequests || []).filter(id => id !== targetUserId)
     }
     writeUsers(users, targetUserId)
-    if (requester) syncUserToMongo(requesterId, requester)
+    if (requester) await syncUserToMongo(requesterId, requester)
+
+    // Atomic MongoDB write to guarantee deny data persists
+    const dbInst = await db.getDb()
+    await Promise.all([
+      dbInst.collection('users').updateOne({ _id: targetUserId }, { $pull: { followRequests: requesterId } }),
+      dbInst.collection('users').updateOne({ _id: requesterId }, { $pull: { sentFollowRequests: targetUserId } }),
+    ])
 
     console.log(`[Social] User ${targetUserId} denied follow request from ${requesterId}`)
     res.json({ success: true })
@@ -13281,6 +13386,15 @@ if (!process.env.VERCEL) {
     await cleanupOldDailyUsage()
     setInterval(cleanupOldDailyUsage, 24 * 60 * 60 * 1000) // Run every 24 hours
     console.log('[Server] 🗑️  Daily usage cleanup scheduled (runs every 24h)')
+    
+    // Periodic background flush: guarantee all dirty cache data reaches MongoDB
+    // even under continuous load (where the 2s debounce timer keeps resetting).
+    setInterval(() => {
+      if (usageDirtyUsers.size > 0) {
+        flushUsageToMongo().catch(err => console.error('[Periodic Flush] Error:', err.message))
+      }
+    }, 30000) // Every 30 seconds
+    console.log('[Server] 💾 Periodic MongoDB flush scheduled (every 30s)')
     
     // Serve static files from the React app build
     app.use(express.static(path.join(__dirname, 'dist')))

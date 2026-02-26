@@ -224,6 +224,15 @@ const users = {
       signupIp: userData.signupIp || null,
       deviceFingerprint: userData.deviceFingerprint || null,
       plan: userData.plan || null,
+      // Social fields
+      bio: '',
+      profileImage: null,
+      isAnonymous: false,
+      isPrivate: false,
+      followers: [],
+      following: [],
+      followRequests: [],
+      sentFollowRequests: [],
     }
     
     await db.collection('users').insertOne(doc)
