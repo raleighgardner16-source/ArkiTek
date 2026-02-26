@@ -9746,6 +9746,43 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
 
     const grandTotalRevenue = totalSubscriptionRevenue + totalCreditRevenue + totalStoreRevenue
 
+    // Badge tier rewards calculation
+    const usage = readUsage()
+    const BADGE_TIERS = [
+      { name: 'Bronze', min: 1, max: 25, reward: 0.25 },
+      { name: 'Silver', min: 26, max: 50, reward: 0.50 },
+      { name: 'Gold', min: 51, max: 75, reward: 0.75 },
+      { name: 'Platinum', min: 76, max: Infinity, reward: 1.00 },
+    ]
+    const getBadgeTier = (badgeCount) => {
+      if (badgeCount <= 0) return null
+      return BADGE_TIERS.find(t => badgeCount >= t.min && badgeCount <= t.max) || null
+    }
+
+    const badgeTierUsers = []
+    const badgeTierSummary = { Bronze: 0, Silver: 0, Gold: 0, Platinum: 0 }
+    let totalBadgeTierCost = 0
+
+    for (const [userId, user] of Object.entries(users)) {
+      const status = user.subscriptionStatus
+      if (!status || status === 'inactive' || status === 'pending_verification') continue
+      const userUsage = usage[userId]
+      const badgeCount = (userUsage?.earnedBadges || []).length
+      if (badgeCount <= 0) continue
+      const tier = getBadgeTier(badgeCount)
+      if (!tier) continue
+      badgeTierSummary[tier.name]++
+      totalBadgeTierCost += tier.reward
+      badgeTierUsers.push({
+        username: user.username || 'Anonymous',
+        email: user.email || '',
+        tier: tier.name,
+        badgeCount,
+        reward: tier.reward,
+      })
+    }
+    badgeTierUsers.sort((a, b) => b.badgeCount - a.badgeCount)
+
     res.json({
       success: true,
       revenue: {
@@ -9776,6 +9813,9 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
         activeUsersList,
         freeTrialUsersList,
         inactiveUsersList,
+        badgeTierUsers,
+        badgeTierSummary,
+        totalBadgeTierCost,
       },
     })
   } catch (error) {

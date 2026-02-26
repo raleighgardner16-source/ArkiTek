@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Users, DollarSign, Shield, TrendingUp, Database, CreditCard, Lock, User, Package, Receipt, ArrowLeft, Search, ChevronDown, ChevronRight, ChevronLeft, BarChart3, MessageSquare } from 'lucide-react'
+import { Users, DollarSign, Shield, TrendingUp, Database, CreditCard, Lock, User, Package, Receipt, ArrowLeft, Search, ChevronDown, ChevronRight, ChevronLeft, BarChart3, MessageSquare, Award } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
@@ -2334,6 +2334,77 @@ const AdminView = () => {
                       )}
                     </div>
 
+                    {/* Badge Tier Rewards Cost */}
+                    {revenueData.badgeTierUsers?.length > 0 && (
+                      <div style={{ background: 'rgba(205, 127, 50, 0.06)', border: '1px solid rgba(205, 127, 50, 0.15)', borderRadius: '14px', padding: '24px' }}>
+                        <h3 style={{ fontSize: '1.15rem', color: '#CD7F32', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <Award size={20} color="#CD7F32" />
+                          Badge Tier Rewards
+                        </h3>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                          <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
+                            {revenueData.badgeTierUsers.length} user{revenueData.badgeTierUsers.length !== 1 ? 's' : ''} with badge tier rewards
+                          </span>
+                          <span style={{ color: '#f87171', fontSize: '1.1rem', fontWeight: '600', fontFamily: 'monospace' }}>
+                            -${(revenueData.totalBadgeTierCost ?? 0).toFixed(2)}/mo expense
+                          </span>
+                        </div>
+
+                        {/* Tier summary counts */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '16px' }}>
+                          {[
+                            { name: 'Bronze', color: '#CD7F32', count: revenueData.badgeTierSummary?.Bronze ?? 0, reward: '$0.25' },
+                            { name: 'Silver', color: '#C0C0C0', count: revenueData.badgeTierSummary?.Silver ?? 0, reward: '$0.50' },
+                            { name: 'Gold', color: '#FFD700', count: revenueData.badgeTierSummary?.Gold ?? 0, reward: '$0.75' },
+                            { name: 'Platinum', color: '#E5E4E2', count: revenueData.badgeTierSummary?.Platinum ?? 0, reward: '$1.00' },
+                          ].map(({ name, color, count, reward }) => (
+                            <div key={name} style={{
+                              padding: '10px',
+                              background: `${color}08`,
+                              border: `1px solid ${color}25`,
+                              borderRadius: '10px',
+                              textAlign: 'center',
+                            }}>
+                              <p style={{ color, fontSize: '0.8rem', fontWeight: '700', margin: '0 0 2px 0' }}>{name}</p>
+                              <p style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', margin: '0 0 2px 0' }}>{count}</p>
+                              <p style={{ color: '#888888', fontSize: '0.65rem', margin: 0 }}>{reward}/mo each</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* User list */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '12px', borderTop: '1px solid rgba(205, 127, 50, 0.1)' }}>
+                          <p style={{ color: '#6b7280', fontSize: '0.8rem', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '1px' }}>Users by tier</p>
+                          {revenueData.badgeTierUsers.map((u, i) => {
+                            const tierColors = { Bronze: '#CD7F32', Silver: '#C0C0C0', Gold: '#FFD700', Platinum: '#E5E4E2' }
+                            return (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(205, 127, 50, 0.04)', borderRadius: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <User size={14} style={{ opacity: 0.6, color: '#cccccc' }} />
+                                  <span style={{ color: '#cccccc', fontSize: '0.9rem' }}>{u.username}</span>
+                                  <span style={{
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    fontSize: '0.65rem',
+                                    fontWeight: '700',
+                                    color: tierColors[u.tier] || '#cccccc',
+                                    background: `${tierColors[u.tier] || '#cccccc'}15`,
+                                    border: `1px solid ${tierColors[u.tier] || '#cccccc'}30`,
+                                  }}>
+                                    {u.tier}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                  <span style={{ color: '#888888', fontSize: '0.75rem' }}>{u.badgeCount} badges</span>
+                                  <span style={{ color: '#f87171', fontSize: '0.85rem', fontWeight: '600', fontFamily: 'monospace' }}>-${u.reward.toFixed(2)}/mo</span>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Credit Purchases Revenue */}
                     <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
                       <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2758,10 +2829,11 @@ const AdminView = () => {
                         <h3 style={{ fontSize: '1.15rem', color: '#fbbf24', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <User size={20} color="#fbbf24" />
                           Free Trial Costs
+                          <span style={{ fontSize: '0.75rem', color: '#a08520', fontWeight: '500' }}>(per month)</span>
                         </h3>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(251, 191, 36, 0.04)', borderRadius: '10px' }}>
                           <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
-                            {revenueData.newFreeTrials} trial user{revenueData.newFreeTrials !== 1 ? 's' : ''} @ $0.50 each
+                            Trial Users: {revenueData.newFreeTrials} at 50¢
                           </span>
                           <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>
                             ${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)}
@@ -2863,13 +2935,46 @@ const AdminView = () => {
                               <h3 style={{ fontSize: '1.15rem', color: '#fbbf24', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <User size={20} color="#fbbf24" />
                                 Free Trial Costs
+                                <span style={{ fontSize: '0.75rem', color: '#a08520', fontWeight: '500' }}>(per month)</span>
                               </h3>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(251, 191, 36, 0.04)', borderRadius: '10px' }}>
                                 <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
-                                  {revenueData.newFreeTrials} trial user{revenueData.newFreeTrials !== 1 ? 's' : ''} @ $0.50 each
+                                  Trial Users: {revenueData.newFreeTrials} at 50¢
                                 </span>
                                 <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>
                                   ${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Badge Tier Rewards Cost (aggregated) */}
+                          {revenueData?.badgeTierUsers?.length > 0 && (
+                            <div style={{ background: 'rgba(205, 127, 50, 0.08)', border: '1px solid rgba(205, 127, 50, 0.20)', borderRadius: '14px', padding: '24px' }}>
+                              <h3 style={{ fontSize: '1.15rem', color: '#CD7F32', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Award size={20} color="#CD7F32" />
+                                Badge Tier Rewards
+                              </h3>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                                {[
+                                  { name: 'Bronze', color: '#CD7F32', count: revenueData.badgeTierSummary?.Bronze ?? 0, reward: '$0.25' },
+                                  { name: 'Silver', color: '#C0C0C0', count: revenueData.badgeTierSummary?.Silver ?? 0, reward: '$0.50' },
+                                  { name: 'Gold', color: '#FFD700', count: revenueData.badgeTierSummary?.Gold ?? 0, reward: '$0.75' },
+                                  { name: 'Platinum', color: '#E5E4E2', count: revenueData.badgeTierSummary?.Platinum ?? 0, reward: '$1.00' },
+                                ].map(({ name, color, count, reward }) => (
+                                  <div key={name} style={{ padding: '8px', background: `${color}08`, border: `1px solid ${color}25`, borderRadius: '8px', textAlign: 'center' }}>
+                                    <p style={{ color, fontSize: '0.75rem', fontWeight: '700', margin: 0 }}>{name}</p>
+                                    <p style={{ color: '#ffffff', fontSize: '1.1rem', fontWeight: '700', margin: '2px 0' }}>{count}</p>
+                                    <p style={{ color: '#888888', fontSize: '0.6rem', margin: 0 }}>{reward}/mo</p>
+                                  </div>
+                                ))}
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(205, 127, 50, 0.04)', borderRadius: '10px' }}>
+                                <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
+                                  {revenueData.badgeTierUsers.length} user{revenueData.badgeTierUsers.length !== 1 ? 's' : ''} with rewards
+                                </span>
+                                <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>
+                                  ${(revenueData.totalBadgeTierCost ?? 0).toFixed(2)}/mo
                                 </span>
                               </div>
                             </div>
@@ -2888,7 +2993,7 @@ const AdminView = () => {
                               <Receipt size={24} color="#5dade2" />
                               <span style={{ color: '#5dade2', fontSize: '1.25rem', fontWeight: '700' }}>Total Expenses</span>
                             </div>
-                            <span style={{ color: '#ffffff', fontSize: '1.6rem', fontWeight: '800', fontFamily: 'monospace' }}>${(aggGrand + (revenueData?.totalFreeTrialCost ?? 0)).toFixed(2)}</span>
+                            <span style={{ color: '#ffffff', fontSize: '1.6rem', fontWeight: '800', fontFamily: 'monospace' }}>${(aggGrand + (revenueData?.totalFreeTrialCost ?? 0) + (revenueData?.totalBadgeTierCost ?? 0)).toFixed(2)}</span>
                           </div>
 
                           {aggregatedExpenses?.months?.length > 0 && (

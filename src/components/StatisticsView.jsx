@@ -2494,59 +2494,107 @@ const StatisticsView = () => {
 
                       {/* Rewards tier indicator */}
                       {(() => {
-                        const pct = totalBadges > 0 ? (totalEarned / totalBadges) * 100 : 0
-                        let tier, tierColor, tierGlow, tierDesc
-                        if (allOtherBadgesEarned) {
-                          tier = 'Legendary'; tierColor = '#FFD700'; tierGlow = 'rgba(255,215,0,0.25)'
-                          tierDesc = 'Maximum rewards unlocked — you are The ArkiTek.'
-                        } else if (pct >= 75) {
-                          tier = 'Diamond'; tierColor = '#B9F2FF'; tierGlow = 'rgba(185,242,255,0.2)'
-                          tierDesc = 'Elite status — exclusive perks and recognition await.'
-                        } else if (pct >= 50) {
-                          tier = 'Platinum'; tierColor = '#E5E4E2'; tierGlow = 'rgba(229,228,226,0.15)'
-                          tierDesc = 'Premium rewards unlocked — keep pushing for Diamond.'
-                        } else if (pct >= 25) {
-                          tier = 'Gold'; tierColor = '#FFD700'; tierGlow = 'rgba(255,215,0,0.12)'
-                          tierDesc = 'Solid progress — more badges mean bigger rewards.'
-                        } else if (pct >= 10) {
-                          tier = 'Silver'; tierColor = '#C0C0C0'; tierGlow = 'rgba(192,192,192,0.12)'
-                          tierDesc = 'You\'re on your way — earn more badges to level up your rewards.'
-                        } else {
-                          tier = 'Bronze'; tierColor = '#CD7F32'; tierGlow = 'rgba(205,127,50,0.12)'
-                          tierDesc = 'Just getting started — every badge earned brings new rewards.'
-                        }
+                        const TIERS = [
+                          { name: 'Bronze', min: 0, max: 25, color: '#CD7F32', glow: 'rgba(205,127,50,0.12)', reward: 0.25 },
+                          { name: 'Silver', min: 26, max: 50, color: '#C0C0C0', glow: 'rgba(192,192,192,0.12)', reward: 0.50 },
+                          { name: 'Gold', min: 51, max: 75, color: '#FFD700', glow: 'rgba(255,215,0,0.12)', reward: 0.75 },
+                          { name: 'Platinum', min: 76, max: Infinity, color: '#E5E4E2', glow: 'rgba(229,228,226,0.18)', reward: 1.00 },
+                        ]
+                        const currentTier = TIERS.find(t => totalEarned >= t.min && totalEarned <= t.max) || TIERS[0]
+                        const currentTierIndex = TIERS.indexOf(currentTier)
+                        const nextTier = currentTierIndex < TIERS.length - 1 ? TIERS[currentTierIndex + 1] : null
+                        const badgesToNext = nextTier ? nextTier.min - totalEarned : 0
+
                         return (
                           <div style={{
-                            display: 'inline-flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '12px 24px',
-                            borderRadius: '12px',
-                            background: tierGlow,
-                            border: `1px solid ${tierColor}40`,
-                            marginBottom: '20px',
+                            width: '100%',
+                            marginBottom: '24px',
                           }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <Trophy size={16} color={tierColor} />
-                              <span style={{
-                                fontSize: '0.85rem',
-                                fontWeight: '700',
-                                color: tierColor,
-                                letterSpacing: '1px',
-                                textTransform: 'uppercase',
-                              }}>
-                                {tier} Tier
-                              </span>
-                              <Trophy size={16} color={tierColor} />
-                            </div>
-                            <span style={{
-                              fontSize: '0.75rem',
-                              color: currentTheme.textSecondary,
-                              fontStyle: 'italic',
+                            {/* Current tier badge */}
+                            <div style={{
+                              display: 'inline-flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '14px 28px',
+                              borderRadius: '12px',
+                              background: currentTier.glow,
+                              border: `1px solid ${currentTier.color}50`,
+                              marginBottom: '16px',
                             }}>
-                              {tierDesc}
-                            </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Trophy size={18} color={currentTier.color} />
+                                <span style={{
+                                  fontSize: '1rem',
+                                  fontWeight: '700',
+                                  color: currentTier.color,
+                                  letterSpacing: '1px',
+                                  textTransform: 'uppercase',
+                                }}>
+                                  {currentTier.name} Tier
+                                </span>
+                                <Trophy size={18} color={currentTier.color} />
+                              </div>
+                              <span style={{ fontSize: '0.8rem', color: currentTheme.textSecondary }}>
+                                +${currentTier.reward.toFixed(2)}/month free credit
+                              </span>
+                              {nextTier && (
+                                <span style={{ fontSize: '0.7rem', color: currentTheme.textMuted, fontStyle: 'italic' }}>
+                                  {badgesToNext} more badge{badgesToNext !== 1 ? 's' : ''} to reach {nextTier.name}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* All tiers overview */}
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(4, 1fr)',
+                              gap: '10px',
+                            }}>
+                              {TIERS.map((tier) => {
+                                const isActive = tier.name === currentTier.name
+                                const isAchieved = totalEarned >= tier.min
+                                return (
+                                  <div
+                                    key={tier.name}
+                                    style={{
+                                      padding: '12px 10px',
+                                      borderRadius: '10px',
+                                      background: isActive ? tier.glow : 'transparent',
+                                      border: `1.5px solid ${isActive ? tier.color : isAchieved ? `${tier.color}40` : currentTheme.borderLight}`,
+                                      textAlign: 'center',
+                                      opacity: isAchieved ? 1 : 0.4,
+                                      transition: 'all 0.3s ease',
+                                    }}
+                                  >
+                                    <Trophy size={16} color={tier.color} style={{ marginBottom: '4px' }} />
+                                    <p style={{
+                                      fontSize: '0.8rem',
+                                      fontWeight: '700',
+                                      color: tier.color,
+                                      margin: '0 0 2px 0',
+                                    }}>
+                                      {tier.name}
+                                    </p>
+                                    <p style={{
+                                      fontSize: '0.65rem',
+                                      color: currentTheme.textMuted,
+                                      margin: '0 0 4px 0',
+                                    }}>
+                                      {tier.max === Infinity ? `${tier.min}+ badges` : `${tier.min}–${tier.max} badges`}
+                                    </p>
+                                    <p style={{
+                                      fontSize: '0.75rem',
+                                      fontWeight: '600',
+                                      color: isActive ? tier.color : currentTheme.textSecondary,
+                                      margin: 0,
+                                    }}>
+                                      +${tier.reward.toFixed(2)}/mo
+                                    </p>
+                                  </div>
+                                )
+                              })}
+                            </div>
                           </div>
                         )
                       })()}
