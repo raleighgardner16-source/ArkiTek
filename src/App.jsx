@@ -246,13 +246,34 @@ function App() {
     if (!promptForSummary.trim()) return
 
     setIsGeneratingSummary(true)
+    const isDebateSummary = promptMode === 'debate'
     try {
-      const responsesText = responsesForSummary
-        .map((r) => `\n--- ${getShortModelName(r.modelName)}'s response ---\n${r.text}\n`)
-        .join('')
+      const responsesText = isDebateSummary
+        ? responsesForSummary
+            .map((r) => `\n--- ${r.debateRole?.label || 'Respondent'}'s argument ---\n${r.text}\n`)
+            .join('')
+        : responsesForSummary
+            .map((r) => `\n--- ${getShortModelName(r.modelName)}'s response ---\n${r.text}\n`)
+            .join('')
 
       const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-      const summaryPrompt = `Today is ${today}. This is the real, current date. You are an expert judge analyzing multiple AI model responses to a user's question.
+      const summaryPrompt = isDebateSummary
+        ? `Today is ${today}. This is the real, current date. You are an expert judge evaluating a structured debate between multiple perspectives on a user's question. Each response was written from a specific assigned role/perspective.
+
+Original User Query: "${promptForSummary}"
+
+Debate Responses:
+${responsesText}
+
+Please analyze this debate and provide ONLY these five sections in this exact format:
+
+Balance: [0-100]
+Debate Overview: [2-3 substantial paragraphs synthesizing the debate — what was discussed, how each role approached the topic, and what the collective debate reveals. Give the reader a complete understanding without needing to read individual responses.]
+Strongest Arguments: [3-5 bullet points identifying the most compelling arguments made across all roles, each starting with a dash and naming which role made the point]
+Key Tensions: [List the fundamental disagreements or opposing viewpoints between the roles. These are expected and by design — name which roles clashed and on what. Each starting with a dash.]
+
+Important: Only include each section label followed by a colon and content. Do NOT use markdown formatting like ** for section headers.`
+        : `Today is ${today}. This is the real, current date. You are an expert judge analyzing multiple AI model responses to a user's question.
 
 Original User Query: "${promptForSummary}"
 
@@ -308,29 +329,6 @@ Important: Only include each section label followed by a colon and content.`
       const rawSummaryText = summaryFinalData?.text || useStore.getState().summary?.text || ''
       const summaryTokens = summaryFinalData?.tokens || null
 
-      // Parse and format summary sections (matches the prior styled structure),
-      // while guaranteeing consensus is displayed with a % sign.
-      const normalizedText = rawSummaryText
-        .replace(/\*\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*\*[:\-]?/gi, '\n$1:')
-        .replace(/\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*[:\-]?/gi, '\n$1:')
-
-      const consensusMatch = normalizedText.match(/(?:Consensus|consensus)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
-      const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:AGREEMENTS|Agreements)[:\-]|\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
-      const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
-      const contradictionsMatch = normalizedText.match(/(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
-      const differencesMatch = normalizedText.match(/(?:DIFFERENCES|Differences)[:\-]?\s*([\s\S]+)$/i)
-
-      let consensus = null
-      if (consensusMatch) {
-        const score = parseInt(consensusMatch[1], 10)
-        if (!Number.isNaN(score)) consensus = Math.max(0, Math.min(100, score))
-      }
-
-      const parsedSummary = (summaryMatch ? summaryMatch[1] : rawSummaryText)
-        .replace(/^(?:\*\*)?(?:Summary|SUMMARY)[:\-]?\s*\*?\*?\s*/i, '')
-        .replace(/^:\s*/, '')
-        .trim()
-
       const toBulletArray = (text) => {
         if (!text) return []
         return text
@@ -339,20 +337,63 @@ Important: Only include each section label followed by a colon and content.`
           .filter(Boolean)
       }
 
-      const agreements = toBulletArray((agreementsMatch?.[1] || '').trim())
-      const contradictions = toBulletArray((contradictionsMatch?.[1] || '').trim())
-      const differences = toBulletArray((differencesMatch?.[1] || '').trim())
-
       let formattedSummaryText = ''
-      if (consensus !== null) {
-        formattedSummaryText += `## CONSENSUS: ${consensus}%\n\n`
+      let consensus = null
+      let parsedSummary = ''
+      let agreements = []
+      let contradictions = []
+      let differences = []
+
+      if (isDebateSummary) {
+        const normalizedText = rawSummaryText
+          .replace(/\*\*(BALANCE|Balance|DEBATE OVERVIEW|Debate Overview|STRONGEST ARGUMENTS?|Strongest Arguments?|KEY TENSIONS|Key Tensions)\*\*[:\-]?/gi, '\n$1:')
+          .replace(/\*(BALANCE|Balance|DEBATE OVERVIEW|Debate Overview|STRONGEST ARGUMENTS?|Strongest Arguments?|KEY TENSIONS|Key Tensions)\*[:\-]?/gi, '\n$1:')
+
+        const balanceMatch = normalizedText.match(/(?:Balance|BALANCE)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
+        const overviewMatch = normalizedText.match(/(?:Debate Overview|DEBATE OVERVIEW)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:STRONGEST ARGUMENTS?|Strongest Arguments?)[:\-]|\n\s*(?:KEY TENSIONS|Key Tensions)[:\-]|$)/i)
+        const strongestMatch = normalizedText.match(/(?:Strongest Arguments?|STRONGEST ARGUMENTS?)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:KEY TENSIONS|Key Tensions)[:\-]|$)/i)
+        const tensionsMatch = normalizedText.match(/(?:Key Tensions|KEY TENSIONS)[:\-]?\s*([\s\S]+)$/i)
+
+        if (balanceMatch) {
+          const score = parseInt(balanceMatch[1], 10)
+          if (!Number.isNaN(score)) consensus = Math.max(0, Math.min(100, score))
+        }
+        parsedSummary = (overviewMatch ? overviewMatch[1] : rawSummaryText)
+          .replace(/^(?:\*\*)?(?:Debate Overview|DEBATE OVERVIEW)[:\-]?\s*\*?\*?\s*/i, '').replace(/^:\s*/, '').trim()
+        agreements = toBulletArray((strongestMatch?.[1] || '').trim())
+        contradictions = toBulletArray((tensionsMatch?.[1] || '').trim())
+
+        if (consensus !== null) formattedSummaryText += `## BALANCE: ${consensus}%\n\n`
+        if (parsedSummary) formattedSummaryText += `## DEBATE OVERVIEW\n${parsedSummary}\n\n`
+        formattedSummaryText += `## STRONGEST ARGUMENTS\n${agreements.length ? agreements.map(a => `- ${a}`).join('\n') : 'None identified.'}\n\n`
+        formattedSummaryText += `## KEY TENSIONS\n${contradictions.length ? contradictions.map(c => `- ${c}`).join('\n') : 'None identified.'}`
+      } else {
+        const normalizedText = rawSummaryText
+          .replace(/\*\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*\*[:\-]?/gi, '\n$1:')
+          .replace(/\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*[:\-]?/gi, '\n$1:')
+
+        const consensusMatch = normalizedText.match(/(?:Consensus|consensus)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
+        const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:AGREEMENTS|Agreements)[:\-]|\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
+        const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
+        const contradictionsMatch = normalizedText.match(/(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
+        const differencesMatch = normalizedText.match(/(?:DIFFERENCES|Differences)[:\-]?\s*([\s\S]+)$/i)
+
+        if (consensusMatch) {
+          const score = parseInt(consensusMatch[1], 10)
+          if (!Number.isNaN(score)) consensus = Math.max(0, Math.min(100, score))
+        }
+        parsedSummary = (summaryMatch ? summaryMatch[1] : rawSummaryText)
+          .replace(/^(?:\*\*)?(?:Summary|SUMMARY)[:\-]?\s*\*?\*?\s*/i, '').replace(/^:\s*/, '').trim()
+        agreements = toBulletArray((agreementsMatch?.[1] || '').trim())
+        contradictions = toBulletArray((contradictionsMatch?.[1] || '').trim())
+        differences = toBulletArray((differencesMatch?.[1] || '').trim())
+
+        if (consensus !== null) formattedSummaryText += `## CONSENSUS: ${consensus}%\n\n`
+        if (parsedSummary) formattedSummaryText += `## SUMMARY\n${parsedSummary}\n\n`
+        formattedSummaryText += `## AGREEMENTS\n${agreements.length ? agreements.map(a => `- ${a}`).join('\n') : 'None identified.'}\n\n`
+        formattedSummaryText += `## CONTRADICTIONS\n${contradictions.length ? contradictions.map(c => `- ${c}`).join('\n') : 'None identified — all models are in factual agreement.'}\n\n`
+        formattedSummaryText += `## DIFFERENCES\n${differences.length ? differences.map(d => `- ${d}`).join('\n') : 'None identified.'}`
       }
-      if (parsedSummary) {
-        formattedSummaryText += `## SUMMARY\n${parsedSummary}\n\n`
-      }
-      formattedSummaryText += `## AGREEMENTS\n${agreements.length ? agreements.map(a => `- ${a}`).join('\n') : 'None identified.'}\n\n`
-      formattedSummaryText += `## CONTRADICTIONS\n${contradictions.length ? contradictions.map(c => `- ${c}`).join('\n') : 'None identified — all models are in factual agreement.'}\n\n`
-      formattedSummaryText += `## DIFFERENCES\n${differences.length ? differences.map(d => `- ${d}`).join('\n') : 'None identified.'}`
       const finalSummaryText = formattedSummaryText || rawSummaryText
 
       setSummary((prev) => ({
@@ -1037,14 +1078,35 @@ Important: Only include each section label followed by a colon and content.`
     if (false && validResponses.length >= 2 && !summary) {
       setIsGeneratingSummary(true)
       try {
-        // Build the summary prompt (matches judge finalization prompt)
-        // Use short friendly names (ChatGPT, Claude, Gemini, Grok) so the judge summary reads cleanly
-        const responsesText = validResponses
-          .map((r) => `\n--- ${getShortModelName(r.modelName)}'s response ---\n${r.text}\n`)
-          .join('')
+        const responsesText = isDebateMode
+          ? validResponses
+              .map((r) => `\n--- ${r.debateRole?.label || 'Respondent'}'s argument ---\n${r.text}\n`)
+              .join('')
+          : validResponses
+              .map((r) => `\n--- ${getShortModelName(r.modelName)}'s response ---\n${r.text}\n`)
+              .join('')
         
         const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-        const summaryPrompt =  `Today is ${today}. This is the real, current date. You are an expert judge analyzing multiple AI model responses to a user's question.
+        const summaryPrompt = isDebateMode
+          ? `Today is ${today}. This is the real, current date. You are an expert judge evaluating a structured debate between multiple perspectives on a user's question. Each response was written from a specific assigned role/perspective.
+
+        Original User Query: "${currentPrompt}"
+        
+        Debate Responses:
+        ${responsesText}
+        
+        Please analyze this debate and provide ONLY these five sections in this exact format (do NOT include section headers in the content itself):
+        
+        Balance: [A single number from 0-100 representing how well-balanced and comprehensive the overall debate was]
+        
+        Debate Overview: [Write a thorough, explanatory synthesis of the debate — what was discussed, how each role approached the topic, and what the collective debate reveals. The overview should give the reader a complete understanding without needing to read individual responses. Aim for 2-3 substantial paragraphs.]
+        
+        Strongest Arguments: [List 3-5 of the most compelling arguments made across all roles, each starting with a dash and naming which role made the point]
+        
+        Key Tensions: [List the fundamental disagreements or opposing viewpoints between the roles. These are expected and by design — name which roles clashed and on what. Each starting with a dash.]
+        
+        Important: Only include the section label followed by a colon, then the content. Do NOT repeat section headers within the content. Do NOT use markdown formatting like ** for section headers.`
+          : `Today is ${today}. This is the real, current date. You are an expert judge analyzing multiple AI model responses to a user's question.
 
         Original User Query: "${currentPrompt}"
         
@@ -1103,215 +1165,144 @@ Important: Only include each section label followed by a colon and content.`
               const rawSummaryText = summaryFinalData?.text || useStore.getState().summary?.text || ''
               const summaryTokens = summaryFinalData?.tokens || null
         
-        // Parse the response to extract sections (Consensus, Summary, Agreements, Disagreements)
-        // More flexible consensus matching - handles various formats like "Consensus: 85", "**Consensus**: 85%", "[85]", etc.
-        const consensusMatch = rawSummaryText.match(/(?:Consensus|consensus)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
-        
-        // Split the text by section headers to get clean boundaries
-        // First, normalize the text to handle markdown formatting
-        const normalizedText = rawSummaryText
-          .replace(/\*\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*\*[:\-]?/gi, '\n$1:')
-          .replace(/\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*[:\-]?/gi, '\n$1:')
-        
-        // Extract sections using more robust patterns with greedy capture up to next section
-        // Use [\s\S] instead of . to match across newlines
-        const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:AGREEMENTS|Agreements)[:\-]|\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
-        const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
-        const disagreementsMatch = normalizedText.match(/(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
-        const differencesMatch = normalizedText.match(/(?:DIFFERENCES|Differences)[:\-]?\s*([\s\S]+)$/i)
-        
-        // Extract consensus score (0-100)
-        let consensus = null
-        if (consensusMatch) {
-          const score = parseInt(consensusMatch[1], 10)
-          consensus = Math.max(0, Math.min(100, score))
-        } else {
-          // Try more flexible patterns
-          const patterns = [
-            /consensus[:\-]?\s*(\d+)\s*%/i,
-            /consensus[:\-]?\s*\[(\d+)\]/i,
-            /consensus[:\-]?\s*(\d+)/i,
-            /(\d+)\s*%\s*consensus/i,
-            /consensus.*?(\d+)/i
-          ]
-          
-          for (const pattern of patterns) {
-            const match = rawSummaryText.match(pattern)
-            if (match) {
-              const score = parseInt(match[1], 10)
-              consensus = Math.max(0, Math.min(100, score))
-              break
-            }
-          }
-          
-          if (!consensus) {
-            console.warn('[Summary] Could not extract consensus score from response')
-          }
-        }
-        
-        // Extract summary - clean up any markdown formatting or section headers that might be included
-        let parsedSummary = summaryMatch ? summaryMatch[1].trim() : rawSummaryText.split(/\n\n/)[0].trim()
-        // Remove any section headers, markdown, or leading colons that might have been captured
-        parsedSummary = parsedSummary
-          .replace(/^(?:\*\*)?(?:Summary|SUMMARY)[:\-]?\s*\*?\*?\s*/i, '')
-          .replace(/^:\s*/, '') // Remove leading colon
-          .trim()
-        
-        // Extract agreements and disagreements as arrays
-        // Clean up the extracted text to remove any section headers, markdown, or nested bullets
-        let agreementsText = agreementsMatch ? agreementsMatch[1].trim() : ''
-        // Remove section headers if they were captured
-        agreementsText = agreementsText
-          .replace(/^(?:\*\*)?(?:AGREEMENTS|Agreements)[:\-]?\s*\*?\*?\s*/i, '')
-          .trim()
-        // Remove any duplicate section markers that might appear in the content
-        agreementsText = agreementsText.replace(/\n\s*(?:\*\*)?(?:AGREEMENTS|Agreements)[:\-]?\s*\*?\*?\s*/gi, '\n')
-        
-        let agreements = agreementsText
-          ? agreementsText.split('\n').filter(l => {
-              const trimmed = l.trim()
-              // Filter out empty lines, section headers, standalone bullets, and "none identified"
-              return trimmed && 
-                     !trimmed.match(/^[-•*•]\s*$/) && 
-                     !trimmed.match(/^(?:\*\*)?(?:AGREEMENTS|Agreements)[:\-]?\s*\*?\*?$/i) &&
-                     !trimmed.match(/^:\s*$/) && // Filter out lines that are just ":"
-                     !trimmed.toLowerCase().includes('none identified')
-            }).map(l => {
-              // Clean up nested bullets (e.g., "• - • text" becomes "text")
-              let cleaned = l.replace(/^[-•*•]\s*[-•*•]\s*/, '').replace(/^[-•*•]\s*/, '').trim()
-              // Remove any remaining markdown formatting
-              cleaned = cleaned.replace(/\*\*/g, '').replace(/\*/g, '')
-              return cleaned
-            }).filter(l => l) // Remove any empty strings after cleaning
-          : []
-        
-        let disagreementsText = disagreementsMatch ? disagreementsMatch[1].trim() : ''
-        // Remove section headers if they were captured
-        disagreementsText = disagreementsText
-          .replace(/^(?:\*\*)?(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*\*?\*?\s*/i, '')
-          .trim()
-        // Remove any duplicate section markers that might appear in the content
-        disagreementsText = disagreementsText.replace(/\n\s*(?:\*\*)?(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*\*?\*?\s*/gi, '\n')
-        
-        const rawDisagreements = disagreementsText
-          ? disagreementsText.split('\n').filter(l => {
-              const trimmed = l.trim()
-              // Filter out empty lines, section headers, standalone bullets, "none identified", and instruction text
-              return trimmed && 
-                     !trimmed.match(/^[-•*•]\s*$/) && 
-                     !trimmed.match(/^(?:\*\*)?(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*\*?\*?$/i) &&
-                     !trimmed.match(/^:\s*$/) &&
-                     !trimmed.match(/^\(.*\)$/) && // Filter parenthesized instruction text
-                     !trimmed.toLowerCase().startsWith('none identified') &&
-                     !trimmed.toLowerCase().includes('this section is mandatory') &&
-                     !trimmed.toLowerCase().includes('you must') &&
-                     !trimmed.toLowerCase().includes('look for:')
-            }).map(l => {
-              // Clean up nested bullets (e.g., "• - • text" becomes "text")
-              let cleaned = l.replace(/^[-•*•]\s*[-•*•]\s*/, '').replace(/^[-•*•]\s*/, '').trim()
-              // Remove any remaining markdown formatting
-              cleaned = cleaned.replace(/\*\*/g, '').replace(/\*/g, '')
-              return cleaned
-            }).filter(l => l && l.length >= 5) // Remove any empty or too-short strings after cleaning
-          : []
-        
-        // Extract differences section
-        let differencesText = differencesMatch ? differencesMatch[1].trim() : ''
-        differencesText = differencesText
-          .replace(/^(?:\*\*)?(?:DIFFERENCES|Differences)[:\-]?\s*\*?\*?\s*/i, '')
-          .trim()
-        differencesText = differencesText.replace(/\n\s*(?:\*\*)?(?:DIFFERENCES|Differences)[:\-]?\s*\*?\*?\s*/gi, '\n')
-        
-        let differences = differencesText
-          ? differencesText.split('\n').filter(l => {
-              const trimmed = l.trim()
-              return trimmed && 
-                     !trimmed.match(/^[-•*•]\s*$/) && 
-                     !trimmed.match(/^(?:\*\*)?(?:DIFFERENCES|Differences)[:\-]?\s*\*?\*?$/i) &&
-                     !trimmed.match(/^:\s*$/) &&
-                     !trimmed.toLowerCase().startsWith('none identified') &&
-                     !trimmed.toLowerCase().startsWith('no notable')
-            }).map(l => {
-              let cleaned = l.replace(/^[-•*•]\s*[-•*•]\s*/, '').replace(/^[-•*•]\s*/, '').trim()
-              cleaned = cleaned.replace(/\*\*/g, '').replace(/\*/g, '')
-              return cleaned
-            }).filter(l => l && l.length >= 5)
-          : []
-
-        // Post-processing: Filter out "disagreements" that are actually coverage differences, not contradictions.
-        let disagreements = rawDisagreements.filter(d => {
-          const isOmission = /\b(?:omits?|omitted|(?:does|do|did|is|are|were?) not (?:mention|include|address|cite|reference|provide|name|specify|list)|not mentioned|not included|not referenced|not cited|not addressed|left out|leaves? out|without (?:mentioning|citing|referencing|naming)|absent from|refrain(?:s)? from|a detail (?:omitted|absent|missing|not))\b/i.test(d)
-          const isDetailDiff = /\b(?:more (?:detail|detailed|specific|structured|informal|clinical|conversational|comprehensive|general|predictive|neutral|cautious|thorough|extensive)|less (?:detail|specific|thorough)|greater (?:detail|depth|specificity)|deeper|broader|level of detail|varying (?:levels?|degrees?)|different (?:tone|style|structure|framing|approach|perspective|level)|general (?:descriptions?|terms?|categories?|statements?))\b/i.test(d)
-          const isToneDiff = /\b(?:adopts?\s+(?:a\s+)?(?:more\s+)?(?:\w+\s+)?tone|(?:conversational|informal|clinical|formal|neutral|empathetic|structured|predictive|cautious)\s+(?:tone|style|approach)|uses?\s+(?:a\s+)?(?:\w+\s+)?analogy)\b/i.test(d)
-          const isFocusDiff = /\b(?:emphasiz(?:es?|ing)|focus(?:es|ing)?\s+(?:on|more|instead|primarily)|prioritiz(?:es?|ing)|centers?\s+on)\b.*\b(?:while|whereas|but|however)\b.*\b(?:emphasiz|focus|prioritiz|centers?|provid|takes?|us(?:es?|ing))\b/i.test(d)
-          const isExtraDetail = /\b(?:lists?\s+specific|provides?\s+specific|names?\s+specific|cites?\s+specific|identifies?\s+specific|includes?\s+specific)\b.*\b(?:while|whereas|but)\b/i.test(d) || /\b(?:while|whereas)\b.*\b(?:the other(?:s|\s+models?)?)\b.*\b(?:do not|don'?t|refrain|avoid|only|simply|use more general)\b/i.test(d)
-          if (isOmission || isDetailDiff || isToneDiff || isFocusDiff || isExtraDetail) {
-            console.log(`[Judge Filter] Removed non-contradiction: "${d.substring(0, 80)}..."`)
-            return false
-          }
-          return true
-        })
-        
-        // Post-process: replace any full model names with short friendly names
-        const shortenModelNames = (text) => {
-          if (!text) return text
+        const toBulletArray2 = (text) => {
+          if (!text) return []
           return text
-            // OpenAI variants
-            .replace(/GPT[-\s]?4\.1/gi, 'ChatGPT')
-            .replace(/GPT[-\s]?4o[-\s]?mini/gi, 'ChatGPT')
-            .replace(/GPT[-\s]?5\.2/gi, 'ChatGPT')
-            .replace(/GPT[-\s]?5[-\s]?mini/gi, 'ChatGPT')
-            .replace(/OpenAI[-\s]?gpt[-\s]?[\d.]+[-\w]*/gi, 'ChatGPT')
-            .replace(/openai[-\s]gpt[-\s][\d.]+/gi, 'ChatGPT')
-            // Anthropic variants
-            .replace(/Claude\s+4\.5\s+Sonnet/gi, 'Claude')
-            .replace(/Claude\s+4\.5\s+Opus/gi, 'Claude')
-            .replace(/Claude\s+4\s+Sonnet/gi, 'Claude')
-            .replace(/anthropic[-\s]claude[-\s][\d.]+[-\w]*/gi, 'Claude')
-            // Google variants
-            .replace(/Gemini\s+3\s+Flash/gi, 'Gemini')
-            .replace(/Gemini\s+3\s+Pro/gi, 'Gemini')
-            .replace(/Gemini\s+2\.5\s+Flash[-\s]?Lite/gi, 'Gemini')
-            .replace(/google[-\s]gemini[-\s][\d.]+[-\w]*/gi, 'Gemini')
-            // xAI variants
-            .replace(/Grok\s+4[-\s]?1[-\s]?fast[-\s]?(?:non[-\s]?)?reasoning/gi, 'Grok')
-            .replace(/Grok[-\s]?4[-\s]?1[-\s]?fast/gi, 'Grok')
-            .replace(/xai[-\s]grok[-\s][\d.]+[-\w]*/gi, 'Grok')
+            .split('\n')
+            .map(l => l.replace(/^[-•*]\s*/, '').trim())
+            .filter(l => l && l.length >= 3)
         }
-        parsedSummary = shortenModelNames(parsedSummary)
-        agreements = agreements.map(a => shortenModelNames(a))
-        disagreements = disagreements.map(d => shortenModelNames(d))
-        differences = differences.map(d => shortenModelNames(d))
 
-        // Format the summary text using markdown for proper rendering
         let formattedSummaryText = ''
-        
-        // Consensus score at the top
-        if (consensus !== null && consensus !== undefined) {
-          formattedSummaryText += `## CONSENSUS: ${consensus}%\n\n`
-        }
-        
-        // Summary section
-        if (parsedSummary) {
-          formattedSummaryText += `## SUMMARY\n${parsedSummary}\n\n`
-        }
-        
-        // Agreements section
-        if (agreements && agreements.length > 0) {
-          formattedSummaryText += `## AGREEMENTS\n${agreements.map(a => `- ${a}`).join('\n')}\n\n`
+        let consensus = null
+        let parsedSummary = ''
+        let agreements = []
+        let disagreements = []
+        let differences = []
+
+        if (isDebateMode) {
+          const normalizedText = rawSummaryText
+            .replace(/\*\*(BALANCE|Balance|DEBATE OVERVIEW|Debate Overview|STRONGEST ARGUMENTS?|Strongest Arguments?|KEY TENSIONS|Key Tensions)\*\*[:\-]?/gi, '\n$1:')
+            .replace(/\*(BALANCE|Balance|DEBATE OVERVIEW|Debate Overview|STRONGEST ARGUMENTS?|Strongest Arguments?|KEY TENSIONS|Key Tensions)\*[:\-]?/gi, '\n$1:')
+
+          const balanceMatch = normalizedText.match(/(?:Balance|BALANCE)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
+          const overviewMatch = normalizedText.match(/(?:Debate Overview|DEBATE OVERVIEW)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:STRONGEST ARGUMENTS?|Strongest Arguments?)[:\-]|\n\s*(?:KEY TENSIONS|Key Tensions)[:\-]|$)/i)
+          const strongestMatch = normalizedText.match(/(?:Strongest Arguments?|STRONGEST ARGUMENTS?)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:KEY TENSIONS|Key Tensions)[:\-]|$)/i)
+          const tensionsMatch = normalizedText.match(/(?:Key Tensions|KEY TENSIONS)[:\-]?\s*([\s\S]+)$/i)
+
+          if (balanceMatch) {
+            const score = parseInt(balanceMatch[1], 10)
+            if (!Number.isNaN(score)) consensus = Math.max(0, Math.min(100, score))
+          }
+          parsedSummary = (overviewMatch ? overviewMatch[1] : rawSummaryText)
+            .replace(/^(?:\*\*)?(?:Debate Overview|DEBATE OVERVIEW)[:\-]?\s*\*?\*?\s*/i, '').replace(/^:\s*/, '').trim()
+          agreements = toBulletArray2((strongestMatch?.[1] || '').trim())
+          disagreements = toBulletArray2((tensionsMatch?.[1] || '').trim())
+
+          if (consensus !== null) formattedSummaryText += `## BALANCE: ${consensus}%\n\n`
+          if (parsedSummary) formattedSummaryText += `## DEBATE OVERVIEW\n${parsedSummary}\n\n`
+          formattedSummaryText += `## STRONGEST ARGUMENTS\n${agreements.length ? agreements.map(a => `- ${a}`).join('\n') : 'None identified.'}\n\n`
+          formattedSummaryText += `## KEY TENSIONS\n${disagreements.length ? disagreements.map(c => `- ${c}`).join('\n') : 'None identified.'}`
         } else {
-          formattedSummaryText += `## AGREEMENTS\nNone identified.\n\n`
+          const consensusMatch = rawSummaryText.match(/(?:Consensus|consensus)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
+          const normalizedText = rawSummaryText
+            .replace(/\*\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*\*[:\-]?/gi, '\n$1:')
+            .replace(/\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*[:\-]?/gi, '\n$1:')
+          
+          const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:AGREEMENTS|Agreements)[:\-]|\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
+          const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
+          const disagreementsMatch = normalizedText.match(/(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
+          const differencesMatch = normalizedText.match(/(?:DIFFERENCES|Differences)[:\-]?\s*([\s\S]+)$/i)
+          
+          if (consensusMatch) {
+            const score = parseInt(consensusMatch[1], 10)
+            consensus = Math.max(0, Math.min(100, score))
+          } else {
+            const patterns = [
+              /consensus[:\-]?\s*(\d+)\s*%/i,
+              /consensus[:\-]?\s*\[(\d+)\]/i,
+              /consensus[:\-]?\s*(\d+)/i,
+              /(\d+)\s*%\s*consensus/i,
+              /consensus.*?(\d+)/i
+            ]
+            for (const pattern of patterns) {
+              const match = rawSummaryText.match(pattern)
+              if (match) {
+                const score = parseInt(match[1], 10)
+                consensus = Math.max(0, Math.min(100, score))
+                break
+              }
+            }
+            if (!consensus) console.warn('[Summary] Could not extract consensus score from response')
+          }
+          
+          parsedSummary = (summaryMatch ? summaryMatch[1].trim() : rawSummaryText.split(/\n\n/)[0].trim())
+            .replace(/^(?:\*\*)?(?:Summary|SUMMARY)[:\-]?\s*\*?\*?\s*/i, '')
+            .replace(/^:\s*/, '')
+            .trim()
+
+          let agreementsText = (agreementsMatch ? agreementsMatch[1].trim() : '')
+            .replace(/^(?:\*\*)?(?:AGREEMENTS|Agreements)[:\-]?\s*\*?\*?\s*/i, '').trim()
+          agreementsText = agreementsText.replace(/\n\s*(?:\*\*)?(?:AGREEMENTS|Agreements)[:\-]?\s*\*?\*?\s*/gi, '\n')
+          agreements = agreementsText
+            ? agreementsText.split('\n').filter(l => {
+                const trimmed = l.trim()
+                return trimmed && !trimmed.match(/^[-•*•]\s*$/) && !trimmed.match(/^(?:\*\*)?(?:AGREEMENTS|Agreements)[:\-]?\s*\*?\*?$/i) && !trimmed.match(/^:\s*$/) && !trimmed.toLowerCase().includes('none identified')
+              }).map(l => l.replace(/^[-•*•]\s*[-•*•]\s*/, '').replace(/^[-•*•]\s*/, '').trim().replace(/\*\*/g, '').replace(/\*/g, '')).filter(l => l)
+            : []
+
+          let disagreementsText = (disagreementsMatch ? disagreementsMatch[1].trim() : '')
+            .replace(/^(?:\*\*)?(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*\*?\*?\s*/i, '').trim()
+          disagreementsText = disagreementsText.replace(/\n\s*(?:\*\*)?(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*\*?\*?\s*/gi, '\n')
+          const rawDisagreements = disagreementsText
+            ? disagreementsText.split('\n').filter(l => {
+                const trimmed = l.trim()
+                return trimmed && !trimmed.match(/^[-•*•]\s*$/) && !trimmed.match(/^(?:\*\*)?(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*\*?\*?$/i) && !trimmed.match(/^:\s*$/) && !trimmed.match(/^\(.*\)$/) && !trimmed.toLowerCase().startsWith('none identified') && !trimmed.toLowerCase().includes('this section is mandatory') && !trimmed.toLowerCase().includes('you must') && !trimmed.toLowerCase().includes('look for:')
+              }).map(l => l.replace(/^[-•*•]\s*[-•*•]\s*/, '').replace(/^[-•*•]\s*/, '').trim().replace(/\*\*/g, '').replace(/\*/g, '')).filter(l => l && l.length >= 5)
+            : []
+
+          let differencesText = (differencesMatch ? differencesMatch[1].trim() : '')
+            .replace(/^(?:\*\*)?(?:DIFFERENCES|Differences)[:\-]?\s*\*?\*?\s*/i, '').trim()
+          differencesText = differencesText.replace(/\n\s*(?:\*\*)?(?:DIFFERENCES|Differences)[:\-]?\s*\*?\*?\s*/gi, '\n')
+          differences = differencesText
+            ? differencesText.split('\n').filter(l => {
+                const trimmed = l.trim()
+                return trimmed && !trimmed.match(/^[-•*•]\s*$/) && !trimmed.match(/^(?:\*\*)?(?:DIFFERENCES|Differences)[:\-]?\s*\*?\*?$/i) && !trimmed.match(/^:\s*$/) && !trimmed.toLowerCase().startsWith('none identified') && !trimmed.toLowerCase().startsWith('no notable')
+              }).map(l => l.replace(/^[-•*•]\s*[-•*•]\s*/, '').replace(/^[-•*•]\s*/, '').trim().replace(/\*\*/g, '').replace(/\*/g, '')).filter(l => l && l.length >= 5)
+            : []
+
+          disagreements = rawDisagreements.filter(d => {
+            const isOmission = /\b(?:omits?|omitted|(?:does|do|did|is|are|were?) not (?:mention|include|address|cite|reference|provide|name|specify|list)|not mentioned|not included|not referenced|not cited|not addressed|left out|leaves? out|without (?:mentioning|citing|referencing|naming)|absent from|refrain(?:s)? from|a detail (?:omitted|absent|missing|not))\b/i.test(d)
+            const isDetailDiff = /\b(?:more (?:detail|detailed|specific|structured|informal|clinical|conversational|comprehensive|general|predictive|neutral|cautious|thorough|extensive)|less (?:detail|specific|thorough)|greater (?:detail|depth|specificity)|deeper|broader|level of detail|varying (?:levels?|degrees?)|different (?:tone|style|structure|framing|approach|perspective|level)|general (?:descriptions?|terms?|categories?|statements?))\b/i.test(d)
+            const isToneDiff = /\b(?:adopts?\s+(?:a\s+)?(?:more\s+)?(?:\w+\s+)?tone|(?:conversational|informal|clinical|formal|neutral|empathetic|structured|predictive|cautious)\s+(?:tone|style|approach)|uses?\s+(?:a\s+)?(?:\w+\s+)?analogy)\b/i.test(d)
+            const isFocusDiff = /\b(?:emphasiz(?:es?|ing)|focus(?:es|ing)?\s+(?:on|more|instead|primarily)|prioritiz(?:es?|ing)|centers?\s+on)\b.*\b(?:while|whereas|but|however)\b.*\b(?:emphasiz|focus|prioritiz|centers?|provid|takes?|us(?:es?|ing))\b/i.test(d)
+            const isExtraDetail = /\b(?:lists?\s+specific|provides?\s+specific|names?\s+specific|cites?\s+specific|identifies?\s+specific|includes?\s+specific)\b.*\b(?:while|whereas|but)\b/i.test(d) || /\b(?:while|whereas)\b.*\b(?:the other(?:s|\s+models?)?)\b.*\b(?:do not|don'?t|refrain|avoid|only|simply|use more general)\b/i.test(d)
+            if (isOmission || isDetailDiff || isToneDiff || isFocusDiff || isExtraDetail) {
+              console.log(`[Judge Filter] Removed non-contradiction: "${d.substring(0, 80)}..."`)
+              return false
+            }
+            return true
+          })
+
+          const shortenModelNames = (text) => {
+            if (!text) return text
+            return text
+              .replace(/GPT[-\s]?4\.1/gi, 'ChatGPT').replace(/GPT[-\s]?4o[-\s]?mini/gi, 'ChatGPT').replace(/GPT[-\s]?5\.2/gi, 'ChatGPT').replace(/GPT[-\s]?5[-\s]?mini/gi, 'ChatGPT').replace(/OpenAI[-\s]?gpt[-\s]?[\d.]+[-\w]*/gi, 'ChatGPT').replace(/openai[-\s]gpt[-\s][\d.]+/gi, 'ChatGPT')
+              .replace(/Claude\s+4\.5\s+Sonnet/gi, 'Claude').replace(/Claude\s+4\.5\s+Opus/gi, 'Claude').replace(/Claude\s+4\s+Sonnet/gi, 'Claude').replace(/anthropic[-\s]claude[-\s][\d.]+[-\w]*/gi, 'Claude')
+              .replace(/Gemini\s+3\s+Flash/gi, 'Gemini').replace(/Gemini\s+3\s+Pro/gi, 'Gemini').replace(/Gemini\s+2\.5\s+Flash[-\s]?Lite/gi, 'Gemini').replace(/google[-\s]gemini[-\s][\d.]+[-\w]*/gi, 'Gemini')
+              .replace(/Grok\s+4[-\s]?1[-\s]?fast[-\s]?(?:non[-\s]?)?reasoning/gi, 'Grok').replace(/Grok[-\s]?4[-\s]?1[-\s]?fast/gi, 'Grok').replace(/xai[-\s]grok[-\s][\d.]+[-\w]*/gi, 'Grok')
+          }
+          parsedSummary = shortenModelNames(parsedSummary)
+          agreements = agreements.map(a => shortenModelNames(a))
+          disagreements = disagreements.map(d => shortenModelNames(d))
+          differences = differences.map(d => shortenModelNames(d))
+
+          if (consensus !== null && consensus !== undefined) formattedSummaryText += `## CONSENSUS: ${consensus}%\n\n`
+          if (parsedSummary) formattedSummaryText += `## SUMMARY\n${parsedSummary}\n\n`
+          formattedSummaryText += `## AGREEMENTS\n${agreements.length ? agreements.map(a => `- ${a}`).join('\n') : 'None identified.'}\n\n`
+          formattedSummaryText += `## CONTRADICTIONS\n${disagreements.length ? disagreements.map(d => `- ${d}`).join('\n') : 'None identified — all models are in factual agreement.'}\n\n`
+          formattedSummaryText += `## DIFFERENCES\n${differences.length ? differences.map(d => `- ${d}`).join('\n') : 'None identified.'}`
         }
-        
-        // Contradictions section
-        if (disagreements && disagreements.length > 0) {
-          formattedSummaryText += `## CONTRADICTIONS\n${disagreements.map(d => `- ${d}`).join('\n')}\n\n`
-        } else {
-          formattedSummaryText += `## CONTRADICTIONS\nNone identified — all models are in factual agreement.\n\n`
-        }
-        
-        // Differences section
-        formattedSummaryText += `## DIFFERENCES\n${differences && differences.length > 0 ? differences.map(d => `- ${d}`).join('\n') : 'None identified.'}`
         
         // Collect judge tokens and update token data
         if (summaryTokens) {
