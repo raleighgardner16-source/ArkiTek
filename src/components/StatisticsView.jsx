@@ -17,19 +17,20 @@ const BADGE_CATEGORIES = [
     icon: Zap,
     description: 'Process tokens to unlock these badges',
     statKey: 'totalTokens',
+    unit: 'tokens',
     badges: [
       { name: 'First Spark', threshold: 1000, emoji: '⚡', color: '#FFD700', desc: '1K tokens' },
       { name: 'Kindling', threshold: 10000, emoji: '🔥', color: '#FF8C00', desc: '10K tokens' },
       { name: 'Torch Bearer', threshold: 100000, emoji: '🔦', color: '#FF6347', desc: '100K tokens' },
       { name: 'Inferno', threshold: 1000000, emoji: '🌋', color: '#FF4500', desc: '1M tokens' },
-      { name: 'Supernova', threshold: 10000000, emoji: '💥', color: '#DC143C', desc: '10M tokens' },
-      { name: 'Cosmic Force', threshold: 100000000, emoji: '🌌', color: '#9400D3', desc: '100M tokens' },
-      { name: 'Void Walker', threshold: 500000000, emoji: '🕳️', color: '#6A0DAD', desc: '500M tokens' },
-      { name: 'Galactic Mind', threshold: 1000000000, emoji: '🪐', color: '#4B0082', desc: '1B tokens' },
-      { name: 'Nebula Architect', threshold: 10000000000, emoji: '✨', color: '#00CED1', desc: '10B tokens' },
-      { name: 'Star Forger', threshold: 100000000000, emoji: '⭐', color: '#00BFFF', desc: '100B tokens' },
-      { name: 'Dimension Breaker', threshold: 500000000000, emoji: '🔮', color: '#5B5EA6', desc: '500B tokens' },
-      { name: 'Universal Consciousness', threshold: 1000000000000, emoji: '🌀', color: '#7B68EE', desc: '1T tokens' },
+      { name: 'Supernova', threshold: 5000000, emoji: '💥', color: '#DC143C', desc: '5M tokens' },
+      { name: 'Cosmic Force', threshold: 10000000, emoji: '🌌', color: '#9400D3', desc: '10M tokens' },
+      { name: 'Void Walker', threshold: 25000000, emoji: '🕳️', color: '#6A0DAD', desc: '25M tokens' },
+      { name: 'Galactic Mind', threshold: 50000000, emoji: '🪐', color: '#4B0082', desc: '50M tokens' },
+      { name: 'Nebula Architect', threshold: 100000000, emoji: '✨', color: '#00CED1', desc: '100M tokens' },
+      { name: 'Star Forger', threshold: 250000000, emoji: '⭐', color: '#00BFFF', desc: '250M tokens' },
+      { name: 'Dimension Breaker', threshold: 500000000, emoji: '🔮', color: '#5B5EA6', desc: '500M tokens' },
+      { name: 'Universal Consciousness', threshold: 1000000000, emoji: '🌀', color: '#7B68EE', desc: '1B tokens' },
     ]
   },
   {
@@ -38,6 +39,7 @@ const BADGE_CATEGORIES = [
     icon: MessageSquare,
     description: 'Send prompts to unlock these badges',
     statKey: 'totalPrompts',
+    unit: 'prompts',
     badges: [
       { name: 'First Words', threshold: 1, emoji: '💬', color: '#32CD32', desc: '1 prompt' },
       { name: 'Curious Mind', threshold: 10, emoji: '🧠', color: '#00FA9A', desc: '10 prompts' },
@@ -59,6 +61,7 @@ const BADGE_CATEGORIES = [
     icon: Flame,
     description: 'Maintain daily usage streaks',
     statKey: 'streakDays',
+    unit: 'days',
     badges: [
       { name: 'Getting Warm', threshold: 3, emoji: '🕯️', color: '#FFA07A', desc: '3-day streak' },
       { name: 'Week Warrior', threshold: 7, emoji: '⚔️', color: '#FF7F50', desc: '7-day streak' },
@@ -80,19 +83,18 @@ const BADGE_CATEGORIES = [
     icon: Heart,
     description: 'Get likes on your Prompt Feed posts',
     statKey: 'totalLikes',
+    unit: 'likes',
     badges: [
       { name: 'First Fan', threshold: 1, emoji: '👍', color: '#FF69B4', desc: '1 like' },
-      { name: 'Rising Star', threshold: 10, emoji: '🌟', color: '#FF1493', desc: '10 likes' },
-      { name: 'Crowd Favorite', threshold: 25, emoji: '🎉', color: '#DC143C', desc: '25 likes' },
-      { name: 'Influencer', threshold: 50, emoji: '📢', color: '#FF4500', desc: '50 likes' },
-      { name: 'Celebrity', threshold: 100, emoji: '🌟', color: '#FFD700', desc: '100 likes' },
-      { name: 'Beloved', threshold: 250, emoji: '💖', color: '#E0115F', desc: '250 likes' },
-      { name: 'Icon', threshold: 500, emoji: '🏆', color: '#DAA520', desc: '500 likes' },
-      { name: 'Legend', threshold: 1000, emoji: '👑', color: '#FFD700', desc: '1,000 likes' },
-      { name: 'Superstar', threshold: 2000, emoji: '🌠', color: '#9400D3', desc: '2,000 likes' },
+      { name: 'Rising Star', threshold: 5, emoji: '🌟', color: '#FF1493', desc: '5 likes' },
+      { name: 'Crowd Favorite', threshold: 10, emoji: '🎉', color: '#DC143C', desc: '10 likes' },
+      { name: 'Influencer', threshold: 25, emoji: '📢', color: '#FF4500', desc: '25 likes' },
+      { name: 'Celebrity', threshold: 50, emoji: '🌟', color: '#FFD700', desc: '50 likes' },
+      { name: 'Beloved', threshold: 100, emoji: '💖', color: '#E0115F', desc: '100 likes' },
+      { name: 'Icon', threshold: 250, emoji: '🏆', color: '#DAA520', desc: '250 likes' },
+      { name: 'Legend', threshold: 500, emoji: '👑', color: '#FFD700', desc: '500 likes' },
+      { name: 'Superstar', threshold: 1000, emoji: '🌠', color: '#9400D3', desc: '1,000 likes' },
       { name: 'Phenomenon', threshold: 5000, emoji: '💫', color: '#4B0082', desc: '5,000 likes' },
-      { name: 'Mythical', threshold: 10000, emoji: '🦄', color: '#FF4500', desc: '10,000 likes' },
-      { name: 'Eternal', threshold: 50000, emoji: '♾️', color: '#00CED1', desc: '50,000 likes' },
     ]
   },
   {
@@ -101,6 +103,7 @@ const BADGE_CATEGORIES = [
     icon: MessageSquare,
     description: 'Comment on and interact with other users\' prompts',
     statKey: 'totalComments',
+    unit: 'comments',
     badges: [
       { name: 'Ice Breaker', threshold: 10, emoji: '🗣️', color: '#32CD32', desc: '10 comments' },
       { name: 'Conversationalist', threshold: 25, emoji: '💬', color: '#20B2AA', desc: '25 comments' },
@@ -120,17 +123,18 @@ const BADGE_CATEGORIES = [
     icon: Star,
     description: 'Rate AI responses to unlock these badges',
     statKey: 'totalRatings',
+    unit: 'ratings',
     badges: [
-      { name: 'Critic', threshold: 25, emoji: '📝', color: '#FFD700', desc: '25 ratings' },
-      { name: 'Reviewer', threshold: 100, emoji: '📋', color: '#FFA500', desc: '100 ratings' },
-      { name: 'Connoisseur', threshold: 500, emoji: '🍷', color: '#FF8C00', desc: '500 ratings' },
-      { name: 'Expert Judge', threshold: 1000, emoji: '⚖️', color: '#FF6347', desc: '1K ratings' },
-      { name: 'Grand Arbiter', threshold: 5000, emoji: '🔱', color: '#DC143C', desc: '5K ratings' },
-      { name: 'Supreme Arbiter', threshold: 10000, emoji: '👑', color: '#8B0000', desc: '10K ratings' },
-      { name: 'Verdict King', threshold: 25000, emoji: '🏰', color: '#660000', desc: '25K ratings' },
-      { name: 'Eternal Critic', threshold: 50000, emoji: '📖', color: '#4A0000', desc: '50K ratings' },
-      { name: 'Omnijudge', threshold: 100000, emoji: '⚖️', color: '#330000', desc: '100K ratings' },
-      { name: 'The Arbiter', threshold: 250000, emoji: '🔮', color: '#1A0000', desc: '250K ratings' },
+      { name: 'First Critic', threshold: 1, emoji: '📝', color: '#FFD700', desc: '1 rating' },
+      { name: 'Reviewer', threshold: 5, emoji: '📋', color: '#FFA500', desc: '5 ratings' },
+      { name: 'Connoisseur', threshold: 25, emoji: '🍷', color: '#FF8C00', desc: '25 ratings' },
+      { name: 'Appraiser', threshold: 50, emoji: '🔍', color: '#FF6347', desc: '50 ratings' },
+      { name: 'Expert Judge', threshold: 100, emoji: '⚖️', color: '#DC143C', desc: '100 ratings' },
+      { name: 'Grand Arbiter', threshold: 250, emoji: '🔱', color: '#8B0000', desc: '250 ratings' },
+      { name: 'Supreme Arbiter', threshold: 500, emoji: '👑', color: '#660000', desc: '500 ratings' },
+      { name: 'Verdict King', threshold: 750, emoji: '🏰', color: '#4A0000', desc: '750 ratings' },
+      { name: 'Omnijudge', threshold: 1000, emoji: '⚖️', color: '#330000', desc: '1,000 ratings' },
+      { name: 'The Arbiter', threshold: 1500, emoji: '🔮', color: '#1A0000', desc: '1,500 ratings' },
     ]
   },
   {
@@ -139,6 +143,7 @@ const BADGE_CATEGORIES = [
     icon: Shield,
     description: 'Use the Council of LLMs (3+ models at once)',
     statKey: 'councilPrompts',
+    unit: 'assemblies',
     badges: [
       { name: 'First Assembly', threshold: 1, emoji: '🏛️', color: '#2E86C1', desc: '1 council assembly' },
       { name: 'Council Initiate', threshold: 25, emoji: '⚖️', color: '#2874A6', desc: '25 assemblies' },
@@ -156,6 +161,7 @@ const BADGE_CATEGORIES = [
     icon: Cpu,
     description: 'Send prompts using ChatGPT models',
     statKey: 'provider_openai_prompts',
+    unit: 'prompts',
     badges: [
       { name: 'GPT Regular', threshold: 100, emoji: '💬', color: '#1a7f64', desc: '100 prompts' },
       { name: 'GPT Enthusiast', threshold: 500, emoji: '🔥', color: '#0d8c6d', desc: '500 prompts' },
@@ -171,6 +177,7 @@ const BADGE_CATEGORIES = [
     icon: Cpu,
     description: 'Send prompts using Claude models',
     statKey: 'provider_anthropic_prompts',
+    unit: 'prompts',
     badges: [
       { name: 'Claude Regular', threshold: 100, emoji: '💬', color: '#c4956a', desc: '100 prompts' },
       { name: 'Claude Enthusiast', threshold: 500, emoji: '🔥', color: '#b48560', desc: '500 prompts' },
@@ -186,6 +193,7 @@ const BADGE_CATEGORIES = [
     icon: Cpu,
     description: 'Send prompts using Gemini models',
     statKey: 'provider_google_prompts',
+    unit: 'prompts',
     badges: [
       { name: 'Gemini Regular', threshold: 100, emoji: '💬', color: '#3B78DB', desc: '100 prompts' },
       { name: 'Gemini Enthusiast', threshold: 500, emoji: '🔥', color: '#346BC2', desc: '500 prompts' },
@@ -201,6 +209,7 @@ const BADGE_CATEGORIES = [
     icon: Cpu,
     description: 'Send prompts using Grok models',
     statKey: 'provider_xai_prompts',
+    unit: 'prompts',
     badges: [
       { name: 'Grok Regular', threshold: 100, emoji: '💬', color: '#1A91D9', desc: '100 prompts' },
       { name: 'Grok Enthusiast', threshold: 500, emoji: '🔥', color: '#1781C0', desc: '500 prompts' },
@@ -211,6 +220,13 @@ const BADGE_CATEGORIES = [
     ]
   },
 ]
+
+const formatBadgeNumber = (num) => {
+  if (num >= 1000000000) return `${(num / 1000000000).toFixed(num % 1000000000 === 0 ? 0 : 1)}B`
+  if (num >= 1000000) return `${(num / 1000000).toFixed(num % 1000000 === 0 ? 0 : 1)}M`
+  if (num >= 1000) return `${(num / 1000).toFixed(num % 1000 === 0 ? 0 : 1)}K`
+  return num.toLocaleString()
+}
 
 const StatisticsView = () => {
   const currentUser = useStore((state) => state.currentUser)
@@ -2313,18 +2329,33 @@ const StatisticsView = () => {
                     const meetsThreshold = currentValue >= badge.threshold
                     const wasPreviouslyEarned = persistedBadges.has(badgeId)
                     const earned = meetsThreshold || wasPreviouslyEarned
-                    // If newly earned (meets threshold but wasn't persisted), queue for saving
                     if (meetsThreshold && !wasPreviouslyEarned) {
                       newlyEarned.push(badgeId)
                     }
+                    const prevThreshold = badgeIndex > 0 ? category.badges[badgeIndex - 1].threshold : 0
+                    const range = badge.threshold - prevThreshold
+                    const progressInRange = Math.max(0, currentValue - prevThreshold)
+                    const relativeProgress = range > 0 ? Math.min(1, progressInRange / range) : 0
                     return {
                       ...badge,
                       earned,
-                      progress: Math.min(1, currentValue / badge.threshold),
+                      progress: relativeProgress,
+                      prevThreshold,
                     }
                   })
                   const earnedCount = badges.filter(b => b.earned).length
-                  return { ...category, badges, earnedCount, totalCount: badges.length, currentValue }
+
+                  let nextBadge = null
+                  let nextBadgeProgress = 0
+                  for (let i = 0; i < badges.length; i++) {
+                    if (!badges[i].earned) {
+                      nextBadge = badges[i]
+                      nextBadgeProgress = badges[i].progress
+                      break
+                    }
+                  }
+
+                  return { ...category, badges, earnedCount, totalCount: badges.length, currentValue, nextBadge, nextBadgeProgress }
                 })
 
                 // Save any newly earned badges to backend (fire-and-forget) — only for own profile
@@ -2588,34 +2619,84 @@ const StatisticsView = () => {
                                     borderTop: `1px solid ${currentTheme.borderLight}`,
                                     paddingTop: '20px',
                                   }}>
-                                    {/* Progress bar */}
+                                    {/* Total stat display */}
                                     <div style={{
                                       display: 'flex',
                                       alignItems: 'center',
-                                      gap: '12px',
+                                      justifyContent: 'center',
+                                      padding: '12px 16px',
+                                      marginBottom: '16px',
+                                      background: currentTheme.backgroundSecondary,
+                                      borderRadius: '10px',
+                                      border: `1px solid ${currentTheme.borderLight}`,
+                                    }}>
+                                      <span style={{
+                                        fontSize: '1.4rem',
+                                        fontWeight: '700',
+                                        background: currentTheme.accentGradient,
+                                        WebkitBackgroundClip: 'text',
+                                        WebkitTextFillColor: 'transparent',
+                                        marginRight: '8px',
+                                      }}>
+                                        {formatBadgeNumber(category.currentValue)}
+                                      </span>
+                                      <span style={{ color: currentTheme.textSecondary, fontSize: '0.9rem' }}>
+                                        {category.unit || category.statKey} total
+                                      </span>
+                                    </div>
+
+                                    {/* Next badge progress bar */}
+                                    <div style={{
                                       marginBottom: '20px',
                                     }}>
-                                      <span style={{ color: currentTheme.textMuted, fontSize: '0.8rem', minWidth: '80px' }}>
-                                        Progress:
-                                      </span>
                                       <div style={{
-                                        flex: 1,
-                                        height: '6px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        marginBottom: '6px',
+                                      }}>
+                                        <span style={{ color: currentTheme.textMuted, fontSize: '0.8rem' }}>
+                                          {category.nextBadge
+                                            ? `Next: ${category.nextBadge.name} (${category.nextBadge.desc})`
+                                            : 'All badges earned!'
+                                          }
+                                        </span>
+                                        <span style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', fontWeight: '600' }}>
+                                          {category.nextBadge
+                                            ? `${formatBadgeNumber(category.currentValue)} / ${formatBadgeNumber(category.nextBadge.threshold)}`
+                                            : `${category.earnedCount}/${category.totalCount}`
+                                          }
+                                        </span>
+                                      </div>
+                                      <div style={{
+                                        width: '100%',
+                                        height: '8px',
                                         background: currentTheme.backgroundTertiary,
-                                        borderRadius: '3px',
+                                        borderRadius: '4px',
                                         overflow: 'hidden',
                                       }}>
                                         <div style={{
-                                          width: `${(category.earnedCount / category.totalCount) * 100}%`,
+                                          width: `${category.nextBadge ? (category.nextBadgeProgress * 100) : 100}%`,
                                           height: '100%',
-                                          background: currentTheme.accentGradient,
-                                          borderRadius: '3px',
+                                          background: category.nextBadge
+                                            ? `${category.nextBadge.color}CC`
+                                            : currentTheme.accentGradient,
+                                          borderRadius: '4px',
                                           transition: 'width 0.5s ease',
                                         }} />
                                       </div>
-                                      <span style={{ color: currentTheme.textSecondary, fontSize: '0.8rem', minWidth: '40px', textAlign: 'right' }}>
-                                        {Math.round((category.earnedCount / category.totalCount) * 100)}%
-                                      </span>
+                                      <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'flex-end',
+                                        marginTop: '4px',
+                                      }}>
+                                        <span style={{ color: currentTheme.textSecondary, fontSize: '0.75rem' }}>
+                                          {category.nextBadge
+                                            ? `${Math.round(category.nextBadgeProgress * 100)}%`
+                                            : '100%'
+                                          }
+                                        </span>
+                                      </div>
                                     </div>
 
                                     {/* Badge Grid - even rows: <=6 badges = 1 row, >6 = 2 even rows */}
@@ -2723,12 +2804,12 @@ const StatisticsView = () => {
                                                   }} />
                                                 </div>
                                                 <p style={{
-                                                  fontSize: '0.65rem',
+                                                  fontSize: '0.6rem',
                                                   color: currentTheme.textMuted,
                                                   margin: '3px 0 0 0',
                                                   textAlign: 'center',
                                                 }}>
-                                                  {(badge.progress * 100).toFixed(badge.progress < 0.01 ? 2 : 0)}%
+                                                  {formatBadgeNumber(Math.min(category.currentValue, badge.threshold))}/{formatBadgeNumber(badge.threshold)} ({Math.round(badge.progress * 100)}%)
                                                 </p>
                                               </div>
                                             )}
