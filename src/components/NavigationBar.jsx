@@ -269,8 +269,6 @@ const NavigationBar = () => {
                 }
                 // Clear any viewed profile when navigating away from statistics
                 if (tab.id !== 'statistics') clearViewingProfile()
-                // Clear notification badge when visiting the Profile tab
-                if (tab.id === 'statistics') setNotificationCount(0)
                 setActiveTab(tab.id)
               }}
               onMouseEnter={() => setIsTabHovered(true)}

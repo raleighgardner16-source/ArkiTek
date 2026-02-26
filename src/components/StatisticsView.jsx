@@ -257,6 +257,7 @@ const StatisticsView = () => {
   const isNavExpanded = useStore((state) => state.isNavExpanded)
   const viewingProfile = useStore((state) => state.viewingProfile)
   const clearViewingProfile = useStore((state) => state.clearViewingProfile)
+  const setNotificationCount = useStore((state) => state.setNotificationCount)
   const isViewingOther = viewingProfile && viewingProfile.userId !== currentUser?.id
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -297,6 +298,8 @@ const StatisticsView = () => {
   const [notifications, setNotifications] = useState([])
   const [unreadNotifCount, setUnreadNotifCount] = useState(0)
   const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const [followingSet, setFollowingSet] = useState(new Set())
+  const [followBackLoading, setFollowBackLoading] = useState(null)
   const [followRequests, setFollowRequests] = useState([])
   const [loadingFollowRequests, setLoadingFollowRequests] = useState(false)
   const [processingRequestId, setProcessingRequestId] = useState(null)
@@ -312,9 +315,11 @@ const StatisticsView = () => {
 
   // Helper function to handle tab switching and reset expanded states
   const handleTabChange = (newTab) => {
-    // Reset all expanded states when switching tabs
     setExpandedProviders({})
     setExpandedModels({})
+    if (newTab === 'leaderboard') {
+      setNotificationCount(0)
+    }
     setActiveTab(newTab)
   }
 
@@ -424,13 +429,35 @@ const StatisticsView = () => {
     if (!currentUser?.id) return
     setLoadingNotifications(true)
     try {
-      const res = await axios.get(`${API_URL}/api/notifications/${currentUser.id}?limit=50`)
-      setNotifications(res.data.notifications || [])
-      setUnreadNotifCount(res.data.unreadCount || 0)
+      const [notifRes, followingRes] = await Promise.all([
+        axios.get(`${API_URL}/api/notifications/${currentUser.id}?limit=50`),
+        axios.get(`${API_URL}/api/users/${currentUser.id}/following`).catch(() => ({ data: { following: [] } })),
+      ])
+      const twoDaysAgo = Date.now() - 2 * 24 * 60 * 60 * 1000
+      const filtered = (notifRes.data.notifications || []).filter(n =>
+        !n.read || new Date(n.createdAt).getTime() > twoDaysAgo
+      )
+      setNotifications(filtered)
+      setUnreadNotifCount(notifRes.data.unreadCount || 0)
+      const ids = (followingRes.data.following || []).map(u => u.userId || u._id)
+      setFollowingSet(new Set(ids))
     } catch (err) {
       console.error('Error fetching notifications:', err)
     } finally {
       setLoadingNotifications(false)
+    }
+  }
+
+  const handleFollowBack = async (targetUserId) => {
+    if (!currentUser?.id || followBackLoading) return
+    setFollowBackLoading(targetUserId)
+    try {
+      await axios.post(`${API_URL}/api/users/${targetUserId}/follow`, { userId: currentUser.id })
+      setFollowingSet(prev => new Set([...prev, targetUserId]))
+    } catch (error) {
+      console.error('Error following back:', error)
+    } finally {
+      setFollowBackLoading(null)
     }
   }
 
@@ -2319,9 +2346,40 @@ const StatisticsView = () => {
                                 })()}
                               </p>
                             </div>
-                            <div style={{ flexShrink: 0, marginTop: '2px' }}>
-                              {notifIcon}
-                            </div>
+                            {(notif.type === 'follow' || notif.type === 'follow_accepted') && notif.fromUserId && !followingSet.has(notif.fromUserId) && (
+                              <motion.button
+                                onClick={() => handleFollowBack(notif.fromUserId)}
+                                disabled={followBackLoading === notif.fromUserId}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                style={{
+                                  padding: '5px 14px',
+                                  background: currentTheme.accentGradient,
+                                  border: 'none',
+                                  borderRadius: '8px',
+                                  color: '#fff',
+                                  fontSize: '0.76rem',
+                                  fontWeight: '600',
+                                  cursor: 'pointer',
+                                  flexShrink: 0,
+                                  alignSelf: 'center',
+                                  opacity: followBackLoading === notif.fromUserId ? 0.6 : 1,
+                                }}
+                              >
+                                Follow back
+                              </motion.button>
+                            )}
+                            {(notif.type === 'follow' || notif.type === 'follow_accepted') && notif.fromUserId && followingSet.has(notif.fromUserId) && (
+                              <span style={{
+                                fontSize: '0.72rem',
+                                color: currentTheme.textMuted,
+                                flexShrink: 0,
+                                alignSelf: 'center',
+                                fontWeight: '500',
+                              }}>
+                                Following
+                              </span>
+                            )}
                           </div>
                         )
                       })}

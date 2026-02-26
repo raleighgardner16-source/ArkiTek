@@ -625,7 +625,7 @@ Important: Only include each section label followed by a colon and content.`
         modelsToUse.forEach((modelId) => {
           const id = `${modelId}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
           responseIds[modelId] = id
-          const roleKey = submittedRoles[modelId]
+          const roleKey = isDebateMode ? (submittedRoles[modelId] || 'neutral') : submittedRoles[modelId]
           const roleDef = roleKey ? getRoleByKey(roleKey) : null
           addResponse({
             id,
@@ -646,7 +646,7 @@ Important: Only include each section label followed by a colon and content.`
         const rolePromptsForRag = {}
         if (isDebateMode) {
           modelsToUse.forEach((modelId) => {
-            const rp = getRoleSystemPrompt(submittedRoles[modelId])
+            const rp = getRoleSystemPrompt(submittedRoles[modelId] || 'neutral')
             if (rp) rolePromptsForRag[modelId] = rp
           })
         }
@@ -870,7 +870,7 @@ Important: Only include each section label followed by a colon and content.`
       modelsToUse.forEach((modelId) => {
         const id = `${modelId}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
         responseIds[modelId] = id
-        const roleKey = submittedRoles[modelId]
+        const roleKey = isDebateMode ? (submittedRoles[modelId] || 'neutral') : submittedRoles[modelId]
         const roleDef = roleKey ? getRoleByKey(roleKey) : null
         addResponse({
           id,
@@ -911,7 +911,7 @@ Important: Only include each section label followed by a colon and content.`
         
         try {
           const userId = currentUser?.id || null
-          const rolePrompt = isDebateMode ? getRoleSystemPrompt(submittedRoles[modelId]) : null
+          const rolePrompt = isDebateMode ? getRoleSystemPrompt(submittedRoles[modelId] || 'neutral') : null
           const llmResponse = await callLLMStream(providerKey, model, enhancedPrompt, userId, false, (token) => {
             updateResponse(responseId, {
               text: (useStore.getState().responses.find(r => r.id === responseId)?.text || '') + token,
