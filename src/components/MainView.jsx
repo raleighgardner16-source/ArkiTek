@@ -187,6 +187,11 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     return [providerKey, providerData]
   })
 
+  // Track which provider tab is expanded (only one at a time) - now click-based
+  const [expandedProviders, setExpandedProviders] = useState({})
+  const autoSmartProviders = useStore((state) => state.autoSmartProviders)
+  const setAutoSmartProviders = useStore((state) => state.setAutoSmartProviders)
+
   // Build debate role entries from both selected models and Auto Smart providers
   const debateRoleEntries = useMemo(() => {
     if (promptMode !== 'debate') return []
@@ -215,11 +220,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
     return entries
   }, [promptMode, selectedModels, autoSmartProviders, allModels, modelsByProvider])
-
-  // Track which provider tab is expanded (only one at a time) - now click-based
-  const [expandedProviders, setExpandedProviders] = useState({})
-  const autoSmartProviders = useStore((state) => state.autoSmartProviders)
-  const setAutoSmartProviders = useStore((state) => state.setAutoSmartProviders)
   const [dropdownPositions, setDropdownPositions] = useState({}) // Store dropdown positions
 
   // Shift the bottom bar up when a provider dropdown is open so model options are visible
