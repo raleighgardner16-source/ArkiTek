@@ -2571,7 +2571,6 @@ const StatisticsView = () => {
                             }}>
                               {TIERS.map((tier) => {
                                 const isActive = tier.name === currentTier.name
-                                const isAchieved = totalEarned >= tier.min
                                 return (
                                   <div
                                     key={tier.name}
@@ -2579,9 +2578,8 @@ const StatisticsView = () => {
                                       padding: '12px 10px',
                                       borderRadius: '10px',
                                       background: isActive ? tier.glow : 'transparent',
-                                      border: `1.5px solid ${isActive ? tier.color : isAchieved ? `${tier.color}40` : currentTheme.borderLight}`,
+                                      border: `1.5px solid ${isActive ? tier.color : `${tier.color}40`}`,
                                       textAlign: 'center',
-                                      opacity: isAchieved ? 1 : 0.4,
                                       transition: 'all 0.3s ease',
                                     }}
                                   >
@@ -2589,14 +2587,14 @@ const StatisticsView = () => {
                                     <p style={{
                                       fontSize: '0.8rem',
                                       fontWeight: '700',
-                                      color: tier.color,
+                                      color: currentTheme.text,
                                       margin: '0 0 2px 0',
                                     }}>
                                       {tier.name}
                                     </p>
                                     <p style={{
                                       fontSize: '0.65rem',
-                                      color: currentTheme.textMuted,
+                                      color: currentTheme.text,
                                       margin: '0 0 4px 0',
                                     }}>
                                       {tier.max === Infinity ? `${tier.min}+ badges` : `${tier.min}–${tier.max} badges`}
@@ -2604,7 +2602,7 @@ const StatisticsView = () => {
                                     <p style={{
                                       fontSize: '0.75rem',
                                       fontWeight: '600',
-                                      color: isActive ? tier.color : currentTheme.textSecondary,
+                                      color: currentTheme.text,
                                       margin: 0,
                                     }}>
                                       +${tier.reward.toFixed(2)}/mo
