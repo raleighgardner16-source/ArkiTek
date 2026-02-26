@@ -289,6 +289,7 @@ export const useStore = create(
         selectedModels: state.selectedModels,
         autoSmartProviders: state.autoSmartProviders,
         promptMode: state.promptMode,
+        modelRoles: state.modelRoles,
       }),
     }
   )

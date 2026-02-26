@@ -3758,7 +3758,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         key={mode.key}
                         onClick={() => {
                           setPromptMode(mode.key)
-                          if (mode.key === 'general') clearModelRoles()
                         }}
                         style={{
                           display: 'flex',
