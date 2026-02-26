@@ -3801,7 +3801,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   }
                 }}
                 disabled={isPromptLocked}
-                placeholder={isPromptLocked ? (subscriptionPaused ? "Account paused..." : "Resubscribe to send prompts...") : "Enter a prompt here to get a response from the council of LLMs or individual models..."}
+                placeholder={isPromptLocked ? (subscriptionPaused ? "Account paused..." : "Resubscribe to send prompts...") : promptMode === 'debate' ? "Enter a statement here and get responses with varying views..." : "Enter a prompt here to get a response from the council of LLMs or individual models..."}
                 style={{
                   width: '100%',
                   minHeight: '70px',
