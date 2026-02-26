@@ -491,7 +491,8 @@ Important: Only include each section label followed by a colon and content.`
 
   // Handle prompt submission
   const handlePromptSubmit = async () => {
-    if (!currentPrompt.trim() || selectedModels.length === 0) return
+    const latestSelectedModels = useStore.getState().selectedModels
+    if (!currentPrompt.trim() || latestSelectedModels.length === 0) return
     clearGenerateSummary()
     
     // Save the prompt BEFORE clearing responses (for voting button)
@@ -499,10 +500,10 @@ Important: Only include each section label followed by a colon and content.`
     setLastSubmittedPrompt(savedPrompt)
     
     // Deduplicate selectedModels to prevent duplicate responses
-    const uniqueModels = [...new Set(selectedModels)]
-    if (uniqueModels.length !== selectedModels.length) {
+    const uniqueModels = [...new Set(latestSelectedModels)]
+    if (uniqueModels.length !== latestSelectedModels.length) {
       console.warn('[handlePromptSubmit] Found duplicate models, deduplicating:', {
-        original: selectedModels,
+        original: latestSelectedModels,
         deduplicated: uniqueModels
       })
     }
@@ -576,9 +577,10 @@ Important: Only include each section label followed by a colon and content.`
     let ragData = null // Store RAG data for token collection
     let ragResponsesAlreadyInStore = false
 
-    // Snapshot debate mode state for this submission
-    const isDebateMode = promptMode === 'debate'
-    const submittedRoles = isDebateMode ? { ...modelRoles } : {}
+    // Snapshot debate mode state for this submission — read directly from store
+    // to avoid stale closure values when triggered via triggerSubmit()
+    const isDebateMode = useStore.getState().promptMode === 'debate'
+    const submittedRoles = isDebateMode ? { ...useStore.getState().modelRoles } : {}
 
     // If web search is needed (needsSearch === true), use RAG pipeline
     // The RAG pipeline will perform Serper query → Refiner → Council → Judge

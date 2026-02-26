@@ -320,6 +320,9 @@ const StatisticsView = () => {
     setExpandedModels({})
     if (newTab === 'leaderboard') {
       setNotificationCount(0)
+      if (currentUser?.id) {
+        axios.post(`${API_URL}/api/notifications/mark-read`, { userId: currentUser.id }).catch(() => {})
+      }
     }
     setActiveTab(newTab)
   }

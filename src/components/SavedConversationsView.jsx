@@ -981,7 +981,7 @@ const SavedConversationsView = () => {
                   }}
                 >
                   <Coins size={14} />
-                  Token Usage
+                  Prompt Token Usage
                 </motion.button>
                 <motion.button
                   onClick={() => setDetailTokenTab(detailTokenTab === 'cost' ? null : 'cost')}
@@ -1005,7 +1005,7 @@ const SavedConversationsView = () => {
                   }}
                 >
                   <DollarSign size={14} />
-                  Cost Breakdown
+                  Prompt Cost Breakdown
                 </motion.button>
               </div>
 

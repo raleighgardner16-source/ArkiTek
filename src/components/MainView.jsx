@@ -1705,7 +1705,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 title="Open prompt token usage"
               >
                 <Coins size={13} />
-                Token Usage
+                Prompt Token Usage
               </motion.button>
 
               <div style={{
@@ -1766,7 +1766,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 title="Open prompt cost breakdown"
               >
                 <DollarSign size={13} />
-                Cost Breakdown
+                Prompt Cost Breakdown
               </motion.button>
             </div>
             <span
@@ -1832,7 +1832,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 title="Open prompt token usage"
               >
                 <Coins size={13} />
-                Token Usage
+                Prompt Token Usage
               </motion.button>
               <motion.button
                 onClick={() => setShowTopCostBreakdown(true)}
@@ -1854,7 +1854,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 title="Open prompt cost breakdown"
               >
                 <DollarSign size={13} />
-                Cost Breakdown
+                Prompt Cost Breakdown
               </motion.button>
 
               <div style={{
@@ -4081,7 +4081,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                                 padding: '4px 28px 4px 8px',
                                 borderRadius: '6px',
                                 border: `1px solid ${isOpen ? currentTheme.accent : currentTheme.borderLight}`,
-                                background: currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 255, 255, 0.9)',
+                                backgroundColor: currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 255, 255, 0.9)',
                                 color: currentTheme.text,
                                 fontSize: '0.76rem',
                                 fontWeight: '500',
