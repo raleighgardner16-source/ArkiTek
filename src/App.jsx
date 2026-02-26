@@ -422,10 +422,6 @@ Important: Only include each section label followed by a colon and content.`
         }, true)
 
         if (currentUser?.id && (summaryTokens.total || 0) > 0) {
-          await axios.post(`${API_URL}/api/stats/token-update`, {
-            userId: currentUser.id,
-            promptTokens: summaryTokens.total,
-          }).catch(() => {})
           useStore.getState().triggerStatsRefresh()
         }
       }
@@ -1376,30 +1372,9 @@ Important: Only include each section label followed by a colon and content.`
     // Save token data to store (includes council + judge/summary tokens; excludes pipeline/category detection)
     useStore.getState().setTokenData(tokenData)
 
-    // Send the EXACT token total from the Token Usage Window to the backend.
-    // This is the ONLY place the user-visible token counter gets updated.
-    // Excludes pipeline tokens (category detection) — matches what the user sees.
-    if (currentUser?.id && tokenData.length > 0) {
-      try {
-        const promptTokens = tokenData
-          .filter(item => !item.isPipeline && !item.tokens?.isPipeline)
-          .reduce((sum, item) => {
-            const t = item.tokens || {}
-            return sum + (t.total || ((t.input || 0) + (t.output || 0)))
-          }, 0)
-        
-        if (promptTokens > 0) {
-          await axios.post(`${API_URL}/api/stats/token-update`, {
-            userId: currentUser.id,
-            promptTokens,
-          })
-          // Refresh stats display so the counter updates immediately
-          useStore.getState().triggerStatsRefresh()
-          console.log(`[Token Update] Sent ${promptTokens} tokens to backend`)
-        }
-      } catch (error) {
-        console.error('[Token Update] Error sending token total:', error.message)
-      }
+    // Token counting is handled server-side in trackUsage() — just refresh the stats display
+    if (currentUser?.id) {
+      useStore.getState().triggerStatsRefresh()
     }
 
     // Auto-save this conversation to history (Year → Month → Day browsable in History tab)

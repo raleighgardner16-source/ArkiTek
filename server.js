@@ -234,6 +234,7 @@ let cacheLoaded = false
 // --- Usage sync (debounced to batch rapid writes) ---
 let usageSyncTimer = null
 let usageDirtyUsers = new Set()
+const deletedUserIds = new Set() // Users whose accounts have been deleted — never flush these back to MongoDB
 let lastFlushTime = Date.now()
 const MAX_FLUSH_INTERVAL_MS = 15000 // Force flush at least every 15s even under continuous load
 
@@ -261,12 +262,11 @@ const flushUsageToMongo = async () => {
     const collection = dbInstance.collection('usage_data')
     for (const userId of usersToSync) {
       if (!usageCache[userId]) continue
+      if (deletedUserIds.has(userId)) continue // Account was deleted — don't re-create the document
       
       // IMPORTANT: Exclude totalTokens, totalPrompts, and monthlyUsage from $set entirely.
-      // totalTokens and monthlyUsage.*.tokens are managed EXCLUSIVELY by the
-      // POST /api/stats/token-update endpoint using atomic MongoDB $inc.
-      // totalPrompts and monthlyUsage.*.prompts are managed EXCLUSIVELY by
-      // trackPrompt() and trackConversationPrompt() using atomic MongoDB $inc.
+      // totalTokens and monthlyUsage.*.tokens are managed by trackUsage() using atomic $inc.
+      // totalPrompts and monthlyUsage.*.prompts are managed by trackPrompt() / trackConversationPrompt() using atomic $inc.
       //
       // Previously, we stripped .tokens from monthlyUsage entries but still $set
       // the entire monthlyUsage object. This REPLACED the whole field in MongoDB,
@@ -305,6 +305,7 @@ const flushUsageToMongo = async () => {
 // --- Users sync (immediate since user changes are critical) ---
 // Only writes profile + subscription + purchasedCredits to 'users' collection
 const syncUserToMongo = async (userId, userData) => {
+  if (deletedUserIds.has(userId)) return // Account was deleted — don't re-create
   try {
     const dbInstance = await db.getDb()
     const usageData = usageCache[userId] || {}
@@ -356,6 +357,7 @@ const syncUserToMongo = async (userId, userData) => {
 
 // --- User Stats sync (writes costs, stats, overage to 'user_stats' collection) ---
 const syncUserStatsToMongo = async (userId) => {
+  if (deletedUserIds.has(userId)) return // Account was deleted — don't re-create
   try {
     const dbInstance = await db.getDb()
     const userData = usersCache[userId] || {}
@@ -739,6 +741,7 @@ const readUsage = () => {
 // Used by writeUsage when a specific changedUserId is provided.
 const flushSingleUserUsage = async (userId) => {
   if (!usageCache[userId]) return
+  if (deletedUserIds.has(userId)) return
   try {
     const dbInstance = await db.getDb()
     const collection = dbInstance.collection('usage_data')
@@ -1357,13 +1360,13 @@ const trackPrompt = async (userId, promptText, category, promptData = {}) => {
   writeUsage(usage, userId)
   
   // Atomic MongoDB $inc for prompt counts (prevents race conditions on Vercel serverless).
-  // Same pattern as /api/stats/token-update uses for totalTokens.
+  // Same pattern as trackUsage() uses for totalTokens.
   try {
     const dbInstance = await db.getDb()
     await dbInstance.collection('usage_data').updateOne(
       { _id: userId },
-      { 
-        $inc: { 
+      {
+        $inc: {
           totalPrompts: 1,
           [`monthlyUsage.${currentMonth}.prompts`]: 1
         },
@@ -1375,7 +1378,7 @@ const trackPrompt = async (userId, promptText, category, promptData = {}) => {
   } catch (incErr) {
     console.error(`[Prompt Tracking] Atomic $inc failed for ${userId}:`, incErr.message)
   }
-  
+
   // Also update users cache with last active date
   const users = readUsers()
   if (users[userId]) {
@@ -1424,13 +1427,13 @@ const trackConversationPrompt = async (userId, userMessage) => {
   writeUsage(usage, userId)
   
   // Atomic MongoDB $inc for prompt counts (prevents race conditions on Vercel serverless).
-  // Same pattern as /api/stats/token-update uses for totalTokens.
+  // Same pattern as trackUsage() uses for totalTokens.
   try {
     const dbInstance = await db.getDb()
     await dbInstance.collection('usage_data').updateOne(
       { _id: userId },
-      { 
-        $inc: { 
+      {
+        $inc: {
           totalPrompts: 1,
           [`monthlyUsage.${currentMonth}.prompts`]: 1
         },
@@ -1490,21 +1493,18 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
   
   // Update user-visible stats (per-model, provider) only for user-visible calls.
   // Pipeline calls (refiner, category detection) still count towards cost via dailyUsage below.
-  //
-  // NOTE: totalTokens and monthlyUsage.tokens are NOT updated here.
-  // They are updated ONCE per prompt via POST /api/stats/token-update, using the EXACT
-  // token total from the frontend's Token Usage Window. This avoids all the cache/flush/
-  // multi-instance issues on Vercel serverless. The frontend is the single source of truth
-  // for the user-visible token counter.
   if (!isPipeline) {
-    // Track granular input/output for per-model breakdown (not used for the main counter)
+    const callTokens = inputTokens + outputTokens
+
+    // totalTokens is the single source of truth and always equals totalInputTokens + totalOutputTokens
+    userUsage.totalTokens = (userUsage.totalTokens || 0) + callTokens
     userUsage.totalInputTokens = (userUsage.totalInputTokens || 0) + inputTokens
     userUsage.totalOutputTokens = (userUsage.totalOutputTokens || 0) + outputTokens
 
-    // Ensure monthly sub-object exists (needed for prompts counter and per-model monthly stats)
     if (!userUsage.monthlyUsage[currentMonth]) {
       userUsage.monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
     }
+    userUsage.monthlyUsage[currentMonth].tokens = (userUsage.monthlyUsage[currentMonth].tokens || 0) + callTokens
     userUsage.monthlyUsage[currentMonth].inputTokens = (userUsage.monthlyUsage[currentMonth].inputTokens || 0) + inputTokens
     userUsage.monthlyUsage[currentMonth].outputTokens = (userUsage.monthlyUsage[currentMonth].outputTokens || 0) + outputTokens
 
@@ -1614,8 +1614,29 @@ const trackUsage = async (userId, provider, model, inputTokens, outputTokens, is
     console.error('[Usage] Error updating monthlyUsageCost:', costErr)
   }
   
-  // Usage is tracked in the in-memory cache (flushed to usage_data collection).
-  // No separate MongoDB tracking needed — usage_data is the single source of truth.
+  // Atomic $inc for totalTokens and monthlyUsage.*.tokens (same pattern as totalPrompts).
+  // This is the single source of truth — no frontend token-update call needed.
+  if (!isPipeline) {
+    const callTokens = inputTokens + outputTokens
+    if (callTokens > 0) {
+      try {
+        const dbInstance = await db.getDb()
+        await dbInstance.collection('usage_data').updateOne(
+          { _id: userId },
+          {
+            $inc: {
+              totalTokens: callTokens,
+              [`monthlyUsage.${currentMonth}.tokens`]: callTokens
+            },
+            $set: { updatedAt: new Date() }
+          },
+          { upsert: true }
+        )
+      } catch (incErr) {
+        console.error(`[Usage] Atomic $inc for totalTokens failed for ${userId}:`, incErr.message)
+      }
+    }
+  }
 }
 
 // API Keys from environment variables (stored securely in .env file)
@@ -2703,57 +2724,10 @@ app.post('/api/stats/prompt', async (req, res) => {
   }
 })
 
-// Update the user-visible token counter with the EXACT total from the frontend's Token Usage Window.
-// This is the ONLY place totalTokens and monthlyUsage.tokens are incremented.
-// Called once per prompt, after all models (including judge/summary) have responded.
-// Uses MongoDB $inc for atomic updates — no cache/flush race conditions on Vercel serverless.
+// DEPRECATED: Token counting is now handled entirely by the backend in trackUsage().
+// This endpoint is kept as a no-op so old cached frontend versions don't break.
 app.post('/api/stats/token-update', async (req, res) => {
-  try {
-    const { userId, promptTokens } = req.body
-    if (!userId || promptTokens === undefined) {
-      return res.status(400).json({ error: 'userId and promptTokens are required' })
-    }
-    
-    const tokens = Math.max(0, Math.round(promptTokens)) // Ensure non-negative integer
-    if (tokens === 0) {
-      return res.json({ success: true, message: 'No tokens to add' })
-    }
-    
-    const tz = getUserTimezone(userId)
-    const currentMonth = getMonthForUser(tz)
-    
-    // 1. Atomic MongoDB update using $inc (no race conditions, no stale cache issues)
-    const dbInstance = await db.getDb()
-    await dbInstance.collection('usage_data').updateOne(
-      { _id: userId },
-      { 
-        $inc: { 
-          totalTokens: tokens,
-          [`monthlyUsage.${currentMonth}.tokens`]: tokens
-        },
-        $set: { updatedAt: new Date() }
-      },
-      { upsert: true }
-    )
-    
-    // 2. Also update the in-memory cache so same-instance reads are consistent
-    const usage = readUsage()
-    if (usage[userId]) {
-      usage[userId].totalTokens = (usage[userId].totalTokens || 0) + tokens
-      if (!usage[userId].monthlyUsage) usage[userId].monthlyUsage = {}
-      if (!usage[userId].monthlyUsage[currentMonth]) {
-        usage[userId].monthlyUsage[currentMonth] = { tokens: 0, inputTokens: 0, outputTokens: 0, queries: 0, prompts: 0 }
-      }
-      usage[userId].monthlyUsage[currentMonth].tokens = (usage[userId].monthlyUsage[currentMonth].tokens || 0) + tokens
-    }
-    
-    console.log(`[Token Update] User ${userId}: +${tokens} tokens (total: ${usage[userId]?.totalTokens || '?'}, month: ${usage[userId]?.monthlyUsage?.[currentMonth]?.tokens || '?'})`)
-    
-    res.json({ success: true, tokens, totalTokens: usage[userId]?.totalTokens || 0 })
-  } catch (error) {
-    console.error('[Token Update] Error:', error.message)
-    res.status(500).json({ error: 'Failed to update token counter' })
-  }
+  res.json({ success: true, message: 'no-op — tokens are now tracked server-side in trackUsage()' })
 })
 
 // Update model pricing
@@ -2839,13 +2813,17 @@ app.delete('/api/auth/account', async (req, res) => {
       }
     }
 
+    // Prevent background flushes from re-creating this user's data in MongoDB
+    usageDirtyUsers.delete(userId)
+    deletedUserIds.add(userId)
+
+    // Clear from cache BEFORE deleting from MongoDB so no flush can re-write
+    delete usersCache[userId]
+    delete usageCache[userId]
+
     // Delete user and ALL associated data from MongoDB (covers every collection)
     await db.users.delete(userId)
     console.log('[Account Deletion] User and all data deleted from MongoDB:', userId, userInfo)
-
-    // Clear from cache
-    delete usersCache[userId]
-    delete usageCache[userId]
 
     // Purge all user traces from leaderboard (posts, likes, comments, replies)
     await purgeUserFromLeaderboard(userId)
@@ -12944,22 +12922,14 @@ app.post('/api/stripe/cancel-subscription-delete-account', async (req, res) => {
       }
     }
 
-    if (!user.cancellationHistory) user.cancellationHistory = []
-    user.cancellationHistory.push({
-      date: new Date().toISOString(),
-      reason: 'account_deleted',
-    })
+    // Prevent background flushes from re-creating this user's data in MongoDB
+    usageDirtyUsers.delete(userId)
+    deletedUserIds.add(userId)
 
-    // Delete user from cache (MongoDB deletion happens below via db.users.delete)
+    // Clear caches BEFORE deleting from MongoDB so no flush can re-write
     delete users[userId]
-    usersCache = users // Update the cache reference directly
-
-    // Delete user usage data from cache
-    const usage = readUsage()
-    if (usage[userId]) {
-      delete usage[userId]
-      writeUsage(usage)
-    }
+    usersCache = users
+    delete usageCache[userId]
 
     // Delete ALL user data from MongoDB (one call covers every collection)
     try {

@@ -353,14 +353,9 @@ const ResponseComparison = () => {
         useStore.getState().incrementQueryCount()
       }
 
-      // Update main token counter with conversation tokens so stats page totalTokens/monthlyTokens stay consistent
+      // Token counting is handled server-side — just refresh stats display
       if (currentUser?.id && finalData?.tokens?.total > 0) {
-        axios.post(`${API_URL}/api/stats/token-update`, {
-          userId: currentUser.id,
-          promptTokens: finalData.tokens.total,
-        }).then(() => {
-          useStore.getState().triggerStatsRefresh()
-        }).catch(err => console.error('[Token Update] Model conversation token update failed:', err.message))
+        useStore.getState().triggerStatsRefresh()
       }
 
       // Merge follow-up token data into the existing model entry so there's one combined row
