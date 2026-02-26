@@ -274,6 +274,8 @@ const StatisticsView = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [expandedBadgeCategory, setExpandedBadgeCategory] = useState(null)
   const [hoveredBadge, setHoveredBadge] = useState(null)
+  const [showBadgeScrollHint, setShowBadgeScrollHint] = useState(true)
+  const badgeCategoriesRef = useRef(null)
   const [hasLoadedLeaderboard, setHasLoadedLeaderboard] = useState(false)
   // Public profile data for another user
   const [publicProfile, setPublicProfile] = useState(null)
@@ -553,6 +555,22 @@ const StatisticsView = () => {
       fetchProfilePrompts()
     }
   }, [leaderboardRefreshTrigger])
+
+  useEffect(() => {
+    if (activeTab !== 'badges' || !badgeCategoriesRef.current) {
+      setShowBadgeScrollHint(true)
+      return
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setShowBadgeScrollHint(false)
+        else setShowBadgeScrollHint(true)
+      },
+      { threshold: 0.05 }
+    )
+    observer.observe(badgeCategoriesRef.current)
+    return () => observer.disconnect()
+  }, [activeTab])
 
   const fetchLeaderboardStats = async () => {
     if (!currentUser?.id) return
@@ -2638,10 +2656,31 @@ const StatisticsView = () => {
                           </div>
                         </div>
                       </div>
+
+                      {/* Scroll hint */}
+                      {showBadgeScrollHint && (
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '14px',
+                          right: '20px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          color: currentTheme.accent,
+                          fontSize: '0.8rem',
+                          fontWeight: '500',
+                          opacity: 0.8,
+                          animation: 'badgeScrollBounce 1.5s ease-in-out infinite',
+                        }}>
+                          <span>Scroll down for badges</span>
+                          <ChevronDown size={16} />
+                          <style>{`@keyframes badgeScrollBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(4px); } }`}</style>
+                        </div>
+                      )}
                     </div>
 
                     {/* Badge Categories */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    <div ref={badgeCategoriesRef} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                       {badgeProgress.map((category) => {
                         const CategoryIcon = category.icon
                         const isExpanded = expandedBadgeCategory === category.id
