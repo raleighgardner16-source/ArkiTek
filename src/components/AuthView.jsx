@@ -827,7 +827,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
                   gap: '12px',
                   textAlign: 'left',
                 }}>
-                  {['15x more usage', 'All models & features', 'Monthly rewards: usage bonuses, badges & collectible icons'].map((feature, idx) => (
+                  {['15x more usage', 'All models & features', 'Monthly rewards: usage bonuses & badges'].map((feature, idx) => (
                     <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <CheckCircle size={16} style={{ color: '#48c9b0', flexShrink: 0 }} />
                       <span style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.9rem' }}>{feature}</span>
@@ -908,7 +908,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
                   gap: '12px',
                   textAlign: 'left',
                 }}>
-                  {['50x more usage than Free', 'All models & features', 'Monthly rewards: usage bonuses, badges & collectible icons'].map((feature, idx) => (
+                  {['50x more usage than Free', 'All models & features', 'Monthly rewards: usage bonuses & badges'].map((feature, idx) => (
                     <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <CheckCircle size={16} style={{ color: '#bb8fff', flexShrink: 0 }} />
                       <span style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.9rem' }}>{feature}</span>

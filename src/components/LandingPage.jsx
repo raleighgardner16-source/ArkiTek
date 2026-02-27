@@ -5,7 +5,7 @@ import {
   ArrowRight, ChevronDown, ChevronUp, MessageSquare, BarChart3, 
   Search, Users, Check, CheckCircle, Swords, Heart, UserPlus,
   Flame, Award, Star, Clock, BookOpen, Lock, Eye,
-  TrendingUp, Target, Scale, Lightbulb, Compass, Gauge
+  TrendingUp, Target, Scale, Lightbulb, Compass, Gauge, Gift
 } from 'lucide-react'
 import { getTheme } from '../utils/theme'
 
@@ -67,7 +67,7 @@ const LandingPage = ({ onNavigate }) => {
     {
       icon: <Trophy size={32} />,
       title: 'Rewards & Monthly Gifts',
-      description: 'Pro subscribers earn badges across multiple categories — Token Titan, Prompt Pioneer, Streak Warrior, and more — each with multiple unlock tiers. Maintain daily streaks, level up, and receive monthly gifts including bonus usage, exclusive badges, and collectible icons.',
+      description: 'Pro subscribers earn badges across multiple categories — Token Titan, Prompt Pioneer, Streak Warrior, and more — each with multiple unlock tiers. Maintain daily streaks, level up, and receive monthly gifts including bonus usage and exclusive badges.',
     },
     {
       icon: <BookOpen size={32} />,
@@ -77,7 +77,7 @@ const LandingPage = ({ onNavigate }) => {
     {
       icon: <BarChart3 size={32} />,
       title: 'Tracking for Everything',
-      description: 'Your profile tracks total tokens processed, prompts sent, streak length, badges earned, and cost breakdowns. Every prompt logs per-model token usage so you always know exactly what you\'re using.',
+      description: 'Your profile tracks total tokens processed, prompts sent, streak length, badges earned, and usage percentages. Every prompt logs per-model token usage so you always know exactly what you\'re using.',
     },
   ]
 
@@ -103,7 +103,7 @@ const LandingPage = ({ onNavigate }) => {
     '15x more usage than Free',
     'All models & features',
     'Rewards & badge progression',
-    'Monthly gifts: bonus usage, exclusive badges & collectible icons',
+    'Monthly gifts: bonus usage & exclusive badges',
     'Priority support',
   ]
 
@@ -111,7 +111,7 @@ const LandingPage = ({ onNavigate }) => {
     '50x more usage than Free',
     'All models & features',
     'Rewards & badge progression',
-    'Monthly gifts: bonus usage, exclusive badges & collectible icons',
+    'Monthly gifts: bonus usage & exclusive badges',
     'Priority support',
   ]
 
@@ -333,8 +333,9 @@ const LandingPage = ({ onNavigate }) => {
         </motion.div>
 
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
           gap: '24px',
         }}>
           {coreFeatures.map((feature, idx) => (
@@ -347,6 +348,7 @@ const LandingPage = ({ onNavigate }) => {
               onMouseEnter={() => setHoveredFeature(`core-${idx}`)}
               onMouseLeave={() => setHoveredFeature(null)}
               style={{
+                flex: '0 1 340px',
                 padding: '32px',
                 background: hoveredFeature === `core-${idx}`
                   ? 'rgba(93, 173, 226, 0.06)'
@@ -632,19 +634,19 @@ const LandingPage = ({ onNavigate }) => {
               {
                 icon: <Award size={28} />,
                 title: 'Badges',
-                desc: 'Earn badges across multiple categories — Token Titan, Prompt Pioneer, Streak Warrior, and more. Each category has unique badges unlocked by hitting milestones like processing tokens, sending prompts, and maintaining streaks.',
+                desc: 'Earn badges across multiple categories — Token Titan, Prompt Pioneer, Streak Warrior, and more. Each badge you unlock contributes to your tier and earns you rewards like bonus monthly usage. The more you explore, the more you\'re rewarded.',
                 color: '#FFD700',
               },
               {
                 icon: <Trophy size={28} />,
                 title: 'Tiers',
-                desc: 'Every badge category has 12 tiers that get progressively harder to reach. Start at the bottom and work your way up — from First Spark to Universal Consciousness, from First Words to Omniscient, from Getting Warm to Unkillable. Each tier is a new milestone to chase.',
+                desc: 'Progress through Bronze, Silver, Gold, and Platinum tiers as you earn badges. Each tier unlocks bonus monthly usage — and paid plan subscribers get even more. The higher your tier, the more free usage you receive every month.',
                 color: '#FF4500',
               },
               {
-                icon: <TrendingUp size={28} />,
-                title: 'Level Progression',
-                desc: 'Your overall level is calculated from total tokens processed, prompts sent, and streak length. As you use ArkitekAI, your level climbs — reflecting everything you\'ve accomplished across the platform.',
+                icon: <Gift size={28} />,
+                title: 'Monthly Rewards',
+                desc: 'Every month, paid subscribers receive rewards based on their tier. The higher you climb, the more bonus usage you unlock — on top of what your plan already includes. Rewards reset monthly, so there\'s always something new to earn.',
                 color: '#48c9b0',
               },
             ].map((item, idx) => (
@@ -837,7 +839,7 @@ const LandingPage = ({ onNavigate }) => {
             {
               step: '4',
               title: 'Continue & Save',
-              description: 'Follow up with any model for deeper answers. Your session is auto-saved to history so you can revisit any conversation.',
+              description: 'Follow up on any conversation — continue chats with individual models or the judge summary for deeper answers. All conversations are saved to your history, where you can revisit and pick up right where you left off.',
             },
           ].map((item, idx) => (
             <motion.div

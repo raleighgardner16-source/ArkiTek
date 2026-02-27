@@ -416,8 +416,8 @@ const SubscriptionGate = ({ currentUser }) => {
           </h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {(currentUser?.plan === 'premium'
-              ? ['$25/month in usage (50x more)', 'All models & features', 'Monthly rewards: usage bonuses, badges & collectible icons']
-              : ['$7.50/month in usage (15x more)', 'All models & features', 'Monthly rewards: usage bonuses, badges & collectible icons']
+              ? ['$25/month in usage (50x more)', 'All models & features', 'Monthly rewards: usage bonuses & badges']
+              : ['$7.50/month in usage (15x more)', 'All models & features', 'Monthly rewards: usage bonuses & badges']
             ).map((feature, i) => (
               <li key={i} style={{
                 color: 'rgba(255, 255, 255, 0.7)',
