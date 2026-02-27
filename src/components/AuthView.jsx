@@ -17,6 +17,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
     username: '',
     email: '',
     password: '',
+    confirmPassword: '',
   })
   const [resetEmail, setResetEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -28,6 +29,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
   const [showPassword, setShowPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [showConfirmSignupPassword, setShowConfirmSignupPassword] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState(initialPlan || 'free_trial')
   const [fingerprint, setFingerprint] = useState(null)
   const [verificationEmail, setVerificationEmail] = useState('')
@@ -173,11 +175,18 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
         return
       }
 
+      if (isSignUp && formData.password !== formData.confirmPassword) {
+        setError('Passwords do not match')
+        setLoading(false)
+        return
+      }
+
       const endpoint = isSignUp ? '/api/auth/signup' : '/api/auth/signin'
       const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+      const { confirmPassword: _, ...submitData } = formData
       const payload = isSignUp
-        ? { ...formData, plan: selectedPlan, fingerprint, timezone: userTimezone }
-        : { ...formData, timezone: userTimezone }
+        ? { ...submitData, plan: selectedPlan, fingerprint, timezone: userTimezone }
+        : { ...submitData, timezone: userTimezone }
       const response = await axios.post(`${API_URL}${endpoint}`, payload)
 
       if (response.data.success) {
@@ -1056,6 +1065,60 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
                 </button>
               </div>
             </div>
+
+            {isSignUp && (
+              <div style={{ marginBottom: '20px' }}>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginBottom: '8px',
+                    color: '#ffffff',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  <Lock size={16} />
+                  Confirm Password
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showConfirmSignupPassword ? "text" : "password"}
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    placeholder="Re-enter your password"
+                    style={{ ...inputStyle, paddingRight: '44px' }}
+                    onFocus={handleFocus}
+                    onBlur={handleBlur}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmSignupPassword(!showConfirmSignupPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: '12px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: currentTheme.textMuted,
+                    }}
+                    tabIndex={-1}
+                  >
+                    {showConfirmSignupPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Forgot links (only on sign in) */}
             {!isSignUp && (

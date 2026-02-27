@@ -60,17 +60,22 @@ export const useStore = create(
           responses: state.responses.filter((res) => res.id !== responseId),
         })),
       clearResponses: () => {
-        set({ responses: [] })
-        // Also clear summary, GPT-4o-mini response, debug data, sources, tokens, and reset window states when clearing responses
-        set({ summary: null })
-        set({ geminiDetectionResponse: null })
-        set({ ragDebugData: null })
-        set({ searchSources: null })
-        set({ tokenData: [] })
-        set({ queryCount: 0 })
-        set({ showFactsWindow: true }) // Reset to default state
-        set({ showPipelineDebugWindow: true }) // Reset to default state
-        set({ currentHistoryId: null }) // Clear active history entry
+        // Batch into a single set() so subscribers see one atomic update —
+        // prevents intermediate renders where e.g. responses is [] but summary
+        // still holds its old value (which kept hasActiveConversation true and
+        // hid the mode-toggle buttons after "New Chat").
+        set({
+          responses: [],
+          summary: null,
+          geminiDetectionResponse: null,
+          ragDebugData: null,
+          searchSources: null,
+          tokenData: [],
+          queryCount: 0,
+          showFactsWindow: true,
+          showPipelineDebugWindow: true,
+          currentHistoryId: null,
+        })
         // Note: lastSubmittedPrompt is NOT cleared here - it's managed by handlePromptSubmit
         // It will be set before clearResponses is called, so it persists for the voting button
       },

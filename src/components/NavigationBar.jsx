@@ -12,6 +12,7 @@ const NavigationBar = () => {
   const currentUser = useStore((state) => state.currentUser)
   const clearCurrentUser = useStore((state) => state.clearCurrentUser)
   const clearResponses = useStore((state) => state.clearResponses)
+  const clearLastSubmittedPrompt = useStore((state) => state.clearLastSubmittedPrompt)
   const setCurrentPrompt = useStore((state) => state.setCurrentPrompt)
   const theme = useStore((state) => state.theme || 'dark')
   const toggleTheme = useStore((state) => state.toggleTheme)
@@ -56,6 +57,7 @@ const NavigationBar = () => {
       }).catch(err => console.error('[History] Error finalizing:', err.message))
     }
     clearResponses()
+    clearLastSubmittedPrompt()
     setCurrentPrompt('')
     // Minimize summary window
     if (setSummaryMinimized) setSummaryMinimized(true)
