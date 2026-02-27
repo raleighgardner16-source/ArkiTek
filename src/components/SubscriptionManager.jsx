@@ -9,9 +9,9 @@ const SubscriptionManager = () => {
   const currentUser = useStore((state) => state.currentUser)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
-  const [subscriptionStatus, setSubscriptionStatus] = useState(null)
+  const [subscriptionStatus, setSubscriptionStatus] = useState(currentUser?.subscriptionStatus || null)
   const [subscriptionRenewalDate, setSubscriptionRenewalDate] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!currentUser?.subscriptionStatus)
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState(null)
   const [successMessage, setSuccessMessage] = useState(null)
@@ -21,11 +21,13 @@ const SubscriptionManager = () => {
   const retryCountRef = useRef(0)
   const retryTimeoutRef = useRef(null)
 
+  const hasInitialStatus = useRef(!!currentUser?.subscriptionStatus)
+
   const fetchSubscriptionStatus = useCallback(async (forceSync = false) => {
     if (!currentUser?.id) return
 
     try {
-      setLoading(true)
+      if (!hasInitialStatus.current) setLoading(true)
       const response = await axios.get(`${API_URL}/api/stripe/subscription-status`, {
         params: { 
           userId: currentUser.id,
@@ -37,6 +39,7 @@ const SubscriptionManager = () => {
       setSubscriptionStatus(newStatus)
       setSubscriptionRenewalDate(response.data.subscriptionRenewalDate)
       setError(null)
+      hasInitialStatus.current = true
       // Merge plan and stripeSubscriptionId from server so free-plan Delete button works even with stale store
       const cu = useStore.getState().currentUser
       if (cu && (response.data.plan !== undefined || response.data.stripeSubscriptionId !== undefined)) {
