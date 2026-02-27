@@ -56,10 +56,6 @@ export const usersSchema = {
   subscriptionRenewalDate: 'Date', // When user will be auto-charged next (null if not active)
   subscriptionStartedDate: 'Date', // When user first subscribed (never changes once set)
   subscriptionPausedDate: 'Date',  // When user paused their subscription (null until paused)
-  cancellationHistory: [{          // Array tracking every time the user has canceled
-    date: 'Date',                  // When the cancellation happened
-    reason: 'string',              // Optional reason (e.g., 'user_requested', 'payment_failed')
-  }],
   createdAt: 'Date',
   lastActiveAt: 'Date',       // Last activity timestamp (single consolidated field)
   purchasedCredits: {          // Purchased usage credits
@@ -75,8 +71,47 @@ export const usersSchema = {
   bio: 'string',               // User bio (max 300 chars)
   profileImage: 'string',      // Base64 data URL for profile avatar (null if not set)
   isAnonymous: 'boolean',      // If true, username/name hidden from public profile
-  followers: ['string'],       // Array of userIds who follow this user
-  following: ['string'],       // Array of userIds this user follows
+  isPrivate: 'boolean',        // If true, requires follow request approval
+}
+
+/**
+ * RELATIONSHIPS COLLECTION
+ * 
+ * Stores follow relationships and pending follow requests between users.
+ * Replaces the embedded followers/following/followRequests/sentFollowRequests arrays
+ * on the users collection to avoid unbounded array growth.
+ * 
+ * A document { fromUserId: A, toUserId: B, type: 'follow' } means A follows B.
+ * A document { fromUserId: A, toUserId: B, type: 'follow_request' } means A has requested to follow B.
+ * 
+ * Index: { fromUserId: 1, toUserId: 1 } (unique compound — one relationship per pair)
+ * Index: { toUserId: 1, type: 1 } (for finding followers / incoming requests)
+ * Index: { fromUserId: 1, type: 1 } (for finding following / sent requests)
+ */
+export const relationshipsSchema = {
+  _id: 'ObjectId',
+  fromUserId: 'string',         // The user who initiated (follower or requester)
+  toUserId: 'string',           // The target user
+  type: 'string',               // 'follow' | 'follow_request'
+  createdAt: 'Date',
+}
+
+/**
+ * SUBSCRIPTION_EVENTS COLLECTION
+ * 
+ * Tracks subscription lifecycle events (pause, resume, cancellation).
+ * Replaces the embedded cancellationHistory array on the users collection
+ * to avoid unbounded array growth.
+ * 
+ * Index: { userId: 1, createdAt: -1 } (for user-specific history)
+ * Index: { createdAt: 1 } (for date-range queries in admin stats)
+ */
+export const subscriptionEventsSchema = {
+  _id: 'ObjectId',
+  userId: 'string',             // Foreign key to users._id
+  date: 'string',               // ISO date string of when the event occurred
+  reason: 'string',             // e.g. 'user_paused', 'user_resumed', 'subscription_deleted'
+  createdAt: 'Date',
 }
 
 /**
@@ -478,7 +513,18 @@ export const indexes = {
   conversation_history: [
     { key: { userId: 1, savedAt: -1 } },  // List user's history sorted by date
     { key: { savedAt: -1 } },             // Global date sort
-  ]
+  ],
+  
+  relationships: [
+    { key: { fromUserId: 1, toUserId: 1 }, options: { unique: true } },
+    { key: { toUserId: 1, type: 1 } },
+    { key: { fromUserId: 1, type: 1 } },
+  ],
+  
+  subscription_events: [
+    { key: { userId: 1, createdAt: -1 } },
+    { key: { createdAt: 1 } },
+  ],
 }
 
 /**

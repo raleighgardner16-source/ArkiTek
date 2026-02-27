@@ -40,6 +40,12 @@ body {
   background: linear-gradient(180deg, #48c9b0, #5dade2);
 }
 
+.no-mount-transition,
+.no-mount-transition * {
+  transition: none !important;
+  animation: none !important;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

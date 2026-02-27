@@ -51,8 +51,8 @@ const SavedConversationsView = () => {
 
   // Sub-tab state: 'history' or 'categories'
   const [activeSubTab, setActiveSubTab] = useState('history')
-  const navTransitionReady = useRef(false)
-  useEffect(() => { navTransitionReady.current = true }, [])
+  const [mountReady, setMountReady] = useState(false)
+  useEffect(() => { const id = requestAnimationFrame(() => setMountReady(true)); return () => cancelAnimationFrame(id) }, [])
 
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
@@ -552,7 +552,7 @@ const SavedConversationsView = () => {
               display: 'flex', alignItems: 'center', gap: '4px',
             }}>
               {(convo.promptMode || 'general') === 'debate' ? <Swords size={12} /> : <MessageCircle size={12} />}
-              {(convo.promptMode || 'general') === 'debate' ? 'Debate' : 'General'}
+              {(convo.promptMode || 'general') === 'debate' ? 'Debate Mode' : 'General Mode'}
             </span>
             {convo.consensus !== null && (
               <span style={{
@@ -843,7 +843,7 @@ const SavedConversationsView = () => {
               display: 'flex', alignItems: 'center', gap: '4px',
             }}>
               {(selectedConvo.promptMode || 'general') === 'debate' ? <Swords size={12} /> : <MessageCircle size={12} />}
-              {(selectedConvo.promptMode || 'general') === 'debate' ? 'Debate' : 'General'}
+              {(selectedConvo.promptMode || 'general') === 'debate' ? 'Debate Mode' : 'General Mode'}
             </span>
             <span style={{ fontSize: '0.8rem', color: currentTheme.textMuted }}>
               {formatDate(selectedConvo.savedAt)}
@@ -1477,12 +1477,15 @@ const SavedConversationsView = () => {
 
   // --- Main render ---
   return (
-    <div style={{
-      position: 'fixed', top: 0, left: isNavExpanded ? '240px' : '60px',
-      width: `calc(100% - ${isNavExpanded ? '240px' : '60px'})`, height: '100%',
-      overflowY: 'auto', zIndex: 10, padding: '40px',
-      transition: navTransitionReady.current ? 'left 0.3s ease, width 0.3s ease' : 'none',
-    }}>
+    <div
+      className={mountReady ? undefined : 'no-mount-transition'}
+      style={{
+        position: 'fixed', top: 0, left: isNavExpanded ? '240px' : '60px',
+        width: `calc(100% - ${isNavExpanded ? '240px' : '60px'})`, height: '100%',
+        overflowY: 'auto', zIndex: 10, padding: '40px',
+        transition: 'left 0.3s ease, width 0.3s ease',
+      }}
+    >
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {/* Header */}
         <h1

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus, Coins, DollarSign, Maximize2, X, MessageCircle, Swords, AlertTriangle } from 'lucide-react'
 import { useStore } from '../store/useStore'
@@ -44,8 +44,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const isPromptLocked = subscriptionRestricted || subscriptionPaused || usageExhausted
   const isFreePlan = currentUser?.plan === 'free_trial' && !currentUser?.stripeSubscriptionId
   const navWidth = isNavExpanded ? '240px' : '60px'
-  const navTransitionReady = useRef(false)
-  useEffect(() => { navTransitionReady.current = true }, [])
+  const [mountReady, setMountReady] = useState(false)
+  useEffect(() => { const id = requestAnimationFrame(() => setMountReady(true)); return () => cancelAnimationFrame(id) }, [])
   const [streakDays, setStreakDays] = useState(0)
   const setGeminiDetectionResponse = useStore((state) => state.setGeminiDetectionResponse)
   const isSearchingWeb = useStore((state) => state.isSearchingWeb)
@@ -1621,6 +1621,29 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     ? councilDisplayResponses.find(r => r.id === maximizedCouncilResponseId) || null
     : null
 
+  const [councilGutterHover, setCouncilGutterHover] = useState(null)
+  const leftGutterRef = useRef(null)
+  const rightGutterRef = useRef(null)
+
+  const handleCouncilGutterWheel = useCallback((e) => {
+    e.preventDefault()
+    const columns = document.querySelectorAll('.council-column-scroll')
+    columns.forEach(col => { col.scrollTop += e.deltaY })
+  }, [])
+
+  useEffect(() => {
+    if (!showCouncilColumns) return
+    const left = leftGutterRef.current
+    const right = rightGutterRef.current
+    const opts = { passive: false }
+    if (left) left.addEventListener('wheel', handleCouncilGutterWheel, opts)
+    if (right) right.addEventListener('wheel', handleCouncilGutterWheel, opts)
+    return () => {
+      if (left) left.removeEventListener('wheel', handleCouncilGutterWheel, opts)
+      if (right) right.removeEventListener('wheel', handleCouncilGutterWheel, opts)
+    }
+  }, [showCouncilColumns, handleCouncilGutterWheel])
+
   useEffect(() => {
     if (!canToggleResultViews && resultViewMode !== 'summary') {
       setResultViewMode('summary')
@@ -1777,6 +1800,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         `}
       </style>
       <div
+        className={mountReady ? undefined : 'no-mount-transition'}
         style={{
           position: 'fixed',
           top: 0,
@@ -1785,7 +1809,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          transition: navTransitionReady.current ? 'left 0.3s ease, width 0.3s ease' : 'none',
+          transition: 'left 0.3s ease, width 0.3s ease',
           zIndex: 10,
         }}
       >
@@ -2221,18 +2245,61 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     </div>
                   )}
 
-                  {/* Council Response Columns */}
+                  {/* Council Response Columns with scroll gutters */}
                   <div style={{
                     display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'stretch',
                     width: '100%',
-                    maxWidth: councilColumnCount <= 2 ? '800px' : councilColumnCount === 3 ? '1000px' : '1200px',
                     flex: 1,
                     minHeight: 0,
-                    gap: '0',
-                    overflow: 'hidden',
                   }}>
+                    {/* Left scroll gutter */}
+                    <div
+                      ref={leftGutterRef}
+                      onMouseEnter={() => setCouncilGutterHover('left')}
+                      onMouseLeave={() => setCouncilGutterHover(null)}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'ns-resize',
+                        transition: 'opacity 0.2s ease',
+                      }}
+                    >
+                      {councilGutterHover === 'left' && (
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '6px',
+                          opacity: 0.5,
+                          pointerEvents: 'none',
+                        }}>
+                          <ChevronUp size={16} color={currentTheme.textMuted} />
+                          <div style={{
+                            width: '2px',
+                            height: '40px',
+                            borderRadius: '1px',
+                            background: `linear-gradient(to bottom, ${currentTheme.textMuted}, transparent)`,
+                          }} />
+                          <ChevronDown size={16} color={currentTheme.textMuted} />
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'stretch',
+                      width: councilColumnCount <= 2 ? '800px' : councilColumnCount === 3 ? '1000px' : '1200px',
+                      maxWidth: '100%',
+                      flex: '0 0 auto',
+                      minHeight: 0,
+                      height: '100%',
+                      gap: '0',
+                      overflow: 'hidden',
+                    }}>
                     {councilDisplayResponses.map((response, index, arr) => (
                       <React.Fragment key={response.id}>
                         {index > 0 && (
@@ -2636,6 +2703,43 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         </div>
                       </React.Fragment>
                     ))}
+                    </div>
+
+                    {/* Right scroll gutter */}
+                    <div
+                      ref={rightGutterRef}
+                      onMouseEnter={() => setCouncilGutterHover('right')}
+                      onMouseLeave={() => setCouncilGutterHover(null)}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'ns-resize',
+                        transition: 'opacity 0.2s ease',
+                      }}
+                    >
+                      {councilGutterHover === 'right' && (
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '6px',
+                          opacity: 0.5,
+                          pointerEvents: 'none',
+                        }}>
+                          <ChevronUp size={16} color={currentTheme.textMuted} />
+                          <div style={{
+                            width: '2px',
+                            height: '40px',
+                            borderRadius: '1px',
+                            background: `linear-gradient(to bottom, ${currentTheme.textMuted}, transparent)`,
+                          }} />
+                          <ChevronDown size={16} color={currentTheme.textMuted} />
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                 </>

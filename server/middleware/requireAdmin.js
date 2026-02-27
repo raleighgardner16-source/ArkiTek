@@ -41,4 +41,4 @@ const requireAdmin = async (req, res, next) => {
   next()
 }
 
-export { loadAdminsList, isAdmin, requireAdmin }
+export { loadAdminsList, isAdmin, requireAdmin, adminsCache }

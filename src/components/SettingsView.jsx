@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import SubscriptionManager from './SubscriptionManager'
@@ -8,11 +8,12 @@ const SettingsView = () => {
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const isNavExpanded = useStore((state) => state.isNavExpanded)
-  const navTransitionReady = useRef(false)
-  useEffect(() => { navTransitionReady.current = true }, [])
+  const [mountReady, setMountReady] = useState(false)
+  useEffect(() => { const id = requestAnimationFrame(() => setMountReady(true)); return () => cancelAnimationFrame(id) }, [])
 
   return (
     <div
+      className={mountReady ? undefined : 'no-mount-transition'}
       style={{
         position: 'fixed',
         top: 0,
@@ -27,7 +28,7 @@ const SettingsView = () => {
         paddingBottom: '40px',
         overflowY: 'auto',
         zIndex: 10,
-        transition: navTransitionReady.current ? 'left 0.3s ease, width 0.3s ease' : 'none',
+        transition: 'left 0.3s ease, width 0.3s ease',
       }}
     >
       <div

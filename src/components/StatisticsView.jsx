@@ -234,7 +234,7 @@ const StatisticsView = () => {
   const setNotificationCount = useStore((state) => state.setNotificationCount)
   const isViewingOther = viewingProfile && viewingProfile.userId !== currentUser?.id
   const [stats, setStats] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [expandedProviders, setExpandedProviders] = useState({})
   const [expandedModels, setExpandedModels] = useState({})
   const [activeTab, setActiveTab] = useState('tokens') // 'tokens', 'ratings', 'leaderboard'
@@ -284,8 +284,8 @@ const StatisticsView = () => {
   const [processingRequestId, setProcessingRequestId] = useState(null)
   const [notifSubTab, setNotifSubTab] = useState('notifications')
   const fileInputRef = useRef(null)
-  const navTransitionReady = useRef(false)
-  useEffect(() => { navTransitionReady.current = true }, [])
+  const [mountReady, setMountReady] = useState(false)
+  useEffect(() => { const id = requestAnimationFrame(() => setMountReady(true)); return () => cancelAnimationFrame(id) }, [])
 
   // Handle successful usage purchase
   const handleUsagePurchaseSuccess = (data) => {
@@ -925,6 +925,7 @@ const StatisticsView = () => {
 
   return (
     <div
+      className={mountReady ? undefined : 'no-mount-transition'}
       style={{
         position: 'fixed',
         top: '0',
@@ -937,7 +938,7 @@ const StatisticsView = () => {
         overflowY: 'auto',
         zIndex: 10,
         color: currentTheme.text,
-        transition: navTransitionReady.current ? 'left 0.3s ease, width 0.3s ease' : 'none',
+        transition: 'left 0.3s ease, width 0.3s ease',
       }}
     >
       <div
@@ -1171,7 +1172,7 @@ const StatisticsView = () => {
         )}
 
         {/* Tab Content */}
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait" initial={false}>
           {activeTab === 'tokens' && (
             <motion.div
               key="tokens"

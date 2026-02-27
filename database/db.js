@@ -249,10 +249,6 @@ const users = {
       profileImage: null,
       isAnonymous: false,
       isPrivate: false,
-      followers: [],
-      following: [],
-      followRequests: [],
-      sentFollowRequests: [],
     }
     
     await db.collection('users').insertOne(doc)
@@ -439,11 +435,12 @@ const users = {
       db.collection('judge_context').deleteOne({ _id: userId }),
       db.collection('usage_data').deleteOne({ _id: userId }),
       db.collection('user_stats').deleteOne({ _id: userId }),
-      // (saved_individual and saved_sessions removed — superseded by conversation_history)
       db.collection('leaderboard_posts').deleteMany({ userId }),
       db.collection('conversation_history').deleteMany({ userId }),
       db.collection('daily_usage').deleteMany({ userId }),
       db.collection('email_verifications').deleteMany({ userId }),
+      db.collection('relationships').deleteMany({ $or: [{ fromUserId: userId }, { toUserId: userId }] }),
+      db.collection('subscription_events').deleteMany({ userId }),
     ])
     
     // Also scrub user's likes, comments, and replies from OTHER users' leaderboard posts
@@ -1244,12 +1241,135 @@ const leaderboardPosts = {
 }
 
 // ============================================================================
-// COMBINED TRACKING — REMOVED
+// RELATIONSHIP OPERATIONS (relationships collection)
 // ============================================================================
-// trackUsage, trackPrompt, and trackQuery have been removed.
-// All usage tracking is now handled by the in-memory cache in server.js
-// which is persisted to the usage_data collection. No separate MongoDB
-// tracking to usage_daily or user_monthly_usage is needed.
+
+const relationships = {
+  async follow(fromUserId, toUserId) {
+    const db = await getDb()
+    await db.collection('relationships').updateOne(
+      { fromUserId, toUserId },
+      { $set: { fromUserId, toUserId, type: 'follow', createdAt: new Date() } },
+      { upsert: true }
+    )
+  },
+
+  async unfollow(fromUserId, toUserId) {
+    const db = await getDb()
+    await db.collection('relationships').deleteMany({ fromUserId, toUserId })
+  },
+
+  async sendRequest(fromUserId, toUserId) {
+    const db = await getDb()
+    await db.collection('relationships').updateOne(
+      { fromUserId, toUserId },
+      { $set: { fromUserId, toUserId, type: 'follow_request', createdAt: new Date() } },
+      { upsert: true }
+    )
+  },
+
+  async acceptRequest(fromUserId, toUserId) {
+    const db = await getDb()
+    await db.collection('relationships').updateOne(
+      { fromUserId, toUserId, type: 'follow_request' },
+      { $set: { type: 'follow', createdAt: new Date() } }
+    )
+  },
+
+  async removeRequest(fromUserId, toUserId) {
+    const db = await getDb()
+    await db.collection('relationships').deleteOne({ fromUserId, toUserId, type: 'follow_request' })
+  },
+
+  async getFollowers(userId) {
+    const db = await getDb()
+    const docs = await db.collection('relationships').find({ toUserId: userId, type: 'follow' }).toArray()
+    return docs.map(d => d.fromUserId)
+  },
+
+  async getFollowing(userId) {
+    const db = await getDb()
+    const docs = await db.collection('relationships').find({ fromUserId: userId, type: 'follow' }).toArray()
+    return docs.map(d => d.toUserId)
+  },
+
+  async getFollowRequests(userId) {
+    const db = await getDb()
+    const docs = await db.collection('relationships').find({ toUserId: userId, type: 'follow_request' }).toArray()
+    return docs.map(d => d.fromUserId)
+  },
+
+  async isFollowing(fromUserId, toUserId) {
+    const db = await getDb()
+    const doc = await db.collection('relationships').findOne({ fromUserId, toUserId, type: 'follow' })
+    return !!doc
+  },
+
+  async hasRequested(fromUserId, toUserId) {
+    const db = await getDb()
+    const doc = await db.collection('relationships').findOne({ fromUserId, toUserId, type: 'follow_request' })
+    return !!doc
+  },
+
+  async getFollowersCount(userId) {
+    const db = await getDb()
+    return db.collection('relationships').countDocuments({ toUserId: userId, type: 'follow' })
+  },
+
+  async getFollowingCount(userId) {
+    const db = await getDb()
+    return db.collection('relationships').countDocuments({ fromUserId: userId, type: 'follow' })
+  },
+
+  async getFollowersCounts(userIds) {
+    if (userIds.length === 0) return {}
+    const db = await getDb()
+    const results = await db.collection('relationships').aggregate([
+      { $match: { toUserId: { $in: userIds }, type: 'follow' } },
+      { $group: { _id: '$toUserId', count: { $sum: 1 } } }
+    ]).toArray()
+    const map = {}
+    for (const r of results) map[r._id] = r.count
+    return map
+  },
+
+  async acceptAllRequests(toUserId) {
+    const db = await getDb()
+    const result = await db.collection('relationships').updateMany(
+      { toUserId, type: 'follow_request' },
+      { $set: { type: 'follow', createdAt: new Date() } }
+    )
+    return result.modifiedCount
+  },
+}
+
+// ============================================================================
+// SUBSCRIPTION EVENT OPERATIONS (subscription_events collection)
+// ============================================================================
+
+const subscriptionEvents = {
+  async add(userId, reason) {
+    const db = await getDb()
+    await db.collection('subscription_events').insertOne({
+      userId,
+      date: new Date().toISOString(),
+      reason,
+      createdAt: new Date(),
+    })
+  },
+
+  async getForUser(userId) {
+    const db = await getDb()
+    return db.collection('subscription_events').find({ userId }).sort({ createdAt: -1 }).toArray()
+  },
+
+  async getInDateRange(startDate, endDate) {
+    const db = await getDb()
+    return db.collection('subscription_events').find({
+      createdAt: { $gte: startDate, $lt: endDate }
+    }).toArray()
+  },
+}
 
 // ============================================================================
 // EXPORT
@@ -1269,6 +1389,8 @@ export default {
   leaderboardPosts,
   usage,
   userStats,
+  relationships,
+  subscriptionEvents,
 }
 
 // Named exports for convenience
@@ -1283,5 +1405,7 @@ export {
   leaderboardPosts,
   usage,
   userStats,
+  relationships,
+  subscriptionEvents,
 }
 
