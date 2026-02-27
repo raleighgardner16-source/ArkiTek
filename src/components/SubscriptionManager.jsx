@@ -528,9 +528,11 @@ const SubscriptionManager = () => {
           }}
         >
           <div style={{ color: currentTheme.accent, fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '4px' }}>
-            $19.95/month
+            {currentUser?.plan === 'premium' ? '$49.95/month' : currentUser?.plan === 'free_trial' ? 'Free Plan' : '$19.95/month'}
           </div>
-          <div style={{ color: currentTheme.textSecondary, fontSize: '0.9rem' }}>Full access to all features</div>
+          <div style={{ color: currentTheme.textSecondary, fontSize: '0.9rem' }}>
+            {currentUser?.plan === 'premium' ? '50x usage — Premium' : currentUser?.plan === 'free_trial' ? 'Standard usage' : '15x usage — Pro'}
+          </div>
         </div>
       </div>
 
@@ -756,7 +758,7 @@ const SubscriptionManager = () => {
               ) : (
                 <>
                   <CreditCard size={18} />
-                  Subscribe Now - $19.95/month
+                  Subscribe Now
                 </>
               )}
             </button>
@@ -976,7 +978,7 @@ const SubscriptionManager = () => {
                 ⚠️ If you delete your account, all data from this account will be permanently lost and cannot be recovered.
               </p>
               <p style={{ color: '#ff6b6b', margin: 0, lineHeight: '1.7', textAlign: 'center', fontSize: '0.9rem' }}>
-                Your subscription will be canceled for good. This includes all your statistics, saved conversations, usage history, and Prompt Feed posts.
+                Your subscription will be canceled for good. This includes all your statistics, saved conversations, and usage history.
             </p>
             </div>
             <div

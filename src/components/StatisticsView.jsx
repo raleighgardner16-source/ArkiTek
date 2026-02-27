@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield, Trash2, ArrowLeft, Camera, Edit3, UserPlus, UserCheck, Users, Calendar, Swords } from 'lucide-react'
+import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield, Trash2, ArrowLeft, Camera, Edit3, UserPlus, UserCheck, Users, Calendar, Swords, MessageCircle } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -8,6 +8,7 @@ import { API_URL } from '../utils/config'
 import BuyUsageModal from './BuyUsageModal'
 import ConfirmationModal from './ConfirmationModal'
 import { LLM_PROVIDERS } from '../services/llmProviders'
+import MessagingView from './MessagingView'
 
 // ==================== BADGE DEFINITIONS ====================
 const BADGE_CATEGORIES = [
@@ -77,46 +78,17 @@ const BADGE_CATEGORIES = [
       { name: 'Unkillable', threshold: 1000, emoji: '💀', color: '#FF0000', desc: '1000-day streak' },
     ]
   },
-  {
-    id: 'community',
-    name: 'Community Champion',
-    icon: Heart,
-    description: 'Get likes on your Prompt Feed posts',
-    statKey: 'totalLikes',
-    unit: 'likes',
-    badges: [
-      { name: 'First Fan', threshold: 1, emoji: '👍', color: '#FF69B4', desc: '1 like' },
-      { name: 'Rising Star', threshold: 5, emoji: '🌟', color: '#FF1493', desc: '5 likes' },
-      { name: 'Crowd Favorite', threshold: 10, emoji: '🎉', color: '#DC143C', desc: '10 likes' },
-      { name: 'Influencer', threshold: 25, emoji: '📢', color: '#FF4500', desc: '25 likes' },
-      { name: 'Celebrity', threshold: 50, emoji: '🌟', color: '#FFD700', desc: '50 likes' },
-      { name: 'Beloved', threshold: 100, emoji: '💖', color: '#E0115F', desc: '100 likes' },
-      { name: 'Icon', threshold: 250, emoji: '🏆', color: '#DAA520', desc: '250 likes' },
-      { name: 'Legend', threshold: 500, emoji: '👑', color: '#FFD700', desc: '500 likes' },
-      { name: 'Superstar', threshold: 1000, emoji: '🌠', color: '#9400D3', desc: '1,000 likes' },
-      { name: 'Phenomenon', threshold: 5000, emoji: '💫', color: '#4B0082', desc: '5,000 likes' },
-    ]
-  },
-  {
-    id: 'social',
-    name: 'Social Butterfly',
-    icon: MessageSquare,
-    description: 'Comment on and interact with other users\' prompts',
-    statKey: 'totalComments',
-    unit: 'comments',
-    badges: [
-      { name: 'Ice Breaker', threshold: 1, emoji: '🗣️', color: '#32CD32', desc: '1 comment' },
-      { name: 'Conversationalist', threshold: 5, emoji: '💬', color: '#20B2AA', desc: '5 comments' },
-      { name: 'Chatterbox', threshold: 10, emoji: '🎙️', color: '#1E90FF', desc: '10 comments' },
-      { name: 'Discussion Leader', threshold: 25, emoji: '📣', color: '#4169E1', desc: '25 comments' },
-      { name: 'Community Voice', threshold: 50, emoji: '🔊', color: '#8A2BE2', desc: '50 comments' },
-      { name: 'Social Legend', threshold: 100, emoji: '🏅', color: '#FFD700', desc: '100 comments' },
-      { name: 'Forum Oracle', threshold: 250, emoji: '🔮', color: '#9932CC', desc: '250 comments' },
-      { name: 'Grand Commentator', threshold: 500, emoji: '📢', color: '#800080', desc: '500 comments' },
-      { name: 'Voice of the People', threshold: 1000, emoji: '🗽', color: '#6A0DAD', desc: '1,000 comments' },
-      { name: 'Speech Titan', threshold: 5000, emoji: '🌍', color: '#4B0082', desc: '5,000 comments' },
-    ]
-  },
+  // DISABLED: Community Champion and Social Butterfly badge categories temporarily removed (social media features)
+  // {
+  //   id: 'community',
+  //   name: 'Community Champion',
+  //   ...
+  // },
+  // {
+  //   id: 'social',
+  //   name: 'Social Butterfly',
+  //   ...
+  // },
   {
     id: 'ratings',
     name: 'Rating Guru',
@@ -248,6 +220,7 @@ const formatBadgeNumber = (num) => {
 
 const StatisticsView = () => {
   const currentUser = useStore((state) => state.currentUser)
+  const isFreePlan = currentUser?.plan === 'free_trial' && !currentUser?.stripeSubscriptionId
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const statsRefreshTrigger = useStore((state) => state.statsRefreshTrigger)
@@ -270,6 +243,7 @@ const StatisticsView = () => {
   const [leaderboardStats, setLeaderboardStats] = useState(null)
   const [loadingLeaderboardStats, setLoadingLeaderboardStats] = useState(false)
   const [showBuyUsageModal, setShowBuyUsageModal] = useState(false)
+  const [userPlan, setUserPlan] = useState(currentUser?.plan || 'free_trial')
   const [profilePrompts, setProfilePrompts] = useState([])
   const [loadingProfile, setLoadingProfile] = useState(false)
   const [hasLoadedProfile, setHasLoadedProfile] = useState(false)
@@ -305,6 +279,7 @@ const StatisticsView = () => {
   const [followRequests, setFollowRequests] = useState([])
   const [loadingFollowRequests, setLoadingFollowRequests] = useState(false)
   const [processingRequestId, setProcessingRequestId] = useState(null)
+  const [notifSubTab, setNotifSubTab] = useState('notifications')
   const fileInputRef = useRef(null)
 
   // Handle successful usage purchase
@@ -328,10 +303,10 @@ const StatisticsView = () => {
     setActiveTab(newTab)
   }
 
-  // When viewing another user, switch to their posts tab and fetch public profile
+  // When viewing another user, fetch public profile (social tabs disabled)
   useEffect(() => {
     if (isViewingOther) {
-      setActiveTab('profile') // Default to their posts when viewing another user
+      setActiveTab('tokens') // Default to tokens (social posts tab disabled)
       setLoading(false) // Don't wait for own stats — public profile fetch handles this view
       setHasLoadedProfile(false)
       setProfilePrompts([])
@@ -682,6 +657,7 @@ const StatisticsView = () => {
       if (!stats) setLoading(true)
       const response = await axios.get(`${API_URL}/api/stats/${currentUser.id}`)
       setStats(response.data)
+      setUserPlan(response.data.userPlan || currentUser?.plan || 'free_trial')
     } catch (error) {
       console.error('Error fetching stats:', error)
       if (!stats) {
@@ -694,6 +670,9 @@ const StatisticsView = () => {
           freeMonthlyAllocation: 0,
           remainingFreeAllocation: 0,
           freeUsagePercentage: 100,
+          usagePercentUsed: 0,
+          usagePercentRemaining: 100,
+          purchasedCreditsPercent: 0,
           dailyUsage: [],
           providers: {},
           models: {},
@@ -786,6 +765,9 @@ const StatisticsView = () => {
     freeMonthlyAllocation: 0,
     remainingFreeAllocation: 0,
     freeUsagePercentage: 100,
+    usagePercentUsed: 0,
+    usagePercentRemaining: 100,
+    purchasedCreditsPercent: 0,
     totalAvailableBalance: 0,
     effectiveAllocation: 0,
     purchasedCredits: { total: 0, remaining: 0, purchaseCount: 0, lastPurchase: null },
@@ -1039,41 +1021,8 @@ const StatisticsView = () => {
                         {displayUsername}
                       </h2>
 
-                      {/* Follow / Edit Profile button */}
-                      {isViewingOther ? (() => {
-                        const hasRequested = publicProfile?.hasRequestedFollow || false
-                        const followLabel = isFollowing ? 'Following' : hasRequested ? 'Requested' : 'Follow'
-                        const followIcon = isFollowing ? <UserCheck size={15} /> : hasRequested ? <Users size={15} /> : <UserPlus size={15} />
-                        const handleClick = () => {
-                          if (isFollowing) setShowUnfollowConfirm(true)
-                          else if (hasRequested) handleUnfollow(viewingProfile.userId)
-                          else handleFollow(viewingProfile.userId)
-                        }
-                        return (
-                        <motion.button
-                          onClick={handleClick}
-                          disabled={followLoading}
-                          whileHover={{ scale: 1.03 }}
-                          whileTap={{ scale: 0.97 }}
-                          style={{
-                            padding: '6px 20px',
-                            background: isFollowing || hasRequested ? 'transparent' : currentTheme.accentGradient,
-                            border: isFollowing || hasRequested ? `1px solid ${currentTheme.borderLight}` : 'none',
-                            borderRadius: '8px',
-                            color: isFollowing || hasRequested ? currentTheme.textSecondary : '#fff',
-                            fontSize: '0.85rem',
-                            fontWeight: '600',
-                            cursor: followLoading ? 'wait' : 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            opacity: followLoading ? 0.6 : 1,
-                          }}
-                        >
-                          {followIcon} {followLabel}
-                        </motion.button>
-                        )
-                      })() : (
+                      {/* Follow button disabled - social features temporarily removed */}
+                      {isViewingOther ? null : (
                         <motion.button
                           onClick={() => {
                             setEditBio(ownProfileData?.bio || '')
@@ -1103,27 +1052,7 @@ const StatisticsView = () => {
                       )}
                     </div>
 
-                    {/* Stats row: Posts | Followers | Following */}
-                    <div style={{ display: 'flex', gap: '24px', marginBottom: '8px' }}>
-                      <div style={{ textAlign: 'center' }}>
-                        <span style={{ fontWeight: '700', fontSize: '1.05rem', color: currentTheme.text }}>{postsCount}</span>
-                        <span style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', marginLeft: '4px' }}>posts</span>
-                      </div>
-                      <div
-                        onClick={() => fetchFollowersList(isViewingOther ? viewingProfile.userId : currentUser?.id, 'followers')}
-                        style={{ textAlign: 'center', cursor: 'pointer' }}
-                      >
-                        <span style={{ fontWeight: '700', fontSize: '1.05rem', color: currentTheme.text }}>{followersCount}</span>
-                        <span style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', marginLeft: '4px' }}>followers</span>
-                      </div>
-                      <div
-                        onClick={() => fetchFollowersList(isViewingOther ? viewingProfile.userId : currentUser?.id, 'following')}
-                        style={{ textAlign: 'center', cursor: 'pointer' }}
-                      >
-                        <span style={{ fontWeight: '700', fontSize: '1.05rem', color: currentTheme.text }}>{followingCount}</span>
-                        <span style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', marginLeft: '4px' }}>following</span>
-                      </div>
-                    </div>
+                    {/* DISABLED: Social stats row (posts, followers, following) temporarily removed */}
 
                     {/* Bio */}
                     {displayBio && (
@@ -1182,6 +1111,7 @@ const StatisticsView = () => {
             <Database size={20} />
             Token Usage
           </button>
+          {!isFreePlan && (
           <button
             onClick={() => handleTabChange('badges')}
             style={{
@@ -1204,6 +1134,7 @@ const StatisticsView = () => {
             <Award size={20} />
             Badges
           </button>
+          )}
           <button
             onClick={() => handleTabChange('ratings')}
             style={{
@@ -1226,73 +1157,8 @@ const StatisticsView = () => {
             <Star size={20} />
             Ratings & Models
           </button>
-          <button
-            onClick={() => handleTabChange('leaderboard')}
-            style={{
-              flex: 1,
-              padding: '14px 12px',
-              background: activeTab === 'leaderboard' ? currentTheme.buttonBackgroundActive : 'transparent',
-              border: 'none',
-              borderBottom: activeTab === 'leaderboard' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
-              color: activeTab === 'leaderboard' ? currentTheme.accent : currentTheme.textSecondary,
-              fontSize: '1rem',
-              fontWeight: activeTab === 'leaderboard' ? '600' : '400',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-            }}
-          >
-            <div style={{ position: 'relative', display: 'inline-flex' }}>
-              <Bell size={20} />
-              {notificationCount > 0 && activeTab !== 'leaderboard' && (
-                <div style={{
-                  position: 'absolute',
-                  top: '-6px',
-                  right: '-8px',
-                  minWidth: '16px',
-                  height: '16px',
-                  borderRadius: '8px',
-                  background: '#ff4757',
-                  color: '#fff',
-                  fontSize: '0.6rem',
-                  fontWeight: '700',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '0 4px',
-                  lineHeight: 1,
-                }}>
-                  {notificationCount > 9 ? '9+' : notificationCount}
-                </div>
-              )}
-            </div>
-            Notifications
-          </button>
-          <button
-            onClick={() => handleTabChange('profile')}
-            style={{
-              flex: 1,
-              padding: '14px 12px',
-              background: activeTab === 'profile' ? currentTheme.buttonBackgroundActive : 'transparent',
-              border: 'none',
-              borderBottom: activeTab === 'profile' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
-              color: activeTab === 'profile' ? currentTheme.accent : currentTheme.textSecondary,
-              fontSize: '1rem',
-              fontWeight: activeTab === 'profile' ? '600' : '400',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-            }}
-          >
-            <User size={20} />
-            My Posts
-          </button>
+          {/* DISABLED: Messages & Notifications tab temporarily removed (social media feature) */}
+          {/* DISABLED: My Posts tab temporarily removed (social media feature) */}
         </div>
         )}
 
@@ -1326,19 +1192,21 @@ const StatisticsView = () => {
                 <TrendingUp size={32} color={currentTheme.accentSecondary} />
                 <div>
                   <h2 style={{ fontSize: '1.2rem', color: currentTheme.text, margin: '0 0 4px 0' }}>
-                    Available Usage Balance
+                    Monthly Usage
                   </h2>
-                  <p style={{ fontSize: '0.85rem', color: (userStats.monthlyCost || 0) > 0 ? '#f0a050' : currentTheme.textMuted, margin: '0 0 4px 0', fontStyle: 'italic' }}>
-                    Monthly Spend: ${(userStats.monthlyCost || 0).toFixed(2)}
+                  <p style={{ fontSize: '0.85rem', color: (userStats.usagePercentUsed || 0) > 0 ? '#f0a050' : currentTheme.textMuted, margin: '0 0 4px 0', fontStyle: 'italic' }}>
+                    {(userStats.usagePercentUsed || 0).toFixed(1)}% of allocation used
                   </p>
-                  {(userStats.monthlyCost || 0) > (userStats.freeMonthlyAllocation || 0) && (userStats.freeMonthlyAllocation || 0) > 0 && (
+                  {(userStats.usagePercentUsed || 0) > 100 && (
                     <p style={{ fontSize: '0.85rem', color: '#ff6b6b', margin: '0 0 4px 0', fontStyle: 'italic' }}>
-                      Additional Usage: ${Math.max(0, (userStats.monthlyCost || 0) - (userStats.freeMonthlyAllocation || 0)).toFixed(2)}
+                      Over allocation
                     </p>
                   )}
-                  <p style={{ fontSize: '0.85rem', color: (userStats.purchasedCredits?.remaining || 0) > 0 ? '#00cc66' : currentTheme.textMuted, margin: 0, fontStyle: 'italic' }}>
-                    Extra Purchased Credits: ${(userStats.purchasedCredits?.remaining || 0).toFixed(2)}
-                  </p>
+                  {(userStats.purchasedCreditsPercent || 0) > 0 && (
+                    <p style={{ fontSize: '0.85rem', color: '#00cc66', margin: 0, fontStyle: 'italic' }}>
+                      Includes {(userStats.purchasedCreditsPercent || 0).toFixed(1)}% from purchased credits
+                    </p>
+                  )}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
@@ -1357,42 +1225,59 @@ const StatisticsView = () => {
                     gap: '8px',
                   }}
                 >
-                  ${(userStats.totalAvailableBalance ?? userStats.remainingFreeAllocation ?? 0).toFixed(2)}
-                  <span style={{ fontSize: '1.2rem', fontWeight: '500' }}>credit left</span>
+                  {Math.max(0, userStats.usagePercentRemaining ?? 100).toFixed(1)}%
+                  <span style={{ fontSize: '1.2rem', fontWeight: '500' }}>remaining</span>
                 </p>
                 
-                {/* Buy More Usage Button */}
-                <button
-                  onClick={() => setShowBuyUsageModal(true)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
+                {userPlan !== 'free_trial' && (
+                  <button
+                    onClick={() => setShowBuyUsageModal(true)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '10px 16px',
+                      borderRadius: '8px',
+                      border: `1px solid ${currentTheme.accent}`,
+                      background: currentTheme.buttonBackground,
+                      color: currentTheme.accent,
+                      fontSize: '0.85rem',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = currentTheme.buttonBackgroundHover
+                      e.currentTarget.style.borderColor = currentTheme.accentSecondary
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = currentTheme.buttonBackground
+                      e.currentTarget.style.borderColor = currentTheme.accent
+                    }}
+                  >
+                    <ShoppingCart size={16} />
+                    Buy More Usage
+                  </button>
+                )}
+                {userPlan === 'free_trial' && (userStats.totalAvailableBalance ?? userStats.remainingFreeAllocation ?? 0) <= 0 && (
+                  <div style={{
                     padding: '10px 16px',
                     borderRadius: '8px',
-                    border: `1px solid ${currentTheme.accent}`,
-                    background: currentTheme.buttonBackground,
-                    color: currentTheme.accent,
-                    fontSize: '0.85rem',
-                    fontWeight: '500',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = currentTheme.buttonBackgroundHover
-                    e.currentTarget.style.borderColor = currentTheme.accentSecondary
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = currentTheme.buttonBackground
-                    e.currentTarget.style.borderColor = currentTheme.accent
-                  }}
-                >
-                  <ShoppingCart size={16} />
-                  Buy More Usage
-                </button>
+                    background: 'rgba(255, 170, 0, 0.1)',
+                    border: '1px solid rgba(255, 170, 0, 0.3)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}>
+                    <span style={{ color: '#ffaa00', fontSize: '0.8rem', fontWeight: '600', textAlign: 'center' }}>
+                      Usage limit reached — upgrade to Pro or Premium
+                    </span>
+                  </div>
+                )}
                 
                 {/* Extra Purchased Credits Balance */}
-                {(userStats.purchasedCredits?.remaining || 0) > 0 && (
+                {(userStats.purchasedCreditsPercent || 0) > 0 && (
                   <div
                     style={{
                       background: 'rgba(0, 200, 100, 0.15)',
@@ -1418,7 +1303,7 @@ const StatisticsView = () => {
                         margin: 0,
                       }}
                     >
-                      ${(userStats.purchasedCredits?.remaining || 0).toFixed(2)}
+                      {(userStats.purchasedCreditsPercent || 0).toFixed(1)}%
                     </p>
                   </div>
                 )}
@@ -1502,11 +1387,11 @@ const StatisticsView = () => {
                 <p style={{ fontSize: '0.9rem', color: currentTheme.textSecondary, marginBottom: '4px', textAlign: 'center' }}>
                   Daily Usage Percentage (This Month)
                 </p>
-                {(userStats.effectiveAllocation || 0) > 0 && (
+                {(userStats.usagePercentUsed || 0) > 0 && (
                   <p style={{ fontSize: '0.7rem', color: currentTheme.textMuted, marginBottom: '10px', textAlign: 'center' }}>
-                    Budget: ${(userStats.effectiveAllocation || 0).toFixed(2)}
-                    {(userStats.purchasedCredits?.remaining || 0) > 0 && (
-                      <span style={{ color: '#00cc66' }}> (includes ${(userStats.purchasedCredits.remaining).toFixed(2)} purchased)</span>
+                    {(userStats.usagePercentUsed || 0).toFixed(1)}% used this month
+                    {(userStats.purchasedCreditsPercent || 0) > 0 && (
+                      <span style={{ color: '#00cc66' }}> (includes purchased credits)</span>
                     )}
                   </p>
                 )}
@@ -1597,11 +1482,6 @@ const StatisticsView = () => {
                                 }}
                               >
                                 <div>{percentage.toFixed(1)}% used</div>
-                                {(day.cost || 0) > 0 && (
-                                  <div style={{ fontSize: '0.65rem', color: currentTheme.textSecondary, fontWeight: 'normal', marginTop: '2px' }}>
-                                    ${day.cost.toFixed(2)} spent
-                                  </div>
-                                )}
                               </div>
                             )}
                             
@@ -2135,7 +2015,7 @@ const StatisticsView = () => {
             </motion.div>
           )}
 
-          {activeTab === 'leaderboard' && (
+          {activeTab === 'leaderboard' && !isFreePlan && (
             <motion.div
               key="leaderboard"
               initial={{ opacity: 0 }}
@@ -2143,6 +2023,91 @@ const StatisticsView = () => {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
+              {/* Sub-tabs: Messages/Groups | Notifications */}
+              <div style={{
+                display: 'flex',
+                marginBottom: '24px',
+                borderBottom: `1px solid ${currentTheme.borderLight}`,
+              }}>
+                <button
+                  onClick={() => setNotifSubTab('messages')}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: notifSubTab === 'messages' ? currentTheme.buttonBackgroundActive : 'transparent',
+                    border: 'none',
+                    borderBottom: notifSubTab === 'messages' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+                    color: notifSubTab === 'messages' ? currentTheme.accent : currentTheme.textSecondary,
+                    fontSize: '0.95rem',
+                    fontWeight: notifSubTab === 'messages' ? '600' : '400',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <MessageCircle size={18} />
+                  Messages / Groups
+                </button>
+                <button
+                  onClick={() => setNotifSubTab('notifications')}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: notifSubTab === 'notifications' ? currentTheme.buttonBackgroundActive : 'transparent',
+                    border: 'none',
+                    borderBottom: notifSubTab === 'notifications' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+                    color: notifSubTab === 'notifications' ? currentTheme.accent : currentTheme.textSecondary,
+                    fontSize: '0.95rem',
+                    fontWeight: notifSubTab === 'notifications' ? '600' : '400',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <div style={{ position: 'relative', display: 'inline-flex' }}>
+                    <Bell size={18} />
+                    {unreadNotifCount > 0 && notifSubTab !== 'notifications' && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '-5px',
+                        right: '-7px',
+                        minWidth: '14px',
+                        height: '14px',
+                        borderRadius: '7px',
+                        background: '#ff4757',
+                        color: '#fff',
+                        fontSize: '0.55rem',
+                        fontWeight: '700',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '0 3px',
+                        lineHeight: 1,
+                      }}>
+                        {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                      </div>
+                    )}
+                  </div>
+                  Notifications
+                </button>
+              </div>
+
+              {/* Messages/Groups sub-tab */}
+              {notifSubTab === 'messages' && (
+                <div style={{ minHeight: '500px' }}>
+                  <MessagingView embedded />
+                </div>
+              )}
+
+              {/* Notifications sub-tab */}
+              {notifSubTab === 'notifications' && (
+              <>
               {!currentUser ? (
                 <div style={{
                   background: currentTheme.backgroundOverlay,
@@ -2402,10 +2367,12 @@ const StatisticsView = () => {
                   )}
                 </div>
               )}
+              </>
+              )}
             </motion.div>
           )}
 
-          {activeTab === 'badges' && !isViewingOther && (
+          {activeTab === 'badges' && !isViewingOther && !isFreePlan && (
             <motion.div
               key="badges"
               initial={{ opacity: 0 }}
@@ -2630,7 +2597,7 @@ const StatisticsView = () => {
                                 <Trophy size={18} color={currentTier.color} />
                               </div>
                               <span style={{ fontSize: '0.8rem', color: currentTheme.textSecondary }}>
-                                +${currentTier.reward.toFixed(2)}/month free credit
+                                Monthly usage bonus
                               </span>
                               {nextTier && (
                                 <span style={{ fontSize: '0.7rem', color: currentTheme.textMuted, fontStyle: 'italic' }}>
@@ -2681,7 +2648,7 @@ const StatisticsView = () => {
                                       color: currentTheme.text,
                                       margin: 0,
                                     }}>
-                                      +${tier.reward.toFixed(2)}/mo
+                                      Usage bonus
                                     </p>
                                   </div>
                                 )
@@ -3095,7 +3062,7 @@ const StatisticsView = () => {
             </motion.div>
           )}
 
-          {activeTab === 'profile' && (
+          {activeTab === 'profile' && !isFreePlan && (
             <motion.div
               key="profile"
               initial={{ opacity: 0 }}

@@ -114,7 +114,7 @@ const TermsOfService = ({ onNavigate }) => {
               <li>Compare responses from different AI models side by side</li>
               <li>Receive AI-generated consensus summaries from a judge model</li>
               <li>Access real-time web search results integrated into AI responses via our RAG (Retrieval-Augmented Generation) pipeline</li>
-              <li>Save, revisit, and share conversations on the Prompt Feed</li>
+              <li>Save and revisit conversations</li>
               <li>Continue follow-up conversations with individual models</li>
             </ul>
           </div>
@@ -137,7 +137,7 @@ const TermsOfService = ({ onNavigate }) => {
             <ul style={listStyle}>
               <li><strong>Free Tier:</strong> All users can access the Service with limited usage at no cost</li>
               <li><strong>Pro Subscription:</strong> $19.95 per month, which includes increased usage limits and additional features</li>
-              <li><strong>Usage Credits:</strong> Each Pro subscription includes $7.50 per month in usage credits toward AI model API costs</li>
+              <li><strong>Usage Allocation:</strong> Each Pro subscription includes a significantly higher monthly usage allocation (15x more than the free tier) toward AI model API costs</li>
               <li><strong>Billing:</strong> Pro subscriptions are billed monthly via Stripe. By subscribing, you authorize us to charge your payment method on a recurring basis</li>
               <li><strong>Cancellation:</strong> You may cancel or pause your Pro subscription at any time. Upon cancellation or pausing, you will retain full access until the end of your current billing period</li>
               <li><strong>Refunds:</strong> Subscription fees are non-refundable except as required by applicable law. If you cancel before the end of your billing period, you will not be charged for the next period</li>
@@ -186,6 +186,7 @@ const TermsOfService = ({ onNavigate }) => {
             </p>
           </div>
 
+          {/* DISABLED: Community Features section temporarily removed (social media feature)
           <div style={sectionStyle}>
             <h2 style={headingStyle}>8. Community Features & Prompt Feed</h2>
             <p style={paragraphStyle}>
@@ -195,6 +196,7 @@ const TermsOfService = ({ onNavigate }) => {
               the content you share and must not post content that is illegal or violates the rights of others.
             </p>
           </div>
+          */}
 
           <div style={sectionStyle}>
             <h2 style={headingStyle}>9. Intellectual Property</h2>

@@ -1467,13 +1467,13 @@ const AdminView = () => {
                             <p style={{ color: '#aaaaaa', fontSize: '0.7rem', margin: '0 0 2px 0' }}>End of Month Price</p>
                             <p
                               style={{
-                                color: (userCost.cost || 0) > (userCost.plan === 'free_trial' ? 0 : 7.50) ? '#ff6b6b' : '#48c9b0',
+                                color: (userCost.cost || 0) > (userCost.plan === 'free_trial' ? 0.50 : 7.50) ? '#ff6b6b' : '#48c9b0',
                                 fontSize: '1rem',
                                 fontWeight: 'bold',
                                 margin: 0,
                               }}
                             >
-                              ${Math.max(0, ((userCost.cost || 0) - (userCost.plan === 'free_trial' ? 0 : 7.50)).toFixed(2))}
+                              ${Math.max(0, ((userCost.cost || 0) - (userCost.plan === 'free_trial' ? 0.50 : 7.50)).toFixed(2))}
                             </p>
                           </div>
                         </div>
@@ -2133,7 +2133,7 @@ const AdminView = () => {
                       {[
                         { label: 'Total Active', value: (revenueData.activeSubscriptions ?? 0) + (revenueData.activeFreeTrials ?? 0) },
                         { label: 'Paid', value: revenueData.activeSubscriptions ?? 0 },
-                        { label: 'Free Trial', value: revenueData.activeFreeTrials ?? 0 },
+                        { label: 'Free Plan', value: revenueData.activeFreeTrials ?? 0 },
                       ].map(({ label, value }) => (
                         <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span style={{ color: '#999999', fontSize: '0.8rem' }}>{label}</span>
@@ -2327,11 +2327,11 @@ const AdminView = () => {
                       </div>
                     </div>
 
-                    {/* Free Trials */}
+                    {/* Free Plan Users */}
                     <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: '14px', padding: '24px' }}>
                       <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <User size={20} color="#5dade2" />
-                        Free Trials
+                        Free Plan Users
                       </h3>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
@@ -2482,7 +2482,7 @@ const AdminView = () => {
                       <div style={{ display: 'flex', borderBottom: '1px solid rgba(93, 173, 226, 0.1)' }}>
                         {[
                           { key: 'active', label: 'Active Paid', count: revenueData.activeUsersList?.length ?? 0 },
-                          { key: 'freeTrial', label: 'Free Trial', count: revenueData.freeTrialUsersList?.length ?? 0 },
+                          { key: 'freeTrial', label: 'Free Plan', count: revenueData.freeTrialUsersList?.length ?? 0 },
                           { key: 'inactive', label: 'Inactive / Canceled', count: revenueData.inactiveUsersList?.length ?? 0 },
                         ].map(({ key, label, count }) => {
                           const color = '#5dade2'
@@ -2802,12 +2802,12 @@ const AdminView = () => {
                       </div>
                     ))}
 
-                    {/* Free Trial Costs */}
-                    {revenueData && (revenueData.newFreeTrials ?? 0) > 0 && (
+                    {/* Free Plan Costs */}
+                    {revenueData && (revenueData.activeFreeTrials ?? 0) > 0 && (
                       <div style={{ background: 'rgba(251, 191, 36, 0.08)', border: '1px solid rgba(251, 191, 36, 0.20)', borderRadius: '14px', padding: '24px' }}>
                         <h3 style={{ fontSize: '1.15rem', color: '#fbbf24', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <User size={20} color="#fbbf24" />
-                          Free Trial Costs
+                          Free Plan Costs
                           <span style={{ fontSize: '0.75rem', color: '#a08520', fontWeight: '500' }}>(per month)</span>
                         </h3>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(251, 191, 36, 0.04)', borderRadius: '10px' }}>
@@ -2968,12 +2968,12 @@ const AdminView = () => {
                             </div>
                           ))}
 
-                          {/* Free Trial Costs */}
-                          {revenueData && (revenueData.newFreeTrials ?? 0) > 0 && (
+                          {/* Free Plan Costs */}
+                          {revenueData && (revenueData.activeFreeTrials ?? 0) > 0 && (
                             <div style={{ background: 'rgba(251, 191, 36, 0.08)', border: '1px solid rgba(251, 191, 36, 0.20)', borderRadius: '14px', padding: '24px' }}>
                               <h3 style={{ fontSize: '1.15rem', color: '#fbbf24', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <User size={20} color="#fbbf24" />
-                                Free Trial Costs
+                                Free Plan Costs
                                 <span style={{ fontSize: '0.75rem', color: '#a08520', fontWeight: '500' }}>(per month)</span>
                               </h3>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(251, 191, 36, 0.04)', borderRadius: '10px' }}>

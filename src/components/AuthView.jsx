@@ -591,7 +591,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
         transition={{ duration: 0.2 }}
         style={{
           width: '100%',
-          maxWidth: view === 'select-plan' ? '860px' : '450px',
+          maxWidth: view === 'select-plan' ? '1100px' : '450px',
           padding: '40px',
           background: currentTheme.backgroundOverlay,
           border: `1px solid ${currentTheme.borderLight}`,
@@ -688,7 +688,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
         {view === 'select-plan' && (
           <div>
             <div style={{ display: 'flex', flexDirection: 'row', gap: '24px', marginBottom: '24px' }}>
-              {/* Free Trial Card */}
+              {/* Free Plan Card */}
               <button
                 type="button"
                 onClick={() => {
@@ -731,7 +731,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
                   fontWeight: 600,
                   marginBottom: '20px',
                 }}>
-                  Free Trial
+                  Free Plan
                 </span>
                 <div style={{ marginBottom: '20px' }}>
                   <span style={{ fontSize: '2.8rem', fontWeight: 800, color: '#fff' }}>Free</span>
@@ -746,7 +746,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
                   gap: '12px',
                   textAlign: 'left',
                 }}>
-                  {['Limited free usage', 'Access to all models'].map((feature, idx) => (
+                  {['Standard monthly usage', 'Access to all models', 'No rewards or badges'].map((feature, idx) => (
                     <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <CheckCircle size={16} style={{ color: '#5dade2', flexShrink: 0 }} />
                       <span style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.9rem' }}>{feature}</span>
@@ -763,7 +763,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
                   fontWeight: 600,
                   fontSize: '0.95rem',
                 }}>
-                  Get Started Free
+                  Sign Up Free
                 </div>
               </button>
 
@@ -845,6 +845,87 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
                   fontSize: '0.95rem',
                 }}>
                   Subscribe to Pro
+                </div>
+              </button>
+
+              {/* Premium Card */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPlan('premium')
+                  goToView('signup')
+                }}
+                style={{
+                  flex: 1,
+                  padding: '32px',
+                  background: 'rgba(187, 143, 255, 0.05)',
+                  border: '1px solid rgba(187, 143, 255, 0.2)',
+                  borderRadius: '16px',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  position: 'relative',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#bb8fff'
+                  e.currentTarget.style.background = 'rgba(187, 143, 255, 0.1)'
+                  e.currentTarget.style.transform = 'translateY(-4px)'
+                  e.currentTarget.style.boxShadow = '0 8px 30px rgba(187, 143, 255, 0.15)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(187, 143, 255, 0.2)'
+                  e.currentTarget.style.background = 'rgba(187, 143, 255, 0.05)'
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+              >
+                <span style={{
+                  display: 'inline-block',
+                  padding: '6px 16px',
+                  background: 'rgba(187, 143, 255, 0.15)',
+                  borderRadius: '100px',
+                  fontSize: '0.85rem',
+                  color: '#bb8fff',
+                  fontWeight: 600,
+                  marginBottom: '20px',
+                }}>
+                  Premium
+                </span>
+                <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                  <span style={{ fontSize: '2.8rem', fontWeight: 800, color: '#fff' }}>$49.95</span>
+                  <span style={{ fontSize: '1rem', color: 'rgba(255, 255, 255, 0.4)' }}>/mo</span>
+                </div>
+                <div style={{
+                  borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                  paddingTop: '20px',
+                  paddingBottom: '24px',
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  textAlign: 'left',
+                }}>
+                  {['50x more usage than Free', 'All models & features', 'Monthly rewards: usage bonuses, badges & collectible icons'].map((feature, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <CheckCircle size={16} style={{ color: '#bb8fff', flexShrink: 0 }} />
+                      <span style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.9rem' }}>{feature}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{
+                  marginTop: 'auto',
+                  padding: '12px 0',
+                  width: '100%',
+                  background: 'rgba(187, 143, 255, 0.12)',
+                  borderRadius: '10px',
+                  color: '#bb8fff',
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                }}>
+                  Subscribe to Premium
                 </div>
               </button>
             </div>
@@ -1178,10 +1259,10 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
               }}>
                 <div>
                   <span style={{ fontSize: '0.9rem', fontWeight: 600, color: selectedPlan === 'pro' ? '#48c9b0' : '#5dade2' }}>
-                    {selectedPlan === 'pro' ? 'Pro Plan' : 'Free Trial'}
+                    {selectedPlan === 'premium' ? 'Premium Plan' : selectedPlan === 'pro' ? 'Pro Plan' : 'Free Plan'}
                   </span>
                   <span style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.4)', marginLeft: '8px' }}>
-                    {selectedPlan === 'pro' ? '$19.95/mo' : 'Free'}
+                    {selectedPlan === 'premium' ? '$49.95/mo' : selectedPlan === 'pro' ? '$19.95/mo' : 'Free'}
                   </span>
                 </div>
                 <button

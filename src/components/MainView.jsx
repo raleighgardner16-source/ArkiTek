@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus, Coins, DollarSign, Maximize2, X, MessageCircle, Swords } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Check, XCircle, Flame, Sparkles, Info, Trophy, Search, Lock, FileText, LayoutGrid, Trash2, PauseCircle, Globe, Square, MessageSquarePlus, Coins, DollarSign, Maximize2, X, MessageCircle, Swords, AlertTriangle } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 import { detectCategory } from '../utils/categoryDetector'
@@ -39,7 +39,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const currentHistoryId = useStore((state) => state.currentHistoryId)
   const currentTheme = getTheme(theme)
   // Combined lock: either fully restricted (expired) or paused (voluntary)
-  const isPromptLocked = subscriptionRestricted || subscriptionPaused
+  const [usageExhausted, setUsageExhausted] = useState(false)
+  const [userPlan, setUserPlan] = useState(currentUser?.plan || 'free_trial')
+  const isPromptLocked = subscriptionRestricted || subscriptionPaused || usageExhausted
+  const isFreePlan = currentUser?.plan === 'free_trial' && !currentUser?.stripeSubscriptionId
   const navWidth = isNavExpanded ? '260px' : '60px'
   const [streakDays, setStreakDays] = useState(0)
   const setGeminiDetectionResponse = useStore((state) => state.setGeminiDetectionResponse)
@@ -99,7 +102,28 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [isCouncilColumnInputFocused, setIsCouncilColumnInputFocused] = useState(false)
   const [isSubmitPending, setIsSubmitPending] = useState(false) // Immediate UI feedback before App flips isLoading
   const [maximizedCouncilResponseId, setMaximizedCouncilResponseId] = useState(null)
+
+  // Unified council follow-up: one input sends to ALL models at once
+  const [councilFollowUpInput, setCouncilFollowUpInput] = useState('')
+  const [councilFollowUpSending, setCouncilFollowUpSending] = useState(false)
   const [resultViewMode, setResultViewMode] = useState('summary') // 'summary' | 'council'
+
+  // Check if user's usage is exhausted
+  useEffect(() => {
+    if (!currentUser?.id) return
+    const checkUsage = async () => {
+      try {
+        const res = await axios.get(`${API_URL}/api/stats`, { params: { userId: currentUser.id } })
+        const data = res.data
+        setUserPlan(data.userPlan || currentUser?.plan || 'free_trial')
+        const balance = data.totalAvailableBalance ?? data.remainingFreeAllocation ?? 0
+        setUsageExhausted(balance <= 0 && (data.freeMonthlyAllocation || 0) > 0)
+      } catch (err) {
+        // Don't block on error
+      }
+    }
+    checkUsage()
+  }, [currentUser?.id, statsRefreshTrigger])
 
   // Refs for chat layout
   const textareaRef = useRef(null)
@@ -1370,8 +1394,121 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       setCouncilColumnConvoSources({})
       setShowCouncilColumnConvoSources({})
       setShowCouncilColumnSources({})
+      setCouncilFollowUpInput('')
+      setCouncilFollowUpSending(false)
     }
   }, [responses.length])
+
+  // Unified council follow-up: sends the same prompt to ALL council models at once
+  const handleSendCouncilFollowUp = async () => {
+    const userMsg = councilFollowUpInput.trim()
+    if (!userMsg || councilFollowUpSending || !currentUser?.id) return
+
+    const activeResponses = responses.filter(r => !r.error)
+    if (activeResponses.length === 0) return
+
+    setCouncilFollowUpInput('')
+    setCouncilFollowUpSending(true)
+
+    // Fan out: add a placeholder turn to each column and start streaming all at once
+    activeResponses.forEach(response => {
+      const responseId = response.id
+      setCouncilColumnConvoHistory(prev => ({
+        ...prev,
+        [responseId]: [...(prev[responseId] || []), { user: userMsg, assistant: '', timestamp: Date.now() }]
+      }))
+      setCouncilColumnConvoSending(prev => ({ ...prev, [responseId]: true }))
+      setCouncilColumnConvoSearching(prev => ({ ...prev, [responseId]: false }))
+    })
+
+    const promises = activeResponses.map(async (response) => {
+      const responseId = response.id
+      const modelName = response.modelName || response.actualModelName
+      if (!modelName) return
+      const prevTurnCount = (councilColumnConvoHistory[responseId] || []).length
+
+      try {
+        const finalData = await streamFetch(`${API_URL}/api/model/conversation/stream`, {
+          userId: currentUser.id,
+          modelName,
+          userMessage: userMsg,
+          originalResponse: response.text || '',
+          responseId,
+        }, {
+          onToken: (token) => {
+            setCouncilColumnConvoSearching(prev => ({ ...prev, [responseId]: false }))
+            setCouncilColumnConvoHistory(prev => {
+              const turns = [...(prev[responseId] || [])]
+              if (turns.length > 0) {
+                turns[turns.length - 1] = {
+                  ...turns[turns.length - 1],
+                  assistant: (turns[turns.length - 1].assistant || '') + token
+                }
+              }
+              return { ...prev, [responseId]: turns }
+            })
+          },
+          onStatus: (message) => {
+            if (message.toLowerCase().includes('search')) {
+              setCouncilColumnConvoSearching(prev => ({ ...prev, [responseId]: true }))
+            }
+          },
+          onError: (message) => {
+            console.error('[Council Follow-Up] Stream error:', message)
+          }
+        })
+
+        if (finalData?.searchResults && finalData.searchResults.length > 0) {
+          const sourceKey = `${responseId}-${prevTurnCount}`
+          setCouncilColumnConvoSources(prev => ({ ...prev, [sourceKey]: finalData.searchResults }))
+        }
+        if (finalData?.usedSearch) {
+          useStore.getState().incrementQueryCount()
+        }
+        if (finalData?.tokens) {
+          useStore.getState().mergeTokenData(modelName, {
+            input: finalData.tokens.input || 0,
+            output: finalData.tokens.output || 0,
+            total: finalData.tokens.total || 0,
+          }, false)
+        }
+        if (currentUser?.id && finalData?.tokens?.total > 0) {
+          useStore.getState().triggerStatsRefresh()
+        }
+
+        const activeHistoryId = useStore.getState().currentHistoryId
+        if (activeHistoryId && currentUser?.id) {
+          const assistantText = finalData?.response || ''
+          if (assistantText) {
+            axios.post(`${API_URL}/api/history/update-conversation`, {
+              historyId: activeHistoryId,
+              turn: {
+                type: 'model',
+                modelName,
+                user: userMsg,
+                assistant: assistantText,
+                sources: finalData?.searchResults || [],
+              }
+            }).catch(err => console.error('[History] Error updating council follow-up turn:', err.message))
+          }
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('[Council Follow-Up] Error for', modelName, ':', error)
+        }
+        setCouncilColumnConvoHistory(prev => ({
+          ...prev,
+          [responseId]: (prev[responseId] || []).slice(0, -1)
+        }))
+      } finally {
+        setCouncilColumnConvoSending(prev => ({ ...prev, [responseId]: false }))
+        setCouncilColumnConvoSearching(prev => ({ ...prev, [responseId]: false }))
+      }
+    })
+
+    await Promise.allSettled(promises)
+    setCouncilFollowUpSending(false)
+  }
 
   // Auto-grow conversation textarea
   const adjustConvoTextarea = () => {
@@ -1850,37 +1987,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 margin: '0 2px',
               }} />
 
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '3px',
-                  padding: '3px',
-                  borderRadius: '10px',
-                  background: theme === 'light' ? '#f3f4f6' : '#1f2937',
-                }}
-              >
-                <motion.button
-                  onClick={() => setResultViewMode('summary')}
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.95 }}
-                  style={{
-                    padding: '6px 14px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: resultViewMode === 'summary'
-                      ? currentTheme.accentGradient
-                      : 'transparent',
-                    color: resultViewMode === 'summary' ? '#ffffff' : currentTheme.textSecondary,
-                    fontSize: '0.76rem',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                  }}
-                  title="Show summary response"
-                >
-                  Summary View
-                </motion.button>
+              {resultViewMode === 'summary' ? (
                 <motion.button
                   onClick={() => setResultViewMode('council')}
                   whileHover={{ scale: 1.03 }}
@@ -1889,10 +1996,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     padding: '6px 14px',
                     borderRadius: '8px',
                     border: 'none',
-                    background: resultViewMode === 'council'
-                      ? currentTheme.accentGradient
-                      : 'transparent',
-                    color: resultViewMode === 'council' ? '#ffffff' : currentTheme.textSecondary,
+                    background: theme === 'light' ? '#f3f4f6' : '#1f2937',
+                    color: currentTheme.textSecondary,
                     fontSize: '0.76rem',
                     fontWeight: '600',
                     cursor: 'pointer',
@@ -1902,43 +2007,29 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 >
                   Council Side by Side View
                 </motion.button>
-              </div>
+              ) : (
+                <motion.button
+                  onClick={() => setResultViewMode('summary')}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.95 }}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: theme === 'light' ? '#f3f4f6' : '#1f2937',
+                    color: currentTheme.textSecondary,
+                    fontSize: '0.76rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  title="Show summary response"
+                >
+                  Summary View
+                </motion.button>
+              )}
 
-              <div style={{
-                width: '1px',
-                height: '24px',
-                background: theme === 'light' ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.1)',
-                margin: '0 2px',
-              }} />
-
-              <motion.button
-                onClick={() => {
-                  if (!currentUser?.id) {
-                    alert('Please sign in to submit prompts to the Prompt Feed')
-                    return
-                  }
-                  setShowPostWindow(true)
-                }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '8px 12px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  background: theme === 'light' ? 'rgba(255, 140, 0, 0.9)' : 'rgba(255, 170, 0, 0.15)',
-                  color: theme === 'light' ? '#fff' : '#ffaa00',
-                  fontSize: '0.76rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                }}
-                title="Submit your prompt and the council's response to the Prompt Feed"
-              >
-                <Trophy size={13} />
-                Post Prompt
-              </motion.button>
+              {/* DISABLED: Post to Prompt Feed button temporarily removed (social media feature) */}
             </div>
           </motion.div>
         )}
@@ -2125,7 +2216,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     maxWidth: councilColumnCount <= 2 ? '800px' : councilColumnCount === 3 ? '1000px' : '1200px',
                     flex: 1,
                     minHeight: 0,
-                    height: '100%',
                     gap: '0',
                     overflow: 'hidden',
                   }}>
@@ -2141,7 +2231,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         )}
                         <div className="council-column-scroll" style={{
                           flex: 1,
-                          padding: '0 16px 24px',
+                          padding: '0 16px 60px',
                           overflowY: 'auto',
                           overflowX: 'hidden',
                           overscrollBehaviorY: 'contain',
@@ -2533,6 +2623,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       </React.Fragment>
                     ))}
                   </div>
+
                 </>
               )}
 
@@ -2624,6 +2715,114 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   {/* Summary streaming text */}
                   <div>
                     <MarkdownRenderer content={summary?.text || ''} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Unified council follow-up input — fixed at bottom, sends to ALL models */}
+              {showCouncilColumns && !isLoading && !isGeneratingSummary && responses.filter(r => !r.error && r.text && !r.isStreaming).length >= 2 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    padding: '8px 20px 14px',
+                    background: theme === 'light'
+                      ? 'linear-gradient(to top, rgba(255,255,255,0.98) 65%, rgba(255,255,255,0))'
+                      : 'linear-gradient(to top, rgba(10,10,15,0.98) 65%, rgba(10,10,15,0))',
+                    zIndex: 25,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    width: '100%',
+                    maxWidth: '520px',
+                    background: currentTheme.buttonBackground,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: '12px',
+                    padding: '5px 6px 5px 14px',
+                    boxShadow: theme === 'light'
+                      ? '0 2px 12px rgba(0,0,0,0.08)'
+                      : '0 2px 16px rgba(0,0,0,0.4)',
+                    pointerEvents: 'auto',
+                  }}>
+                    <input
+                      data-local-enter-handler="true"
+                      type="text"
+                      value={councilFollowUpInput}
+                      onChange={(e) => setCouncilFollowUpInput(e.target.value)}
+                      onFocus={() => setIsCouncilColumnInputFocused(true)}
+                      onBlur={() => setIsCouncilColumnInputFocused(false)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleSendCouncilFollowUp()
+                        }
+                      }}
+                      placeholder="Ask the council a follow-up..."
+                      disabled={councilFollowUpSending}
+                      style={{
+                        flex: 1,
+                        background: 'transparent',
+                        border: 'none',
+                        outline: 'none',
+                        color: currentTheme.text,
+                        fontSize: '0.8rem',
+                        fontFamily: 'inherit',
+                        padding: '5px 0',
+                      }}
+                    />
+                    <motion.button
+                      onClick={handleSendCouncilFollowUp}
+                      disabled={!councilFollowUpInput.trim() || councilFollowUpSending}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.93 }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: councilFollowUpInput.trim() && !councilFollowUpSending
+                          ? currentTheme.accentGradient
+                          : 'transparent',
+                        color: councilFollowUpInput.trim() && !councilFollowUpSending
+                          ? '#ffffff'
+                          : currentTheme.textMuted,
+                        cursor: councilFollowUpInput.trim() && !councilFollowUpSending ? 'pointer' : 'default',
+                        opacity: councilFollowUpInput.trim() && !councilFollowUpSending ? 1 : 0.4,
+                        transition: 'all 0.2s ease',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {councilFollowUpSending ? (
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+                          style={{
+                            width: '13px',
+                            height: '13px',
+                            border: `2px solid ${currentTheme.borderLight}`,
+                            borderTop: `2px solid ${currentTheme.accent}`,
+                            borderRadius: '50%',
+                          }}
+                        />
+                      ) : (
+                        <Send size={13} />
+                      )}
+                    </motion.button>
                   </div>
                 </motion.div>
               )}
@@ -3320,68 +3519,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           </div>
                         </div>
 
-                        {/* Post Prompt Button */}
-                        <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
-                        <motion.button
-                          onClick={() => {
-                            if (!currentUser?.id) {
-                              alert('Please sign in to submit prompts to the Prompt Feed')
-                              return
-                            }
-                            setShowPostWindow(true)
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: '4px 6px',
-                            background: theme === 'light' ? 'rgba(255, 140, 0, 0.85)' : 'rgba(255, 170, 0, 0.15)',
-                            border: theme === 'light' ? '1px solid rgba(200, 100, 0, 0.8)' : '1px solid rgba(255, 170, 0, 0.4)',
-                            borderRadius: '12px',
-                            color: theme === 'light' ? '#fff' : '#ffaa00',
-                            fontSize: '0.7rem',
-                            fontWeight: '500',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px',
-                            transition: 'all 0.2s ease',
-                            whiteSpace: 'nowrap',
-                            height: '28px',
-                          }}
-                          whileHover={{ 
-                            background: theme === 'light' ? 'rgba(255, 120, 0, 0.95)' : 'rgba(255, 170, 0, 0.25)',
-                          }}
-                          whileTap={{ scale: 0.96 }}
-                        >
-                          <Trophy size={12} />
-                          Post Prompt
-                        </motion.button>
-                          <div
-                            style={{ position: 'absolute', top: '-6px', right: '-6px', cursor: 'help', zIndex: 10 }}
-                            onMouseEnter={() => setShowPostPromptSingleTooltip(true)}
-                            onMouseLeave={() => setShowPostPromptSingleTooltip(false)}
-                          >
-                            <Info size={10} color={currentTheme.textMuted} />
-                            {showPostPromptSingleTooltip && (
-                              <div style={{
-                                position: 'absolute',
-                                bottom: '16px',
-                                right: 0,
-                                background: currentTheme.backgroundOverlay,
-                                border: `1px solid ${currentTheme.borderLight}`,
-                                borderRadius: '8px',
-                                padding: '6px 10px',
-                                fontSize: '0.7rem',
-                                color: currentTheme.textSecondary,
-                                width: '180px',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                                zIndex: 100,
-                              }}>
-                                Submit your prompt and response to the Prompt Feed.
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                        {/* DISABLED: Post Prompt Button temporarily removed (social media feature) */}
 
                         {/* Token Usage Button (single-model only) */}
                         {tokenData && tokenData.length > 0 && (
@@ -3657,6 +3795,125 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               overflow: 'visible',
               boxShadow: `0 2px 12px ${currentTheme.shadow}`,
             }}>
+              {/* Usage Exhausted Overlay */}
+              {usageExhausted && !subscriptionRestricted && !subscriptionPaused && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 50,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(30, 20, 50, 0.9) 100%)',
+                    backdropFilter: 'blur(6px)',
+                    borderRadius: '20px',
+                    gap: '10px',
+                    padding: '24px 20px',
+                  }}
+                >
+                  <div style={{
+                    width: '52px',
+                    height: '52px',
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, rgba(255, 170, 0, 0.2), rgba(255, 100, 0, 0.08))',
+                    border: '1.5px solid rgba(255, 170, 0, 0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <AlertTriangle size={26} color="#ffaa00" />
+                  </div>
+                  <p style={{
+                    color: '#ffaa00',
+                    fontSize: '0.95rem',
+                    fontWeight: '600',
+                    textAlign: 'center',
+                    margin: 0,
+                    lineHeight: '1.4',
+                  }}>
+                    Usage Limit Reached
+                  </p>
+                  <p style={{
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    fontSize: '0.8rem',
+                    textAlign: 'center',
+                    margin: 0,
+                    maxWidth: '300px',
+                    lineHeight: '1.4',
+                  }}>
+                    {isFreePlan
+                      ? 'Your free plan usage has been reached. Upgrade to Pro or Premium for more usage.'
+                      : 'Your monthly usage has been reached. Buy more credits or upgrade your plan.'
+                    }
+                  </p>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    {isFreePlan ? (
+                      <motion.button
+                        onClick={() => setActiveTab('settings')}
+                        whileHover={{ scale: 1.04 }}
+                        whileTap={{ scale: 0.96 }}
+                        style={{
+                          padding: '8px 20px',
+                          background: 'linear-gradient(135deg, #48c9b0, #5dade2)',
+                          border: 'none',
+                          borderRadius: '10px',
+                          color: '#fff',
+                          fontSize: '0.8rem',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          letterSpacing: '0.3px',
+                        }}
+                      >
+                        Upgrade Plan
+                      </motion.button>
+                    ) : (
+                      <>
+                        <motion.button
+                          onClick={() => setActiveTab('statistics')}
+                          whileHover={{ scale: 1.04 }}
+                          whileTap={{ scale: 0.96 }}
+                          style={{
+                            padding: '8px 20px',
+                            background: 'linear-gradient(135deg, #48c9b0, #5dade2)',
+                            border: 'none',
+                            borderRadius: '10px',
+                            color: '#fff',
+                            fontSize: '0.8rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            letterSpacing: '0.3px',
+                          }}
+                        >
+                          Buy More Usage
+                        </motion.button>
+                        <motion.button
+                          onClick={() => setActiveTab('settings')}
+                          whileHover={{ scale: 1.04 }}
+                          whileTap={{ scale: 0.96 }}
+                          style={{
+                            padding: '8px 20px',
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '10px',
+                            color: 'rgba(255, 255, 255, 0.7)',
+                            fontSize: '0.8rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            letterSpacing: '0.3px',
+                          }}
+                        >
+                          Upgrade Plan
+                        </motion.button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
               {/* Subscription Lock Overlay — shown when paused or expired */}
               {isPromptLocked && (
                 <div
@@ -4707,9 +4964,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 })}
                   </AnimatePresence>
 
-      {/* Post to Prompt Feed Window */}
+      {/* DISABLED: Post to Prompt Feed Window temporarily removed (social media feature) */}
       <AnimatePresence>
-        {showPostWindow && (
+        {false && showPostWindow && (
           <div
             onClick={() => { if (!isSubmittingToVote) { setShowPostWindow(false); setPromptPostedSuccess(false); setPostDescription(''); setPostPromptExpanded(false); setPostActiveTab(null); setPostIncludeSummary(true); setPostExcludedResponses(new Set()); setPostVisibility(userIsPrivate ? 'followers' : 'public') } }}
             style={{

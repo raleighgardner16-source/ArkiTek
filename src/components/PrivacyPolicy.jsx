@@ -129,7 +129,7 @@ const PrivacyPolicy = ({ onNavigate }) => {
               <li>Model selections and preferences</li>
               <li>Token usage and API consumption metrics</li>
               <li>Conversation history for follow-up conversations</li>
-              <li>Saved conversations and Prompt Feed posts</li>
+              <li>Saved conversations</li>
             </ul>
 
             <h3 style={{ ...headingStyle, fontSize: '1.1rem', marginTop: '16px' }}>2.3 Payment Information</h3>
@@ -157,7 +157,7 @@ const PrivacyPolicy = ({ onNavigate }) => {
               <li>Process your subscriptions and payments</li>
               <li>Send your prompts to third-party AI model providers and return their responses</li>
               <li>Maintain conversation context for follow-up messages</li>
-              <li>Display your saved conversations and Prompt Feed posts</li>
+              <li>Display your saved conversations</li>
               <li>Track usage for billing and service management</li>
               <li>Send you important service-related communications (e.g., password resets, subscription updates)</li>
               <li>Improve the Service and fix bugs</li>
@@ -228,6 +228,7 @@ const PrivacyPolicy = ({ onNavigate }) => {
             </p>
           </div>
 
+          {/* DISABLED: Community Content section temporarily removed (social media feature)
           <div style={sectionStyle}>
             <h2 style={headingStyle}>8. Community Content</h2>
             <p style={paragraphStyle}>
@@ -237,6 +238,7 @@ const PrivacyPolicy = ({ onNavigate }) => {
               sensitive information in prompts you share publicly.
             </p>
           </div>
+          */}
 
           <div style={sectionStyle}>
             <h2 style={headingStyle}>9. Children's Privacy</h2>

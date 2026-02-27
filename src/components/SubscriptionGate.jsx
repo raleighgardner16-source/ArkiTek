@@ -150,7 +150,7 @@ const InlineCheckoutForm = ({ onSuccess, onError }) => {
         ) : (
           <>
             <CreditCard size={18} />
-            Subscribe Now — $19.95/month
+            {currentUser?.plan === 'premium' ? 'Subscribe Now — $49.95/month' : 'Subscribe Now — $19.95/month'}
           </>
         )}
       </motion.button>
@@ -412,14 +412,13 @@ const SubscriptionGate = ({ currentUser }) => {
           borderRadius: '12px',
         }}>
           <h3 style={{ color: '#ffffff', fontSize: '1.05rem', marginBottom: '10px', marginTop: 0 }}>
-            ArkiTek Pro — $19.95/month
+            {currentUser?.plan === 'premium' ? 'ArkiTek Premium — $49.95/month' : 'ArkiTek Pro — $19.95/month'}
           </h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {[
-              '15x more usage',
-              'All models & features',
-              'Monthly rewards: usage bonuses, badges & collectible icons',
-            ].map((feature, i) => (
+            {(currentUser?.plan === 'premium'
+              ? ['$25/month in usage (50x more)', 'All models & features', 'Monthly rewards: usage bonuses, badges & collectible icons']
+              : ['$7.50/month in usage (15x more)', 'All models & features', 'Monthly rewards: usage bonuses, badges & collectible icons']
+            ).map((feature, i) => (
               <li key={i} style={{
                 color: 'rgba(255, 255, 255, 0.7)',
                 fontSize: '0.85rem',

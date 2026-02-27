@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, Calendar, Star, Trash2, Layers, Lock, Globe, Search, User, Users, Compass, X, Trophy } from 'lucide-react'
+import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, Calendar, Star, Trash2, Layers, Lock, Globe, Search, User, Users, Compass, X, Trophy, MessageCircle } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
 import { API_URL } from '../utils/config'
+import MessagingView from './MessagingView'
 
 // All available categories for filtering
 const CATEGORIES = [
@@ -108,7 +109,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
   }, [])
 
   const fetchLeaderboard = async () => {
-    if (activeSection === 'search') {
+    if (activeSection === 'search' || activeSection === 'messages') {
       setLoading(false)
       return
     }
@@ -1309,6 +1310,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
         return 'All Time Favorites'
       case 'search':
         return 'Search Users'
+      case 'messages':
+        return 'Messages'
       default:
         return 'Prompt Feed'
     }
@@ -1326,6 +1329,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
         return 'The top 15 most liked prompts of all time.'
       case 'search':
         return 'Find and connect with other users.'
+      case 'messages':
+        return 'Private messages and group chats.'
       default:
         return 'Vote on prompts submitted by the community.'
     }
@@ -1525,10 +1530,32 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
               <Search size={20} />
               Search Users
             </button>
+            <button
+              onClick={() => setActiveSection('messages')}
+              style={{
+                flex: 1,
+                padding: '14px 12px',
+                background: activeSection === 'messages' ? currentTheme.buttonBackgroundActive : 'transparent',
+                border: 'none',
+                borderBottom: activeSection === 'messages' ? `2px solid ${currentTheme.accent}` : '2px solid transparent',
+                color: activeSection === 'messages' ? currentTheme.accent : currentTheme.textSecondary,
+                fontSize: '1rem',
+                fontWeight: activeSection === 'messages' ? '600' : '400',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
+            >
+              <MessageCircle size={20} />
+              Messages
+            </button>
           </div>
           
           {/* Category Filter Tabs — shown for Browse, Today's, and All Time */}
-          {activeSection !== 'search' && activeSection !== 'myfeed' && (
+          {activeSection !== 'search' && activeSection !== 'myfeed' && activeSection !== 'messages' && (
           <div
             style={{
               display: 'flex',
@@ -1592,6 +1619,13 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
           )}
           
         </div>
+
+        {/* Messages Section */}
+        {activeSection === 'messages' && (
+          <div style={{ height: 'calc(100vh - 320px)', minHeight: '500px' }}>
+            <MessagingView />
+          </div>
+        )}
 
         {/* Search Users Section */}
         {activeSection === 'search' && (
@@ -1712,7 +1746,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
         )}
 
         {/* Leaderboard Content — only for My Feed/Browse */}
-        {activeSection !== 'search' && (
+        {activeSection !== 'search' && activeSection !== 'messages' && (
           <>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>

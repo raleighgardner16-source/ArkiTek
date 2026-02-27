@@ -245,6 +245,10 @@ export const useStore = create(
       notificationCount: 0,
       setNotificationCount: (count) => set({ notificationCount: count }),
 
+      // Unread message count for messaging badge
+      unreadMessageCount: 0,
+      setUnreadMessageCount: (count) => set({ unreadMessageCount: count }),
+
       // Navigation bar expanded state
       isNavExpanded: false,
       setNavExpanded: (expanded) => set({ isNavExpanded: expanded }),

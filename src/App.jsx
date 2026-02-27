@@ -6,7 +6,8 @@ import ResponseComparison from './components/ResponseComparison'
 import NavigationBar from './components/NavigationBar'
 import MainView from './components/MainView'
 import SettingsView from './components/SettingsView'
-import LeaderboardView from './components/LeaderboardView'
+// DISABLED: LeaderboardView temporarily removed (social media feature)
+// import LeaderboardView from './components/LeaderboardView'
 import StatisticsView from './components/StatisticsView'
 import SummaryWindow from './components/SummaryWindow'
 import AuthView from './components/AuthView'
@@ -1622,7 +1623,7 @@ Important: Only include each section label followed by a colon and content.`
               }}
             >
               <span style={{ fontSize: '0.9rem', color: '#ff6b6b', lineHeight: '1.4' }}>
-                {`Your subscription has ${subStatus === 'paused' ? 'been paused' : 'expired'}. You can view your profile, saved conversations, and settings, but prompts and the full Prompt Feed are unavailable.`}
+                {`Your subscription has ${subStatus === 'paused' ? 'been paused' : 'expired'}. You can view your profile, saved conversations, and settings, but prompts are unavailable.`}
               </span>
               <motion.button
                 onClick={() => setActiveTab('settings')}
@@ -1648,7 +1649,8 @@ Important: Only include each section label followed by a colon and content.`
                 {/* Main Content Area - Show based on active tab */}
                 {/* Note: AdminView is handled in early return above, so this should never render AdminView */}
                 {activeTab === 'home' && <MainView onClearAll={clearAllWindows} subscriptionRestricted={subscriptionRestricted} subscriptionPaused={subscriptionPaused} subscriptionExpiring={subscriptionExpiring} subscriptionRenewalDate={currentUser.subscriptionRenewalDate} isLoading={isLoading} isGeneratingSummary={isGeneratingSummary} onCancelPrompt={handleCancelPrompt} />}
-                {activeTab === 'leaderboard' && <LeaderboardView subscriptionRestricted={subscriptionRestricted} />}
+                {/* DISABLED: LeaderboardView temporarily removed (social media feature) */}
+                {/* {activeTab === 'leaderboard' && !(currentUser?.plan === 'free_trial' && !currentUser?.stripeSubscriptionId) && <LeaderboardView subscriptionRestricted={subscriptionRestricted} />} */}
                 {activeTab === 'saved' && <SavedConversationsView />}
                 {activeTab === 'settings' && <SettingsView />}
                 {activeTab === 'statistics' && <StatisticsView />}

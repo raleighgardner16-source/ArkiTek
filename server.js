@@ -164,6 +164,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 
 // Stripe configuration
 const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || ''
+const STRIPE_PREMIUM_PRICE_ID = process.env.STRIPE_PREMIUM_PRICE_ID || ''
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || ''
 
 // Initialize Resend (email service for password resets + email verification)
@@ -965,7 +966,7 @@ const isDisposableEmail = (email) => {
   return disposableDomains.includes(domain)
 }
 
-// Max free trials allowed per IP address (allows for shared households)
+// Max free plan signups allowed per IP address (allows for shared households)
 const MAX_FREE_TRIALS_PER_IP = 2
 
 // Get current month key (YYYY-MM)
@@ -1695,6 +1696,7 @@ app.post('/api/auth/signup', async (req, res) => {
     }
 
     const isFreeTrial = plan === 'free_trial'
+    const isPremium = plan === 'premium'
 
     if (password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' })
@@ -1718,24 +1720,24 @@ app.post('/api/auth/signup', async (req, res) => {
       // 2. Check canonical email — catches Gmail alias abuse (john+1@gmail.com, j.o.h.n@gmail.com)
       const existingCanonical = await db.users.getByCanonicalEmail(canonical)
       if (existingCanonical && existingCanonical.plan === 'free_trial') {
-        console.log('[Auth] ❌ Canonical email already used for free trial:', canonical)
-        return res.status(400).json({ error: 'A free trial has already been used with this email address.' })
+        console.log('[Auth] ❌ Canonical email already used for free plan:', canonical)
+        return res.status(400).json({ error: 'A free plan account already exists with this email address.' })
       }
 
-      // 3. IP-based rate limiting — max N free trials per IP (allows shared households)
+      // 3. IP-based rate limiting — max N free plan signups per IP (allows shared households)
       const signupIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown'
       const trialCountFromIp = await db.users.countFreeTrialsByIp(signupIp)
       if (trialCountFromIp >= MAX_FREE_TRIALS_PER_IP) {
-        console.log(`[Auth] ❌ IP ${signupIp} exceeded free trial limit (${trialCountFromIp}/${MAX_FREE_TRIALS_PER_IP})`)
-        return res.status(400).json({ error: 'Free trial limit reached for this network. Please subscribe to a Pro plan to continue.' })
+        console.log(`[Auth] ❌ IP ${signupIp} exceeded free plan limit (${trialCountFromIp}/${MAX_FREE_TRIALS_PER_IP})`)
+        return res.status(400).json({ error: 'Free plan limit reached for this network. Please subscribe to a Pro plan to continue.' })
       }
 
-      // 4. Device fingerprint check — same browser can't get multiple free trials
+      // 4. Device fingerprint check — same browser can't get multiple free plan accounts
       if (fingerprint) {
         const existingFingerprint = await db.users.getFreeTrialByFingerprint(fingerprint)
         if (existingFingerprint) {
-          console.log('[Auth] ❌ Device fingerprint already used for free trial:', fingerprint.substring(0, 12) + '...')
-          return res.status(400).json({ error: 'A free trial has already been used on this device. Please subscribe to a Pro plan to continue.' })
+          console.log('[Auth] ❌ Device fingerprint already used for free plan:', fingerprint.substring(0, 12) + '...')
+          return res.status(400).json({ error: 'A free plan account already exists on this device. Please subscribe to a Pro plan to continue.' })
         }
       }
     }
@@ -1756,8 +1758,8 @@ app.post('/api/auth/signup', async (req, res) => {
     const userId = crypto.randomUUID()
     const signupIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown'
     
-    // Both free trial and pro start as pending_verification (must verify email first)
-    // Free trial: pending_verification → trialing (after email verified)
+    // Both free plan and pro start as pending_verification (must verify email first)
+    // Free plan: pending_verification → trialing (after email verified, $0.50/month allocation)
     // Pro: pending_verification → inactive (after email verified) → active (after payment)
     const initialStatus = 'pending_verification'
     
@@ -1772,7 +1774,7 @@ app.post('/api/auth/signup', async (req, res) => {
       signupIp,
       deviceFingerprint: fingerprint || null,
       emailVerified: false,
-      plan: isFreeTrial ? 'free_trial' : null,
+      plan: isFreeTrial ? 'free_trial' : (isPremium ? 'premium' : 'pro'),
       timezone: timezone || null,
     })
     console.log('[Auth] User created in MongoDB:', userId, '| status:', initialStatus)
@@ -1798,7 +1800,7 @@ app.post('/api/auth/signup', async (req, res) => {
       lastActiveAt: null,
       monthlyUsageCost: {},
       monthlyOverageBilled: {},
-      plan: isFreeTrial ? 'free_trial' : null,
+      plan: isFreeTrial ? 'free_trial' : (isPremium ? 'premium' : 'pro'),
       emailVerified: false,
       signupIp,
       deviceFingerprint: fingerprint || null,
@@ -1811,7 +1813,7 @@ app.post('/api/auth/signup', async (req, res) => {
     }
     usersCache = users
 
-    // Initialize usage tracking in cache (no credits yet for free trial — granted after email verification)
+    // Initialize usage tracking in cache (free plan allocation kicks in after email verification)
     const usage = readUsage()
     usage[userId] = {
       totalTokens: 0,
@@ -1835,7 +1837,7 @@ app.post('/api/auth/signup', async (req, res) => {
     usageCache = usage
 
     // ==================== EMAIL VERIFICATION (all plans) ====================
-    // Both free trial AND pro plans require email verification before proceeding
+    // Both free plan AND pro plans require email verification before proceeding
     const verifyToken = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
 
@@ -1858,7 +1860,7 @@ app.post('/api/auth/signup', async (req, res) => {
     // Send verification email
     const verifyLink = `${APP_URL}/#verify-email?token=${verifyToken}`
     const emailPurpose = isFreeTrial
-      ? 'Please verify your email address to continue setting up your free trial.'
+      ? 'Please verify your email address to activate your free plan.'
       : 'Please verify your email address to complete your account setup.'
     try {
       if (resend) {
@@ -1903,7 +1905,7 @@ app.post('/api/auth/signup', async (req, res) => {
     }
 
     const signupMessage = isFreeTrial
-      ? 'Account created! Please check your email to verify your account and activate your free trial.'
+      ? 'Account created! Please check your email to verify your account and activate your free plan.'
       : 'Account created! Please check your email to verify your account.'
 
     return res.json({
@@ -1918,7 +1920,7 @@ app.post('/api/auth/signup', async (req, res) => {
         email,
         subscriptionStatus: 'pending_verification',
         subscriptionRenewalDate: null,
-        plan: isFreeTrial ? 'free_trial' : 'pro',
+        plan: isFreeTrial ? 'free_trial' : (isPremium ? 'premium' : 'pro'),
         emailVerified: false,
       },
     })
@@ -2331,7 +2333,7 @@ setInterval(async () => {
 // EMAIL VERIFICATION
 // ============================================================================
 
-// Verify email — handles both free trial (needs phone next) and pro (goes to payment)
+// Verify email — handles both free plan (activates immediately) and pro (goes to payment)
 app.post('/api/auth/verify-email', async (req, res) => {
   try {
     const { token } = req.body
@@ -2387,8 +2389,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
     const isFreeTrial = dbUser.plan === 'free_trial'
 
     if (isFreeTrial) {
-      // FREE TRIAL: Email verified → activate trial immediately
-      const freeTrialCredits = 0.50
+      // FREE PLAN: Email verified → activate immediately with $0.50/month recurring allocation (no one-time credits)
 
       await db.users.update(userId, {
         emailVerified: true,
@@ -2424,7 +2425,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
       }
       writeUsers(users, userId)
 
-      // Grant free trial credits
+      // Initialize usage tracking (no purchased credits — free plan uses $0.50/month recurring allocation)
       const usage = readUsage()
       if (!usage[userId]) {
         usage[userId] = {
@@ -2432,10 +2433,8 @@ app.post('/api/auth/verify-email', async (req, res) => {
           totalQueries: 0, totalPrompts: 0, monthlyUsage: {}, dailyUsage: {},
           providers: {}, models: {}, promptHistory: [], categories: {}, categoryPrompts: {},
           ratings: {}, lastActiveAt: null, streakDays: 0, judgeConversationContext: [],
-          purchasedCredits: { total: freeTrialCredits, remaining: freeTrialCredits },
+          purchasedCredits: { total: 0, remaining: 0 },
         }
-      } else {
-        usage[userId].purchasedCredits = { total: freeTrialCredits, remaining: freeTrialCredits }
       }
       usageCache = usage
       scheduleUsageSync(userId)
@@ -2449,10 +2448,10 @@ app.post('/api/auth/verify-email', async (req, res) => {
         console.error('[Auth] Error marking verification token as used:', dbErr)
       }
 
-      console.log('[Auth] ✅ Email verified + free trial activated for user:', userId)
+      console.log('[Auth] ✅ Email verified + free plan activated for user:', userId)
       res.json({
         success: true,
-        message: 'Email verified! Your free trial is now active.',
+        message: 'Email verified! Your free plan is now active.',
         user: {
           id: dbUser._id,
           firstName: dbUser.firstName,
@@ -2467,7 +2466,8 @@ app.post('/api/auth/verify-email', async (req, res) => {
         },
       })
     } else {
-      // PRO PLAN: Email verified → go to payment (status becomes inactive)
+      // PAID PLAN (Pro or Premium): Email verified → go to payment (status becomes inactive)
+      const userPlan = dbUser.plan || 'pro'
       await db.users.update(userId, {
         emailVerified: true,
         subscriptionStatus: 'inactive',
@@ -2485,7 +2485,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
           subscriptionStartedDate: null, subscriptionPausedDate: null,
           cancellationHistory: dbUser.cancellationHistory || [], lastActiveAt: null,
           monthlyUsageCost: {}, monthlyOverageBilled: {},
-          plan: dbUser.plan || null, emailVerified: true,
+          plan: userPlan, emailVerified: true,
           timezone: dbUser.timezone || null, signupIp: dbUser.signupIp || null,
           deviceFingerprint: dbUser.deviceFingerprint || null,
           bio: dbUser.bio || '', profileImage: dbUser.profileImage || null,
@@ -2493,7 +2493,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
           followers: dbUser.followers || [], following: dbUser.following || [],
           followRequests: dbUser.followRequests || [], sentFollowRequests: dbUser.sentFollowRequests || [],
         }
-        console.log('[Auth] Added missing user to cache during verify-email (pro):', userId)
+        console.log(`[Auth] Added missing user to cache during verify-email (${userPlan}):`, userId)
       } else {
         users[userId].emailVerified = true
         users[userId].subscriptionStatus = 'inactive'
@@ -2509,7 +2509,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
         console.error('[Auth] Error marking verification token as used:', dbErr)
       }
 
-      console.log('[Auth] ✅ Email verified for pro user (ready for payment):', userId)
+      console.log(`[Auth] ✅ Email verified for ${userPlan} user (ready for payment):`, userId)
       res.json({
         success: true,
         message: 'Email verified! Setting up your account...',
@@ -2522,7 +2522,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
           subscriptionStatus: 'inactive',
           subscriptionRenewalDate: null,
           emailVerified: true,
-          plan: 'pro',
+          plan: userPlan,
           modelPreferences: dbUser.modelPreferences || null,
         },
       })
@@ -2782,7 +2782,7 @@ app.delete('/api/auth/account', async (req, res) => {
     // Store user info for logging before deletion
     const userInfo = { username: dbUser.username, email: dbUser.email }
 
-    // Preserve free trial abuse prevention data before deletion
+    // Preserve free plan abuse prevention data before deletion
     if (dbUser.plan === 'free_trial') {
       await db.users.recordUsedTrial({
         canonicalEmail: dbUser.canonicalEmail || dbUser.email,
@@ -2790,7 +2790,7 @@ app.delete('/api/auth/account', async (req, res) => {
         signupIp: dbUser.signupIp || null,
         deviceFingerprint: dbUser.deviceFingerprint || null,
       })
-      console.log(`[Account Deletion] Recorded used free trial for abuse prevention: ${dbUser.email}`)
+      console.log(`[Account Deletion] Recorded used free plan for abuse prevention: ${dbUser.email}`)
     }
 
     // Cancel Stripe subscription if active
@@ -2941,10 +2941,9 @@ app.get('/api/stats/:userId', async (req, res) => {
   const createdAt = user?.createdAt || null
 
   // Calculate monthly cost and remaining free allocation
-  // Free trial users only get their $0.50 purchasedCredits — no monthly allocation.
-  // Defensive: trialing users with no Stripe subscription are free trial users even if plan field is missing.
-  const isFreeTrial = user?.plan === 'free_trial' || (user?.subscriptionStatus === 'trialing' && !user?.stripeSubscriptionId)
-  const FREE_MONTHLY_ALLOCATION = isFreeTrial ? 0 : 7.50
+  // Free plan users get $0.50/month recurring allocation. Pro users get $7.50/month.
+  // Defensive: trialing users with no Stripe subscription are free plan users even if plan field is missing.
+  const FREE_MONTHLY_ALLOCATION = getPlanAllocation(user)
   
   // Get the tracked monthly cost from users cache (incremental counter)
   let cachedMonthlyCost = user?.monthlyUsageCost?.[currentMonth] || 0
@@ -3089,6 +3088,10 @@ app.get('/api/stats/:userId', async (req, res) => {
   const totalPrompts = userUsage.totalPrompts || 0
   const monthlyPrompts = monthlyStats.prompts || 0
 
+  const usagePercentUsed = effectiveAllocation > 0 ? Math.min((monthlyCost / effectiveAllocation) * 100, 100) : 0
+  const usagePercentRemaining = Math.max(0, 100 - usagePercentUsed)
+  const purchasedCreditsPercent = effectiveAllocation > 0 ? (purchasedCreditsRemaining / effectiveAllocation) * 100 : 0
+
   res.json({
     totalTokens: totalTokens,
     totalInputTokens: userUsage.totalInputTokens || 0,
@@ -3100,8 +3103,12 @@ app.get('/api/stats/:userId', async (req, res) => {
     monthlyPrompts: monthlyPrompts,
     monthlyCost: roundCents(monthlyCost),
     freeMonthlyAllocation: FREE_MONTHLY_ALLOCATION,
+    userPlan: user?.plan || (user?.subscriptionStatus === 'trialing' && !user?.stripeSubscriptionId ? 'free_trial' : 'pro'),
     remainingFreeAllocation: roundCents(remainingFreeAllocation),
     freeUsagePercentage: Math.round(freeUsagePercentage * 100) / 100,
+    usagePercentUsed: Math.round(usagePercentUsed * 100) / 100,
+    usagePercentRemaining: Math.round(usagePercentRemaining * 100) / 100,
+    purchasedCreditsPercent: Math.round(purchasedCreditsPercent * 100) / 100,
     totalAvailableBalance: roundCents(totalAvailableBalance),
     effectiveAllocation: roundCents(effectiveAllocation),
     purchasedCredits: {
@@ -4832,6 +4839,65 @@ const buildTokenBreakdown = (userQuery, sourceContent, totalInputTokens) => {
   }
 }
 
+// Get the monthly usage allocation for a user based on their plan
+const getPlanAllocation = (user) => {
+  const plan = user?.plan
+  const status = user?.subscriptionStatus
+  const hasStripe = !!user?.stripeSubscriptionId
+  
+  if (plan === 'premium') return 25.00
+  if (plan === 'pro' || (status === 'active' && hasStripe)) return 7.50
+  // Free plan or trialing without stripe = free plan
+  if (plan === 'free_trial' || (status === 'trialing' && !hasStripe)) return 0.50
+  return 7.50 // Default to pro for active stripe subscribers
+}
+
+// Track which users have already been sent a usage-exhausted email this month (prevents spam)
+const usageExhaustedEmailsSent = new Map() // key: `${userId}-${month}`, value: true
+
+const sendUsageExhaustedEmail = async (userId, user, planAllocation, monthlyCost) => {
+  if (!resend || !user?.email) return
+  
+  const tz = getUserTimezone(userId)
+  const currentMonth = getMonthForUser(tz)
+  const emailKey = `${userId}-${currentMonth}`
+  
+  // Only send once per user per month
+  if (usageExhaustedEmailsSent.has(emailKey)) return
+  usageExhaustedEmailsSent.set(emailKey, true)
+  
+  const isFreePlan = user.plan === 'free_trial' || (user.subscriptionStatus === 'trialing' && !user.stripeSubscriptionId)
+  const planName = isFreePlan ? 'Free' : (user.plan === 'premium' ? 'Premium' : 'Pro')
+  const firstName = user.firstName || user.username || 'there'
+  
+  const upgradeMessage = isFreePlan
+    ? `<p style="margin: 0 0 16px 0; line-height: 1.6;">To continue using ArkiTek, please <strong>upgrade your plan</strong>. Our Pro plan ($19.95/month) includes $7.50 in monthly usage, and our Premium plan ($49.95/month) includes $25 in monthly usage.</p>
+       <a href="${APP_URL}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #48c9b0, #5dade2); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 8px 0;">Upgrade Your Plan</a>`
+    : `<p style="margin: 0 0 16px 0; line-height: 1.6;">You can <strong>purchase additional usage credits</strong> in the Profile tab, or <strong>upgrade your plan</strong> for a higher monthly allocation.</p>
+       <a href="${APP_URL}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #48c9b0, #5dade2); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 8px 0;">Get More Usage</a>`
+
+  try {
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: user.email,
+      subject: `${APP_NAME} — Your Monthly Usage Has Been Reached`,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 500px; margin: 0 auto; padding: 32px; background: #0a0a0a; color: #e0e0e0; border-radius: 16px;">
+          <h2 style="margin: 0 0 20px 0; color: #ffffff;">Hi ${firstName},</h2>
+          <p style="margin: 0 0 16px 0; line-height: 1.6;">Your <strong>${planName} plan</strong> monthly usage of <strong>$${planAllocation.toFixed(2)}</strong> has been reached for this billing period. You've used <strong>$${monthlyCost.toFixed(2)}</strong> so far.</p>
+          ${upgradeMessage}
+          <p style="margin: 24px 0 0 0; color: #888888; font-size: 0.85rem;">Your usage allocation resets at the start of each billing month.</p>
+          <hr style="border: none; border-top: 1px solid #222; margin: 24px 0;" />
+          <p style="margin: 0; color: #666666; font-size: 0.8rem;">— The ${APP_NAME} Team</p>
+        </div>
+      `,
+    })
+    console.log(`[Usage Email] Sent usage exhaustion email to ${user.email} (${user.plan} plan, spent $${monthlyCost.toFixed(2)}/$${planAllocation.toFixed(2)})`)
+  } catch (err) {
+    console.error(`[Usage Email] Error sending to ${user.email}:`, err.message)
+  }
+}
+
 // Helper function to check if user has active subscription
 const checkSubscriptionStatus = async (userId) => {
   if (!userId) {
@@ -4869,19 +4935,27 @@ const checkSubscriptionStatus = async (userId) => {
       }
     }
 
-    // Free trial users: enforce spending limit (purchased credits only, no $7.50 monthly allocation)
-    // Defensive: trialing users with no Stripe subscription are free trial users even if plan field is missing
-    const isFreeTrial = user.plan === 'free_trial' || (status === 'trialing' && !user.stripeSubscriptionId)
-    if (isFreeTrial) {
-      const tz = getUserTimezone(userId)
-      const currentMonth = getMonthForUser(tz)
-      const monthlyCost = user.monthlyUsageCost?.[currentMonth] || 0
-      const usage = readUsage()
-      const purchasedCreditsTotal = usage[userId]?.purchasedCredits?.total || 0
+    // Enforce usage limits for ALL plans
+    const planAllocation = getPlanAllocation(user)
+    const isFreePlan = user.plan === 'free_trial' || (status === 'trialing' && !user.stripeSubscriptionId)
+    const tz = getUserTimezone(userId)
+    const currentMonth = getMonthForUser(tz)
+    const monthlyCost = user.monthlyUsageCost?.[currentMonth] || 0
+    const usage = readUsage()
+    const purchasedCreditsRemaining = usage[userId]?.purchasedCredits?.remaining || 0
+    const totalBudget = planAllocation + purchasedCreditsRemaining
 
-      if (monthlyCost >= purchasedCreditsTotal) {
-        console.log(`[Subscription Check] Free trial budget exhausted for user ${userId}: spent $${monthlyCost.toFixed(4)}, total credits: $${purchasedCreditsTotal.toFixed(2)}`)
-        return { hasAccess: false, reason: 'Your free trial credits have been used up. Please upgrade to a Pro plan to continue.' }
+    if (monthlyCost >= totalBudget) {
+      // Send usage exhaustion email (async, non-blocking)
+      sendUsageExhaustedEmail(userId, user, planAllocation, monthlyCost).catch(err => {
+        console.error(`[Usage Email] Failed to send exhaustion email for ${userId}:`, err.message)
+      })
+
+      const planName = isFreePlan ? 'free plan' : (user.plan === 'premium' ? 'premium plan' : 'pro plan')
+      if (isFreePlan) {
+        return { hasAccess: false, reason: 'Your free plan monthly usage has been reached. Upgrade your plan to get more usage.', usageExhausted: true, planType: 'free' }
+      } else {
+        return { hasAccess: false, reason: `Your ${planName} monthly usage has been reached. Purchase additional credits or upgrade your plan for more usage.`, usageExhausted: true, planType: user.plan || 'pro' }
       }
     }
 
@@ -4958,8 +5032,10 @@ app.post('/api/llm', async (req, res) => {
       const subscriptionCheck = await checkSubscriptionStatusAsync(userId)
       if (!subscriptionCheck.hasAccess) {
         return res.status(403).json({ 
-          error: 'Active subscription required. Please subscribe to use this service.',
-          subscriptionRequired: true,
+          error: subscriptionCheck.usageExhausted ? subscriptionCheck.reason : 'Active subscription required. Please subscribe to use this service.',
+          subscriptionRequired: !subscriptionCheck.usageExhausted,
+          usageExhausted: subscriptionCheck.usageExhausted || false,
+          planType: subscriptionCheck.planType || null,
           reason: subscriptionCheck.reason
         })
       }
@@ -9781,11 +9857,11 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
     }
 
     const subscriptionPrice = 19.95
-    const freeTrialCost = 0.50
+    const freePlanMonthlyCost = 0.50
     const newSubscriptionRevenue = newSubscriptions * subscriptionPrice
     const renewalRevenue = renewedSubscriptions * subscriptionPrice
     const totalSubscriptionRevenue = newSubscriptionRevenue + renewalRevenue
-    const totalFreeTrialCost = newFreeTrials * freeTrialCost
+    const totalFreeTrialCost = activeFreeTrials * freePlanMonthlyCost
     const totalRevenue = totalSubscriptionRevenue + totalCreditRevenue
 
     let storePurchases = []
@@ -9870,7 +9946,7 @@ app.get('/api/admin/revenue', requireAdmin, async (req, res) => {
         subscriptionUsers,
         activeFreeTrials,
         newFreeTrials,
-        freeTrialCost,
+        freeTrialCost: freePlanMonthlyCost,
         totalFreeTrialCost,
         freeTrialUsers,
         activeUsersList,
@@ -11696,6 +11772,230 @@ app.post('/api/notifications/mark-read', async (req, res) => {
   }
 })
 
+// ==================== MESSAGING / DM ENDPOINTS ====================
+
+// Get conversations for a user (filtered by type: dm or group)
+app.get('/api/messages/conversations/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params
+    const { type } = req.query
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+
+    const dbInstance = await db.getDb()
+    const filter = { 'participants.userId': userId }
+    if (type === 'dm' || type === 'group') filter.type = type
+
+    const conversations = await dbInstance.collection('conversations')
+      .find(filter)
+      .sort({ lastMessageAt: -1 })
+      .toArray()
+
+    res.json({ conversations })
+  } catch (error) {
+    console.error('[Messages] Error fetching conversations:', error)
+    res.status(500).json({ error: 'Failed to fetch conversations' })
+  }
+})
+
+// Get messages for a conversation (and mark as read)
+app.get('/api/messages/conversation/:conversationId', async (req, res) => {
+  try {
+    const { conversationId } = req.params
+    const { userId } = req.query
+    if (!conversationId) return res.status(400).json({ error: 'conversationId is required' })
+
+    const dbInstance = await db.getDb()
+    const messages = await dbInstance.collection('messages')
+      .find({ conversationId })
+      .sort({ createdAt: 1 })
+      .limit(200)
+      .toArray()
+
+    if (userId) {
+      await dbInstance.collection('messages').updateMany(
+        { conversationId, readBy: { $ne: userId } },
+        { $addToSet: { readBy: userId } }
+      )
+    }
+
+    res.json({ messages })
+  } catch (error) {
+    console.error('[Messages] Error fetching messages:', error)
+    res.status(500).json({ error: 'Failed to fetch messages' })
+  }
+})
+
+// Send a message
+app.post('/api/messages/send', async (req, res) => {
+  try {
+    const { conversationId, senderId, text } = req.body
+    if (!conversationId || !senderId || !text?.trim()) {
+      return res.status(400).json({ error: 'conversationId, senderId, and text are required' })
+    }
+
+    const dbInstance = await db.getDb()
+
+    const conv = await dbInstance.collection('conversations').findOne({ _id: conversationId })
+    if (!conv) return res.status(404).json({ error: 'Conversation not found' })
+    if (!conv.participants.some(p => p.userId === senderId)) {
+      return res.status(403).json({ error: 'Not a participant' })
+    }
+
+    const sender = conv.participants.find(p => p.userId === senderId)
+    const message = {
+      _id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      conversationId,
+      senderId,
+      senderUsername: sender?.username || 'Unknown',
+      senderProfileImage: sender?.profileImage || null,
+      text: text.trim(),
+      createdAt: new Date().toISOString(),
+      readBy: [senderId],
+    }
+
+    await dbInstance.collection('messages').insertOne(message)
+
+    await dbInstance.collection('conversations').updateOne(
+      { _id: conversationId },
+      {
+        $set: {
+          lastMessage: text.trim().substring(0, 100),
+          lastMessageAt: message.createdAt,
+          lastMessageBy: senderId,
+        },
+      }
+    )
+
+    res.json({ success: true, message })
+  } catch (error) {
+    console.error('[Messages] Error sending message:', error)
+    res.status(500).json({ error: 'Failed to send message' })
+  }
+})
+
+// Create a DM conversation (or return existing one)
+app.post('/api/messages/conversation/create', async (req, res) => {
+  try {
+    const { type, creatorId, participantIds } = req.body
+    if (!creatorId || !participantIds?.length) {
+      return res.status(400).json({ error: 'creatorId and participantIds are required' })
+    }
+
+    const dbInstance = await db.getDb()
+
+    if (type === 'dm' && participantIds.length === 1) {
+      const allIds = [creatorId, participantIds[0]].sort()
+      const existing = await dbInstance.collection('conversations').findOne({
+        type: 'dm',
+        'participants.userId': { $all: allIds },
+        $expr: { $eq: [{ $size: '$participants' }, 2] },
+      })
+      if (existing) return res.json({ conversation: existing, existing: true })
+    }
+
+    const allUserIds = [creatorId, ...participantIds]
+    const usersCol = dbInstance.collection('users')
+    const participants = []
+    for (const uid of allUserIds) {
+      const user = await usersCol.findOne({ uniqueId: uid })
+      participants.push({
+        userId: uid,
+        username: user?.username || 'Unknown',
+        profileImage: user?.profileImage || null,
+      })
+    }
+
+    const conversation = {
+      _id: `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      type: type || 'dm',
+      name: null,
+      description: null,
+      participants,
+      createdBy: creatorId,
+      createdAt: new Date().toISOString(),
+      lastMessage: null,
+      lastMessageAt: new Date().toISOString(),
+      lastMessageBy: null,
+    }
+
+    await dbInstance.collection('conversations').insertOne(conversation)
+    res.json({ conversation })
+  } catch (error) {
+    console.error('[Messages] Error creating conversation:', error)
+    res.status(500).json({ error: 'Failed to create conversation' })
+  }
+})
+
+// Create a group conversation
+app.post('/api/messages/group/create', async (req, res) => {
+  try {
+    const { creatorId, name, description, memberIds } = req.body
+    if (!creatorId || !name?.trim()) {
+      return res.status(400).json({ error: 'creatorId and name are required' })
+    }
+
+    const dbInstance = await db.getDb()
+    const allUserIds = [creatorId, ...(memberIds || [])]
+    const usersCol = dbInstance.collection('users')
+    const participants = []
+    for (const uid of [...new Set(allUserIds)]) {
+      const user = await usersCol.findOne({ uniqueId: uid })
+      participants.push({
+        userId: uid,
+        username: user?.username || 'Unknown',
+        profileImage: user?.profileImage || null,
+      })
+    }
+
+    const conversation = {
+      _id: `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      type: 'group',
+      name: name.trim(),
+      description: description?.trim() || null,
+      participants,
+      createdBy: creatorId,
+      createdAt: new Date().toISOString(),
+      lastMessage: null,
+      lastMessageAt: new Date().toISOString(),
+      lastMessageBy: null,
+    }
+
+    await dbInstance.collection('conversations').insertOne(conversation)
+    res.json({ conversation })
+  } catch (error) {
+    console.error('[Messages] Error creating group:', error)
+    res.status(500).json({ error: 'Failed to create group' })
+  }
+})
+
+// Get unread message count for a user
+app.get('/api/messages/unread/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params
+    if (!userId) return res.status(400).json({ error: 'userId is required' })
+
+    const dbInstance = await db.getDb()
+    const convos = await dbInstance.collection('conversations')
+      .find({ 'participants.userId': userId })
+      .project({ _id: 1 })
+      .toArray()
+
+    const convoIds = convos.map(c => c._id)
+    if (convoIds.length === 0) return res.json({ unreadCount: 0 })
+
+    const unreadCount = await dbInstance.collection('messages').countDocuments({
+      conversationId: { $in: convoIds },
+      senderId: { $ne: userId },
+      readBy: { $ne: userId },
+    })
+
+    res.json({ unreadCount })
+  } catch (error) {
+    console.error('[Messages] Error getting unread count:', error)
+    res.status(500).json({ error: 'Failed to get unread count' })
+  }
+})
+
 // ==================== STRIPE SUBSCRIPTION ENDPOINTS ====================
 
 // Get user's payment method info (last 4 digits, brand, etc.)
@@ -12365,11 +12665,6 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
     }
     subscriptionIntentLocks.add(userId)
 
-    if (!STRIPE_PRICE_ID) {
-      subscriptionIntentLocks.delete(userId)
-      return res.status(500).json({ error: 'Stripe price ID not configured' })
-    }
-
     await ensureUserInCache(userId)
     const users = readUsers()
     const user = users[userId]
@@ -12377,6 +12672,13 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
     if (!user) {
       subscriptionIntentLocks.delete(userId)
       return res.status(404).json({ error: 'User not found' })
+    }
+
+    // Select the correct Stripe Price ID based on user's plan
+    const priceId = user.plan === 'premium' ? STRIPE_PREMIUM_PRICE_ID : STRIPE_PRICE_ID
+    if (!priceId) {
+      subscriptionIntentLocks.delete(userId)
+      return res.status(500).json({ error: 'Stripe price ID not configured for this plan' })
     }
 
     // Create or retrieve Stripe customer
@@ -12496,7 +12798,7 @@ app.post('/api/stripe/create-subscription-intent', async (req, res) => {
     // Create subscription with incomplete payment so we can collect card info inline
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
-      items: [{ price: STRIPE_PRICE_ID }],
+      items: [{ price: priceId }],
       payment_behavior: 'default_incomplete',
       payment_settings: {
         save_default_payment_method: 'on_subscription',
@@ -12611,15 +12913,17 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
       return res.status(400).json({ error: 'userId is required' })
     }
 
-    if (!STRIPE_PRICE_ID) {
-      return res.status(500).json({ error: 'Stripe price ID not configured' })
-    }
-
     const users = readUsers()
     const user = users[userId]
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' })
+    }
+
+    // Select the correct Stripe Price ID based on user's plan
+    const priceId = user.plan === 'premium' ? STRIPE_PREMIUM_PRICE_ID : STRIPE_PRICE_ID
+    if (!priceId) {
+      return res.status(500).json({ error: 'Stripe price ID not configured for this plan' })
     }
 
     // Create or retrieve Stripe customer
@@ -12646,7 +12950,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
       payment_method_types: ['card'],
       line_items: [
         {
-          price: STRIPE_PRICE_ID,
+          price: priceId,
           quantity: 1,
         },
       ],
@@ -12781,9 +13085,10 @@ app.post('/api/stripe/resume-subscription', async (req, res) => {
       // Create a new subscription with trial_end = renewalDate
       // This means: no charge now, billing starts when the already-paid period ends
       const trialEndUnix = Math.floor(renewalDate.getTime() / 1000)
+      const resumePriceId = user.plan === 'premium' ? STRIPE_PREMIUM_PRICE_ID : STRIPE_PRICE_ID
       const subscription = await stripe.subscriptions.create({
         customer: user.stripeCustomerId,
-        items: [{ price: STRIPE_PRICE_ID }],
+        items: [{ price: resumePriceId || STRIPE_PRICE_ID }],
         default_payment_method: defaultPaymentMethod,
         trial_end: trialEndUnix,
         metadata: { userId },
@@ -12831,9 +13136,10 @@ app.post('/api/stripe/resume-subscription', async (req, res) => {
           invoice_settings: { default_payment_method: defaultPaymentMethod },
         })
 
+        const fallbackPriceId = user.plan === 'premium' ? STRIPE_PREMIUM_PRICE_ID : STRIPE_PRICE_ID
         const subscription = await stripe.subscriptions.create({
           customer: user.stripeCustomerId,
-          items: [{ price: STRIPE_PRICE_ID }],
+          items: [{ price: fallbackPriceId || STRIPE_PRICE_ID }],
           default_payment_method: defaultPaymentMethod,
           metadata: { userId },
         })
@@ -12889,7 +13195,7 @@ app.post('/api/stripe/cancel-subscription-delete-account', async (req, res) => {
       return res.status(404).json({ error: 'User not found' })
     }
 
-    // Preserve free trial abuse prevention data before deletion
+    // Preserve free plan abuse prevention data before deletion
     if (user.plan === 'free_trial') {
       await db.users.recordUsedTrial({
         canonicalEmail: user.canonicalEmail || user.email,
@@ -12897,7 +13203,7 @@ app.post('/api/stripe/cancel-subscription-delete-account', async (req, res) => {
         signupIp: user.signupIp || null,
         deviceFingerprint: user.deviceFingerprint || null,
       })
-      console.log(`[Stripe] Recorded used free trial for abuse prevention: ${user.email}`)
+      console.log(`[Stripe] Recorded used free plan for abuse prevention: ${user.email}`)
     }
 
     // Cancel subscription in Stripe if it exists
@@ -12976,9 +13282,7 @@ const calculateAndRecordOverage = async (userId, month) => {
     }
     
     // Calculate monthly cost
-    // Free trial users have no monthly allocation (they only get purchasedCredits)
-    const isFreeTrial = user?.plan === 'free_trial' || (user?.subscriptionStatus === 'trialing' && !user?.stripeSubscriptionId)
-    const FREE_MONTHLY_ALLOCATION = isFreeTrial ? 0 : 7.50
+    const FREE_MONTHLY_ALLOCATION = getPlanAllocation(user)
     const pricing = getPricingData()
     const dailyData = userUsage.dailyUsage?.[month] || {}
     let monthlyCost = 0
@@ -13007,7 +13311,7 @@ const calculateAndRecordOverage = async (userId, month) => {
       }
     })
     
-    // Calculate overage (cost above free allocation — $7.50 for pro, $0 for free trial)
+    // Calculate overage (cost above free allocation — $7.50 for pro, $0.50 for free plan)
     const overage = Math.max(0, monthlyCost - FREE_MONTHLY_ALLOCATION)
     
     // Update user's monthly usage cost

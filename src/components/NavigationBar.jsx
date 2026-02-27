@@ -18,8 +18,11 @@ const NavigationBar = () => {
   const toggleTheme = useStore((state) => state.toggleTheme)
   const setNavExpanded = useStore((state) => state.setNavExpanded)
   const clearViewingProfile = useStore((state) => state.clearViewingProfile)
-  const notificationCount = useStore((state) => state.notificationCount)
-  const setNotificationCount = useStore((state) => state.setNotificationCount)
+  // DISABLED: Social media features temporarily removed
+  // const notificationCount = useStore((state) => state.notificationCount)
+  // const setNotificationCount = useStore((state) => state.setNotificationCount)
+  // const unreadMessageCount = useStore((state) => state.unreadMessageCount)
+  // const setUnreadMessageCount = useStore((state) => state.setUnreadMessageCount)
   const [isExpanded, setIsExpanded] = useState(true) // Nav starts expanded by default
   const [showCollapseTooltip, setShowCollapseTooltip] = useState(false)
   const [showExpandTooltip, setShowExpandTooltip] = useState(false)
@@ -27,20 +30,19 @@ const NavigationBar = () => {
   
   const currentTheme = getTheme(theme)
 
-  // Fetch notification count from the notifications system
-  useEffect(() => {
-    if (!currentUser?.id) return
-    const fetchNotifications = () => {
-      axios.get(`${API_URL}/api/notifications/${currentUser.id}?limit=1`)
-        .then(res => {
-          setNotificationCount(res.data?.unreadCount || 0)
-        })
-        .catch(() => {})
-    }
-    fetchNotifications()
-    const interval = setInterval(fetchNotifications, 30000)
-    return () => clearInterval(interval)
-  }, [currentUser?.id])
+  // DISABLED: Social media notification/message count fetching temporarily removed
+  // useEffect(() => {
+  //   if (!currentUser?.id) return
+  //   const fetchCounts = () => {
+  //     axios.get(`${API_URL}/api/notifications/${currentUser.id}?limit=1`)
+  //       .then(res => { setNotificationCount(res.data?.unreadCount || 0) }).catch(() => {})
+  //     axios.get(`${API_URL}/api/messages/unread/${currentUser.id}`)
+  //       .then(res => { setUnreadMessageCount(res.data?.unreadCount || 0) }).catch(() => {})
+  //   }
+  //   fetchCounts()
+  //   const interval = setInterval(fetchCounts, 30000)
+  //   return () => clearInterval(interval)
+  // }, [currentUser?.id])
 
   // Debug: Log when tab changes
 
@@ -72,17 +74,21 @@ const NavigationBar = () => {
   // Dynamic label/icon: show "New Chat" when already on home tab, "Chat" otherwise
   const isOnChat = activeTab === 'home'
 
-  const tabs = [
+  const isFreePlan = currentUser?.plan === 'free_trial' && !currentUser?.stripeSubscriptionId
+
+  const allTabs = [
     {
       id: 'home',
       icon: isOnChat ? MessageSquarePlus : MessageSquare,
       label: isOnChat ? 'New Chat' : 'Chat',
     },
-    {
-      id: 'leaderboard',
-      icon: Trophy,
-      label: 'Prompt Feed',
-    },
+    // DISABLED: Prompt Feed tab temporarily removed (social media feature)
+    // {
+    //   id: 'leaderboard',
+    //   icon: Trophy,
+    //   label: 'Prompt Feed',
+    //   proOnly: true,
+    // },
     {
       id: 'saved',
       icon: History,
@@ -104,6 +110,8 @@ const NavigationBar = () => {
       label: 'Settings',
     },
   ]
+
+  const tabs = isFreePlan ? allTabs.filter(t => !t.proOnly) : allTabs
 
   const toggleNavExpanded = () => {
     const next = !isExpanded
@@ -298,27 +306,7 @@ const NavigationBar = () => {
             >
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <Icon size={24} />
-                {tab.id === 'statistics' && notificationCount > 0 && activeTab !== 'statistics' && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '-4px',
-                    right: '-6px',
-                    minWidth: '16px',
-                    height: '16px',
-                    borderRadius: '8px',
-                    background: '#ff4757',
-                    color: '#fff',
-                    fontSize: '0.6rem',
-                    fontWeight: '700',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '0 4px',
-                    lineHeight: 1,
-                  }}>
-                    {notificationCount > 9 ? '9+' : notificationCount}
-                  </div>
-                )}
+                {/* DISABLED: Social media notification/message badges temporarily removed */}
               </div>
               {isExpanded && (
                 <motion.span

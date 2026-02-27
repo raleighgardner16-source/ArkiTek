@@ -14,6 +14,7 @@ const LandingPage = ({ onNavigate }) => {
   const [hoveredFeature, setHoveredFeature] = useState(null)
   const [showBackToTop, setShowBackToTop] = useState(false)
   const [activeDebateRole, setActiveDebateRole] = useState(0)
+  const [hoveredDebateRole, setHoveredDebateRole] = useState(null)
 
   useEffect(() => {
     document.body.style.overflowY = 'auto'
@@ -53,14 +54,30 @@ const LandingPage = ({ onNavigate }) => {
       description: 'Select any combination of AI models from ChatGPT, Claude, Gemini, and Grok. Send a single prompt and watch them all respond side by side in real time — compare reasoning, style, and accuracy across 12+ models from 4 providers.',
     },
     {
-      icon: <Search size={32} />,
-      title: 'Live Web Search & Sources',
-      description: 'Every prompt is automatically analyzed. When real-time data is needed, ArkitekAI fetches current web results and feeds them to each model — so responses are grounded in verified, up-to-date sources displayed alongside every answer.',
+      icon: <Swords size={32} />,
+      title: 'General & Debate Modes',
+      description: 'Switch between two modes right from the prompt box. General mode gives you straightforward answers from every model. Debate mode lets you assign each model a unique role — like Optimist, Skeptic, or Risk Analyst — so they argue from different perspectives.',
+    },
+    // DISABLED: Prompt Feed feature temporarily removed (social media feature)
+    // {
+    //   icon: <Globe size={32} />,
+    //   title: 'Prompt Feed',
+    //   description: '...',
+    // },
+    {
+      icon: <Trophy size={32} />,
+      title: 'Rewards & Monthly Gifts',
+      description: 'Pro subscribers earn badges across multiple categories — Token Titan, Prompt Pioneer, Streak Warrior, and more — each with multiple unlock tiers. Maintain daily streaks, level up, and receive monthly gifts including bonus usage, exclusive badges, and collectible icons.',
     },
     {
-      icon: <MessageSquare size={32} />,
-      title: 'AI Judge Consensus',
-      description: 'After the council responds, an AI judge analyzes every answer and delivers a consensus summary — highlighting where models agree, where they contradict, and surfacing the key insights you need to make a decision.',
+      icon: <BookOpen size={32} />,
+      title: 'Advanced Saved History',
+      description: 'Every session is automatically saved and organized by year, month, and day. Star important conversations for quick access. Each entry shows the prompt, category, models used, and full token breakdown so you can revisit anything.',
+    },
+    {
+      icon: <BarChart3 size={32} />,
+      title: 'Tracking for Everything',
+      description: 'Your profile tracks total tokens processed, prompts sent, streak length, badges earned, and cost breakdowns. Every prompt logs per-model token usage so you always know exactly what you\'re using.',
     },
   ]
 
@@ -76,28 +93,25 @@ const LandingPage = ({ onNavigate }) => {
     { key: 'strategic', label: 'Strategic Advisor', color: '#8e44ad', icon: <Star size={18} />, desc: 'High-level strategy, positioning, and sequencing' },
   ]
 
-  const badgeCategories = [
-    { name: 'Token Titan', icon: <Zap size={20} />, color: '#FFD700', desc: 'Process tokens to unlock 12 tiers of badges — from First Spark to Universal Consciousness' },
-    { name: 'Prompt Pioneer', icon: <MessageSquare size={20} />, color: '#32CD32', desc: 'Send prompts to climb 12 ranks — from First Words to Omniscient' },
-    { name: 'Streak Warrior', icon: <Flame size={20} />, color: '#FF4500', desc: 'Maintain daily streaks and earn badges — from Week Warrior to Unkillable' },
-    { name: 'Community Champion', icon: <Heart size={20} />, color: '#FF69B4', desc: 'Engage with the community to unlock social badges — likes, comments, and shares' },
-  ]
-
   const freePlanFeatures = [
     'Access to all AI models',
-    'Council of LLMs & AI Judge',
-    'Web search & sources',
-    'Debate mode with all roles',
-    'Prompt Feed access',
-    'Limited monthly usage',
+    'Standard monthly usage',
+    'No rewards or badges',
   ]
 
   const proPlanFeatures = [
-    '15x more monthly usage',
+    '15x more usage than Free',
     'All models & features',
     'Rewards & badge progression',
     'Monthly gifts: bonus usage, exclusive badges & collectible icons',
-    'Full social features',
+    'Priority support',
+  ]
+
+  const premiumPlanFeatures = [
+    '50x more usage than Free',
+    'All models & features',
+    'Rewards & badge progression',
+    'Monthly gifts: bonus usage, exclusive badges & collectible icons',
     'Priority support',
   ]
 
@@ -190,6 +204,7 @@ const LandingPage = ({ onNavigate }) => {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
         >
           <h1 style={{
             fontSize: 'clamp(2.5rem, 6vw, 4.5rem)',
@@ -197,6 +212,7 @@ const LandingPage = ({ onNavigate }) => {
             lineHeight: 1.1,
             marginBottom: '24px',
             maxWidth: '800px',
+            textAlign: 'center',
           }}>
             Compare the World's
             <br />
@@ -219,7 +235,7 @@ const LandingPage = ({ onNavigate }) => {
             marginBottom: '40px',
           }}>
             Send one prompt to ChatGPT, Claude, Gemini, and Grok. Get an AI-powered consensus. 
-            Debate ideas with assigned roles. Share with the community. Level up as you explore.
+            Debate ideas with assigned roles. Earn rewards the more you explore.
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
@@ -440,30 +456,37 @@ const LandingPage = ({ onNavigate }) => {
                 9 Unique Perspectives
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {debateRoles.map((role, idx) => (
-                  <div
-                    key={role.key}
-                    onClick={() => setActiveDebateRole(idx)}
-                    style={{
-                      padding: '12px 16px',
-                      borderRadius: '10px',
-                      background: activeDebateRole === idx ? `${role.color}15` : 'rgba(255,255,255,0.02)',
-                      border: `1px solid ${activeDebateRole === idx ? `${role.color}40` : 'rgba(255,255,255,0.04)'}`,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                    }}
-                  >
-                    <span style={{ color: role.color, display: 'flex', alignItems: 'center' }}>{role.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: activeDebateRole === idx ? role.color : 'rgba(255,255,255,0.7)' }}>
-                        {role.label}
+                {debateRoles.map((role, idx) => {
+                  const isActive = activeDebateRole === idx
+                  const isHovered = hoveredDebateRole === idx
+                  return (
+                    <div
+                      key={role.key}
+                      onClick={() => setActiveDebateRole(idx)}
+                      onMouseEnter={() => setHoveredDebateRole(idx)}
+                      onMouseLeave={() => setHoveredDebateRole(null)}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: '10px',
+                        background: isActive ? `${role.color}15` : isHovered ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${isActive ? `${role.color}40` : isHovered ? `${role.color}25` : 'rgba(255,255,255,0.04)'}`,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        transform: isHovered && !isActive ? 'translateX(6px)' : 'translateX(0)',
+                      }}
+                    >
+                      <span style={{ color: role.color, display: 'flex', alignItems: 'center', transition: 'transform 0.2s', transform: isHovered ? 'scale(1.15)' : 'scale(1)' }}>{role.icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: isActive ? role.color : isHovered ? role.color : 'rgba(255,255,255,0.7)', transition: 'color 0.2s' }}>
+                          {role.label}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </motion.div>
 
@@ -548,133 +571,7 @@ const LandingPage = ({ onNavigate }) => {
         </div>
       </section>
 
-      {/* ==================== SOCIAL & COMMUNITY ==================== */}
-      <section style={{
-        padding: '100px 40px',
-        maxWidth: '1100px',
-        margin: '0 auto',
-      }}>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          style={{ textAlign: 'center', marginBottom: '60px' }}
-        >
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '6px 16px',
-            background: 'rgba(155, 89, 182, 0.1)',
-            border: '1px solid rgba(155, 89, 182, 0.2)',
-            borderRadius: '100px',
-            marginBottom: '20px',
-          }}>
-            <Users size={14} style={{ color: '#9b59b6' }} />
-            <span style={{ color: '#9b59b6', fontSize: '0.85rem', fontWeight: 600 }}>Community</span>
-          </div>
-          <h2 style={{
-            fontSize: 'clamp(1.8rem, 4vw, 2.8rem)',
-            fontWeight: 700,
-            marginBottom: '16px',
-          }}>
-            A Social Network for{' '}
-            <span style={{
-              background: 'linear-gradient(135deg, #9b59b6, #3498db)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}>AI Explorers</span>
-          </h2>
-          <p style={{
-            color: 'rgba(255, 255, 255, 0.5)',
-            fontSize: '1.1rem',
-            maxWidth: '650px',
-            margin: '0 auto',
-            lineHeight: 1.6,
-          }}>
-            The Prompt Feed is where you share your best prompts, discover what others are asking,
-            and connect with a community that's pushing the limits of AI.
-          </p>
-        </motion.div>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-          gap: '20px',
-        }}>
-          {[
-            {
-              icon: <Globe size={24} />,
-              title: 'Share Prompts & Responses',
-              desc: 'Post your prompts along with the full council responses and judge summary. Choose to share publicly or with followers only.',
-              color: '#3498db',
-            },
-            {
-              icon: <Heart size={24} />,
-              title: 'Like & Comment',
-              desc: 'Like interesting prompts, leave comments, and reply to other users. Threaded discussions let conversations go deeper.',
-              color: '#e74c3c',
-            },
-            {
-              icon: <UserPlus size={24} />,
-              title: 'Follow Users',
-              desc: 'Follow other users to see their prompts in your personal feed. Build your own curated network of AI explorers.',
-              color: '#48c9b0',
-            },
-            {
-              icon: <Search size={24} />,
-              title: 'Discover & Search',
-              desc: 'Browse prompts by category — Science, Tech, Business, Health, Philosophy, and more. Search for specific users to follow.',
-              color: '#f39c12',
-            },
-            {
-              icon: <Eye size={24} />,
-              title: 'Privacy Controls',
-              desc: 'Every prompt you share has privacy settings. Choose between public visibility or followers-only. Your conversations are private by default.',
-              color: '#9b59b6',
-            },
-            {
-              icon: <Award size={24} />,
-              title: 'User Profiles',
-              desc: 'Every user gets a profile showcasing their badges, stats, prompt history, and social connections. Visit any user\'s profile from the feed.',
-              color: '#1abc9c',
-            },
-          ].map((item, idx) => (
-            <motion.div
-              key={idx}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: idx * 0.08 }}
-              onMouseEnter={() => setHoveredFeature(`social-${idx}`)}
-              onMouseLeave={() => setHoveredFeature(null)}
-              style={{
-                padding: '28px',
-                borderRadius: '14px',
-                background: hoveredFeature === `social-${idx}` ? `${item.color}08` : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${hoveredFeature === `social-${idx}` ? `${item.color}30` : 'rgba(255,255,255,0.06)'}`,
-                transition: 'all 0.3s',
-              }}
-            >
-              <div style={{
-                width: '48px',
-                height: '48px',
-                borderRadius: '10px',
-                background: `${item.color}12`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: item.color,
-                marginBottom: '16px',
-              }}>
-                {item.icon}
-              </div>
-              <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '8px' }}>{item.title}</h3>
-              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem', lineHeight: 1.6 }}>{item.desc}</p>
-            </motion.div>
-          ))}
-        </div>
-      </section>
+      {/* DISABLED: Social & Community section temporarily removed (social media feature) */}
 
       {/* ==================== REWARDS & PROGRESSION ==================== */}
       <section style={{
@@ -722,79 +619,33 @@ const LandingPage = ({ onNavigate }) => {
               margin: '0 auto',
               lineHeight: 1.6,
             }}>
-              Every prompt, every streak, every interaction counts. Earn badges across 4 categories, 
-              maintain daily streaks, and unlock new tiers as you climb.
+              Every prompt and every streak counts. Earn badges to unlock new tiers and rewards!
             </p>
           </motion.div>
 
-          {/* Badge Categories */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: '20px',
-            marginBottom: '40px',
-          }}>
-            {badgeCategories.map((cat, idx) => (
-              <motion.div
-                key={idx}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: idx * 0.1 }}
-                onMouseEnter={() => setHoveredFeature(`badge-${idx}`)}
-                onMouseLeave={() => setHoveredFeature(null)}
-                style={{
-                  padding: '24px',
-                  borderRadius: '14px',
-                  background: hoveredFeature === `badge-${idx}` ? `${cat.color}08` : 'rgba(255,255,255,0.02)',
-                  border: `1px solid ${hoveredFeature === `badge-${idx}` ? `${cat.color}30` : 'rgba(255,255,255,0.06)'}`,
-                  transition: 'all 0.3s',
-                  textAlign: 'center',
-                }}
-              >
-                <div style={{
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '50%',
-                  background: `${cat.color}15`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: cat.color,
-                  margin: '0 auto 14px',
-                }}>
-                  {cat.icon}
-                </div>
-                <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '8px', color: cat.color }}>{cat.name}</h4>
-                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem', lineHeight: 1.5 }}>{cat.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Streak + Progression callout */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr 1fr',
-            gap: '20px',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '24px',
           }}>
             {[
               {
-                icon: <Flame size={24} />,
-                title: 'Daily Streaks',
-                desc: 'Use ArkitekAI every day to build your streak. The longer it goes, the higher the badge tier — from 3 days all the way to 1,000.',
+                icon: <Award size={28} />,
+                title: 'Badges',
+                desc: 'Earn badges across multiple categories — Token Titan, Prompt Pioneer, Streak Warrior, and more. Each category has unique badges unlocked by hitting milestones like processing tokens, sending prompts, and maintaining streaks.',
+                color: '#FFD700',
+              },
+              {
+                icon: <Trophy size={28} />,
+                title: 'Tiers',
+                desc: 'Every badge category has 12 tiers that get progressively harder to reach. Start at the bottom and work your way up — from First Spark to Universal Consciousness, from First Words to Omniscient, from Getting Warm to Unkillable. Each tier is a new milestone to chase.',
                 color: '#FF4500',
               },
               {
-                icon: <TrendingUp size={24} />,
+                icon: <TrendingUp size={28} />,
                 title: 'Level Progression',
-                desc: 'Your level is calculated from total tokens processed, prompts sent, streak length, and community engagement. Watch it climb over time.',
+                desc: 'Your overall level is calculated from total tokens processed, prompts sent, and streak length. As you use ArkitekAI, your level climbs — reflecting everything you\'ve accomplished across the platform.',
                 color: '#48c9b0',
-              },
-              {
-                icon: <Star size={24} />,
-                title: 'Pro Monthly Rewards',
-                desc: 'Pro subscribers receive monthly rewards — bonus usage, exclusive badges, and collectible profile icons that rotate each month.',
-                color: '#FFD700',
               },
             ].map((item, idx) => (
               <motion.div
@@ -803,25 +654,40 @@ const LandingPage = ({ onNavigate }) => {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: idx * 0.1 }}
+                onMouseEnter={() => setHoveredFeature(`reward-${idx}`)}
+                onMouseLeave={() => setHoveredFeature(null)}
                 style={{
-                  padding: '24px',
+                  padding: '28px',
                   borderRadius: '14px',
-                  background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid rgba(255,255,255,0.06)',
+                  background: hoveredFeature === `reward-${idx}` ? `${item.color}12` : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${hoveredFeature === `reward-${idx}` ? `${item.color}50` : 'rgba(255,255,255,0.06)'}`,
+                  transition: 'all 0.3s ease',
+                  transform: hoveredFeature === `reward-${idx}` ? 'translateY(-6px)' : 'translateY(0)',
+                  boxShadow: hoveredFeature === `reward-${idx}` ? `0 12px 35px ${item.color}20` : 'none',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   textAlign: 'center',
+                  cursor: 'default',
                 }}
               >
                 <div style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '50%',
+                  background: `${item.color}15`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   color: item.color,
-                  marginBottom: '12px',
+                  marginBottom: '16px',
+                  transition: 'transform 0.3s ease',
+                  transform: hoveredFeature === `reward-${idx}` ? 'scale(1.1)' : 'scale(1)',
                 }}>
                   {item.icon}
                 </div>
-                <h4 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '8px' }}>{item.title}</h4>
-                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem', lineHeight: 1.5 }}>{item.desc}</p>
+                <h4 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '10px', color: item.color }}>{item.title}</h4>
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem', lineHeight: 1.6 }}>{item.desc}</p>
               </motion.div>
             ))}
           </div>
@@ -884,7 +750,7 @@ const LandingPage = ({ onNavigate }) => {
             {
               icon: <BarChart3 size={28} />,
               title: 'Your Profile & Stats',
-              desc: 'Your profile tracks everything — total tokens processed, prompts sent, streak length, badges earned, and social stats like likes and followers. Showcase your achievements to the community.',
+              desc: 'Your profile tracks everything — total tokens processed, prompts sent, streak length, and badges earned. All your progress in one place.',
               color: '#9b59b6',
             },
           ].map((item, idx) => (
@@ -949,7 +815,6 @@ const LandingPage = ({ onNavigate }) => {
               color: 'rgba(255, 255, 255, 0.5)',
               fontSize: '1.1rem',
             }}>
-              From prompt to consensus in seconds
             </p>
           </motion.div>
 
@@ -962,7 +827,7 @@ const LandingPage = ({ onNavigate }) => {
             {
               step: '2',
               title: 'Send Your Prompt',
-              description: 'Type your question and hit send. If web search data is needed, it\'s fetched automatically. Every selected model receives your prompt and responds in parallel.',
+              description: 'Type your question and hit send. Every selected model receives your prompt and responds in parallel.',
             },
             {
               step: '3',
@@ -971,8 +836,8 @@ const LandingPage = ({ onNavigate }) => {
             },
             {
               step: '4',
-              title: 'Continue, Save & Share',
-              description: 'Follow up with any model for deeper answers. Your session is auto-saved to history. Share your prompt and responses to the Prompt Feed for the community to see.',
+              title: 'Continue & Save',
+              description: 'Follow up with any model for deeper answers. Your session is auto-saved to history so you can revisit any conversation.',
             },
           ].map((item, idx) => (
             <motion.div
@@ -1042,7 +907,7 @@ const LandingPage = ({ onNavigate }) => {
           display: 'flex',
           flexDirection: 'row',
           gap: '24px',
-          maxWidth: '750px',
+          maxWidth: '1100px',
           margin: '0 auto',
         }}>
           {/* Free Plan */}
@@ -1087,7 +952,7 @@ const LandingPage = ({ onNavigate }) => {
               fontWeight: 600,
               marginBottom: '20px',
             }}>
-              Free Trial
+              Free Plan
             </span>
             <div style={{ marginBottom: '20px' }}>
               <span style={{ fontSize: '2.8rem', fontWeight: 800, color: '#fff' }}>Free</span>
@@ -1119,7 +984,7 @@ const LandingPage = ({ onNavigate }) => {
               fontWeight: 600,
               fontSize: '0.95rem',
             }}>
-              Get Started Free
+              Sign Up Free
             </div>
           </motion.div>
 
@@ -1203,39 +1068,87 @@ const LandingPage = ({ onNavigate }) => {
               Subscribe to Pro
             </div>
           </motion.div>
-        </div>
-      </section>
 
-      {/* ==================== TRUST / SECURITY ==================== */}
-      <section style={{
-        padding: '60px 40px',
-        borderTop: '1px solid rgba(93, 173, 226, 0.08)',
-      }}>
-        <div style={{
-          maxWidth: '800px',
-          margin: '0 auto',
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '48px',
-          flexWrap: 'wrap',
-        }}>
-          {[
-            { icon: <Shield size={20} />, text: 'Secure payments via Stripe' },
-            { icon: <Globe size={20} />, text: 'Real-time web search' },
-            { icon: <Zap size={20} />, text: '12+ AI models, 4 providers' },
-            { icon: <Lock size={20} />, text: 'Private by default' },
-          ].map((item, idx) => (
-            <div key={idx} style={{
+          {/* Premium Plan */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.2 }}
+            onClick={() => onNavigate('signup', 'premium')}
+            style={{
+              flex: 1,
+              padding: '32px',
+              background: 'rgba(187, 143, 255, 0.05)',
+              border: '1px solid rgba(187, 143, 255, 0.2)',
+              borderRadius: '16px',
+              cursor: 'pointer',
+              textAlign: 'center',
+              transition: 'all 0.2s',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              gap: '10px',
-              color: 'rgba(255, 255, 255, 0.4)',
+              position: 'relative',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#bb8fff'
+              e.currentTarget.style.background = 'rgba(187, 143, 255, 0.1)'
+              e.currentTarget.style.transform = 'translateY(-4px)'
+              e.currentTarget.style.boxShadow = '0 8px 30px rgba(187, 143, 255, 0.15)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(187, 143, 255, 0.2)'
+              e.currentTarget.style.background = 'rgba(187, 143, 255, 0.05)'
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow = 'none'
+            }}
+          >
+            <span style={{
+              display: 'inline-block',
+              padding: '6px 16px',
+              background: 'rgba(187, 143, 255, 0.15)',
+              borderRadius: '100px',
+              fontSize: '0.85rem',
+              color: '#bb8fff',
+              fontWeight: 600,
+              marginBottom: '20px',
+            }}>
+              Premium
+            </span>
+            <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+              <span style={{ fontSize: '2.8rem', fontWeight: 800, color: '#fff' }}>$49.95</span>
+              <span style={{ fontSize: '1rem', color: 'rgba(255, 255, 255, 0.4)' }}>/mo</span>
+            </div>
+            <div style={{
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              paddingTop: '20px',
+              paddingBottom: '24px',
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              textAlign: 'left',
+            }}>
+              {premiumPlanFeatures.map((feature, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <CheckCircle size={16} style={{ color: '#bb8fff', flexShrink: 0 }} />
+                  <span style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.9rem' }}>{feature}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{
+              marginTop: 'auto',
+              padding: '12px 0',
+              width: '100%',
+              background: 'rgba(187, 143, 255, 0.12)',
+              borderRadius: '10px',
+              color: '#bb8fff',
+              fontWeight: 600,
               fontSize: '0.95rem',
             }}>
-              <span style={{ color: currentTheme.accent }}>{item.icon}</span>
-              {item.text}
+              Subscribe to Premium
             </div>
-          ))}
+          </motion.div>
         </div>
       </section>
 
