@@ -1172,9 +1172,32 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
                     minLength={8}
                     autoComplete="new-password"
                     placeholder="Re-enter your password"
-                    style={{ ...inputStyle, paddingRight: '44px' }}
-                    onFocus={handleFocus}
-                    onBlur={handleBlur}
+                    style={{
+                      ...inputStyle,
+                      paddingRight: '44px',
+                      ...(formData.confirmPassword ? {
+                        borderColor: formData.password === formData.confirmPassword
+                          ? 'rgba(72, 201, 176, 0.6)'
+                          : 'rgba(255, 80, 80, 0.7)',
+                        boxShadow: formData.password === formData.confirmPassword
+                          ? '0 0 0 1px rgba(72, 201, 176, 0.3)'
+                          : '0 0 0 1px rgba(255, 80, 80, 0.3)',
+                      } : {}),
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.background = 'rgba(93, 173, 226, 0.05)'
+                      e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(93, 173, 226, 0.05) inset'
+                      if (!formData.confirmPassword) {
+                        e.target.style.borderColor = 'rgba(93, 173, 226, 0.5)'
+                      }
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.background = 'rgba(93, 173, 226, 0.05)'
+                      e.target.style.WebkitBoxShadow = '0 0 0 1000px rgba(93, 173, 226, 0.05) inset'
+                      if (!formData.confirmPassword) {
+                        e.target.style.borderColor = 'rgba(93, 173, 226, 0.3)'
+                      }
+                    }}
                   />
                   <button
                     type="button"
@@ -1198,6 +1221,16 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
                     {showConfirmSignupPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+                {formData.confirmPassword && (
+                  <p style={{
+                    fontSize: '0.8rem',
+                    marginTop: '6px',
+                    marginBottom: 0,
+                    color: formData.password === formData.confirmPassword ? '#48c9b0' : '#FF6B6B',
+                  }}>
+                    {formData.password === formData.confirmPassword ? '✓ Passwords match' : '✗ Passwords must match'}
+                  </p>
+                )}
               </div>
             )}
 
