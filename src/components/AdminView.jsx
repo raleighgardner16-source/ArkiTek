@@ -2772,7 +2772,7 @@ const AdminView = () => {
                         </h3>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(251, 191, 36, 0.04)', borderRadius: '10px' }}>
                           <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
-                            Trial Users: {revenueData.newFreeTrials} at 50¢
+                            Trial Users: {revenueData.newFreeTrials} at $1
                           </span>
                           <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>
                             ${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)}
@@ -2938,7 +2938,7 @@ const AdminView = () => {
                               </h3>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(251, 191, 36, 0.04)', borderRadius: '10px' }}>
                                 <span style={{ color: '#cccccc', fontSize: '0.95rem' }}>
-                                  Trial Users: {revenueData.newFreeTrials} at 50¢
+                                  Trial Users: {revenueData.newFreeTrials} at $1
                                 </span>
                                 <span style={{ color: '#ffffff', fontSize: '1.2rem', fontWeight: '700', fontFamily: 'monospace' }}>
                                   ${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)}
