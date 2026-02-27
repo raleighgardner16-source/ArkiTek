@@ -308,7 +308,8 @@ const AdminView = () => {
       setAdminCheckComplete(true)
       if (!userIsAdmin) {
         setLoading(false)
-        // Don't redirect immediately - let the user see the access denied message
+        setShowLogin(true) // Show sign-in so they can try a different admin account
+        setLoginError('This account does not have admin access. Sign in with an admin account.')
       } else {
         fetchAdminData(true)
       }
@@ -540,67 +541,26 @@ const AdminView = () => {
             >
               {loginLoading ? 'Logging in...' : 'Login'}
             </button>
+
+            <button
+              type="button"
+              onClick={() => (window.location.href = '/')}
+              style={{
+                width: '100%',
+                marginTop: '12px',
+                padding: '10px',
+                background: 'transparent',
+                border: '1px solid rgba(93, 173, 226, 0.3)',
+                borderRadius: '8px',
+                color: '#aaaaaa',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+              }}
+            >
+              Back to Home
+            </button>
           </form>
         </motion.div>
-      </motion.div>
-    )
-  }
-
-  // Show access denied if not admin (but logged in and check is complete)
-  // Only show this if we've completed the check and user is not admin
-  if (currentUser && !loading && !isAdmin && !showLogin && adminCheckComplete) {
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        style={{
-          position: 'fixed',
-          top: '0',
-          left: '0',
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10,
-          background: 'rgba(0, 0, 0, 0.95)',
-        }}
-      >
-        <div
-          style={{
-            background: 'rgba(93, 173, 226, 0.1)',
-            border: '1px solid rgba(93, 173, 226, 0.3)',
-            borderRadius: '16px',
-            padding: '40px',
-            textAlign: 'center',
-            maxWidth: '500px',
-          }}
-        >
-          <Shield size={48} color="#FF0000" style={{ marginBottom: '20px' }} />
-          <h2 style={{ color: '#ffffff', fontSize: '1.5rem', marginBottom: '12px' }}>
-            Access Denied
-          </h2>
-          <p style={{ color: '#aaaaaa', fontSize: '1rem', marginBottom: '20px' }}>
-            You do not have administrator privileges to access this page.
-          </p>
-          <p style={{ color: '#888888', fontSize: '0.85rem', marginBottom: '20px' }}>
-            Redirecting in 2 seconds...
-          </p>
-          <button
-            onClick={() => window.location.href = '/'}
-            style={{
-              padding: '10px 20px',
-              background: 'rgba(93, 173, 226, 0.2)',
-              border: '1px solid rgba(93, 173, 226, 0.3)',
-              borderRadius: '8px',
-              color: '#ffffff',
-              cursor: 'pointer',
-              fontSize: '0.9rem',
-            }}
-          >
-            Go to Home
-          </button>
-        </div>
       </motion.div>
     )
   }
