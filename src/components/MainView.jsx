@@ -1414,6 +1414,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     setCouncilFollowUpInput('')
     setCouncilFollowUpSending(true)
 
+    // Count 1 prompt for this follow-up (not per model)
+    axios.post(`${API_URL}/api/conversation/track-follow-up`, {
+      userId: currentUser.id,
+      userMessage: userMsg,
+    }).catch(err => console.error('[Council Follow-Up] Error tracking prompt:', err.message))
+
     // Fan out: add a placeholder turn to each column and start streaming all at once
     activeResponses.forEach(response => {
       const responseId = response.id
@@ -1438,6 +1444,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           userMessage: userMsg,
           originalResponse: response.text || '',
           responseId,
+          isCouncilFollowUp: true,
         }, {
           onToken: (token) => {
             setCouncilColumnConvoSearching(prev => ({ ...prev, [responseId]: false }))

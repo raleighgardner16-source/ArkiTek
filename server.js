@@ -683,6 +683,9 @@ const trackPrompt = async (userId, promptText, category, promptData = {}) => {
 
 // Track a continued conversation prompt (1 per follow-up message in judge or model conversation)
 // Counts 1 prompt per follow-up message. Token counting is handled by trackUsage() separately.
+// NOTE: When user sends a council follow-up (same message to all models), the frontend passes
+// isCouncilFollowUp: true and calls /api/conversation/track-follow-up once. Model endpoints
+// skip this when isCouncilFollowUp is true to avoid counting 1 prompt per model.
 const trackConversationPrompt = async (userId, userMessage) => {
   if (!userId) return
 
@@ -715,6 +718,21 @@ const trackConversationPrompt = async (userId, userMessage) => {
     console.error(`[Conversation Prompt] Atomic $inc failed for ${userId}:`, incErr.message)
   }
 }
+
+// Track a single follow-up prompt (used when user sends council follow-up to all models — count 1, not per-model)
+app.post('/api/conversation/track-follow-up', async (req, res) => {
+  try {
+    const { userId, userMessage } = req.body
+    if (!userId || !userMessage) {
+      return res.status(400).json({ error: 'userId and userMessage are required' })
+    }
+    await trackConversationPrompt(userId, userMessage)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[Track Follow-Up] Error:', error)
+    res.status(500).json({ error: 'Failed to track follow-up prompt' })
+  }
+})
 
 // Track usage for a user
 // isPipeline = true for internal/behind-the-scenes calls (category detection, refiner, context summarization)
@@ -3112,7 +3130,7 @@ app.post('/api/model/conversation/stream', async (req, res) => {
   }, 15000)
 
   try {
-    const { userId, modelName, userMessage, originalResponse, responseId } = req.body
+    const { userId, modelName, userMessage, originalResponse, responseId, isCouncilFollowUp } = req.body
 
     if (!userId || !modelName || !userMessage) {
       sendSSE('error', { message: 'userId, modelName, and userMessage are required' })
@@ -3456,8 +3474,10 @@ app.post('/api/model/conversation/stream', async (req, res) => {
     // Track usage
     trackUsage(userId, provider, model, inputTokens, outputTokens)
 
-    // Count this continued conversation as 1 prompt + count user's message tokens
-    await trackConversationPrompt(userId, userMessage)
+    // Count 1 prompt per follow-up (council follow-up: frontend calls track-follow-up once; skip here)
+    if (!isCouncilFollowUp) {
+      await trackConversationPrompt(userId, userMessage)
+    }
 
     // Store context async
     storeModelContext(userId, modelName, fullResponse, userMessage).catch(err => {
@@ -3495,7 +3515,7 @@ app.post('/api/model/conversation/stream', async (req, res) => {
 // Uses server-side context storage (same rolling-window pattern as judge context)
 app.post('/api/model/conversation', async (req, res) => {
   try {
-    const { userId, modelName, userMessage, originalResponse, responseId } = req.body
+    const { userId, modelName, userMessage, originalResponse, responseId, isCouncilFollowUp } = req.body
     
     if (!userId || !modelName || !userMessage) {
       return res.status(400).json({ error: 'userId, modelName, and userMessage are required' })
@@ -3708,8 +3728,10 @@ app.post('/api/model/conversation', async (req, res) => {
     // Track usage
     trackUsage(userId, provider, model, inputTokens, outputTokens)
     
-    // Count this continued conversation as 1 prompt + count user's message tokens
-    await trackConversationPrompt(userId, userMessage)
+    // Count 1 prompt per follow-up (council follow-up: frontend calls track-follow-up once; skip here)
+    if (!isCouncilFollowUp) {
+      await trackConversationPrompt(userId, userMessage)
+    }
     
     // Store response in server-side context (async, don't wait — same as judge)
     storeModelContext(userId, modelName, responseText, userMessage).catch(err => {
