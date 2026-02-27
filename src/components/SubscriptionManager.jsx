@@ -3,7 +3,7 @@ import axios from 'axios'
 import { API_URL } from '../utils/config'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
-import { CreditCard, CheckCircle, XCircle, AlertCircle, Loader, Pause, Trash2, X } from 'lucide-react'
+import { CreditCard, CheckCircle, XCircle, AlertCircle, Loader, Pause, Trash2, X, ArrowUpCircle, Zap, Crown } from 'lucide-react'
 
 const SubscriptionManager = () => {
   const currentUser = useStore((state) => state.currentUser)
@@ -164,7 +164,7 @@ const SubscriptionManager = () => {
     }
   }, [fetchSubscriptionStatus, currentUser?.id])
 
-  const handleSubscribe = async () => {
+  const handleSubscribe = async (plan = null) => {
     
     // Debug: Show alert if button is clicked
     if (!currentUser?.id) {
@@ -180,9 +180,9 @@ const SubscriptionManager = () => {
     try {
       setProcessing(true)
       setError(null)
-      const response = await axios.post(`${API_URL}/api/stripe/create-checkout-session`, {
-        userId: currentUser.id,
-      })
+      const body = { userId: currentUser.id }
+      if (plan === 'premium' || plan === 'pro') body.plan = plan
+      const response = await axios.post(`${API_URL}/api/stripe/create-checkout-session`, body)
 
       if (response.data.url) {
         // Redirect to Stripe Checkout
@@ -252,6 +252,7 @@ const SubscriptionManager = () => {
         try {
           const checkoutResponse = await axios.post(`${API_URL}/api/stripe/create-checkout-session`, {
             userId: currentUser.id,
+            plan: currentUser.plan === 'premium' ? 'premium' : 'pro',
           })
           if (checkoutResponse.data.url) {
             window.location.href = checkoutResponse.data.url
@@ -264,6 +265,40 @@ const SubscriptionManager = () => {
       } else {
         setError(err.response?.data?.error || 'Failed to resubscribe. Please try again.')
       }
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleUpgradeToPremium = async () => {
+    if (!currentUser?.id) {
+      setError('Please sign in to upgrade')
+      return
+    }
+
+    try {
+      setProcessing(true)
+      setError(null)
+
+      const response = await axios.post(`${API_URL}/api/stripe/upgrade-to-premium`, {
+        userId: currentUser.id,
+      })
+
+      if (response.data.success) {
+        setSuccessMessage(response.data.message || 'Upgraded to Premium!')
+        const currentUserData = useStore.getState().currentUser
+        if (currentUserData) {
+          useStore.getState().setCurrentUser({
+            ...currentUserData,
+            plan: 'premium',
+          })
+        }
+        await fetchSubscriptionStatus()
+        setTimeout(() => setSuccessMessage(null), 5000)
+      }
+    } catch (err) {
+      console.error('[Subscription] Error upgrading:', err)
+      setError(err.response?.data?.error || 'Failed to upgrade to Premium. Please try again.')
     } finally {
       setProcessing(false)
     }
@@ -534,6 +569,157 @@ const SubscriptionManager = () => {
             {currentUser?.plan === 'premium' ? '50x usage — Premium' : currentUser?.plan === 'free_trial' ? 'Standard usage' : '15x usage — Pro'}
           </div>
         </div>
+      </div>
+
+      {/* Upgrade Plans Section */}
+      <div
+        style={{
+          marginBottom: '20px',
+          padding: '20px',
+          background: currentTheme.backgroundSecondary,
+          border: `1px solid ${currentTheme.borderLight}`,
+          borderRadius: '12px',
+        }}
+      >
+        <h4 style={{ color: currentTheme.text, marginBottom: '16px', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ArrowUpCircle size={20} color={currentTheme.accent} />
+          Upgrade your plan
+        </h4>
+
+        {currentUser?.plan === 'premium' && (subscriptionStatus === 'active' || subscriptionStatus === 'trialing') ? (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '16px',
+            background: 'rgba(72, 201, 176, 0.08)',
+            border: '1px solid rgba(72, 201, 176, 0.3)',
+            borderRadius: '10px',
+          }}>
+            <Crown size={32} color="#48c9b0" />
+            <div>
+              <div style={{ color: currentTheme.text, fontWeight: '600', marginBottom: '4px' }}>You're on our best plan</div>
+              <div style={{ color: currentTheme.textSecondary, fontSize: '0.9rem' }}>Premium includes 50x usage and all features.</div>
+            </div>
+          </div>
+        ) : (subscriptionStatus === 'active' || subscriptionStatus === 'trialing') && currentUser?.plan === 'pro' ? (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}>
+            <div style={{
+              padding: '16px',
+              background: 'rgba(168, 85, 247, 0.08)',
+              border: '1px solid rgba(168, 85, 247, 0.3)',
+              borderRadius: '10px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '12px',
+            }}>
+              <div>
+                <div style={{ color: currentTheme.text, fontWeight: '600', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Crown size={20} color="#a855f7" /> Premium — $49.95/month
+                </div>
+                <div style={{ color: currentTheme.textSecondary, fontSize: '0.9rem' }}>50x usage • All features • Priority support</div>
+              </div>
+              <button
+                onClick={handleUpgradeToPremium}
+                disabled={processing}
+                style={{
+                  padding: '10px 20px',
+                  background: processing ? currentTheme.buttonBackground : 'rgba(168, 85, 247, 0.25)',
+                  border: '1px solid rgba(168, 85, 247, 0.5)',
+                  borderRadius: '8px',
+                  color: processing ? currentTheme.textMuted : '#a855f7',
+                  fontWeight: '600',
+                  cursor: processing ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                {processing ? <Loader size={18} className="spin" /> : <ArrowUpCircle size={18} />}
+                Upgrade to Premium
+              </button>
+            </div>
+          </div>
+        ) : (subscriptionStatus !== 'active' && subscriptionStatus !== 'trialing') || currentUser?.plan === 'free_trial' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '12px',
+            }}>
+              <div style={{
+                padding: '16px',
+                background: 'rgba(93, 173, 226, 0.08)',
+                border: '1px solid rgba(93, 173, 226, 0.3)',
+                borderRadius: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Zap size={20} color="#5dade2" />
+                  <span style={{ color: currentTheme.text, fontWeight: '600' }}>Pro</span>
+                </div>
+                <div style={{ color: currentTheme.accent, fontWeight: 'bold' }}>$19.95/month</div>
+                <div style={{ color: currentTheme.textSecondary, fontSize: '0.85rem' }}>15x usage • All features</div>
+                <button
+                  onClick={() => handleSubscribe('pro')}
+                  disabled={processing}
+                  style={{
+                    marginTop: '8px',
+                    padding: '10px 16px',
+                    background: processing ? currentTheme.buttonBackground : 'rgba(93, 173, 226, 0.25)',
+                    border: '1px solid rgba(93, 173, 226, 0.5)',
+                    borderRadius: '8px',
+                    color: processing ? currentTheme.textMuted : '#5dade2',
+                    fontWeight: '600',
+                    cursor: processing ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {processing ? 'Processing...' : 'Subscribe to Pro'}
+                </button>
+              </div>
+              <div style={{
+                padding: '16px',
+                background: 'rgba(168, 85, 247, 0.08)',
+                border: '1px solid rgba(168, 85, 247, 0.3)',
+                borderRadius: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Crown size={20} color="#a855f7" />
+                  <span style={{ color: currentTheme.text, fontWeight: '600' }}>Premium</span>
+                </div>
+                <div style={{ color: currentTheme.accent, fontWeight: 'bold' }}>$49.95/month</div>
+                <div style={{ color: currentTheme.textSecondary, fontSize: '0.85rem' }}>50x usage • All features</div>
+                <button
+                  onClick={() => handleSubscribe('premium')}
+                  disabled={processing}
+                  style={{
+                    marginTop: '8px',
+                    padding: '10px 16px',
+                    background: processing ? currentTheme.buttonBackground : 'rgba(168, 85, 247, 0.25)',
+                    border: '1px solid rgba(168, 85, 247, 0.5)',
+                    borderRadius: '8px',
+                    color: processing ? currentTheme.textMuted : '#a855f7',
+                    fontWeight: '600',
+                    cursor: processing ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {processing ? 'Processing...' : 'Subscribe to Premium'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* Action Buttons */}

@@ -11627,9 +11627,10 @@ app.post('/api/stripe/confirm-subscription', async (req, res) => {
 })
 
 // Create Stripe Checkout Session for subscription (legacy redirect flow)
+// Optional body.plan: 'pro' | 'premium' — lets caller choose which plan to subscribe to (for new subs or upgrade from Settings)
 app.post('/api/stripe/create-checkout-session', async (req, res) => {
   try {
-    const { userId } = req.body
+    const { userId, plan: requestedPlan } = req.body
     if (!userId) {
       return res.status(400).json({ error: 'userId is required' })
     }
@@ -11640,8 +11641,9 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
       return res.status(404).json({ error: 'User not found' })
     }
 
-    // Select the correct Stripe Price ID based on user's plan
-    const priceId = user.plan === 'premium' ? STRIPE_PREMIUM_PRICE_ID : STRIPE_PRICE_ID
+    // Select Stripe Price ID: use requestedPlan if provided, else user's current plan
+    const effectivePlan = requestedPlan === 'premium' ? 'premium' : requestedPlan === 'pro' ? 'pro' : (user.plan === 'premium' ? 'premium' : 'pro')
+    const priceId = effectivePlan === 'premium' ? STRIPE_PREMIUM_PRICE_ID : STRIPE_PRICE_ID
     if (!priceId) {
       return res.status(500).json({ error: 'Stripe price ID not configured for this plan' })
     }
@@ -11676,6 +11678,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
       cancel_url: `${req.headers.origin || 'http://localhost:3000'}/`,
       metadata: {
         userId: userId,
+        plan: effectivePlan,
       },
     })
 
@@ -11683,6 +11686,59 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
   } catch (error) {
     console.error('[Stripe] Error creating checkout session:', error)
     res.status(500).json({ error: 'Failed to create checkout session' })
+  }
+})
+
+// Upgrade existing Pro subscription to Premium
+app.post('/api/stripe/upgrade-to-premium', async (req, res) => {
+  try {
+    const { userId } = req.body
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' })
+    }
+
+    const user = await db.users.get(userId)
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+    if (user.plan === 'premium') {
+      return res.status(400).json({ error: 'You are already on the Premium plan' })
+    }
+    if (!user.stripeSubscriptionId) {
+      return res.status(400).json({ error: 'No active subscription found. Please subscribe first.' })
+    }
+    if (!STRIPE_PREMIUM_PRICE_ID) {
+      return res.status(500).json({ error: 'Premium plan is not configured' })
+    }
+
+    const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId)
+    if (subscription.status !== 'active' && subscription.status !== 'trialing') {
+      return res.status(400).json({ error: 'Your subscription is not active. Please resume or resubscribe first.' })
+    }
+
+    const item = subscription.items?.data?.[0]
+    if (!item) {
+      return res.status(500).json({ error: 'Could not find subscription item' })
+    }
+
+    await stripe.subscriptions.update(user.stripeSubscriptionId, {
+      items: [{ id: item.id, price: STRIPE_PREMIUM_PRICE_ID }],
+      proration_behavior: 'create_prorations',
+    })
+
+    await db.users.update(userId, { plan: 'premium' })
+    console.log(`[Stripe] Upgraded user ${userId} to Premium`)
+
+    res.json({
+      success: true,
+      message: 'Upgraded to Premium! Your new allocation is active now.',
+      plan: 'premium',
+    })
+  } catch (error) {
+    console.error('[Stripe] Error upgrading to premium:', error)
+    res.status(500).json({
+      error: error.message || 'Failed to upgrade to Premium. Please try again.',
+    })
   }
 })
 
@@ -12105,9 +12161,14 @@ app.post('/api/stripe/webhook', async (req, res) => {
       case 'checkout.session.completed': {
         const session = event.data.object
         const userId = session.metadata?.userId
+        const planFromMetadata = session.metadata?.plan
 
         if (userId) {
           console.log(`[Stripe] Checkout completed for user: ${userId}`)
+          if (planFromMetadata && (planFromMetadata === 'pro' || planFromMetadata === 'premium')) {
+            await db.users.update(userId, { plan: planFromMetadata })
+            console.log(`[Stripe] Updated user ${userId} plan to ${planFromMetadata}`)
+          }
         }
         break
       }
