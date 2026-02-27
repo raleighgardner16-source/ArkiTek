@@ -252,11 +252,8 @@ const AdminView = () => {
       return
     }
     
-    // User exists - but we still want to verify they're an admin
-    // So we'll check admin status, but keep login hidden for now
     setShowLogin(false)
-    setLoading(true) // Set loading while checking
-    setAdminCheckComplete(false) // Reset check completion
+    setAdminCheckComplete(false)
     checkAdminStatus()
   }, [currentUser])
 
@@ -297,7 +294,6 @@ const AdminView = () => {
       return
     }
     
-    setLoading(true)
     setAdminCheckComplete(false)
     try {
       const response = await axios.get(`${API_URL}/api/admin/check`, {
@@ -308,10 +304,10 @@ const AdminView = () => {
       setAdminCheckComplete(true)
       if (!userIsAdmin) {
         setLoading(false)
-        setShowLogin(true) // Show sign-in so they can try a different admin account
+        setShowLogin(true)
         setLoginError('This account does not have admin access. Sign in with an admin account.')
       } else {
-        fetchAdminData(true)
+        fetchAdminData(false)
       }
     } catch (error) {
       console.error('[AdminView] ❌ Error checking admin status:', error)
@@ -374,30 +370,7 @@ const AdminView = () => {
     return num.toLocaleString()
   }
 
-  if (loading) {
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        style={{
-          position: 'fixed',
-          top: '0',
-          left: '0',
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10,
-          background: 'rgba(0, 0, 0, 0.95)',
-        }}
-      >
-        <p style={{ color: '#ffffff', fontSize: '1.2rem' }}>Loading admin data...</p>
-      </motion.div>
-    )
-  }
-
-  // Show login modal if not logged in
+  // Show login modal if not logged in or not admin
   if (showLogin) {
     return (
       <motion.div
@@ -565,29 +538,9 @@ const AdminView = () => {
     )
   }
 
-  // Main admin dashboard - should only reach here if user is admin, not loading, and logged in
-  // Safety check - if we somehow reach here without being ready, show loading
-  if (!isAdmin || loading || !currentUser) {
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        style={{
-          position: 'fixed',
-          top: '0',
-          left: '0',
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10,
-          background: 'rgba(0, 0, 0, 0.95)',
-        }}
-      >
-        <p style={{ color: '#ffffff', fontSize: '1.2rem' }}>Loading admin data...</p>
-      </motion.div>
-    )
+  // If not admin or no user, show login (handled above) or nothing
+  if (!isAdmin || !currentUser) {
+    return null
   }
 
   // Main dashboard view

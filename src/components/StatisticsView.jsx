@@ -234,7 +234,7 @@ const StatisticsView = () => {
   const setNotificationCount = useStore((state) => state.setNotificationCount)
   const isViewingOther = viewingProfile && viewingProfile.userId !== currentUser?.id
   const [stats, setStats] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [expandedProviders, setExpandedProviders] = useState({})
   const [expandedModels, setExpandedModels] = useState({})
   const [activeTab, setActiveTab] = useState('tokens') // 'tokens', 'ratings', 'leaderboard'
@@ -761,29 +761,6 @@ const StatisticsView = () => {
     } else {
       return `${displayDays} ${displayDays === 1 ? 'day' : 'days'}`
     }
-  }
-
-  if (loading) {
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        style={{
-          position: 'fixed',
-          top: '0',
-          left: isNavExpanded ? '240px' : '60px',
-          width: `calc(100% - ${isNavExpanded ? '240px' : '60px'})`,
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10,
-          transition: 'left 0.3s ease, width 0.3s ease',
-        }}
-      >
-        <p style={{ color: currentTheme.text, fontSize: '1.2rem' }}>Loading statistics...</p>
-      </motion.div>
-    )
   }
 
   const userStats = stats || {
