@@ -35,6 +35,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
   const [verificationEmail, setVerificationEmail] = useState('')
   const [verificationUserId, setVerificationUserId] = useState('')
   const [verifyingEmail, setVerifyingEmail] = useState(false)
+  const [returningUserMessage, setReturningUserMessage] = useState('')
   const [resendCooldown, setResendCooldown] = useState(0)
   // Always use dark theme for the auth page
   const currentTheme = getTheme('dark')
@@ -196,6 +197,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
         if (response.data.requiresVerification) {
           setVerificationEmail(user.email)
           setVerificationUserId(user.id)
+          setReturningUserMessage(response.data.returningUserMessage || '')
           setView('verification-pending')
           return
         }
@@ -1797,6 +1799,11 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
               <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.85rem', lineHeight: 1.5, margin: 0 }}>
                 Click the link in your email to verify your account. The link expires in 24 hours.
               </p>
+              {returningUserMessage && (
+                <p style={{ color: '#48c9b0', fontSize: '0.9rem', fontWeight: 600, margin: '12px 0 0', lineHeight: 1.4 }}>
+                  {returningUserMessage}
+                </p>
+              )}
               {!pollFailed && (
                 <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                   <Loader size={14} style={{ color: 'rgba(93, 173, 226, 0.6)', animation: 'spin 1s linear infinite' }} />

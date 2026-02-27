@@ -915,39 +915,73 @@ const SubscriptionManager = () => {
               Activating subscription...
             </button>
           ) : (
-            <button
-              onClick={handleSubscribe}
-              disabled={processing}
-              style={{
-                padding: '14px 24px',
-                background: processing
-                  ? currentTheme.buttonBackground
-                  : currentTheme.accentGradient,
-                border: 'none',
-                borderRadius: '8px',
-                color: processing ? currentTheme.textMuted : (theme === 'dark' ? '#000000' : '#ffffff'),
-                fontSize: '1rem',
-                fontWeight: 'bold',
-                cursor: processing ? 'not-allowed' : 'pointer',
-                transition: 'all 0.3s ease',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-              }}
-            >
-              {processing ? (
-                <>
-                  <Loader size={18} className="spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <CreditCard size={18} />
-                  Subscribe Now
-                </>
+            <>
+              <button
+                onClick={handleSubscribe}
+                disabled={processing}
+                style={{
+                  padding: '14px 24px',
+                  background: processing
+                    ? currentTheme.buttonBackground
+                    : currentTheme.accentGradient,
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: processing ? currentTheme.textMuted : (theme === 'dark' ? '#000000' : '#ffffff'),
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  cursor: processing ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+              >
+                {processing ? (
+                  <>
+                    <Loader size={18} className="spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard size={18} />
+                    Subscribe Now
+                  </>
+                )}
+              </button>
+              {currentUser?.plan === 'free_trial' && !currentUser?.stripeSubscriptionId && (
+                <button
+                  onClick={() => setShowCancelConfirm(true)}
+                  disabled={processing}
+                  style={{
+                    padding: '14px 24px',
+                    background: processing ? currentTheme.buttonBackground : 'rgba(255, 107, 107, 0.2)',
+                    border: '1px solid rgba(255, 107, 107, 0.5)',
+                    borderRadius: '8px',
+                    color: processing ? currentTheme.textMuted : '#ff6b6b',
+                    fontSize: '1rem',
+                    fontWeight: 'bold',
+                    cursor: processing ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  {processing ? (
+                    <>
+                      <Loader size={18} className="spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={18} />
+                      Delete Account
+                    </>
+                  )}
+                </button>
               )}
-            </button>
+            </>
           )
         )}
         

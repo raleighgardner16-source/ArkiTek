@@ -172,24 +172,44 @@ const users = {
   /**
    * Record a used free trial so abuse prevention survives account deletion.
    * Called BEFORE deleting a free trial user's account.
-   * @param {Object} trialData - { canonicalEmail, signupIp, deviceFingerprint, email }
+   * @param {Object} trialData - { canonicalEmail, signupIp, deviceFingerprint, email, remainingAllocation?, deletionMonth? }
    */
   async recordUsedTrial(trialData) {
     const db = await getDb()
-    try {
-      await db.collection('used_trials').insertOne({
-        ...trialData,
-        recordedAt: new Date(),
-      })
-      console.log(`[DB] Recorded used trial for ${trialData.email || trialData.canonicalEmail}`)
-    } catch (error) {
-      // If duplicate, that's fine — the trial is already recorded
-      if (error.code === 11000) {
-        console.log(`[DB] Used trial already recorded for ${trialData.email || trialData.canonicalEmail}`)
-      } else {
-        console.error('[DB] Error recording used trial:', error.message)
-      }
+    const doc = {
+      ...trialData,
+      recordedAt: new Date(),
     }
+    if (trialData.remainingAllocation != null) doc.remainingAllocation = trialData.remainingAllocation
+    if (trialData.deletionMonth) doc.deletionMonth = trialData.deletionMonth
+    try {
+      await db.collection('used_trials').updateOne(
+        { canonicalEmail: trialData.canonicalEmail },
+        { $set: doc },
+        { upsert: true }
+      )
+      console.log(`[DB] Recorded used trial for ${trialData.email || trialData.canonicalEmail}, remaining: $${(trialData.remainingAllocation || 0).toFixed(2)}`)
+    } catch (error) {
+      console.error('[DB] Error recording used trial:', error.message)
+    }
+  },
+
+  /**
+   * Find a used_trials record for returning user (by email, fingerprint, or IP).
+   * Returns the record with highest remainingAllocation for applying carryover on re-signup.
+   */
+  async getUsedTrialForReturningUser(canonicalEmail, fingerprint, signupIp) {
+    const db = await getDb()
+    const orClause = []
+    if (canonicalEmail) orClause.push({ canonicalEmail })
+    if (fingerprint) orClause.push({ deviceFingerprint: fingerprint })
+    if (signupIp) orClause.push({ signupIp })
+    if (orClause.length === 0) return null
+    const candidates = await db.collection('used_trials').find({ $or: orClause }).toArray()
+    if (candidates.length === 0) return null
+    return candidates.reduce((best, c) =>
+      (c.remainingAllocation ?? 0) > (best.remainingAllocation ?? 0) ? c : best
+    )
   },
   
   /**

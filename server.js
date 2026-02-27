@@ -970,10 +970,11 @@ app.post('/api/auth/signup', async (req, res) => {
         return res.status(400).json({ error: 'Please use a permanent email address to sign up. Temporary email services are not allowed.' })
       }
 
-      // 2. Check canonical email — catches Gmail alias abuse (john+1@gmail.com, j.o.h.n@gmail.com)
+      // 2. Check canonical email — block only if ACTIVE user exists (deleted users in used_trials can re-signup with reduced allocation)
       const existingCanonical = await db.users.getByCanonicalEmail(canonical)
-      if (existingCanonical && existingCanonical.plan === 'free_trial') {
-        console.log('[Auth] ❌ Canonical email already used for free plan:', canonical)
+      if (existingCanonical && existingCanonical.plan === 'free_trial' && existingCanonical.username) {
+        // Active user (has username) — block
+        console.log('[Auth] ❌ Canonical email already has active free plan:', canonical)
         return res.status(400).json({ error: 'A free plan account already exists with this email address.' })
       }
 
@@ -982,17 +983,10 @@ app.post('/api/auth/signup', async (req, res) => {
       const trialCountFromIp = await db.users.countFreeTrialsByIp(signupIp)
       if (trialCountFromIp >= MAX_FREE_TRIALS_PER_IP) {
         console.log(`[Auth] ❌ IP ${signupIp} exceeded free plan limit (${trialCountFromIp}/${MAX_FREE_TRIALS_PER_IP})`)
-        return res.status(400).json({ error: 'Free plan limit reached for this network. Please subscribe to a Pro plan to continue.' })
+        return res.status(400).json({ error: 'Free plan limit reached for this network. You\'ve already used the free plan on this device or network. Please subscribe to a Pro plan to continue.' })
       }
 
-      // 4. Device fingerprint check — same browser can't get multiple free plan accounts
-      if (fingerprint) {
-        const existingFingerprint = await db.users.getFreeTrialByFingerprint(fingerprint)
-        if (existingFingerprint) {
-          console.log('[Auth] ❌ Device fingerprint already used for free plan:', fingerprint.substring(0, 12) + '...')
-          return res.status(400).json({ error: 'A free plan account already exists on this device. Please subscribe to a Pro plan to continue.' })
-        }
-      }
+      // 4. Device fingerprint — no longer blocks; returning users can re-signup and get remaining allocation back
     }
 
     // ==================== STANDARD DUPLICATE CHECKS ====================
@@ -1035,6 +1029,21 @@ app.post('/api/auth/signup', async (req, res) => {
     // Create usage_data and user_stats docs in MongoDB
     await db.usage.create(userId, {})
     await db.userStats.getOrCreate(userId)
+
+    // Returning free trial user: apply carried-over remaining allocation (not full $1)
+    let returningUserMessage = null
+    if (isFreeTrial) {
+      const usedTrialRecord = await db.users.getUsedTrialForReturningUser(canonical, fingerprint || null, signupIp)
+      if (usedTrialRecord && (usedTrialRecord.remainingAllocation ?? 0) > 0) {
+        const remaining = Math.max(0, Math.min(1, usedTrialRecord.remainingAllocation ?? 0))
+        const tz = timezone || 'America/New_York'
+        const currentMonth = getMonthForUser(tz)
+        const prechargedCost = Math.max(0, 1.00 - remaining)
+        await db.userStats.addMonthlyCost(userId, currentMonth, prechargedCost)
+        returningUserMessage = `Welcome back! Your remaining $${remaining.toFixed(2)} from when you left has been restored.`
+        console.log(`[Auth] Returning free trial user: applied $${remaining.toFixed(2)} remaining (precharged $${prechargedCost.toFixed(2)})`)
+      }
+    }
 
     // ==================== EMAIL VERIFICATION (all plans) ====================
     // Both free plan AND pro plans require email verification before proceeding
@@ -1112,6 +1121,7 @@ app.post('/api/auth/signup', async (req, res) => {
       success: true,
       requiresVerification: true,
       message: signupMessage,
+      returningUserMessage: returningUserMessage || undefined,
       user: {
         id: userId,
         firstName,
@@ -1861,15 +1871,34 @@ app.delete('/api/auth/account', async (req, res) => {
     // Store user info for logging before deletion
     const userInfo = { username: dbUser.username, email: dbUser.email }
 
-    // Preserve free plan abuse prevention data before deletion
+    // Preserve free plan abuse prevention data before deletion (email, IP, fingerprint + remaining allocation)
     if (dbUser.plan === 'free_trial') {
-      await db.users.recordUsedTrial({
-        canonicalEmail: dbUser.canonicalEmail || dbUser.email,
-        email: dbUser.email,
-        signupIp: dbUser.signupIp || null,
-        deviceFingerprint: dbUser.deviceFingerprint || null,
-      })
-      console.log(`[Account Deletion] Recorded used free plan for abuse prevention: ${dbUser.email}`)
+      let remainingAllocation = 0
+      try {
+        const tz = await getUserTimezone(userId)
+        const deletionMonth = getMonthForUser(tz)
+        const userStatsDoc = await db.userStats.get(userId)
+        const monthlyCost = userStatsDoc?.monthlyUsageCost?.[deletionMonth] || 0
+        remainingAllocation = Math.max(0, 1.00 - monthlyCost)
+        await db.users.recordUsedTrial({
+          canonicalEmail: dbUser.canonicalEmail || dbUser.email,
+          email: dbUser.email,
+          signupIp: dbUser.signupIp || null,
+          deviceFingerprint: dbUser.deviceFingerprint || null,
+          remainingAllocation: Math.round(remainingAllocation * 100) / 100,
+          deletionMonth,
+        })
+        console.log(`[Account Deletion] Recorded used free plan: ${dbUser.email}, remaining: $${remainingAllocation.toFixed(2)}`)
+      } catch (err) {
+        console.error('[Account Deletion] Error recording used trial:', err)
+        await db.users.recordUsedTrial({
+          canonicalEmail: dbUser.canonicalEmail || dbUser.email,
+          email: dbUser.email,
+          signupIp: dbUser.signupIp || null,
+          deviceFingerprint: dbUser.deviceFingerprint || null,
+          remainingAllocation: 0,
+        })
+      }
     }
 
     // Cancel Stripe subscription if active
@@ -11983,13 +12012,32 @@ app.post('/api/stripe/cancel-subscription-delete-account', async (req, res) => {
     }
 
     if (user.plan === 'free_trial') {
-      await db.users.recordUsedTrial({
-        canonicalEmail: user.canonicalEmail || user.email,
-        email: user.email,
-        signupIp: user.signupIp || null,
-        deviceFingerprint: user.deviceFingerprint || null,
-      })
-      console.log(`[Stripe] Recorded used free plan for abuse prevention: ${user.email}`)
+      let remainingAllocation = 0
+      try {
+        const tz = await getUserTimezone(userId)
+        const deletionMonth = getMonthForUser(tz)
+        const userStatsDoc = await db.userStats.get(userId)
+        const monthlyCost = userStatsDoc?.monthlyUsageCost?.[deletionMonth] || 0
+        remainingAllocation = Math.max(0, 1.00 - monthlyCost)
+        await db.users.recordUsedTrial({
+          canonicalEmail: user.canonicalEmail || user.email,
+          email: user.email,
+          signupIp: user.signupIp || null,
+          deviceFingerprint: user.deviceFingerprint || null,
+          remainingAllocation: Math.round(remainingAllocation * 100) / 100,
+          deletionMonth,
+        })
+        console.log(`[Stripe] Recorded used free plan: ${user.email}, remaining: $${remainingAllocation.toFixed(2)}`)
+      } catch (err) {
+        console.error('[Stripe] Error recording used trial:', err)
+        await db.users.recordUsedTrial({
+          canonicalEmail: user.canonicalEmail || user.email,
+          email: user.email,
+          signupIp: user.signupIp || null,
+          deviceFingerprint: user.deviceFingerprint || null,
+          remainingAllocation: 0,
+        })
+      }
     }
 
     // Cancel subscription in Stripe if it exists
