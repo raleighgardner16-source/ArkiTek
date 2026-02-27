@@ -1210,19 +1210,21 @@ const SubscriptionManager = () => {
                 Your subscription will be canceled for good. This includes all your statistics, saved conversations, and usage history.
             </p>
             </div>
-            <div
-              style={{
-                padding: '14px 18px',
-                borderRadius: '10px',
-                background: 'rgba(255, 170, 0, 0.08)',
-                border: '1px solid rgba(255, 170, 0, 0.3)',
-                marginBottom: '20px',
-              }}
-            >
-              <p style={{ color: '#ffaa00', margin: 0, lineHeight: '1.7', textAlign: 'center', fontSize: '0.9rem' }}>
-                💡 Want to take a break instead? You can <strong>pause your account</strong> — your data will be saved and you can come back anytime.
-            </p>
-            </div>
+            {subscriptionStatus === 'active' && (
+              <div
+                style={{
+                  padding: '14px 18px',
+                  borderRadius: '10px',
+                  background: 'rgba(255, 170, 0, 0.08)',
+                  border: '1px solid rgba(255, 170, 0, 0.3)',
+                  marginBottom: '20px',
+                }}
+              >
+                <p style={{ color: '#ffaa00', margin: 0, lineHeight: '1.7', textAlign: 'center', fontSize: '0.9rem' }}>
+                  💡 Want to take a break instead? You can <strong>pause your account</strong> — your data will be saved and you can come back anytime.
+                </p>
+              </div>
+            )}
             <p style={{ color: '#ff6b6b', marginBottom: '24px', lineHeight: '1.6', textAlign: 'center', fontWeight: 'bold' }}>
               This action cannot be undone. Are you absolutely sure?
             </p>
@@ -1242,24 +1244,26 @@ const SubscriptionManager = () => {
               >
                 No
               </button>
-              <button
-                onClick={() => {
-                  setShowCancelConfirm(false)
-                  setShowPauseConfirm(true)
-                }}
-                style={{
-                  padding: '10px 24px',
-                  background: 'rgba(255, 170, 0, 0.2)',
-                  border: '1px solid rgba(255, 170, 0, 0.5)',
-                  borderRadius: '8px',
-                  color: '#ffaa00',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem',
-                  fontWeight: '500',
-                }}
-              >
-                Pause Instead
-              </button>
+              {subscriptionStatus === 'active' && (
+                <button
+                  onClick={() => {
+                    setShowCancelConfirm(false)
+                    setShowPauseConfirm(true)
+                  }}
+                  style={{
+                    padding: '10px 24px',
+                    background: 'rgba(255, 170, 0, 0.2)',
+                    border: '1px solid rgba(255, 170, 0, 0.5)',
+                    borderRadius: '8px',
+                    color: '#ffaa00',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    fontWeight: '500',
+                  }}
+                >
+                  Pause Instead
+                </button>
+              )}
               <button
                 onClick={handleCancelSubscription}
                 disabled={processing}
