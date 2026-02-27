@@ -1188,6 +1188,7 @@ app.post('/api/auth/signin', async (req, res) => {
         email: dbUser.email,
         subscriptionStatus: dbUser.subscriptionStatus || 'inactive',
         subscriptionRenewalDate: dbUser.subscriptionRenewalDate || null,
+        stripeSubscriptionId: dbUser.stripeSubscriptionId || null,
         emailVerified: dbUser.emailVerified || false,
         plan: dbUser.plan || null,
         modelPreferences: dbUser.modelPreferences || null,
@@ -1593,6 +1594,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
           email: dbUser.email,
           subscriptionStatus: 'trialing',
           subscriptionRenewalDate: null,
+          stripeSubscriptionId: null,
           emailVerified: true,
           plan: 'free_trial',
           modelPreferences: dbUser.modelPreferences || null,
@@ -1627,6 +1629,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
           email: dbUser.email,
           subscriptionStatus: 'inactive',
           subscriptionRenewalDate: null,
+          stripeSubscriptionId: null,
           emailVerified: true,
           plan: userPlan,
           modelPreferences: dbUser.modelPreferences || null,
@@ -1675,6 +1678,7 @@ app.post('/api/auth/check-verification', async (req, res) => {
         email: dbUser.email,
         subscriptionStatus: dbUser.subscriptionStatus || 'inactive',
         subscriptionRenewalDate: dbUser.subscriptionRenewalDate || null,
+        stripeSubscriptionId: dbUser.stripeSubscriptionId || null,
         emailVerified: dbUser.emailVerified || false,
         plan: dbUser.plan || null,
         modelPreferences: dbUser.modelPreferences || null,
@@ -11397,6 +11401,8 @@ app.get('/api/stripe/subscription-status', async (req, res) => {
           subscriptionStatus: updatedUser.subscriptionStatus || 'inactive',
           subscriptionRenewalDate: updatedUser.subscriptionRenewalDate || null,
           hasActiveSubscription: updatedUser.subscriptionStatus === 'active',
+          plan: updatedUser.plan || null,
+          stripeSubscriptionId: updatedUser.stripeSubscriptionId || null,
           synced: true,
         })
       }
@@ -11406,6 +11412,8 @@ app.get('/api/stripe/subscription-status', async (req, res) => {
       subscriptionStatus: user.subscriptionStatus || 'inactive',
       subscriptionRenewalDate: user.subscriptionRenewalDate || null,
       hasActiveSubscription: user.subscriptionStatus === 'active',
+      plan: user.plan || null,
+      stripeSubscriptionId: user.stripeSubscriptionId || null,
       synced: false,
     })
   } catch (error) {

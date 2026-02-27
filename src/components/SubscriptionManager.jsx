@@ -37,6 +37,15 @@ const SubscriptionManager = () => {
       setSubscriptionStatus(newStatus)
       setSubscriptionRenewalDate(response.data.subscriptionRenewalDate)
       setError(null)
+      // Merge plan and stripeSubscriptionId from server so free-plan Delete button works even with stale store
+      const cu = useStore.getState().currentUser
+      if (cu && (response.data.plan !== undefined || response.data.stripeSubscriptionId !== undefined)) {
+        useStore.getState().setCurrentUser({
+          ...cu,
+          ...(response.data.plan !== undefined && { plan: response.data.plan }),
+          ...(response.data.stripeSubscriptionId !== undefined && { stripeSubscriptionId: response.data.stripeSubscriptionId }),
+        })
+      }
       
       // If status was synced and is now active, show success message
       if (response.data.synced && newStatus === 'active') {
@@ -949,7 +958,7 @@ const SubscriptionManager = () => {
                   </>
                 )}
               </button>
-              {currentUser?.plan === 'free_trial' && !currentUser?.stripeSubscriptionId && (
+              {((currentUser?.plan === 'free_trial' || subscriptionStatus === 'trialing') && !currentUser?.stripeSubscriptionId) && (
                 <button
                   onClick={() => setShowCancelConfirm(true)}
                   disabled={processing}
