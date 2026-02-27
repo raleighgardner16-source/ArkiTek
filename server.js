@@ -8633,8 +8633,9 @@ app.get('/api/admin/check', async (req, res) => {
       return res.status(404).json({ error: 'User not found' })
     }
     
+    const userIsAdmin = await isAdmin(userId)
     res.json({
-      isAdmin: isAdmin(userId),
+      isAdmin: userIsAdmin,
     })
   } catch (error) {
     console.error('[Admin] Error checking admin status:', error)
