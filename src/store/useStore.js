@@ -255,7 +255,7 @@ export const useStore = create(
       setUnreadMessageCount: (count) => set({ unreadMessageCount: count }),
 
       // Navigation bar expanded state
-      isNavExpanded: false,
+      isNavExpanded: true,
       setNavExpanded: (expanded) => set({ isNavExpanded: expanded }),
 
       // Active history entry ID (tracks the current conversation for live updates)
@@ -313,6 +313,7 @@ export const useStore = create(
         autoSmartProviders: state.autoSmartProviders,
         promptMode: state.promptMode,
         modelRoles: state.modelRoles,
+        isNavExpanded: state.isNavExpanded,
       }),
     }
   )

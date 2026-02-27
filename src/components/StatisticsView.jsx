@@ -284,6 +284,8 @@ const StatisticsView = () => {
   const [processingRequestId, setProcessingRequestId] = useState(null)
   const [notifSubTab, setNotifSubTab] = useState('notifications')
   const fileInputRef = useRef(null)
+  const navTransitionReady = useRef(false)
+  useEffect(() => { navTransitionReady.current = true }, [])
 
   // Handle successful usage purchase
   const handleUsagePurchaseSuccess = (data) => {
@@ -922,10 +924,7 @@ const StatisticsView = () => {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+    <div
       style={{
         position: 'fixed',
         top: '0',
@@ -938,7 +937,7 @@ const StatisticsView = () => {
         overflowY: 'auto',
         zIndex: 10,
         color: currentTheme.text,
-        transition: 'left 0.3s ease, width 0.3s ease',
+        transition: navTransitionReady.current ? 'left 0.3s ease, width 0.3s ease' : 'none',
       }}
     >
       <div
@@ -1172,7 +1171,7 @@ const StatisticsView = () => {
         )}
 
         {/* Tab Content */}
-        <AnimatePresence mode="popLayout">
+        <AnimatePresence mode="wait">
           {activeTab === 'tokens' && (
             <motion.div
               key="tokens"
@@ -3912,7 +3911,7 @@ const StatisticsView = () => {
           )}
         </AnimatePresence>
       </div>
-    </motion.div>
+    </div>
   )
 }
 

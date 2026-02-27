@@ -9393,13 +9393,38 @@ app.delete('/api/history/:historyId', async (req, res) => {
     }
 
     const dbInstance = await db.getDb()
-    const result = await dbInstance.collection('conversation_history').deleteOne({
+
+    // Fetch the entry first so we can remove its prompt from the category section
+    const entry = await dbInstance.collection('conversation_history').findOne({
       _id: historyId,
       userId,
     })
 
-    if (result.deletedCount === 0) {
+    if (!entry) {
       return res.status(404).json({ error: 'History entry not found or not owned by this user' })
+    }
+
+    await dbInstance.collection('conversation_history').deleteOne({ _id: historyId, userId })
+
+    // Remove the matching prompt from categoryPrompts (keep the total count unchanged)
+    if (entry.category && entry.originalPrompt) {
+      try {
+        const userUsage = await db.usage.getOrDefault(userId)
+        const cat = entry.category
+        const prompts = userUsage.categoryPrompts?.[cat]
+        if (prompts && prompts.length > 0) {
+          const promptSnippet = entry.originalPrompt.substring(0, 500)
+          const idx = prompts.findIndex(p => p.text === promptSnippet)
+          if (idx !== -1) {
+            prompts.splice(idx, 1)
+            userUsage.categoryPrompts[cat] = prompts
+            await db.usage.update(userId, { categoryPrompts: userUsage.categoryPrompts })
+            console.log(`[History] Also removed prompt from category "${cat}" for user ${userId}`)
+          }
+        }
+      } catch (catErr) {
+        console.error(`[History] Non-fatal: failed to remove prompt from category:`, catErr.message)
+      }
     }
 
     console.log(`[History] Deleted ${historyId} for user ${userId}`)

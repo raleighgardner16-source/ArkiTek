@@ -51,6 +51,8 @@ const SavedConversationsView = () => {
 
   // Sub-tab state: 'history' or 'categories'
   const [activeSubTab, setActiveSubTab] = useState('history')
+  const navTransitionReady = useRef(false)
+  useEffect(() => { navTransitionReady.current = true }, [])
 
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
@@ -300,6 +302,7 @@ const SavedConversationsView = () => {
         setDetailTokenTab(null)
       }
       setConfirmDeleteId(null)
+      fetchCategories()
     } catch (error) {
       console.error('[History] Error deleting:', error)
       alert('Failed to delete conversation.')
@@ -1478,7 +1481,7 @@ const SavedConversationsView = () => {
       position: 'fixed', top: 0, left: isNavExpanded ? '240px' : '60px',
       width: `calc(100% - ${isNavExpanded ? '240px' : '60px'})`, height: '100%',
       overflowY: 'auto', zIndex: 10, padding: '40px',
-      transition: 'left 0.3s ease, width 0.3s ease',
+      transition: navTransitionReady.current ? 'left 0.3s ease, width 0.3s ease' : 'none',
     }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {/* Header */}

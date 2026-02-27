@@ -43,7 +43,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [userPlan, setUserPlan] = useState(currentUser?.plan || 'free_trial')
   const isPromptLocked = subscriptionRestricted || subscriptionPaused || usageExhausted
   const isFreePlan = currentUser?.plan === 'free_trial' && !currentUser?.stripeSubscriptionId
-  const navWidth = isNavExpanded ? '260px' : '60px'
+  const navWidth = isNavExpanded ? '240px' : '60px'
+  const navTransitionReady = useRef(false)
+  useEffect(() => { navTransitionReady.current = true }, [])
   const [streakDays, setStreakDays] = useState(0)
   const setGeminiDetectionResponse = useStore((state) => state.setGeminiDetectionResponse)
   const isSearchingWeb = useStore((state) => state.isSearchingWeb)
@@ -1783,7 +1785,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          transition: 'left 0.3s ease, width 0.3s ease',
+          transition: navTransitionReady.current ? 'left 0.3s ease, width 0.3s ease' : 'none',
           zIndex: 10,
         }}
       >
@@ -3802,15 +3804,15 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             <div style={{
               position: 'relative',
               background: promptMode === 'debate'
-                ? (currentTheme.name === 'dark' ? 'rgba(255, 140, 50, 0.06)' : 'rgba(200, 80, 30, 0.04)')
+                ? (currentTheme.name === 'dark' ? 'rgba(231, 76, 60, 0.06)' : 'rgba(192, 57, 43, 0.04)')
                 : currentTheme.buttonBackground,
               border: promptMode === 'debate'
-                ? `1px solid ${currentTheme.name === 'dark' ? 'rgba(255, 140, 50, 0.28)' : 'rgba(200, 80, 30, 0.22)'}`
+                ? `1px solid ${currentTheme.name === 'dark' ? 'rgba(231, 76, 60, 0.28)' : 'rgba(192, 57, 43, 0.22)'}`
                 : `1px solid ${currentTheme.borderLight}`,
               borderRadius: '20px',
               overflow: 'visible',
               boxShadow: promptMode === 'debate'
-                ? `0 2px 16px ${currentTheme.name === 'dark' ? 'rgba(255, 120, 50, 0.12)' : 'rgba(200, 80, 30, 0.08)'}`
+                ? `0 2px 16px ${currentTheme.name === 'dark' ? 'rgba(231, 76, 60, 0.12)' : 'rgba(192, 57, 43, 0.08)'}`
                 : `0 2px 12px ${currentTheme.shadow}`,
               transition: 'background 0.3s ease, border 0.3s ease, box-shadow 0.3s ease',
             }}>
@@ -4060,12 +4062,12 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           fontWeight: promptMode === mode.key ? '600' : '500',
                           color: promptMode === mode.key
                             ? (mode.key === 'debate'
-                              ? (currentTheme.name === 'dark' ? '#ffb36b' : '#c05a1c')
+                              ? (currentTheme.name === 'dark' ? '#ff6b6b' : '#c0392b')
                               : (currentTheme.name === 'dark' ? '#fff' : '#1a365d'))
                             : currentTheme.textMuted,
                           background: promptMode === mode.key
                             ? (mode.key === 'debate'
-                              ? (currentTheme.name === 'dark' ? 'rgba(255, 140, 50, 0.15)' : 'rgba(200, 80, 30, 0.12)')
+                              ? (currentTheme.name === 'dark' ? 'rgba(231, 76, 60, 0.15)' : 'rgba(192, 57, 43, 0.12)')
                               : (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.10)' : 'rgba(44, 82, 130, 0.10)'))
                             : 'transparent',
                           transition: 'all 0.15s ease',
@@ -4094,15 +4096,15 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                       alignItems: 'center',
                       gap: '6px',
                       padding: '6px 20px',
-                      borderBottom: `1px solid ${currentTheme.name === 'dark' ? 'rgba(255, 140, 50, 0.15)' : 'rgba(200, 80, 30, 0.10)'}`,
+                      borderBottom: `1px solid ${currentTheme.name === 'dark' ? 'rgba(231, 76, 60, 0.15)' : 'rgba(192, 57, 43, 0.10)'}`,
                     }}>
-                      <Swords size={12} color={currentTheme.name === 'dark' ? '#ffb36b' : '#c05a1c'} />
+                      <Swords size={12} color={currentTheme.name === 'dark' ? '#ff6b6b' : '#c0392b'} />
                       <span style={{
                         fontSize: '0.65rem',
                         fontWeight: '700',
                         letterSpacing: '1.2px',
                         textTransform: 'uppercase',
-                        color: currentTheme.name === 'dark' ? '#ffb36b' : '#c05a1c',
+                        color: currentTheme.name === 'dark' ? '#ff6b6b' : '#c0392b',
                       }}>
                         Debate Mode
                       </span>
@@ -4327,7 +4329,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           height: '30px',
                           padding: 0,
                           background: canSubmit
-                            ? (promptMode === 'debate' ? (currentTheme.name === 'dark' ? '#e08530' : '#c05a1c') : currentTheme.accent)
+                            ? (promptMode === 'debate' ? (currentTheme.name === 'dark' ? '#E74C3C' : '#c0392b') : currentTheme.accent)
                             : hasPromptOnly ? '#ffaa00' : currentTheme.borderLight,
                           border: 'none',
                           borderRadius: '8px',

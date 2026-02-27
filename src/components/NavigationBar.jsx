@@ -23,7 +23,7 @@ const NavigationBar = () => {
   // const setNotificationCount = useStore((state) => state.setNotificationCount)
   // const unreadMessageCount = useStore((state) => state.unreadMessageCount)
   // const setUnreadMessageCount = useStore((state) => state.setUnreadMessageCount)
-  const [isExpanded, setIsExpanded] = useState(true) // Nav starts expanded by default
+  const [isExpanded, setIsExpanded] = useState(() => useStore.getState().isNavExpanded ?? true)
   const [showCollapseTooltip, setShowCollapseTooltip] = useState(false)
   const [showExpandTooltip, setShowExpandTooltip] = useState(false)
   const [showSupportPopup, setShowSupportPopup] = useState(false)

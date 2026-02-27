@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import SubscriptionManager from './SubscriptionManager'
@@ -8,6 +8,8 @@ const SettingsView = () => {
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const isNavExpanded = useStore((state) => state.isNavExpanded)
+  const navTransitionReady = useRef(false)
+  useEffect(() => { navTransitionReady.current = true }, [])
 
   return (
     <div
@@ -25,7 +27,7 @@ const SettingsView = () => {
         paddingBottom: '40px',
         overflowY: 'auto',
         zIndex: 10,
-        transition: 'left 0.3s ease, width 0.3s ease',
+        transition: navTransitionReady.current ? 'left 0.3s ease, width 0.3s ease' : 'none',
       }}
     >
       <div
