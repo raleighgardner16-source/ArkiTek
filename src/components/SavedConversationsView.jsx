@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare, Coins, DollarSign, Star, Play, Trophy } from 'lucide-react'
+import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare, Coins, DollarSign, Star, Play, Trophy, Swords } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import axios from 'axios'
@@ -47,6 +47,7 @@ const SavedConversationsView = () => {
   const setLastSubmittedCategory = useStore((state) => state.setLastSubmittedCategory)
   const setSummaryMinimized = useStore((state) => state.setSummaryMinimized)
   const winningPrompts = useStore((state) => state.winningPrompts)
+  const historyRefreshTrigger = useStore((state) => state.historyRefreshTrigger)
 
   // Sub-tab state: 'history' or 'categories'
   const [activeSubTab, setActiveSubTab] = useState('history')
@@ -88,7 +89,14 @@ const SavedConversationsView = () => {
       fetchHistory()
       fetchCategories()
     }
-  }, [currentUser])
+  }, [currentUser, historyRefreshTrigger])
+
+  // Refetch selected convo detail when history was updated (e.g. new follow-ups added)
+  useEffect(() => {
+    if (historyRefreshTrigger > 0 && selectedConvo?.id) {
+      fetchDetail(selectedConvo.id)
+    }
+  }, [historyRefreshTrigger])
 
   // Close selected chat when clicking outside the open detail panel.
   useEffect(() => {
@@ -334,10 +342,13 @@ const SavedConversationsView = () => {
         userId: currentUser.id,
       })
 
-      // Restore responses into the store
+      // Restore responses into the store (keep modelName->responseId map for restoring follow-up turns)
+      const modelNameToResponseId = {}
       ;(convo.responses || []).forEach(r => {
+        const id = `${r.modelName}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+        modelNameToResponseId[r.modelName] = id
         addResponse({
-          id: `${r.modelName}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          id,
           modelName: r.modelName,
           actualModelName: r.actualModelName || r.modelName,
           originalModelName: r.modelName,
@@ -348,6 +359,22 @@ const SavedConversationsView = () => {
           sources: convo.sources || [],
         })
       })
+
+      // Restore council column follow-up turns so they appear when continuing
+      const modelTurns = (convo.conversationTurns || []).filter(t => t.type !== 'judge' && t.modelName)
+      const initialCouncilConvo = {}
+      modelTurns.forEach((turn) => {
+        const responseId = modelNameToResponseId[turn.modelName]
+        if (responseId) {
+          if (!initialCouncilConvo[responseId]) initialCouncilConvo[responseId] = []
+          initialCouncilConvo[responseId].push({
+            user: turn.user,
+            assistant: turn.assistant,
+            timestamp: turn.timestamp ? new Date(turn.timestamp).getTime() : Date.now(),
+          })
+        }
+      })
+      useStore.getState().setCouncilColumnConvoHistory(initialCouncilConvo)
 
       // Restore summary
       if (convo.summary) {
@@ -516,6 +543,14 @@ const SavedConversationsView = () => {
                 <Layers size={12} /> Council ({modelCount} models {hasSummary ? 'and summary' : 'no summary'})
               </span>
             )}
+            <span style={{
+              fontSize: '0.65rem', fontWeight: '600', color: (convo.promptMode || 'general') === 'debate' ? '#E74C3C' : currentTheme.textMuted,
+              textTransform: 'uppercase', letterSpacing: '0.5px',
+              display: 'flex', alignItems: 'center', gap: '4px',
+            }}>
+              {(convo.promptMode || 'general') === 'debate' ? <Swords size={12} /> : <MessageCircle size={12} />}
+              {(convo.promptMode || 'general') === 'debate' ? 'Debate' : 'General'}
+            </span>
             {convo.consensus !== null && (
               <span style={{
                 padding: '1px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: '600',
@@ -794,6 +829,18 @@ const SavedConversationsView = () => {
               {selectedConvo.responses?.length > 1
                 ? `Council (${selectedModelCount} models ${selectedHasSummary ? 'and summary' : 'no summary'})`
                 : 'Single Model'}
+            </span>
+            <span style={{
+              padding: '4px 10px',
+              background: (selectedConvo.promptMode || 'general') === 'debate' ? 'rgba(231, 76, 60, 0.15)' : currentTheme.buttonBackground,
+              border: `1px solid ${(selectedConvo.promptMode || 'general') === 'debate' ? 'rgba(231, 76, 60, 0.4)' : currentTheme.borderLight}`,
+              borderRadius: '6px', fontSize: '0.75rem',
+              color: (selectedConvo.promptMode || 'general') === 'debate' ? '#E74C3C' : currentTheme.textSecondary,
+              fontWeight: '600',
+              display: 'flex', alignItems: 'center', gap: '4px',
+            }}>
+              {(selectedConvo.promptMode || 'general') === 'debate' ? <Swords size={12} /> : <MessageCircle size={12} />}
+              {(selectedConvo.promptMode || 'general') === 'debate' ? 'Debate' : 'General'}
             </span>
             <span style={{ fontSize: '0.8rem', color: currentTheme.textMuted }}>
               {formatDate(selectedConvo.savedAt)}

@@ -75,6 +75,7 @@ export const useStore = create(
           showFactsWindow: true,
           showPipelineDebugWindow: true,
           currentHistoryId: null,
+          councilColumnConvoHistory: {},
         })
         // Note: lastSubmittedPrompt is NOT cleared here - it's managed by handlePromptSubmit
         // It will be set before clearResponses is called, so it persists for the voting button
@@ -237,6 +238,10 @@ export const useStore = create(
       leaderboardRefreshTrigger: 0,
       triggerLeaderboardRefresh: () => set((state) => ({ leaderboardRefreshTrigger: state.leaderboardRefreshTrigger + 1 })),
 
+      // History refresh trigger (refetch when follow-ups are added to a continued conversation)
+      historyRefreshTrigger: 0,
+      triggerHistoryRefresh: () => set((state) => ({ historyRefreshTrigger: state.historyRefreshTrigger + 1 })),
+
       // Winning prompts from Prompt Feed Favorites (shared across views for badge display)
       winningPrompts: [],
       setWinningPrompts: (prompts) => set({ winningPrompts: prompts }),
@@ -257,6 +262,15 @@ export const useStore = create(
       currentHistoryId: null,
       setCurrentHistoryId: (id) => set({ currentHistoryId: id }),
       clearCurrentHistoryId: () => set({ currentHistoryId: null }),
+
+      // Council column follow-up conversation history (per response) — used when continuing from history
+      councilColumnConvoHistory: {},
+      setCouncilColumnConvoHistory: (fnOrObj) =>
+        set((state) => ({
+          councilColumnConvoHistory: typeof fnOrObj === 'function'
+            ? fnOrObj(state.councilColumnConvoHistory)
+            : fnOrObj,
+        })),
 
       // Council responses panel visibility
       showCouncilPanel: false,

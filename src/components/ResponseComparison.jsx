@@ -379,7 +379,8 @@ const ResponseComparison = () => {
             assistant: finalData?.response || '',
             sources: finalData?.searchResults || [],
           }
-        }).catch(err => console.error('[History] Error updating model conversation turn:', err.message))
+        }).then(() => useStore.getState().triggerHistoryRefresh())
+          .catch(err => console.error('[History] Error updating model conversation turn:', err.message))
       }
     } catch (error) {
       console.error('[ResponseComparison] Error sending conversation message:', error)

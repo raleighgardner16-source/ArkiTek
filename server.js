@@ -9019,7 +9019,7 @@ app.get('/api/admin/expenses/history', requireAdmin, async (req, res) => {
 
 app.post('/api/history/auto-save', async (req, res) => {
   try {
-    const { userId, originalPrompt, category, responses, summary, sources, facts, ragDebugData } = req.body
+    const { userId, originalPrompt, category, promptMode, responses, summary, sources, facts, ragDebugData } = req.body
 
     if (!userId || !originalPrompt) {
       return res.status(400).json({ error: 'userId and originalPrompt are required' })
@@ -9040,6 +9040,7 @@ app.post('/api/history/auto-save', async (req, res) => {
       title,
       originalPrompt,
       category: category || 'General',
+      promptMode: promptMode || 'general',
       savedAt: new Date(),
       // All model responses from the council or individual model
       responses: (responses || []).map(r => ({
@@ -9260,6 +9261,7 @@ app.get('/api/history/detail/:historyId', async (req, res) => {
         title: doc.title,
         originalPrompt: doc.originalPrompt,
         category: doc.category,
+        promptMode: doc.promptMode || 'general',
         savedAt: doc.savedAt,
         responses: doc.responses || [],
         summary: doc.summary || null,
@@ -9292,6 +9294,7 @@ app.get('/api/history/:userId', async (req, res) => {
         title: 1,
         originalPrompt: 1,
         category: 1,
+        promptMode: 1,
         savedAt: 1,
         starred: 1,
         'responses.modelName': 1,
@@ -9306,6 +9309,7 @@ app.get('/api/history/:userId', async (req, res) => {
       title: c.title,
       originalPrompt: c.originalPrompt,
       category: c.category,
+      promptMode: c.promptMode || 'general',
       savedAt: c.savedAt,
       starred: !!c.starred,
       modelCount: c.responses?.length || 0,

@@ -1389,6 +1389,7 @@ Important: Only include each section label followed by a colon and content.`
           userId: currentUser.id,
           originalPrompt: savedPrompt,
           category: category || 'General',
+          promptMode: useStore.getState().promptMode || 'general',
           responses: currentResponses.map(r => ({
             modelName: r.modelName || r.actualModelName || 'Unknown',
             actualModelName: r.actualModelName || r.modelName || 'Unknown',

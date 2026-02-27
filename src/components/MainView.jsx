@@ -94,7 +94,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [singleConvoSources, setSingleConvoSources] = useState({}) // { turnIndex: [...sources] } — per-turn single-model follow-up search
   const [showSingleConvoSources, setShowSingleConvoSources] = useState({}) // { turnIndex: true/false }
   const [councilColumnConvoInputs, setCouncilColumnConvoInputs] = useState({}) // { responseId: inputText }
-  const [councilColumnConvoHistory, setCouncilColumnConvoHistory] = useState({}) // { responseId: [{user, assistant, timestamp}] }
+  const councilColumnConvoHistory = useStore((state) => state.councilColumnConvoHistory)
+  const setCouncilColumnConvoHistory = useStore((state) => state.setCouncilColumnConvoHistory)
   const [councilColumnConvoSending, setCouncilColumnConvoSending] = useState({}) // { responseId: boolean }
   const [councilColumnConvoSearching, setCouncilColumnConvoSearching] = useState({}) // { responseId: boolean }
   const [councilColumnConvoSources, setCouncilColumnConvoSources] = useState({}) // { `${responseId}-${turnIdx}`: [...sources] }
@@ -1127,7 +1128,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               assistant: latestTurn.assistant,
               sources: finalData?.searchResults || [],
             }
-          }).catch(err => console.error('[History] Error updating judge conversation turn:', err.message))
+          }).then(() => useStore.getState().triggerHistoryRefresh())
+            .catch(err => console.error('[History] Error updating judge conversation turn:', err.message))
         }
       }
     } catch (error) {
@@ -1253,7 +1255,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             assistant: finalData?.response || '',
             sources: finalData?.searchResults || [],
           }
-        }).catch(err => console.error('[History] Error updating single model conversation turn:', err.message))
+        }).then(() => useStore.getState().triggerHistoryRefresh())
+          .catch(err => console.error('[History] Error updating single model conversation turn:', err.message))
       }
     } catch (error) {
       // If aborted, just remove the pending message silently
@@ -1361,7 +1364,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               assistant: assistantText,
               sources: finalData?.searchResults || [],
             }
-          }).catch(err => console.error('[History] Error updating council column conversation turn:', err.message))
+          }).then(() => useStore.getState().triggerHistoryRefresh())
+            .catch(err => console.error('[History] Error updating council column conversation turn:', err.message))
         }
       }
     } catch (error) {
@@ -1489,7 +1493,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 assistant: assistantText,
                 sources: finalData?.searchResults || [],
               }
-            }).catch(err => console.error('[History] Error updating council follow-up turn:', err.message))
+            }).then(() => useStore.getState().triggerHistoryRefresh())
+              .catch(err => console.error('[History] Error updating council follow-up turn:', err.message))
           }
         }
       } catch (error) {
