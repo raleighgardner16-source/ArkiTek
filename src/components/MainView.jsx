@@ -3801,11 +3801,18 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
             {/* Unified Prompt Box with embedded provider buttons */}
             <div style={{
               position: 'relative',
-              background: currentTheme.buttonBackground,
-              border: `1px solid ${currentTheme.borderLight}`,
+              background: promptMode === 'debate'
+                ? (currentTheme.name === 'dark' ? 'rgba(255, 140, 50, 0.06)' : 'rgba(200, 80, 30, 0.04)')
+                : currentTheme.buttonBackground,
+              border: promptMode === 'debate'
+                ? `1px solid ${currentTheme.name === 'dark' ? 'rgba(255, 140, 50, 0.28)' : 'rgba(200, 80, 30, 0.22)'}`
+                : `1px solid ${currentTheme.borderLight}`,
               borderRadius: '20px',
               overflow: 'visible',
-              boxShadow: `0 2px 12px ${currentTheme.shadow}`,
+              boxShadow: promptMode === 'debate'
+                ? `0 2px 16px ${currentTheme.name === 'dark' ? 'rgba(255, 120, 50, 0.12)' : 'rgba(200, 80, 30, 0.08)'}`
+                : `0 2px 12px ${currentTheme.shadow}`,
+              transition: 'background 0.3s ease, border 0.3s ease, box-shadow 0.3s ease',
             }}>
               {/* Usage Exhausted Overlay */}
               {usageExhausted && !subscriptionRestricted && !subscriptionPaused && (
@@ -4052,10 +4059,14 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           fontSize: '0.78rem',
                           fontWeight: promptMode === mode.key ? '600' : '500',
                           color: promptMode === mode.key
-                            ? (currentTheme.name === 'dark' ? '#fff' : '#1a365d')
+                            ? (mode.key === 'debate'
+                              ? (currentTheme.name === 'dark' ? '#ffb36b' : '#c05a1c')
+                              : (currentTheme.name === 'dark' ? '#fff' : '#1a365d'))
                             : currentTheme.textMuted,
                           background: promptMode === mode.key
-                            ? (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.10)' : 'rgba(44, 82, 130, 0.10)')
+                            ? (mode.key === 'debate'
+                              ? (currentTheme.name === 'dark' ? 'rgba(255, 140, 50, 0.15)' : 'rgba(200, 80, 30, 0.12)')
+                              : (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.10)' : 'rgba(44, 82, 130, 0.10)'))
                             : 'transparent',
                           transition: 'all 0.15s ease',
                         }}
@@ -4067,6 +4078,46 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   </div>
                 </div>
               )}
+
+              {/* Debate Mode Banner */}
+              <AnimatePresence>
+                {promptMode === 'debate' && responses.length === 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.25, ease: 'easeInOut' }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 20px',
+                      borderBottom: `1px solid ${currentTheme.name === 'dark' ? 'rgba(255, 140, 50, 0.15)' : 'rgba(200, 80, 30, 0.10)'}`,
+                    }}>
+                      <Swords size={12} color={currentTheme.name === 'dark' ? '#ffb36b' : '#c05a1c'} />
+                      <span style={{
+                        fontSize: '0.65rem',
+                        fontWeight: '700',
+                        letterSpacing: '1.2px',
+                        textTransform: 'uppercase',
+                        color: currentTheme.name === 'dark' ? '#ffb36b' : '#c05a1c',
+                      }}>
+                        Debate Mode
+                      </span>
+                      <span style={{
+                        fontSize: '0.6rem',
+                        fontWeight: '500',
+                        color: currentTheme.textMuted,
+                        marginLeft: '4px',
+                      }}>
+                        Models will argue from assigned perspectives
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Textarea */}
               <textarea
@@ -4275,7 +4326,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                           width: '30px',
                           height: '30px',
                           padding: 0,
-                          background: canSubmit ? currentTheme.accent : hasPromptOnly ? '#ffaa00' : currentTheme.borderLight,
+                          background: canSubmit
+                            ? (promptMode === 'debate' ? (currentTheme.name === 'dark' ? '#e08530' : '#c05a1c') : currentTheme.accent)
+                            : hasPromptOnly ? '#ffaa00' : currentTheme.borderLight,
                           border: 'none',
                           borderRadius: '8px',
                           color: canSubmit || hasPromptOnly ? '#fff' : currentTheme.textMuted,
@@ -4302,7 +4355,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               {promptMode === 'debate' && debateRoleEntries.length > 0 && responses.length === 0 && (
                 <div style={{
                   padding: '8px 14px 10px 14px',
-                  borderTop: `1px solid ${currentTheme.borderLight}`,
+                  borderTop: `1px solid ${currentTheme.name === 'dark' ? 'rgba(255, 140, 50, 0.15)' : 'rgba(200, 80, 30, 0.10)'}`,
                   overflow: 'visible',
                 }}>
                   <div style={{
@@ -4311,7 +4364,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     gap: '6px',
                     marginBottom: '6px',
                   }}>
-                    <Swords size={12} style={{ color: currentTheme.accent }} />
+                    <Swords size={12} style={{ color: currentTheme.name === 'dark' ? '#ffb36b' : '#c05a1c' }} />
                     <span style={{
                       fontSize: '0.72rem',
                       fontWeight: '600',
