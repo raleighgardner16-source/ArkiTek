@@ -267,6 +267,9 @@ const StatisticsView = () => {
   const [followLoading, setFollowLoading] = useState(false)
   const [showFollowersList, setShowFollowersList] = useState(null)
   const [followersListData, setFollowersListData] = useState([])
+  const [dailyChallengeData, setDailyChallengeData] = useState(null)
+  const [claimingChallenge, setClaimingChallenge] = useState(false)
+  const [challengeClaimedAnim, setChallengeClaimedAnim] = useState(false)
   const [loadingFollowersList, setLoadingFollowersList] = useState(false)
   const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false)
   const [editIsPrivate, setEditIsPrivate] = useState(false)
@@ -541,11 +544,42 @@ const StatisticsView = () => {
     }
   }, [currentUser, statsRefreshTrigger, isViewingOther])
 
+  const fetchDailyChallenge = async () => {
+    if (!currentUser?.id) return
+    try {
+      const response = await axios.get(`${API_URL}/api/daily-challenge/${currentUser.id}/status`)
+      setDailyChallengeData(response.data)
+    } catch (error) {
+      console.error('Error fetching daily challenge:', error)
+    }
+  }
+
+  const claimDailyChallenge = async () => {
+    if (!currentUser?.id || claimingChallenge) return
+    setClaimingChallenge(true)
+    try {
+      const response = await axios.post(`${API_URL}/api/daily-challenge/${currentUser.id}/claim`)
+      if (response.data.success) {
+        setChallengeClaimedAnim(true)
+        setTimeout(() => setChallengeClaimedAnim(false), 2000)
+        fetchDailyChallenge()
+        fetchStats()
+      }
+    } catch (error) {
+      console.error('Error claiming daily challenge:', error)
+    } finally {
+      setClaimingChallenge(false)
+    }
+  }
+
   // Fetch tab-specific data only when that tab is active
   useEffect(() => {
     if (isViewingOther || !currentUser?.id) return
     if (activeTab === 'leaderboard' || activeTab === 'badges') {
       fetchLeaderboardStats()
+    }
+    if (activeTab === 'badges') {
+      fetchDailyChallenge()
     }
     if (activeTab === 'leaderboard') {
       fetchNotifications()
@@ -1111,7 +1145,6 @@ const StatisticsView = () => {
             <Database size={20} />
             Token Usage
           </button>
-          {!isFreePlan && (
           <button
             onClick={() => handleTabChange('badges')}
             style={{
@@ -1134,7 +1167,6 @@ const StatisticsView = () => {
             <Award size={20} />
             Badges
           </button>
-          )}
           <button
             onClick={() => handleTabChange('ratings')}
             style={{
@@ -2372,7 +2404,7 @@ const StatisticsView = () => {
             </motion.div>
           )}
 
-          {activeTab === 'badges' && !isViewingOther && !isFreePlan && (
+          {activeTab === 'badges' && !isViewingOther && (
             <motion.div
               key="badges"
               initial={{ opacity: 0 }}
@@ -2440,8 +2472,8 @@ const StatisticsView = () => {
                   return { ...category, badges, earnedCount, totalCount: badges.length, currentValue, nextBadge, nextBadgeProgress }
                 })
 
-                // Save any newly earned badges to backend (fire-and-forget) — only for own profile
-                if (newlyEarned.length > 0 && currentUser?.id && !isViewingOther) {
+                // Save any newly earned badges to backend (fire-and-forget) — only for own profile, not free plan
+                if (newlyEarned.length > 0 && currentUser?.id && !isViewingOther && !isFreePlan) {
                   axios.post(`${API_URL}/api/stats/${currentUser.id}/badges`, { newBadges: newlyEarned })
                     .then(() => console.log(`[Badges] Persisted ${newlyEarned.length} new badges`))
                     .catch(err => console.error('[Badges] Error saving badges:', err))
@@ -2462,6 +2494,201 @@ const StatisticsView = () => {
 
                 return (
                   <>
+                    {/* Daily Challenge Card */}
+                    <div style={{
+                      background: isFreePlan ? 'rgba(255,255,255,0.02)' : 'linear-gradient(135deg, rgba(255, 170, 0, 0.08), rgba(255, 100, 0, 0.05))',
+                      border: `1px solid ${isFreePlan ? 'rgba(255,255,255,0.06)' : 'rgba(255, 170, 0, 0.25)'}`,
+                      borderRadius: '16px',
+                      padding: '24px',
+                      marginBottom: '24px',
+                      position: 'relative',
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                        <div style={{
+                          width: '44px',
+                          height: '44px',
+                          borderRadius: '50%',
+                          background: isFreePlan ? 'rgba(255,255,255,0.05)' : 'rgba(255, 170, 0, 0.15)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}>
+                          <Zap size={22} color={isFreePlan ? '#666' : '#ffaa00'} />
+                        </div>
+                        <div>
+                          <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: isFreePlan ? '#666' : '#ffaa00', margin: 0 }}>
+                            Daily Challenge
+                          </h3>
+                          <p style={{ fontSize: '0.8rem', color: currentTheme.textMuted, margin: 0 }}>
+                            Complete the challenge to earn bonus usage
+                          </p>
+                        </div>
+                        {challengeClaimedAnim && (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.5 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0 }}
+                            style={{
+                              marginLeft: 'auto',
+                              padding: '6px 14px',
+                              borderRadius: '8px',
+                              background: 'rgba(0, 200, 100, 0.15)',
+                              border: '1px solid rgba(0, 200, 100, 0.3)',
+                              color: '#00cc66',
+                              fontSize: '0.85rem',
+                              fontWeight: '600',
+                            }}
+                          >
+                            +{dailyChallengeData?.percentageReward || 0}% usage claimed!
+                          </motion.div>
+                        )}
+                      </div>
+
+                      {isFreePlan ? (
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '12px',
+                          padding: '20px',
+                          background: 'rgba(255,255,255,0.02)',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(255,255,255,0.06)',
+                        }}>
+                          <Lock size={28} color="#666" />
+                          <p style={{ color: '#888', fontSize: '0.9rem', textAlign: 'center', margin: 0 }}>
+                            Upgrade to Pro or Premium to participate in daily challenges and earn bonus usage
+                          </p>
+                          {dailyChallengeData?.challenge && (
+                            <div style={{ opacity: 0.4, textAlign: 'center', marginTop: '8px' }}>
+                              <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', fontWeight: '600', margin: '0 0 4px 0' }}>
+                                Today's Challenge: {dailyChallengeData.challenge.title}
+                              </p>
+                              <p style={{ color: currentTheme.textMuted, fontSize: '0.8rem', margin: 0 }}>
+                                {dailyChallengeData.challenge.description}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ) : dailyChallengeData?.challenge ? (
+                        <div style={{
+                          background: 'rgba(255, 170, 0, 0.06)',
+                          borderRadius: '12px',
+                          padding: '20px',
+                          border: '1px solid rgba(255, 170, 0, 0.12)',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                            <div>
+                              <p style={{ color: '#ffaa00', fontSize: '1rem', fontWeight: '700', margin: '0 0 4px 0' }}>
+                                {dailyChallengeData.challenge.title}
+                              </p>
+                              <p style={{ color: currentTheme.textSecondary, fontSize: '0.85rem', margin: 0 }}>
+                                {dailyChallengeData.challenge.description}
+                              </p>
+                            </div>
+                            <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '16px' }}>
+                              <p style={{ color: '#00cc66', fontSize: '0.85rem', fontWeight: '600', margin: '0 0 2px 0' }}>
+                                +{dailyChallengeData.percentageReward || 0}% usage
+                              </p>
+                              <p style={{ color: currentTheme.textMuted, fontSize: '0.7rem', margin: 0 }}>
+                                reward
+                              </p>
+                            </div>
+                          </div>
+                          {/* Progress bar */}
+                          <div style={{
+                            width: '100%',
+                            height: '8px',
+                            background: 'rgba(255,255,255,0.06)',
+                            borderRadius: '4px',
+                            overflow: 'hidden',
+                            marginBottom: '12px',
+                          }}>
+                            <div style={{
+                              width: `${Math.min(100, (dailyChallengeData.challenge.progress / dailyChallengeData.challenge.threshold) * 100)}%`,
+                              height: '100%',
+                              background: dailyChallengeData.challenge.met ? 'linear-gradient(90deg, #00cc66, #00e676)' : 'linear-gradient(90deg, #ffaa00, #ff8800)',
+                              borderRadius: '4px',
+                              transition: 'width 0.5s ease',
+                            }} />
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ color: currentTheme.textMuted, fontSize: '0.8rem' }}>
+                              {dailyChallengeData.challenge.progress} / {dailyChallengeData.challenge.threshold}
+                            </span>
+                            {dailyChallengeData.claimed ? (
+                              <div style={{
+                                padding: '8px 18px',
+                                borderRadius: '8px',
+                                background: 'rgba(0, 200, 100, 0.1)',
+                                border: '1px solid rgba(0, 200, 100, 0.3)',
+                                color: '#00cc66',
+                                fontSize: '0.85rem',
+                                fontWeight: '600',
+                              }}>
+                                Claimed
+                              </div>
+                            ) : (
+                              <button
+                                onClick={claimDailyChallenge}
+                                disabled={!dailyChallengeData.challenge.met || claimingChallenge}
+                                style={{
+                                  padding: '8px 18px',
+                                  borderRadius: '8px',
+                                  background: dailyChallengeData.challenge.met ? 'linear-gradient(135deg, #ffaa00, #ff8800)' : 'rgba(255,255,255,0.05)',
+                                  border: 'none',
+                                  color: dailyChallengeData.challenge.met ? '#000' : '#666',
+                                  fontSize: '0.85rem',
+                                  fontWeight: '600',
+                                  cursor: dailyChallengeData.challenge.met ? 'pointer' : 'not-allowed',
+                                  opacity: claimingChallenge ? 0.6 : 1,
+                                  transition: 'all 0.2s ease',
+                                }}
+                              >
+                                {claimingChallenge ? 'Claiming...' : dailyChallengeData.challenge.met ? 'Claim Reward' : 'In Progress'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '16px', color: currentTheme.textMuted, fontSize: '0.9rem' }}>
+                          Loading challenge...
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Free Plan Overlay for Badge Content */}
+                    {isFreePlan && (
+                      <div style={{
+                        background: 'rgba(255, 170, 0, 0.06)',
+                        border: '1px solid rgba(255, 170, 0, 0.2)',
+                        borderRadius: '12px',
+                        padding: '20px',
+                        marginBottom: '24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '16px',
+                        textAlign: 'center',
+                        flexDirection: 'column',
+                      }}>
+                        <Lock size={24} color="#ffaa00" />
+                        <div>
+                          <p style={{ color: '#ffaa00', fontSize: '1rem', fontWeight: '600', margin: '0 0 6px 0' }}>
+                            Upgrade to Earn Badges & Rewards
+                          </p>
+                          <p style={{ color: currentTheme.textMuted, fontSize: '0.85rem', margin: 0, lineHeight: 1.5 }}>
+                            Free plan users can preview badges and tiers below, but you need a Pro or Premium plan to earn badges, unlock tier rewards, receive monthly gifts, and complete daily challenges.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Badge content wrapper — greyed out for free plan */}
+                    <div style={{
+                      ...(isFreePlan ? { opacity: 0.45, filter: 'grayscale(70%)', pointerEvents: 'none', userSelect: 'none' } : {}),
+                    }}>
+
                     {/* Overall Badge Summary with Ultimate Badge */}
                     <div style={{
                       background: currentTheme.backgroundOverlay,
@@ -3055,6 +3282,7 @@ const StatisticsView = () => {
                           </div>
                         )
                       })}
+                    </div>
                     </div>
                   </>
                 )

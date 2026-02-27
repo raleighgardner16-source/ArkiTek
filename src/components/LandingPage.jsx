@@ -95,22 +95,24 @@ const LandingPage = ({ onNavigate }) => {
 
   const freePlanFeatures = [
     'Access to all AI models',
-    'Standard monthly usage',
-    'No rewards or badges',
+    'Very limited usage',
+    'Preview badges & rewards (upgrade to earn)',
   ]
 
   const proPlanFeatures = [
-    '15x more usage than Free',
+    '7.5x more usage than Free',
     'All models & features',
     'Rewards & badge progression',
+    'Daily challenges with usage rewards',
     'Monthly gifts: bonus usage & exclusive badges',
     'Priority support',
   ]
 
   const premiumPlanFeatures = [
-    '50x more usage than Free',
+    '25x more usage than Free',
     'All models & features',
     'Rewards & badge progression',
+    'Daily challenges with usage rewards',
     'Monthly gifts: bonus usage & exclusive badges',
     'Priority support',
   ]
@@ -214,17 +216,15 @@ const LandingPage = ({ onNavigate }) => {
             maxWidth: '800px',
             textAlign: 'center',
           }}>
-            Compare the World's
+            Create Your Council of
             <br />
             <span style={{
               background: currentTheme.accentGradient,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
             }}>
-              Best AI Models
+              The World's Best AI Models
             </span>
-            <br />
-            Side by Side
           </h1>
 
           <p style={{

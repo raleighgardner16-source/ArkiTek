@@ -642,12 +642,148 @@ const prompts = {
 }
 
 // ============================================================================
-// USAGE STATS OPERATIONS
+// USAGE DATA OPERATIONS (usage_data collection)
 // ============================================================================
-// NOTE: usage_daily and user_monthly_usage collections have been removed.
-// All usage data is now tracked solely through the in-memory cache (usageCache)
-// which is persisted to the usage_data collection in MongoDB.
-// The usage_data collection is the single source of truth for all usage data.
+
+const DEFAULT_USAGE = {
+  totalTokens: 0,
+  totalInputTokens: 0,
+  totalOutputTokens: 0,
+  totalQueries: 0,
+  totalPrompts: 0,
+  monthlyUsage: {},
+  dailyUsage: {},
+  providers: {},
+  models: {},
+  promptHistory: [],
+  categories: {},
+  categoryPrompts: {},
+  ratings: {},
+  lastActiveAt: null,
+  streakDays: 0,
+  judgeConversationContext: [],
+  purchasedCredits: { total: 0, remaining: 0 },
+  dailyChallengesClaimed: {},
+}
+
+const usage = {
+  async get(userId) {
+    const db = await getDb()
+    const doc = await db.collection('usage_data').findOne({ _id: userId })
+    if (!doc) return null
+    const { _id, updatedAt, ...data } = doc
+    return { ...DEFAULT_USAGE, ...data }
+  },
+
+  async getOrDefault(userId) {
+    const existing = await this.get(userId)
+    return existing || { ...DEFAULT_USAGE }
+  },
+
+  async create(userId, data = {}) {
+    const db = await getDb()
+    const doc = { _id: userId, ...DEFAULT_USAGE, ...data, updatedAt: new Date() }
+    await db.collection('usage_data').insertOne(doc)
+    return doc
+  },
+
+  async update(userId, setFields) {
+    const db = await getDb()
+    await db.collection('usage_data').updateOne(
+      { _id: userId },
+      { $set: { ...setFields, updatedAt: new Date() } }
+    )
+  },
+
+  async increment(userId, incFields) {
+    const db = await getDb()
+    await db.collection('usage_data').updateOne(
+      { _id: userId },
+      { $inc: incFields, $set: { updatedAt: new Date() } }
+    )
+  },
+
+  async getAll() {
+    const db = await getDb()
+    return db.collection('usage_data').find({}).toArray()
+  },
+
+  async delete(userId) {
+    const db = await getDb()
+    await db.collection('usage_data').deleteOne({ _id: userId })
+  },
+}
+
+// ============================================================================
+// USER STATS OPERATIONS (user_stats collection)
+// ============================================================================
+
+const userStats = {
+  async get(userId) {
+    const db = await getDb()
+    return db.collection('user_stats').findOne({ _id: userId })
+  },
+
+  async getOrCreate(userId) {
+    const existing = await this.get(userId)
+    if (existing) return existing
+    const doc = {
+      _id: userId,
+      userId,
+      monthlyUsageCost: {},
+      monthlyOverageBilled: {},
+      stats: { totalTokens: 0, totalInputTokens: 0, totalOutputTokens: 0, totalQueries: 0, totalPrompts: 0, providers: {}, models: {} },
+      updatedAt: new Date(),
+    }
+    try { await (await getDb()).collection('user_stats').insertOne(doc) } catch (e) { if (e.code !== 11000) throw e }
+    return doc
+  },
+
+  async update(userId, setFields) {
+    const db = await getDb()
+    await db.collection('user_stats').updateOne(
+      { _id: userId },
+      { $set: { ...setFields, updatedAt: new Date() } }
+    )
+  },
+
+  async increment(userId, incFields) {
+    const db = await getDb()
+    await db.collection('user_stats').updateOne(
+      { _id: userId },
+      { $inc: incFields, $set: { updatedAt: new Date() } },
+      { upsert: true }
+    )
+  },
+
+  async addMonthlyCost(userId, month, amount) {
+    const db = await getDb()
+    await db.collection('user_stats').updateOne(
+      { _id: userId },
+      { $inc: { [`monthlyUsageCost.${month}`]: amount }, $set: { updatedAt: new Date() } },
+      { upsert: true }
+    )
+  },
+
+  async setMonthlyOverage(userId, month, amount) {
+    const db = await getDb()
+    await db.collection('user_stats').updateOne(
+      { _id: userId },
+      { $set: { [`monthlyOverageBilled.${month}`]: amount, updatedAt: new Date() } },
+      { upsert: true }
+    )
+  },
+
+  async getAll() {
+    const db = await getDb()
+    return db.collection('user_stats').find({}).toArray()
+  },
+
+  async delete(userId) {
+    const db = await getDb()
+    await db.collection('user_stats').deleteOne({ _id: userId })
+  },
+}
 
 // ============================================================================
 // PURCHASE OPERATIONS
@@ -1111,6 +1247,8 @@ export default {
   judgeContext,
   leaderboard,
   leaderboardPosts,
+  usage,
+  userStats,
 }
 
 // Named exports for convenience
@@ -1123,5 +1261,7 @@ export {
   judgeContext,
   leaderboard,
   leaderboardPosts,
+  usage,
+  userStats,
 }
 
