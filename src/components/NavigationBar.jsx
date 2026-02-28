@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { MessageSquare, Settings, User, LogOut, Trophy, Sun, Moon, History, MessageSquarePlus, ChevronLeft, ChevronRight, ShoppingBag, Info, Mail, X } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
-import axios from 'axios'
+import api from '../utils/api'
 import { API_URL } from '../utils/config'
 
 const NavigationBar = () => {
@@ -34,9 +34,9 @@ const NavigationBar = () => {
   // useEffect(() => {
   //   if (!currentUser?.id) return
   //   const fetchCounts = () => {
-  //     axios.get(`${API_URL}/api/notifications/${currentUser.id}?limit=1`)
+  //     api.get(`${API_URL}/api/notifications/${currentUser.id}?limit=1`)
   //       .then(res => { setNotificationCount(res.data?.unreadCount || 0) }).catch(() => {})
-  //     axios.get(`${API_URL}/api/messages/unread/${currentUser.id}`)
+  //     api.get(`${API_URL}/api/messages/unread/${currentUser.id}`)
   //       .then(res => { setUnreadMessageCount(res.data?.unreadCount || 0) }).catch(() => {})
   //   }
   //   fetchCounts()
@@ -53,9 +53,8 @@ const NavigationBar = () => {
     // Finalize the active history entry before clearing (regenerates embedding with full conversation)
     const activeHistoryId = useStore.getState().currentHistoryId
     if (activeHistoryId && currentUser?.id) {
-      axios.post(`${API_URL}/api/history/finalize`, {
+      api.post(`${API_URL}/api/history/finalize`, {
         historyId: activeHistoryId,
-        userId: currentUser.id,
       }).catch(err => console.error('[History] Error finalizing:', err.message))
     }
     clearResponses()
@@ -65,8 +64,8 @@ const NavigationBar = () => {
     if (setSummaryMinimized) setSummaryMinimized(true)
     // Clear server-side conversation context
     if (currentUser?.id) {
-      axios.post(`${API_URL}/api/judge/clear-context`, { userId: currentUser.id }).catch(() => {})
-      axios.post(`${API_URL}/api/model/clear-context`, { userId: currentUser.id }).catch(() => {})
+      api.post(`${API_URL}/api/judge/clear-context`, {}).catch(() => {})
+      api.post(`${API_URL}/api/model/clear-context`, {}).catch(() => {})
     }
     setActiveTab('home')
   }
@@ -504,12 +503,8 @@ const NavigationBar = () => {
           onClick={() => {
             // Clear server-side conversation context before signing out
             if (currentUser?.id) {
-              axios.post(`${API_URL}/api/judge/clear-context`, {
-                userId: currentUser.id
-              }).catch(() => {})
-              axios.post(`${API_URL}/api/model/clear-context`, {
-                userId: currentUser.id
-              }).catch(() => {})
+              api.post(`${API_URL}/api/judge/clear-context`, {}).catch(() => {})
+              api.post(`${API_URL}/api/model/clear-context`, {}).catch(() => {})
             }
             clearCurrentUser()
             clearResponses()

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe, Coins, Bug, DollarSign } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
-import axios from 'axios'
+import api from '../utils/api'
 import { API_URL } from '../utils/config'
 import { streamFetch } from '../utils/streamFetch'
 import MarkdownRenderer from './MarkdownRenderer'
@@ -170,8 +170,7 @@ const ResponseComparison = () => {
         const response = responses.find(r => r.id === responseId)
         const modelName = response?.modelName || responseId.split('-').slice(0, 2).join('-')
         
-        await axios.post(`${API_URL}/api/ratings`, {
-          userId: currentUser.id,
+        await api.post(`${API_URL}/api/ratings`, {
           responseId: responseId,
           rating: rating,
           modelName: modelName
@@ -308,7 +307,6 @@ const ResponseComparison = () => {
     
     try {
       const finalData = await streamFetch(`${API_URL}/api/model/conversation/stream`, {
-        userId: currentUser.id,
         modelName: modelName,
         userMessage: input,
         originalResponse: originalResponse,
@@ -370,7 +368,7 @@ const ResponseComparison = () => {
       // Push this conversation turn to the active history entry
       const activeHistoryId = useStore.getState().currentHistoryId
       if (activeHistoryId && currentUser?.id) {
-        axios.post(`${API_URL}/api/history/update-conversation`, {
+        api.post(`${API_URL}/api/history/update-conversation`, {
           historyId: activeHistoryId,
           turn: {
             type: 'model',
@@ -1121,21 +1119,16 @@ const ResponseComparison = () => {
                 // Finalize the active history entry before clearing
                 const activeHistoryId = useStore.getState().currentHistoryId
                 if (activeHistoryId && currentUser?.id) {
-                  axios.post(`${API_URL}/api/history/finalize`, {
+                  api.post(`${API_URL}/api/history/finalize`, {
                     historyId: activeHistoryId,
-                    userId: currentUser.id,
                   }).catch(err => console.error('[History] Error finalizing:', err.message))
                 }
                 clearResponses()
                 clearLastSubmittedPrompt()
                 // Clear judge and model conversation context
                 if (currentUser?.id) {
-                  axios.post(`${API_URL}/api/judge/clear-context`, {
-                    userId: currentUser.id
-                  }).catch(err => console.error('[Clear Context] Error:', err))
-                  axios.post(`${API_URL}/api/model/clear-context`, {
-                    userId: currentUser.id
-                  }).catch(err => console.error('[Clear Model Context] Error:', err))
+                  api.post(`${API_URL}/api/judge/clear-context`).catch(err => console.error('[Clear Context] Error:', err))
+                  api.post(`${API_URL}/api/model/clear-context`).catch(err => console.error('[Clear Model Context] Error:', err))
                 }
               }}
               onMouseDown={(e) => e.stopPropagation()}

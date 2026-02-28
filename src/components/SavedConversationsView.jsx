@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare, Coins, DollarSign, Star, Play, Trophy, Swords } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
-import axios from 'axios'
+import api from '../utils/api'
 import { API_URL } from '../utils/config'
 import ConfirmationModal from './ConfirmationModal'
 import MarkdownRenderer from './MarkdownRenderer'
@@ -125,7 +125,7 @@ const SavedConversationsView = () => {
   // --- Categories data fetching ---
   const fetchCategories = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/stats/${currentUser.id}/categories`)
+      const response = await api.get(`${API_URL}/api/stats/${currentUser.id}/categories`)
       setCategoriesData(response.data.categories || {})
     } catch (error) {
       console.error('Error fetching categories:', error)
@@ -146,7 +146,7 @@ const SavedConversationsView = () => {
     if (!currentUser?.id || !categoryToClear) return
     try {
       const encodedCategory = encodeURIComponent(categoryToClear)
-      await axios.delete(`${API_URL}/api/stats/${currentUser.id}/categories/${encodedCategory}/prompts`)
+      await api.delete(`${API_URL}/api/stats/${currentUser.id}/categories/${encodedCategory}/prompts`)
       await fetchCategories()
     } catch (error) {
       console.error('[Clear Category] Error:', error)
@@ -160,7 +160,7 @@ const SavedConversationsView = () => {
     if (!currentUser?.id) return
     try {
       const encodedCategory = encodeURIComponent(category)
-      await axios.delete(`${API_URL}/api/stats/${currentUser.id}/categories/${encodedCategory}/prompts/${promptIndex}`)
+      await api.delete(`${API_URL}/api/stats/${currentUser.id}/categories/${encodedCategory}/prompts/${promptIndex}`)
       await fetchCategories()
     } catch (error) {
       console.error('[Delete Prompt] Error:', error)
@@ -201,7 +201,7 @@ const SavedConversationsView = () => {
   const fetchHistory = async () => {
     setLoading(true)
     try {
-      const res = await axios.get(`${API_URL}/api/history/${currentUser.id}`)
+      const res = await api.get(`${API_URL}/api/history/${currentUser.id}`)
       setHistory(res.data.history || [])
     } catch (error) {
       console.error('[History] Error fetching:', error)
@@ -214,7 +214,7 @@ const SavedConversationsView = () => {
     setExpandedSources({})
     setDetailTokenTab(null)
     try {
-      const res = await axios.get(`${API_URL}/api/history/detail/${historyId}`)
+      const res = await api.get(`${API_URL}/api/history/detail/${historyId}`)
       setSelectedConvo(res.data.conversation)
     } catch (error) {
       console.error('[History] Error fetching detail:', error)
@@ -293,9 +293,7 @@ const SavedConversationsView = () => {
   const handleDelete = async (historyId) => {
     try {
       setDeletingId(historyId)
-      await axios.delete(`${API_URL}/api/history/${historyId}`, {
-        data: { userId: currentUser.id }
-      })
+      await api.delete(`${API_URL}/api/history/${historyId}`)
       setHistory(prev => prev.filter(c => c.id !== historyId))
       if (selectedConvo?.id === historyId) {
         setSelectedConvo(null)
@@ -318,9 +316,8 @@ const SavedConversationsView = () => {
     const newStarred = !convo.starred
     setHistory(prev => prev.map(c => c.id === convoId ? { ...c, starred: newStarred } : c))
     try {
-      await axios.post(`${API_URL}/api/history/star`, {
+      await api.post(`${API_URL}/api/history/star`, {
         historyId: convoId,
-        userId: currentUser.id,
         starred: newStarred,
       })
     } catch (error) {
@@ -332,7 +329,7 @@ const SavedConversationsView = () => {
   const handleContinueConversation = async (convoId, e) => {
     if (e) { e.stopPropagation(); e.preventDefault() }
     try {
-      const res = await axios.get(`${API_URL}/api/history/detail/${convoId}`)
+      const res = await api.get(`${API_URL}/api/history/detail/${convoId}`)
       const convo = res.data.conversation
       if (!convo) return
 
@@ -340,9 +337,8 @@ const SavedConversationsView = () => {
       clearResponses()
 
       // Restore server-side conversation context
-      await axios.post(`${API_URL}/api/history/restore-context`, {
+      await api.post(`${API_URL}/api/history/restore-context`, {
         historyId: convoId,
-        userId: currentUser.id,
       })
 
       // Restore responses into the store (keep modelName->responseId map for restoring follow-up turns)

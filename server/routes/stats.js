@@ -13,13 +13,7 @@ const statsRouter = Router()
 // Track a prompt submission
 statsRouter.post('/prompt', async (req, res) => {
   try {
-    const { userId } = req.body
-
-    if (!userId) {
-      console.log('[Prompt Tracking] Missing userId in request')
-      return res.status(400).json({ error: 'userId is required' })
-    }
-
+    const userId = req.userId
     const { promptText, category, responses, summary, facts, sources, promptMode } = req.body
     console.log('[Prompt Tracking] Received prompt tracking request for user:', userId, 'category:', category, 'mode:', promptMode || 'general')
     console.log('[Prompt Tracking] Additional data:', {
@@ -49,10 +43,11 @@ statsRouter.post('/token-update', async (req, res) => {
 
 // Update model pricing
 statsRouter.post('/pricing', async (req, res) => {
-  const { userId, provider, model, pricing } = req.body
+  const userId = req.userId
+  const { provider, model, pricing } = req.body
 
-  if (!userId || !provider || !model || pricing === undefined) {
-    return res.status(400).json({ error: 'userId, provider, model, and pricing are required' })
+  if (!provider || !model || pricing === undefined) {
+    return res.status(400).json({ error: 'provider, model, and pricing are required' })
   }
 
   const userUsage = await db.usage.getOrDefault(userId)
@@ -79,7 +74,7 @@ statsRouter.post('/pricing', async (req, res) => {
 
 // Get user statistics
 statsRouter.get('/:userId', async (req, res) => {
-  const { userId } = req.params
+  const userId = req.userId
 
   const [user, userUsage] = await Promise.all([
     db.users.get(userId),
@@ -288,7 +283,7 @@ statsRouter.get('/:userId', async (req, res) => {
 
 // Save earned badges (permanent — badges can only be added, never removed)
 statsRouter.post('/:userId/badges', async (req, res) => {
-  const { userId } = req.params
+  const userId = req.userId
   const { newBadges } = req.body
   
   if (!Array.isArray(newBadges) || newBadges.length === 0) {
@@ -321,7 +316,7 @@ statsRouter.post('/:userId/badges', async (req, res) => {
 
 // Get prompt history (last 10 prompts)
 statsRouter.get('/:userId/history', async (req, res) => {
-  const { userId } = req.params
+  const userId = req.userId
   const userUsage = await db.usage.getOrDefault(userId)
   const promptHistory = userUsage.promptHistory || []
   res.json({ prompts: promptHistory.slice(0, 10) })
@@ -329,7 +324,7 @@ statsRouter.get('/:userId/history', async (req, res) => {
 
 // Clear prompt history
 statsRouter.delete('/:userId/history', async (req, res) => {
-  const { userId } = req.params
+  const userId = req.userId
   console.log(`[Clear History] DELETE request received for user: ${userId}`)
   
   await db.usage.update(userId, { promptHistory: [] })
@@ -340,7 +335,7 @@ statsRouter.delete('/:userId/history', async (req, res) => {
 
 // Get categories stats
 statsRouter.get('/:userId/categories', async (req, res) => {
-  const { userId } = req.params
+  const userId = req.userId
   const userUsage = await db.usage.getOrDefault(userId)
   
   const categories = userUsage.categories || {}
@@ -390,7 +385,7 @@ statsRouter.get('/:userId/categories', async (req, res) => {
 // Clear category prompts
 // Use wildcard (*) to handle categories with forward slashes like "Politics/Law"
 statsRouter.delete('/:userId/categories/*/prompts', async (req, res) => {
-  const { userId } = req.params
+  const userId = req.userId
   const categoryPath = req.params[0] || ''
   
   console.log(`[Clear Category] DELETE request received for user: ${userId}, category path: ${categoryPath}`)
@@ -433,7 +428,7 @@ statsRouter.delete('/:userId/categories/*/prompts', async (req, res) => {
 
 // Delete a single prompt from a category by index
 statsRouter.delete('/:userId/categories/*/prompts/:promptIndex', async (req, res) => {
-  const { userId } = req.params
+  const userId = req.userId
   const categoryPath = req.params[0] || ''
   const promptIndex = parseInt(req.params.promptIndex, 10)
 
@@ -475,14 +470,14 @@ statsRouter.delete('/:userId/categories/*/prompts/:promptIndex', async (req, res
 
 // Get ratings stats
 statsRouter.get('/:userId/ratings', async (req, res) => {
-  const { userId } = req.params
+  const userId = req.userId
   const userUsage = await db.usage.getOrDefault(userId)
   res.json({ ratings: userUsage.ratings || {} })
 })
 
 // Get streak info
 statsRouter.get('/:userId/streak', async (req, res) => {
-  const { userId } = req.params
+  const userId = req.userId
   const [user, userUsage] = await Promise.all([
     db.users.get(userId),
     db.usage.getOrDefault(userId),
@@ -517,7 +512,7 @@ const dailyChallengeRouter = Router()
 // Get daily challenge status
 dailyChallengeRouter.get('/:userId/status', async (req, res) => {
   try {
-    const { userId } = req.params
+    const userId = req.userId
     const user = await db.users.get(userId)
     if (!user) return res.status(404).json({ error: 'User not found' })
 
@@ -584,7 +579,7 @@ dailyChallengeRouter.get('/:userId/status', async (req, res) => {
 // Claim daily challenge reward
 dailyChallengeRouter.post('/:userId/claim', async (req, res) => {
   try {
-    const { userId } = req.params
+    const userId = req.userId
     const user = await db.users.get(userId)
     if (!user) return res.status(404).json({ error: 'User not found' })
 
@@ -665,8 +660,8 @@ const userRouter = Router()
 // Save model preferences
 userRouter.put('/model-preferences', async (req, res) => {
   try {
-    const { userId, selectedModels, autoSmartProviders } = req.body
-    if (!userId) return res.status(400).json({ error: 'userId is required' })
+    const userId = req.userId
+    const { selectedModels, autoSmartProviders } = req.body
 
     const user = await db.users.get(userId)
     if (!user) return res.status(404).json({ error: 'User not found' })
@@ -689,7 +684,7 @@ userRouter.put('/model-preferences', async (req, res) => {
 // Load model preferences
 userRouter.get('/model-preferences/:userId', async (req, res) => {
   try {
-    const { userId } = req.params
+    const userId = req.userId
     const user = await db.users.get(userId)
     if (!user) return res.status(404).json({ error: 'User not found' })
 
@@ -709,10 +704,11 @@ const ratingsRouter = Router()
 // Save a rating for a model response
 ratingsRouter.post('/', async (req, res) => {
   try {
-    const { userId, responseId, rating, modelName } = req.body
+    const userId = req.userId
+    const { responseId, rating, modelName } = req.body
 
-    if (!userId || !responseId || rating === undefined) {
-      return res.status(400).json({ error: 'userId, responseId, and rating are required' })
+    if (!responseId || rating === undefined) {
+      return res.status(400).json({ error: 'responseId and rating are required' })
     }
 
     if (rating < 1 || rating > 5) {

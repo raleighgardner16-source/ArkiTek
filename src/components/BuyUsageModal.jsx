@@ -4,7 +4,7 @@ import { X, DollarSign, AlertCircle, Check, Loader, CreditCard, Shield, Trash2 }
 import { useStore } from '../store/useStore'
 import { API_URL } from '../utils/config'
 import { getTheme } from '../utils/theme'
-import axios from 'axios'
+import api from '../utils/api'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 
@@ -13,7 +13,7 @@ let stripePromise = null
 
 const getStripePromise = async () => {
   if (!stripePromise) {
-    const response = await axios.get(`${API_URL}/api/stripe/config`)
+    const response = await api.get(`${API_URL}/api/stripe/config`)
     stripePromise = loadStripe(response.data.publishableKey)
   }
   return stripePromise
@@ -217,7 +217,7 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
   useEffect(() => {
     if (isOpen && currentUser?.id) {
       setLoadingCards(true)
-      axios.get(`${API_URL}/api/stripe/saved-cards`, { params: { userId: currentUser.id } })
+      api.get(`${API_URL}/api/stripe/saved-cards`)
         .then(res => {
           setSavedCards(res.data.cards || [])
           // Default to first saved card if available
@@ -252,8 +252,7 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
       setLoadingIntent(true)
     setError(null)
     try {
-        const response = await axios.post(`${API_URL}/api/stripe/create-usage-intent`, {
-          userId: currentUser.id,
+        const response = await api.post(`${API_URL}/api/stripe/create-usage-intent`, {
           amount,
           saveCard,
         })
@@ -302,8 +301,7 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
     setError(null)
 
     try {
-      const response = await axios.post(`${API_URL}/api/stripe/charge-saved-card`, {
-        userId: currentUser.id,
+      const response = await api.post(`${API_URL}/api/stripe/charge-saved-card`, {
         paymentMethodId: selectedCard,
         amount,
       })
@@ -323,8 +321,7 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
   // Pay with new card (via Stripe Elements)
   const handlePaymentSuccess = useCallback(async () => {
     try {
-      const response = await axios.post(`${API_URL}/api/stripe/confirm-usage-purchase`, {
-        userId: currentUser.id,
+      const response = await api.post(`${API_URL}/api/stripe/confirm-usage-purchase`, {
         paymentIntentId,
         amount,
       })
@@ -335,7 +332,7 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
       // Refresh saved cards if they saved the card
       if (saveCard) {
         try {
-          const cardsRes = await axios.get(`${API_URL}/api/stripe/saved-cards`, { params: { userId: currentUser.id } })
+          const cardsRes = await api.get(`${API_URL}/api/stripe/saved-cards`)
           setSavedCards(cardsRes.data.cards || [])
         } catch {}
       }
@@ -360,7 +357,7 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }) => {
   const handleDeleteCard = async (cardId) => {
     setDeletingCard(cardId)
     try {
-      await axios.delete(`${API_URL}/api/stripe/saved-cards/${cardId}`)
+      await api.delete(`${API_URL}/api/stripe/saved-cards/${cardId}`)
       setSavedCards(prev => prev.filter(c => c.id !== cardId))
       if (selectedCard === cardId) {
         const remaining = savedCards.filter(c => c.id !== cardId)

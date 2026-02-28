@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { LogIn, UserPlus, Mail, Lock, User, CreditCard, ArrowLeft, CheckCircle, KeyRound, Eye, EyeOff, ShieldCheck, Loader } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
-import axios from 'axios'
+import api from '../utils/api'
 import { API_URL } from '../utils/config'
 import FingerprintJS from '@fingerprintjs/fingerprintjs'
 
@@ -40,6 +40,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
   // Always use dark theme for the auth page
   const currentTheme = getTheme('dark')
   const setCurrentUser = useStore((state) => state.setCurrentUser)
+  const setAuthToken = useStore((state) => state.setAuthToken)
   const setShowWelcome = useStore((state) => state.setShowWelcome)
   const clearSelectedModels = useStore((state) => state.clearSelectedModels)
   const setSelectedModels = useStore((state) => state.setSelectedModels)
@@ -62,19 +63,21 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
     loadFingerprint()
   }, [])
 
-  // Detect #reset-password?token=xxx or #verify-email?token=xxx in the URL on mount
+  // Detect /reset-password?token=xxx or /verify-email?token=xxx in the URL on mount
+  // Also supports legacy hash-based routes for backwards compatibility
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
     const hash = window.location.hash
-    if (hash.startsWith('#reset-password')) {
-      const params = new URLSearchParams(hash.split('?')[1] || '')
-      const token = params.get('token')
+    const pathname = window.location.pathname
+
+    if (pathname === '/reset-password' || hash.startsWith('#reset-password')) {
+      const token = params.get('token') || new URLSearchParams(hash.split('?')[1] || '').get('token')
       if (token) {
         setResetToken(token)
         setView('reset-password')
       }
-    } else if (hash.startsWith('#verify-email')) {
-      const params = new URLSearchParams(hash.split('?')[1] || '')
-      const token = params.get('token')
+    } else if (pathname === '/verify-email' || hash.startsWith('#verify-email')) {
+      const token = params.get('token') || new URLSearchParams(hash.split('?')[1] || '').get('token')
       if (token) {
         setView('verify-email')
         handleVerifyEmail(token)
@@ -97,13 +100,14 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
 
   const checkVerificationStatus = async () => {
     try {
-      const response = await axios.post(`${API_URL}/api/auth/check-verification`, {
+      const response = await api.post(`/api/auth/check-verification`, {
         userId: verificationUserId,
       })
 
       if (response.data.success && response.data.verified && response.data.user) {
         console.log('[Auth] Email verified — auto-logging in')
         const user = response.data.user
+        if (response.data.token) setAuthToken(response.data.token)
 
         // New user — clear model prefs so MainView sets Auto Smart defaults
         clearSelectedModels()
@@ -188,10 +192,11 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
       const payload = isSignUp
         ? { ...submitData, plan: selectedPlan, fingerprint, timezone: userTimezone }
         : { ...submitData, timezone: userTimezone }
-      const response = await axios.post(`${API_URL}${endpoint}`, payload)
+      const response = await api.post(endpoint, payload)
 
       if (response.data.success) {
         const user = response.data.user
+        if (response.data.token) setAuthToken(response.data.token)
 
         // Check if email verification is required (both plans require email verification on signup)
         if (response.data.requiresVerification) {
@@ -238,12 +243,13 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
     setSuccessMessage('')
 
     try {
-      const response = await axios.post(`${API_URL}/api/auth/verify-email`, { token })
+      const response = await api.post('/api/auth/verify-email', { token })
 
       if (response.data.success) {
         const user = response.data.user
-        // Clear hash from URL
-        window.location.hash = ''
+        if (response.data.token) setAuthToken(response.data.token)
+        // Clear verification URL params
+        window.history.replaceState({}, '', '/signin')
 
         // If server returned full user data, auto-login the user
         if (user && user.firstName && user.username) {
@@ -285,7 +291,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
     setLoading(true)
 
     try {
-      const response = await axios.post(`${API_URL}/api/auth/resend-verification`, {
+      const response = await api.post('/api/auth/resend-verification', {
         userId: verificationUserId,
         email: verificationEmail,
       })
@@ -316,7 +322,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
         return
       }
 
-      const response = await axios.post(`${API_URL}/api/auth/forgot-username`, {
+      const response = await api.post('/api/auth/forgot-username', {
         email: resetEmail.trim(),
       })
 
@@ -345,7 +351,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
         return
       }
 
-      const response = await axios.post(`${API_URL}/api/auth/forgot-password`, {
+      const response = await api.post('/api/auth/forgot-password', {
         email: resetEmail.trim(),
       })
 
@@ -380,15 +386,15 @@ const AuthView = ({ initialView, initialPlan, onNavigate }) => {
         return
       }
 
-      const response = await axios.post(`${API_URL}/api/auth/reset-password`, {
+      const response = await api.post('/api/auth/reset-password', {
         token: resetToken,
         newPassword,
       })
 
       if (response.data.success) {
         setSuccessMessage(response.data.message || 'Your password has been reset. You can now sign in.')
-        // Clear the hash from the URL
-        window.location.hash = ''
+        // Clear reset URL params
+        window.history.replaceState({}, '', '/signin')
         // After 3 seconds, switch to sign-in view
         setTimeout(() => {
           setView('signin')

@@ -21,7 +21,7 @@ export const createNotification = async (notification) => {
 // Get notifications for a user
 router.get('/:userId', async (req, res) => {
   try {
-    const { userId } = req.params
+    const userId = req.userId
     const limit = parseInt(req.query.limit) || 50
 
     const dbInstance = await db.getDb()
@@ -44,10 +44,8 @@ router.get('/:userId', async (req, res) => {
 // Mark notifications as read
 router.post('/mark-read', async (req, res) => {
   try {
-    const { userId, notificationIds } = req.body
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
+    const { notificationIds } = req.body
 
     const dbInstance = await db.getDb()
     const filter = { userId }

@@ -6,9 +6,8 @@ const router = Router()
 // GET /api/messages/conversations/:userId
 router.get('/conversations/:userId', async (req, res) => {
   try {
-    const { userId } = req.params
+    const userId = req.userId
     const { type } = req.query
-    if (!userId) return res.status(400).json({ error: 'userId is required' })
 
     const dbInstance = await db.getDb()
     const filter = { 'participants.userId': userId }
@@ -30,7 +29,7 @@ router.get('/conversations/:userId', async (req, res) => {
 router.get('/conversation/:conversationId', async (req, res) => {
   try {
     const { conversationId } = req.params
-    const { userId } = req.query
+    const userId = req.userId
     if (!conversationId) return res.status(400).json({ error: 'conversationId is required' })
 
     const dbInstance = await db.getDb()
@@ -40,12 +39,10 @@ router.get('/conversation/:conversationId', async (req, res) => {
       .limit(200)
       .toArray()
 
-    if (userId) {
-      await dbInstance.collection('messages').updateMany(
-        { conversationId, readBy: { $ne: userId } },
-        { $addToSet: { readBy: userId } }
-      )
-    }
+    await dbInstance.collection('messages').updateMany(
+      { conversationId, readBy: { $ne: userId } },
+      { $addToSet: { readBy: userId } }
+    )
 
     res.json({ messages })
   } catch (error) {
@@ -57,9 +54,10 @@ router.get('/conversation/:conversationId', async (req, res) => {
 // POST /api/messages/send
 router.post('/send', async (req, res) => {
   try {
-    const { conversationId, senderId, text } = req.body
-    if (!conversationId || !senderId || !text?.trim()) {
-      return res.status(400).json({ error: 'conversationId, senderId, and text are required' })
+    const senderId = req.userId
+    const { conversationId, text } = req.body
+    if (!conversationId || !text?.trim()) {
+      return res.status(400).json({ error: 'conversationId and text are required' })
     }
 
     const dbInstance = await db.getDb()
@@ -105,9 +103,10 @@ router.post('/send', async (req, res) => {
 // POST /api/messages/conversation/create
 router.post('/conversation/create', async (req, res) => {
   try {
-    const { type, creatorId, participantIds } = req.body
-    if (!creatorId || !participantIds?.length) {
-      return res.status(400).json({ error: 'creatorId and participantIds are required' })
+    const creatorId = req.userId
+    const { type, participantIds } = req.body
+    if (!participantIds?.length) {
+      return res.status(400).json({ error: 'participantIds are required' })
     }
 
     const dbInstance = await db.getDb()
@@ -158,9 +157,10 @@ router.post('/conversation/create', async (req, res) => {
 // POST /api/messages/group/create
 router.post('/group/create', async (req, res) => {
   try {
-    const { creatorId, name, description, memberIds } = req.body
-    if (!creatorId || !name?.trim()) {
-      return res.status(400).json({ error: 'creatorId and name are required' })
+    const creatorId = req.userId
+    const { name, description, memberIds } = req.body
+    if (!name?.trim()) {
+      return res.status(400).json({ error: 'name is required' })
     }
 
     const dbInstance = await db.getDb()
@@ -200,8 +200,7 @@ router.post('/group/create', async (req, res) => {
 // GET /api/messages/unread/:userId
 router.get('/unread/:userId', async (req, res) => {
   try {
-    const { userId } = req.params
-    if (!userId) return res.status(400).json({ error: 'userId is required' })
+    const userId = req.userId
 
     const dbInstance = await db.getDb()
     const convos = await dbInstance.collection('conversations')

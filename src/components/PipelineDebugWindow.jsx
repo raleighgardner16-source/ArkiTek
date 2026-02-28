@@ -5,7 +5,7 @@ import TokenUsageWindow from './TokenUsageWindow'
 import CostBreakdownWindow from './CostBreakdownWindow'
 import CategoryDetectionWindow from './CategoryDetectionWindow'
 import { useStore } from '../store/useStore'
-import axios from 'axios'
+import api from '../utils/api'
 import { API_URL } from '../utils/config'
 
 const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, tokenData, queryCount, categoryDetectionData, inline = false }) => {
@@ -30,9 +30,7 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
       // Fetch judge context
       setLoadingJudgeContext(true)
       try {
-        const judgeRes = await axios.get(`${API_URL}/api/judge/context`, {
-          params: { userId: currentUser.id }
-        })
+        const judgeRes = await api.get(`${API_URL}/api/judge/context`)
         setLiveJudgeContext(judgeRes.data.context || [])
       } catch (err) {
         console.error('[PipelineDebug] Error fetching judge context:', err)
@@ -48,8 +46,8 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
           const modelName = resp.modelName || resp.actualModelName
           if (!modelName) continue
           try {
-            const res = await axios.get(`${API_URL}/api/model/context`, {
-              params: { userId: currentUser.id, modelName }
+            const res = await api.get(`${API_URL}/api/model/context`, {
+              params: { modelName }
             })
             contexts[modelName] = res.data.context || []
           } catch (err) {

@@ -5,7 +5,7 @@ import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
-import axios from 'axios'
+import api from '../utils/api'
 import { API_URL } from '../utils/config'
 
 // Stripe promise — loaded once
@@ -13,7 +13,7 @@ let stripePromise = null
 
 const getStripePromise = async () => {
   if (!stripePromise) {
-    const response = await axios.get(`${API_URL}/api/stripe/config`)
+    const response = await api.get(`${API_URL}/api/stripe/config`)
     stripePromise = loadStripe(response.data.publishableKey)
   }
   return stripePromise
@@ -190,8 +190,8 @@ const SubscriptionGate = ({ currentUser }) => {
 
     try {
       setChecking(true)
-      const response = await axios.get(`${API_URL}/api/stripe/subscription-status`, {
-        params: { userId: currentUser.id, sync: 'true' },
+      const response = await api.get(`${API_URL}/api/stripe/subscription-status`, {
+        params: { sync: 'true' },
       })
 
       const newStatus = response.data.subscriptionStatus
@@ -224,9 +224,7 @@ const SubscriptionGate = ({ currentUser }) => {
     const initPayment = async () => {
       setLoadingPayment(true)
       try {
-        const response = await axios.post(`${API_URL}/api/stripe/create-subscription-intent`, {
-          userId: currentUser.id,
-        })
+        const response = await api.post(`${API_URL}/api/stripe/create-subscription-intent`)
 
         // If the server says user already has an active subscription, update and pass through
         if (response.data.alreadyActive) {
@@ -267,9 +265,7 @@ const SubscriptionGate = ({ currentUser }) => {
           await new Promise(resolve => setTimeout(resolve, 2000))
         }
 
-        const response = await axios.post(`${API_URL}/api/stripe/confirm-subscription`, {
-          userId: currentUser.id,
-        })
+        const response = await api.post(`${API_URL}/api/stripe/confirm-subscription`)
 
         const { subscriptionStatus, subscriptionRenewalDate } = response.data
         console.log(`[SubscriptionGate] Confirm attempt ${attempt}: status=${subscriptionStatus}`)

@@ -14,12 +14,7 @@ const router = Router()
 
 router.get('/context/:userId', async (req, res) => {
   try {
-    let userId = req.query.userId || req.params.userId
-    
-    if (!userId || userId === 'undefined') {
-      return res.status(400).json({ error: 'userId is required' })
-    }
-    
+    const userId = req.userId
     const decodedUserId = decodeURIComponent(userId)
     
     const userUsage = await db.usage.getOrDefault(decodedUserId)
@@ -34,12 +29,7 @@ router.get('/context/:userId', async (req, res) => {
 
 router.get('/context', async (req, res) => {
   try {
-    const userId = req.query.userId
-    
-    if (!userId) {
-      return res.status(400).json({ error: 'userId query parameter is required' })
-    }
-    
+    const userId = req.userId
     const decodedUserId = decodeURIComponent(userId)
     
     const userUsage = await db.usage.getOrDefault(decodedUserId)
@@ -54,11 +44,7 @@ router.get('/context', async (req, res) => {
 
 router.post('/clear-context', async (req, res) => {
   try {
-    const { userId } = req.body
-    
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
     
     await db.usage.update(userId, { judgeConversationContext: [] })
     console.log(`[Judge Context] Cleared context for user ${userId}`)
@@ -72,10 +58,11 @@ router.post('/clear-context', async (req, res) => {
 
 router.post('/conversation', async (req, res) => {
   try {
-    const { userId, userMessage, conversationContext, originalSummaryText } = req.body
+    const userId = req.userId
+    const { userMessage, conversationContext, originalSummaryText } = req.body
     
-    if (!userId || !userMessage) {
-      return res.status(400).json({ error: 'userId and userMessage are required' })
+    if (!userMessage) {
+      return res.status(400).json({ error: 'userMessage is required' })
     }
     
     const subscriptionCheck = await checkSubscriptionStatusAsync(userId)
@@ -257,10 +244,11 @@ router.post('/conversation/stream', async (req, res) => {
   }
 
   try {
-    const { userId, userMessage, conversationContext, originalSummaryText } = req.body
+    const userId = req.userId
+    const { userMessage, conversationContext, originalSummaryText } = req.body
 
-    if (!userId || !userMessage) {
-      sendSSE('error', { message: 'userId and userMessage are required' })
+    if (!userMessage) {
+      sendSSE('error', { message: 'userMessage is required' })
       return res.end()
     }
 
@@ -457,10 +445,11 @@ router.post('/conversation/stream', async (req, res) => {
 
 router.post('/store-initial-summary', async (req, res) => {
   try {
-    const { userId, summaryText, originalPrompt } = req.body
+    const userId = req.userId
+    const { summaryText, originalPrompt } = req.body
     
-    if (!userId || !summaryText) {
-      return res.status(400).json({ error: 'userId and summaryText are required' })
+    if (!summaryText) {
+      return res.status(400).json({ error: 'summaryText is required' })
     }
     
     await storeJudgeContext(userId, summaryText, originalPrompt)

@@ -6,6 +6,7 @@ import { syncSubscriptionFromStripe } from '../services/subscription.js'
 import { getPlanAllocation, getPricingData, calculateModelCost, calculateSerperQueryCost } from '../helpers/pricing.js'
 import { getUserTimezone } from '../services/usage.js'
 import { getMonthForUser } from '../helpers/date.js'
+import { requireAuth } from '../middleware/requireAuth.js'
 
 const router = Router()
 
@@ -164,13 +165,9 @@ const calculateAndRecordOverage = async (userId, month) => {
 // ============================================================================
 
 // GET /api/stripe/payment-method
-router.get('/payment-method', async (req, res) => {
+router.get('/payment-method', requireAuth, async (req, res) => {
   try {
-    const { userId } = req.query
-    
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
     
     const user = await db.users.get(userId)
     
@@ -225,13 +222,9 @@ router.get('/payment-method', async (req, res) => {
 })
 
 // POST /api/stripe/setup-card
-router.post('/setup-card', async (req, res) => {
+router.post('/setup-card', requireAuth, async (req, res) => {
   try {
-    const { userId } = req.body
-    
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
     
     const user = await db.users.get(userId)
     
@@ -278,12 +271,9 @@ router.post('/setup-card', async (req, res) => {
 })
 
 // GET /api/stripe/saved-cards
-router.get('/saved-cards', async (req, res) => {
+router.get('/saved-cards', requireAuth, async (req, res) => {
   try {
-    const { userId } = req.query
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
 
     const user = await db.users.get(userId)
     if (!user || !user.stripeCustomerId) {
@@ -311,12 +301,13 @@ router.get('/saved-cards', async (req, res) => {
 })
 
 // POST /api/stripe/charge-saved-card
-router.post('/charge-saved-card', async (req, res) => {
+router.post('/charge-saved-card', requireAuth, async (req, res) => {
   try {
-    const { userId, paymentMethodId, amount } = req.body
+    const userId = req.userId
+    const { paymentMethodId, amount } = req.body
     
-    if (!userId || !paymentMethodId || !amount || amount <= 0) {
-      return res.status(400).json({ error: 'userId, paymentMethodId, and valid amount are required' })
+    if (!paymentMethodId || !amount || amount <= 0) {
+      return res.status(400).json({ error: 'paymentMethodId and valid amount are required' })
     }
     if (amount < 1 || amount > 500) {
       return res.status(400).json({ error: 'Amount must be between $1 and $500' })
@@ -382,7 +373,7 @@ router.post('/charge-saved-card', async (req, res) => {
 })
 
 // DELETE /api/stripe/saved-cards/:paymentMethodId
-router.delete('/saved-cards/:paymentMethodId', async (req, res) => {
+router.delete('/saved-cards/:paymentMethodId', requireAuth, async (req, res) => {
   try {
     const { paymentMethodId } = req.params
     await stripe.paymentMethods.detach(paymentMethodId)
@@ -395,12 +386,13 @@ router.delete('/saved-cards/:paymentMethodId', async (req, res) => {
 })
 
 // POST /api/stripe/create-usage-intent
-router.post('/create-usage-intent', async (req, res) => {
+router.post('/create-usage-intent', requireAuth, async (req, res) => {
   try {
-    const { userId, amount, saveCard } = req.body
+    const userId = req.userId
+    const { amount, saveCard } = req.body
 
-    if (!userId || !amount || amount <= 0) {
-      return res.status(400).json({ error: 'userId and valid amount are required' })
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'Valid amount is required' })
     }
     
     if (amount < 1 || amount > 500) {
@@ -463,12 +455,13 @@ router.post('/create-usage-intent', async (req, res) => {
 })
 
 // POST /api/stripe/confirm-usage-purchase
-router.post('/confirm-usage-purchase', async (req, res) => {
+router.post('/confirm-usage-purchase', requireAuth, async (req, res) => {
   try {
-    const { userId, paymentIntentId, amount } = req.body
+    const userId = req.userId
+    const { paymentIntentId, amount } = req.body
 
-    if (!userId || !paymentIntentId || !amount) {
-      return res.status(400).json({ error: 'userId, paymentIntentId, and amount are required' })
+    if (!paymentIntentId || !amount) {
+      return res.status(400).json({ error: 'paymentIntentId and amount are required' })
     }
 
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
@@ -533,12 +526,10 @@ router.post('/confirm-usage-purchase', async (req, res) => {
 })
 
 // GET /api/stripe/subscription-status
-router.get('/subscription-status', async (req, res) => {
+router.get('/subscription-status', requireAuth, async (req, res) => {
   try {
-    const { userId, sync } = req.query
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
+    const { sync } = req.query
 
     const user = await db.users.get(userId)
 
@@ -587,12 +578,9 @@ router.get('/config', (req, res) => {
 })
 
 // POST /api/stripe/create-subscription-intent
-router.post('/create-subscription-intent', async (req, res) => {
+router.post('/create-subscription-intent', requireAuth, async (req, res) => {
   try {
-    const { userId } = req.body
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
 
     if (subscriptionIntentLocks.has(userId)) {
       console.log(`[Stripe] Duplicate create-subscription-intent call blocked for user ${userId}`)
@@ -744,7 +732,7 @@ router.post('/create-subscription-intent', async (req, res) => {
       clientSecret: paymentIntent.client_secret,
     })
   } catch (error) {
-    const lockUserId = req.body?.userId
+    const lockUserId = req.userId
     if (lockUserId) subscriptionIntentLocks.delete(lockUserId)
     console.error('[Stripe] Error creating subscription intent:', error)
     res.status(500).json({ error: 'Failed to create subscription. Please try again.' })
@@ -752,12 +740,10 @@ router.post('/create-subscription-intent', async (req, res) => {
 })
 
 // POST /api/stripe/confirm-subscription
-router.post('/confirm-subscription', async (req, res) => {
+router.post('/confirm-subscription', requireAuth, async (req, res) => {
   try {
-    const { userId, subscriptionId } = req.body
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
+    const { subscriptionId } = req.body
 
     const user = await db.users.get(userId)
     if (!user) {
@@ -824,12 +810,10 @@ router.post('/confirm-subscription', async (req, res) => {
 })
 
 // POST /api/stripe/create-checkout-session
-router.post('/create-checkout-session', async (req, res) => {
+router.post('/create-checkout-session', requireAuth, async (req, res) => {
   try {
-    const { userId, plan: requestedPlan } = req.body
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
+    const { plan: requestedPlan } = req.body
 
     const user = await db.users.get(userId)
 
@@ -884,12 +868,9 @@ router.post('/create-checkout-session', async (req, res) => {
 })
 
 // POST /api/stripe/upgrade-to-premium
-router.post('/upgrade-to-premium', async (req, res) => {
+router.post('/upgrade-to-premium', requireAuth, async (req, res) => {
   try {
-    const { userId } = req.body
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
 
     const user = await db.users.get(userId)
     if (!user) {
@@ -937,12 +918,9 @@ router.post('/upgrade-to-premium', async (req, res) => {
 })
 
 // POST /api/stripe/pause-subscription
-router.post('/pause-subscription', async (req, res) => {
+router.post('/pause-subscription', requireAuth, async (req, res) => {
   try {
-    const { userId } = req.body
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
 
     const user = await db.users.get(userId)
 
@@ -988,12 +966,9 @@ router.post('/pause-subscription', async (req, res) => {
 })
 
 // POST /api/stripe/resume-subscription
-router.post('/resume-subscription', async (req, res) => {
+router.post('/resume-subscription', requireAuth, async (req, res) => {
   try {
-    const { userId } = req.body
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
 
     const user = await db.users.get(userId)
 
@@ -1128,12 +1103,9 @@ router.post('/resume-subscription', async (req, res) => {
 })
 
 // POST /api/stripe/cancel-subscription-delete-account
-router.post('/cancel-subscription-delete-account', async (req, res) => {
+router.post('/cancel-subscription-delete-account', requireAuth, async (req, res) => {
   try {
-    const { userId } = req.body
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
 
     const user = await db.users.get(userId)
 

@@ -8,13 +8,14 @@ const router = Router()
 
 // Submit a prompt to the leaderboard
 router.post('/submit', async (req, res) => {
-  console.log('[Leaderboard] Submit endpoint hit:', { userId: req.body?.userId, hasPromptText: !!req.body?.promptText })
+  const userId = req.userId
+  console.log('[Leaderboard] Submit endpoint hit:', { userId, hasPromptText: !!req.body?.promptText })
   try {
-    const { userId, promptText, category, responses, summary, facts, sources, description, visibility } = req.body
+    const { promptText, category, responses, summary, facts, sources, description, visibility } = req.body
     
-    if (!userId || !promptText || !promptText.trim()) {
-      console.log('[Leaderboard] Missing required fields:', { userId: !!userId, promptText: !!promptText })
-      return res.status(400).json({ error: 'userId and promptText are required' })
+    if (!promptText || !promptText.trim()) {
+      console.log('[Leaderboard] Missing required fields:', { promptText: !!promptText })
+      return res.status(400).json({ error: 'promptText is required' })
     }
     
     const user = await db.users.get(userId)
@@ -69,7 +70,8 @@ router.post('/submit', async (req, res) => {
 // - ?filter=browse&userId=xxx - Posts from users the current user does NOT follow (discovery feed)
 router.get('/', async (req, res) => {
   try {
-    const { filter, userId } = req.query
+    const { filter } = req.query
+    const userId = req.userId
     
     // Load all posts from DB + build users map for enrichment
     const dbInstance = await db.getDb()
@@ -220,10 +222,11 @@ router.get('/', async (req, res) => {
 // Like/unlike a prompt
 router.post('/like', async (req, res) => {
   try {
-    const { userId, promptId } = req.body
+    const userId = req.userId
+    const { promptId } = req.body
     
-    if (!userId || !promptId) {
-      return res.status(400).json({ error: 'userId and promptId are required' })
+    if (!promptId) {
+      return res.status(400).json({ error: 'promptId is required' })
     }
     
     const result = await db.leaderboardPosts.toggleLike(promptId, userId)
@@ -263,10 +266,10 @@ router.post('/like', async (req, res) => {
 router.delete('/delete/:promptId', async (req, res) => {
   try {
     const { promptId } = req.params
-    const { userId } = req.body
+    const userId = req.userId
     
-    if (!userId || !promptId) {
-      return res.status(400).json({ error: 'userId and promptId are required' })
+    if (!promptId) {
+      return res.status(400).json({ error: 'promptId is required' })
     }
     
     const deleted = await db.leaderboardPosts.delete(promptId, userId)
@@ -376,10 +379,11 @@ router.get('/user-stats/:userId', async (req, res) => {
 // Add a comment to a prompt
 router.post('/comment', async (req, res) => {
   try {
-    const { userId, promptId, commentText } = req.body
+    const userId = req.userId
+    const { promptId, commentText } = req.body
     
-    if (!userId || !promptId || !commentText || !commentText.trim()) {
-      return res.status(400).json({ error: 'userId, promptId, and commentText are required' })
+    if (!promptId || !commentText || !commentText.trim()) {
+      return res.status(400).json({ error: 'promptId and commentText are required' })
     }
     
     const user = await db.users.get(userId)
@@ -429,10 +433,11 @@ router.post('/comment', async (req, res) => {
 // Reply to a comment
 router.post('/comment/reply', async (req, res) => {
   try {
-    const { userId, promptId, commentId, replyText } = req.body
+    const userId = req.userId
+    const { promptId, commentId, replyText } = req.body
     
-    if (!userId || !promptId || !commentId || !replyText || !replyText.trim()) {
-      return res.status(400).json({ error: 'userId, promptId, commentId, and replyText are required' })
+    if (!promptId || !commentId || !replyText || !replyText.trim()) {
+      return res.status(400).json({ error: 'promptId, commentId, and replyText are required' })
     }
     
     const user = await db.users.get(userId)
@@ -479,10 +484,11 @@ router.post('/comment/reply', async (req, res) => {
 router.delete('/comment/reply/delete/:replyId', async (req, res) => {
   try {
     const { replyId } = req.params
-    const { userId, promptId, commentId } = req.body
+    const userId = req.userId
+    const { promptId, commentId } = req.body
     
-    if (!userId || !promptId || !commentId || !replyId) {
-      return res.status(400).json({ error: 'userId, promptId, commentId, and replyId are required' })
+    if (!promptId || !commentId || !replyId) {
+      return res.status(400).json({ error: 'promptId, commentId, and replyId are required' })
     }
     
     const dbInstance = await db.getDb()
@@ -527,10 +533,11 @@ router.delete('/comment/reply/delete/:replyId', async (req, res) => {
 router.delete('/comment/delete/:commentId', async (req, res) => {
   try {
     const { commentId } = req.params
-    const { userId, promptId } = req.body
+    const userId = req.userId
+    const { promptId } = req.body
     
-    if (!userId || !promptId || !commentId) {
-      return res.status(400).json({ error: 'userId, promptId, and commentId are required' })
+    if (!promptId || !commentId) {
+      return res.status(400).json({ error: 'promptId and commentId are required' })
     }
     
     const deleted = await db.leaderboardPosts.deleteComment(promptId, commentId, userId)
@@ -554,10 +561,11 @@ router.delete('/comment/delete/:commentId', async (req, res) => {
 // Like/unlike a comment
 router.post('/comment/like', async (req, res) => {
   try {
-    const { userId, promptId, commentId } = req.body
+    const userId = req.userId
+    const { promptId, commentId } = req.body
     
-    if (!userId || !promptId || !commentId) {
-      return res.status(400).json({ error: 'userId, promptId, and commentId are required' })
+    if (!promptId || !commentId) {
+      return res.status(400).json({ error: 'promptId and commentId are required' })
     }
     
     const result = await db.leaderboardPosts.toggleCommentLike(promptId, commentId, userId)

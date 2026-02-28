@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { Heart, MessageSquare, Send, ChevronDown, ChevronUp, Calendar, Star, Trash2, Layers, Lock, Globe, Search, User, Users, Compass, X, Trophy, MessageCircle } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
-import axios from 'axios'
+import api from '../utils/api'
 import { API_URL } from '../utils/config'
 import MessagingView from './MessagingView'
 
@@ -85,7 +85,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        const response = await axios.get(`${API_URL}/api/users/search?q=${encodeURIComponent(userSearchQuery.trim())}`)
+        const response = await api.get(`${API_URL}/api/users/search?q=${encodeURIComponent(userSearchQuery.trim())}`)
         setUserSearchResults(response.data.users || [])
       } catch (error) {
         console.error('Error searching users:', error)
@@ -131,7 +131,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
         url += '?filter=alltime'
       }
       
-      const response = await axios.get(url)
+      const response = await api.get(url)
       setLeaderboardPrompts(response.data.prompts || [])
     } catch (error) {
       console.error('Error fetching leaderboard:', error)
@@ -145,8 +145,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
     if (!currentUser?.id) return
     
     try {
-      const response = await axios.post(`${API_URL}/api/leaderboard/like`, {
-        userId: currentUser.id,
+      const response = await api.post(`${API_URL}/api/leaderboard/like`, {
         promptId: promptId,
       })
       
@@ -166,9 +165,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
     
     setDeleting(true)
     try {
-      const response = await axios.delete(`${API_URL}/api/leaderboard/delete/${promptId}`, {
-        data: { userId: currentUser.id }
-      })
+      const response = await api.delete(`${API_URL}/api/leaderboard/delete/${promptId}`)
       
       if (response.data.success) {
         setDeleteConfirm(null)
@@ -190,8 +187,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
     if (!currentUser?.id || !commentTexts[promptId]?.trim()) return
     
     try {
-      const response = await axios.post(`${API_URL}/api/leaderboard/comment`, {
-        userId: currentUser.id,
+      const response = await api.post(`${API_URL}/api/leaderboard/comment`, {
         promptId: promptId,
         commentText: commentTexts[promptId],
       })
@@ -212,8 +208,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
     if (!currentUser?.id || !replyTexts[`${commentId}`]?.trim()) return
     
     try {
-      const response = await axios.post(`${API_URL}/api/leaderboard/comment/reply`, {
-        userId: currentUser.id,
+      const response = await api.post(`${API_URL}/api/leaderboard/comment/reply`, {
         promptId: promptId,
         commentId: commentId,
         replyText: replyTexts[commentId],
@@ -235,8 +230,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
     if (!currentUser?.id) return
     
     try {
-      const response = await axios.post(`${API_URL}/api/leaderboard/comment/like`, {
-        userId: currentUser.id,
+      const response = await api.post(`${API_URL}/api/leaderboard/comment/like`, {
         promptId: promptId,
         commentId: commentId,
       })
@@ -256,8 +250,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
     if (!currentUser?.id) return
     
     try {
-      const response = await axios.delete(`${API_URL}/api/leaderboard/comment/delete/${commentId}`, {
-        data: { userId: currentUser.id, promptId: promptId }
+      const response = await api.delete(`${API_URL}/api/leaderboard/comment/delete/${commentId}`, {
+        data: { promptId: promptId }
       })
       
       if (response.data.success) {
@@ -276,8 +270,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }) => {
     if (!currentUser?.id) return
     
     try {
-      const response = await axios.delete(`${API_URL}/api/leaderboard/comment/reply/delete/${replyId}`, {
-        data: { userId: currentUser.id, promptId: promptId, commentId: commentId }
+      const response = await api.delete(`${API_URL}/api/leaderboard/comment/reply/delete/${replyId}`, {
+        data: { promptId: promptId, commentId: commentId }
       })
       
       if (response.data.success) {

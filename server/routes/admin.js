@@ -248,10 +248,7 @@ router.get('/pricing', requireAdmin, (req, res) => {
 // GET /api/admin/check
 router.get('/check', async (req, res) => {
   try {
-    const { userId } = req.query
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
     
     const user = await db.users.get(userId)
     

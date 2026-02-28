@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import axios from 'axios'
+import api from '../utils/api'
 import { API_URL } from '../utils/config'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
@@ -28,9 +28,8 @@ const SubscriptionManager = () => {
 
     try {
       if (!hasInitialStatus.current) setLoading(true)
-      const response = await axios.get(`${API_URL}/api/stripe/subscription-status`, {
+      const response = await api.get(`${API_URL}/api/stripe/subscription-status`, {
         params: { 
-          userId: currentUser.id,
           sync: forceSync ? 'true' : undefined
         },
       })
@@ -65,9 +64,8 @@ const SubscriptionManager = () => {
         }
       } else if (newStatus === 'inactive' && !forceSync) {
         // If status is inactive, try syncing once from Stripe
-        const syncResponse = await axios.get(`${API_URL}/api/stripe/subscription-status`, {
+        const syncResponse = await api.get(`${API_URL}/api/stripe/subscription-status`, {
           params: { 
-            userId: currentUser.id,
             sync: 'true'
           },
         })
@@ -131,9 +129,7 @@ const SubscriptionManager = () => {
           retryCountRef.current++
           
           try {
-            const response = await axios.get(`${API_URL}/api/stripe/subscription-status`, {
-              params: { userId: currentUser.id },
-            })
+            const response = await api.get(`${API_URL}/api/stripe/subscription-status`)
             
             const newStatus = response.data.subscriptionStatus
             setSubscriptionStatus(newStatus)
@@ -192,9 +188,9 @@ const SubscriptionManager = () => {
     try {
       setProcessing(true)
       setError(null)
-      const body = { userId: currentUser.id }
+      const body = {}
       if (plan === 'premium' || plan === 'pro') body.plan = plan
-      const response = await axios.post(`${API_URL}/api/stripe/create-checkout-session`, body)
+      const response = await api.post(`${API_URL}/api/stripe/create-checkout-session`, body)
 
       if (response.data.url) {
         // Redirect to Stripe Checkout
@@ -233,9 +229,7 @@ const SubscriptionManager = () => {
       setProcessing(true)
       setError(null)
 
-      const response = await axios.post(`${API_URL}/api/stripe/resume-subscription`, {
-        userId: currentUser.id,
-      })
+      const response = await api.post(`${API_URL}/api/stripe/resume-subscription`, {})
 
       if (response.data.success) {
         // Subscription reactivated seamlessly — update local state
@@ -262,8 +256,7 @@ const SubscriptionManager = () => {
         // No saved payment method — fall back to Stripe Checkout
         console.log('[Subscription] No saved card, falling back to checkout')
         try {
-          const checkoutResponse = await axios.post(`${API_URL}/api/stripe/create-checkout-session`, {
-            userId: currentUser.id,
+          const checkoutResponse = await api.post(`${API_URL}/api/stripe/create-checkout-session`, {
             plan: currentUser.plan === 'premium' ? 'premium' : 'pro',
           })
           if (checkoutResponse.data.url) {
@@ -292,9 +285,7 @@ const SubscriptionManager = () => {
       setProcessing(true)
       setError(null)
 
-      const response = await axios.post(`${API_URL}/api/stripe/upgrade-to-premium`, {
-        userId: currentUser.id,
-      })
+      const response = await api.post(`${API_URL}/api/stripe/upgrade-to-premium`, {})
 
       if (response.data.success) {
         setSuccessMessage(response.data.message || 'Upgraded to Premium!')
@@ -327,9 +318,7 @@ const SubscriptionManager = () => {
       setError(null)
       setShowPauseConfirm(false)
       
-      const response = await axios.post(`${API_URL}/api/stripe/pause-subscription`, {
-        userId: currentUser.id,
-      })
+      const response = await api.post(`${API_URL}/api/stripe/pause-subscription`, {})
 
       if (response.data.success) {
         setSuccessMessage('Subscription paused successfully. You still have full access until the end of your current billing period.')
@@ -365,9 +354,7 @@ const SubscriptionManager = () => {
       setError(null)
       setShowCancelConfirm(false)
       
-      const response = await axios.post(`${API_URL}/api/stripe/cancel-subscription-delete-account`, {
-        userId: currentUser.id,
-      })
+      const response = await api.post(`${API_URL}/api/stripe/cancel-subscription-delete-account`, {})
 
       if (response.data.success) {
         setSuccessMessage('Account and subscription deleted successfully.')

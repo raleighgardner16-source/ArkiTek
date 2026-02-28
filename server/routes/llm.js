@@ -10,7 +10,8 @@ const router = Router()
 
 // POST /api/llm → router.post('/')
 router.post('/', async (req, res) => {
-  const { provider, model, prompt, userId, isSummary } = req.body || {}
+  const userId = req.userId
+  const { provider, model, prompt, isSummary } = req.body || {}
   let apiKey = null
   let responseText = null
   
@@ -457,7 +458,8 @@ router.post('/stream', async (req, res) => {
     try { res.write(': heartbeat\n\n') } catch (e) { clearInterval(heartbeat) }
   }, 15000)
 
-  const { provider, model, prompt, userId, isSummary, rolePrompt } = req.body || {}
+  const userId = req.userId
+  const { provider, model, prompt, isSummary, rolePrompt } = req.body || {}
 
   try {
     if (!provider || !model || !prompt) {
@@ -743,7 +745,8 @@ summaryRouter.post('/stream', async (req, res) => {
   }
 
   try {
-    const { prompt, userId } = req.body
+    const userId = req.userId
+    const { prompt } = req.body
     if (!prompt) {
       sendSSE('error', { message: 'Missing prompt' })
       return res.end()

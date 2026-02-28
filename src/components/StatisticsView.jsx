@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { TrendingUp, Database, BarChart3, MessageSquare, ChevronDown, ChevronRight, Search, Star, X, Cpu, Trophy, Bell, Heart, ShoppingCart, Zap, Flame, Globe, Award, User, Lock, Crown, Rocket, Shield, Trash2, ArrowLeft, Camera, Edit3, UserPlus, UserCheck, Users, Calendar, Swords, MessageCircle } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
-import axios from 'axios'
+import api from '../utils/api'
 import { API_URL } from '../utils/config'
 import BuyUsageModal from './BuyUsageModal'
 import ConfirmationModal from './ConfirmationModal'
@@ -302,7 +302,7 @@ const StatisticsView = () => {
     if (newTab === 'leaderboard') {
       setNotificationCount(0)
       if (currentUser?.id) {
-        axios.post(`${API_URL}/api/notifications/mark-read`, { userId: currentUser.id }).catch(() => {})
+        api.post(`${API_URL}/api/notifications/mark-read`).catch(() => {})
       }
     }
     setActiveTab(newTab)
@@ -334,7 +334,7 @@ const StatisticsView = () => {
         setLoadingPublicProfile(true)
       }
       const viewerId = currentUser?.id || ''
-      const response = await axios.get(`${API_URL}/api/profile/${userId}?viewerId=${viewerId}`)
+      const response = await api.get(`${API_URL}/api/profile/${userId}?viewerId=${viewerId}`)
       setPublicProfile(response.data)
       setProfilePrompts(response.data.posts || [])
     } catch (error) {
@@ -351,7 +351,7 @@ const StatisticsView = () => {
   const fetchOwnProfile = async () => {
     if (!currentUser?.id) return
     try {
-      const response = await axios.get(`${API_URL}/api/profile/${currentUser.id}?viewerId=${currentUser.id}`)
+      const response = await api.get(`${API_URL}/api/profile/${currentUser.id}?viewerId=${currentUser.id}`)
       setOwnProfileData(response.data)
     } catch (error) {
       console.error('Error fetching own profile:', error)
@@ -368,7 +368,7 @@ const StatisticsView = () => {
     if (!currentUser?.id || followLoading) return
     setFollowLoading(true)
     try {
-      await axios.post(`${API_URL}/api/users/${targetUserId}/follow`, { userId: currentUser.id })
+      await api.post(`${API_URL}/api/users/${targetUserId}/follow`)
       await fetchPublicProfile(targetUserId)
     } catch (error) {
       console.error('Error following user:', error)
@@ -381,7 +381,7 @@ const StatisticsView = () => {
     if (!currentUser?.id || followLoading) return
     setFollowLoading(true)
     try {
-      await axios.post(`${API_URL}/api/users/${targetUserId}/unfollow`, { userId: currentUser.id })
+      await api.post(`${API_URL}/api/users/${targetUserId}/unfollow`)
       await fetchPublicProfile(targetUserId)
     } catch (error) {
       console.error('Error unfollowing user:', error)
@@ -394,7 +394,7 @@ const StatisticsView = () => {
     if (!currentUser?.id || savingProfile) return
     setSavingProfile(true)
     try {
-      await axios.put(`${API_URL}/api/profile/${currentUser.id}`, {
+      await api.put(`${API_URL}/api/profile/${currentUser.id}`, {
         bio: editBio,
         isAnonymous: editIsAnonymous,
         isPrivate: editIsPrivate,
@@ -415,8 +415,8 @@ const StatisticsView = () => {
     if (!hasLoadedNotifications) setLoadingNotifications(true)
     try {
       const [notifRes, followingRes] = await Promise.all([
-        axios.get(`${API_URL}/api/notifications/${currentUser.id}?limit=50`),
-        axios.get(`${API_URL}/api/users/${currentUser.id}/following`).catch(() => ({ data: { following: [] } })),
+        api.get(`${API_URL}/api/notifications/${currentUser.id}?limit=50`),
+        api.get(`${API_URL}/api/users/${currentUser.id}/following`).catch(() => ({ data: { following: [] } })),
       ])
       const twoDaysAgo = Date.now() - 2 * 24 * 60 * 60 * 1000
       const filtered = (notifRes.data.notifications || []).filter(n =>
@@ -438,7 +438,7 @@ const StatisticsView = () => {
     if (!currentUser?.id || followBackLoading) return
     setFollowBackLoading(targetUserId)
     try {
-      await axios.post(`${API_URL}/api/users/${targetUserId}/follow`, { userId: currentUser.id })
+      await api.post(`${API_URL}/api/users/${targetUserId}/follow`)
       setFollowingSet(prev => new Set([...prev, targetUserId]))
     } catch (error) {
       console.error('Error following back:', error)
@@ -451,7 +451,7 @@ const StatisticsView = () => {
     if (!currentUser?.id) return
     setLoadingFollowRequests(true)
     try {
-      const res = await axios.get(`${API_URL}/api/users/${currentUser.id}/follow-requests`)
+      const res = await api.get(`${API_URL}/api/users/${currentUser.id}/follow-requests`)
       setFollowRequests(res.data.requests || [])
     } catch (err) {
       console.error('Error fetching follow requests:', err)
@@ -463,7 +463,7 @@ const StatisticsView = () => {
   const handleAcceptFollowRequest = async (requesterId) => {
     setProcessingRequestId(requesterId)
     try {
-      await axios.post(`${API_URL}/api/users/${currentUser.id}/follow/accept`, { requesterId })
+      await api.post(`${API_URL}/api/users/${currentUser.id}/follow/accept`, { requesterId })
       setFollowRequests(prev => prev.filter(r => r.userId !== requesterId))
       await fetchOwnProfile()
     } catch (err) {
@@ -476,7 +476,7 @@ const StatisticsView = () => {
   const handleDenyFollowRequest = async (requesterId) => {
     setProcessingRequestId(requesterId)
     try {
-      await axios.post(`${API_URL}/api/users/${currentUser.id}/follow/deny`, { requesterId })
+      await api.post(`${API_URL}/api/users/${currentUser.id}/follow/deny`, { requesterId })
       setFollowRequests(prev => prev.filter(r => r.userId !== requesterId))
     } catch (err) {
       console.error('Error denying follow request:', err)
@@ -488,7 +488,7 @@ const StatisticsView = () => {
   const handleMarkAllNotificationsRead = async () => {
     if (!currentUser?.id) return
     try {
-      await axios.post(`${API_URL}/api/notifications/mark-read`, { userId: currentUser.id })
+      await api.post(`${API_URL}/api/notifications/mark-read`)
       setNotifications(prev => prev.map(n => ({ ...n, read: true })))
       setUnreadNotifCount(0)
     } catch (err) {
@@ -527,7 +527,7 @@ const StatisticsView = () => {
     setShowFollowersList(type)
     setLoadingFollowersList(true)
     try {
-      const response = await axios.get(`${API_URL}/api/users/${userId}/${type}`)
+      const response = await api.get(`${API_URL}/api/users/${userId}/${type}`)
       setFollowersListData(response.data[type] || [])
     } catch (error) {
       console.error(`Error fetching ${type}:`, error)
@@ -549,7 +549,7 @@ const StatisticsView = () => {
   const fetchDailyChallenge = async () => {
     if (!currentUser?.id) return
     try {
-      const response = await axios.get(`${API_URL}/api/daily-challenge/${currentUser.id}/status`)
+      const response = await api.get(`${API_URL}/api/daily-challenge/${currentUser.id}/status`)
       setDailyChallengeData(response.data)
     } catch (error) {
       console.error('Error fetching daily challenge:', error)
@@ -560,7 +560,7 @@ const StatisticsView = () => {
     if (!currentUser?.id || claimingChallenge) return
     setClaimingChallenge(true)
     try {
-      const response = await axios.post(`${API_URL}/api/daily-challenge/${currentUser.id}/claim`)
+      const response = await api.post(`${API_URL}/api/daily-challenge/${currentUser.id}/claim`)
       if (response.data.success) {
         setChallengeClaimedAnim(true)
         setTimeout(() => setChallengeClaimedAnim(false), 2000)
@@ -624,7 +624,7 @@ const StatisticsView = () => {
       if (!hasLoadedLeaderboard) {
         setLoadingLeaderboardStats(true)
       }
-      const response = await axios.get(`${API_URL}/api/leaderboard/user-stats/${currentUser.id}`)
+      const response = await api.get(`${API_URL}/api/leaderboard/user-stats/${currentUser.id}`)
       setLeaderboardStats(response.data)
       if (response.data.wins?.length > 0) {
         setWinningPrompts(response.data.wins)
@@ -644,7 +644,7 @@ const StatisticsView = () => {
       if (!hasLoadedProfile) {
         setLoadingProfile(true)
       }
-      const response = await axios.get(`${API_URL}/api/leaderboard?filter=profile&userId=${currentUser.id}`)
+      const response = await api.get(`${API_URL}/api/leaderboard?filter=profile&userId=${currentUser.id}`)
       setProfilePrompts(response.data.prompts || [])
     } catch (error) {
       console.error('Error fetching profile prompts:', error)
@@ -659,9 +659,7 @@ const StatisticsView = () => {
     if (!currentUser?.id || !promptId) return
     try {
       setDeletingPostId(promptId)
-      await axios.delete(`${API_URL}/api/leaderboard/delete/${promptId}`, {
-        data: { userId: currentUser.id }
-      })
+      await api.delete(`${API_URL}/api/leaderboard/delete/${promptId}`)
       // Remove from local state immediately
       setProfilePrompts(prev => prev.filter(p => p.id !== promptId))
       setConfirmDeleteId(null)
@@ -691,7 +689,7 @@ const StatisticsView = () => {
     try {
       // Only show full-page loading spinner on the very first load
       if (!stats) setLoading(true)
-      const response = await axios.get(`${API_URL}/api/stats/${currentUser.id}`)
+      const response = await api.get(`${API_URL}/api/stats/${currentUser.id}`)
       setStats(response.data)
       setUserPlan(response.data.userPlan || currentUser?.plan || 'free_trial')
     } catch (error) {
@@ -721,7 +719,7 @@ const StatisticsView = () => {
 
   const fetchRatings = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/stats/${currentUser.id}/ratings`)
+      const response = await api.get(`${API_URL}/api/stats/${currentUser.id}/ratings`)
       setRatingsData(response.data.ratings || {})
     } catch (error) {
       console.error('Error fetching ratings:', error)
@@ -2447,7 +2445,7 @@ const StatisticsView = () => {
 
                 // Save any newly earned badges to backend (fire-and-forget) — only for own profile, not free plan
                 if (newlyEarned.length > 0 && currentUser?.id && !isViewingOther && !isFreePlan) {
-                  axios.post(`${API_URL}/api/stats/${currentUser.id}/badges`, { newBadges: newlyEarned })
+                  api.post(`${API_URL}/api/stats/${currentUser.id}/badges`, { newBadges: newlyEarned })
                     .then(() => console.log(`[Badges] Persisted ${newlyEarned.length} new badges`))
                     .catch(err => console.error('[Badges] Error saving badges:', err))
                 }

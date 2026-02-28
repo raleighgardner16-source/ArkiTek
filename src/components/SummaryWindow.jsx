@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { X, FileText, Move, Maximize2, ChevronRight, ChevronDown, Send, Search, Globe } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
-import axios from 'axios'
+import api from '../utils/api'
 import { API_URL } from '../utils/config'
 import { streamFetch } from '../utils/streamFetch'
 
@@ -65,12 +65,8 @@ const SummaryWindow = () => {
     clearSummary()
     // Clear judge and model conversation context when closing summary window
     if (currentUser?.id) {
-      axios.post(`${API_URL}/api/judge/clear-context`, {
-        userId: currentUser.id
-      }).catch(err => console.error('[Clear Context] Error:', err))
-      axios.post(`${API_URL}/api/model/clear-context`, {
-        userId: currentUser.id
-      }).catch(err => console.error('[Clear Model Context] Error:', err))
+      api.post(`${API_URL}/api/judge/clear-context`).catch(err => console.error('[Clear Context] Error:', err))
+      api.post(`${API_URL}/api/model/clear-context`).catch(err => console.error('[Clear Model Context] Error:', err))
     }
   }
   
@@ -111,9 +107,7 @@ const SummaryWindow = () => {
     if (!currentUser?.id) return
     try {
       // Use query parameter to handle special characters (colons, etc.) better
-      const response = await axios.get(`${API_URL}/api/judge/context`, {
-        params: { userId: currentUser.id }
-      })
+      const response = await api.get(`${API_URL}/api/judge/context`)
       setConversationContext(response.data.context || [])
     } catch (error) {
       console.error('[SummaryWindow] Error fetching conversation context:', error)
@@ -148,7 +142,6 @@ const SummaryWindow = () => {
     
     try {
       const finalData = await streamFetch(`${API_URL}/api/judge/conversation/stream`, {
-        userId: currentUser.id,
         userMessage: userMsg,
         conversationContext: conversationContext,
         originalSummaryText: summary.initialSummary || summary.text || ''
@@ -215,9 +208,7 @@ const SummaryWindow = () => {
           const ragDebugData = store.ragDebugData
           if (ragDebugData && currentUser?.id) {
             try {
-              const contextResponse = await axios.get(`${API_URL}/api/judge/context`, {
-                params: { userId: currentUser.id }
-              })
+              const contextResponse = await api.get(`${API_URL}/api/judge/context`)
               const updatedContext = contextResponse.data.context || []
               store.setRAGDebugData({
                 ...ragDebugData,

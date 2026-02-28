@@ -11,7 +11,7 @@ export const usersRouter = Router()
 profileRouter.get('/:userId', async (req, res) => {
   try {
     const { userId } = req.params
-    const { viewerId } = req.query
+    const viewerId = req.userId
 
     const [user, userUsage, userPosts] = await Promise.all([
       db.users.get(userId),
@@ -111,7 +111,7 @@ profileRouter.get('/:userId', async (req, res) => {
 // Update user profile (bio, profileImage, isAnonymous, isPrivate)
 profileRouter.put('/:userId', async (req, res) => {
   try {
-    const { userId } = req.params
+    const userId = req.userId
     const { bio, profileImage, isAnonymous, isPrivate } = req.body
 
     const user = await db.users.get(userId)
@@ -214,10 +214,10 @@ usersRouter.get('/search', async (req, res) => {
 usersRouter.post('/:targetUserId/follow', async (req, res) => {
   try {
     const { targetUserId } = req.params
-    const { userId } = req.body
+    const userId = req.userId
 
-    if (!userId || !targetUserId) {
-      return res.status(400).json({ error: 'userId and targetUserId are required' })
+    if (!targetUserId) {
+      return res.status(400).json({ error: 'targetUserId is required' })
     }
     if (userId === targetUserId) {
       return res.status(400).json({ error: 'You cannot follow yourself' })
@@ -294,10 +294,10 @@ usersRouter.post('/:targetUserId/follow', async (req, res) => {
 usersRouter.post('/:targetUserId/unfollow', async (req, res) => {
   try {
     const { targetUserId } = req.params
-    const { userId } = req.body
+    const userId = req.userId
 
-    if (!userId || !targetUserId) {
-      return res.status(400).json({ error: 'userId and targetUserId are required' })
+    if (!targetUserId) {
+      return res.status(400).json({ error: 'targetUserId is required' })
     }
 
     const dbInst = await db.getDb()
@@ -330,11 +330,11 @@ usersRouter.post('/:targetUserId/unfollow', async (req, res) => {
 // Accept a follow request
 usersRouter.post('/:targetUserId/follow/accept', async (req, res) => {
   try {
-    const { targetUserId } = req.params // targetUserId is the account owner accepting the request
-    const { requesterId } = req.body    // requesterId is the person who requested to follow
+    const targetUserId = req.userId
+    const { requesterId } = req.body
 
-    if (!targetUserId || !requesterId) {
-      return res.status(400).json({ error: 'targetUserId and requesterId are required' })
+    if (!requesterId) {
+      return res.status(400).json({ error: 'requesterId is required' })
     }
 
     const owner = await db.users.get(targetUserId)
@@ -378,11 +378,11 @@ usersRouter.post('/:targetUserId/follow/accept', async (req, res) => {
 // Deny a follow request
 usersRouter.post('/:targetUserId/follow/deny', async (req, res) => {
   try {
-    const { targetUserId } = req.params
+    const targetUserId = req.userId
     const { requesterId } = req.body
 
-    if (!targetUserId || !requesterId) {
-      return res.status(400).json({ error: 'targetUserId and requesterId are required' })
+    if (!requesterId) {
+      return res.status(400).json({ error: 'requesterId is required' })
     }
 
     const dbInst = await db.getDb()
@@ -402,7 +402,7 @@ usersRouter.post('/:targetUserId/follow/deny', async (req, res) => {
 // Get pending follow requests for a user
 usersRouter.get('/:userId/follow-requests', async (req, res) => {
   try {
-    const { userId } = req.params
+    const userId = req.userId
     const user = await db.users.get(userId)
 
     if (!user) {

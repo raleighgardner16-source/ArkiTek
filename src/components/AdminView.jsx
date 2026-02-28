@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Users, DollarSign, Shield, TrendingUp, Database, CreditCard, Lock, User, Package, Receipt, ArrowLeft, Search, ChevronDown, ChevronRight, ChevronLeft, BarChart3, MessageSquare, Award, Trophy } from 'lucide-react'
 import { useStore } from '../store/useStore'
-import axios from 'axios'
+import api from '../utils/api'
 import { API_URL } from '../utils/config'
 import { getAllModels, LLM_PROVIDERS } from '../services/llmProviders'
 
@@ -140,8 +140,8 @@ const AdminView = () => {
   // Load expenses from ADMIN database for the selected month (editable, month view only)
   const loadExpenses = async (month) => {
     try {
-      const adminParams = { requestingUserId: currentUser?.id, month }
-      const response = await axios.get(`${API_URL}/api/admin/expenses`, { params: adminParams })
+      const adminParams = { month }
+      const response = await api.get(`${API_URL}/api/admin/expenses`, { params: adminParams })
       if (response.data.success && response.data.expenses) {
         const data = response.data.expenses
         setExpenses({
@@ -168,8 +168,8 @@ const AdminView = () => {
   const loadAggregatedExpenses = async (period, date) => {
     try {
       setLoadingAggExpenses(true)
-      const adminParams = { requestingUserId: currentUser?.id, period, date }
-      const response = await axios.get(`${API_URL}/api/admin/expenses/aggregate`, { params: adminParams })
+      const adminParams = { period, date }
+      const response = await api.get(`${API_URL}/api/admin/expenses/aggregate`, { params: adminParams })
       if (response.data.success) {
         setAggregatedExpenses(response.data)
       }
@@ -183,8 +183,8 @@ const AdminView = () => {
   const loadRevenue = async (period, date) => {
     try {
       setLoadingRevenue(true)
-      const adminParams = { requestingUserId: currentUser?.id, period, date }
-      const response = await axios.get(`${API_URL}/api/admin/revenue`, { params: adminParams })
+      const adminParams = { period, date }
+      const response = await api.get(`${API_URL}/api/admin/revenue`, { params: adminParams })
       if (response.data.success) {
         setRevenueData(response.data.revenue)
         setUserListTab(null)
@@ -217,8 +217,7 @@ const AdminView = () => {
   const saveExpenses = async (expenseData) => {
     try {
       setExpensesSaving(true)
-      await axios.post(`${API_URL}/api/admin/expenses`, {
-        requestingUserId: currentUser?.id,
+      await api.post(`${API_URL}/api/admin/expenses`, {
         month: expenseMonth,
         expenses: expenseData,
       })
@@ -263,7 +262,7 @@ const AdminView = () => {
     setLoginLoading(true)
 
     try {
-      const response = await axios.post(`${API_URL}/api/auth/signin`, {
+      const response = await api.post(`${API_URL}/api/auth/signin`, {
         username: loginData.username,
         password: loginData.password,
       })
@@ -296,9 +295,7 @@ const AdminView = () => {
     
     setAdminCheckComplete(false)
     try {
-      const response = await axios.get(`${API_URL}/api/admin/check`, {
-        params: { userId: currentUser.id },
-      })
+      const response = await api.get(`${API_URL}/api/admin/check`)
       const userIsAdmin = response.data.isAdmin === true
       setIsAdmin(userIsAdmin)
       setAdminCheckComplete(true)
@@ -331,11 +328,11 @@ const AdminView = () => {
       if (forceLoading || (!usersData && !pricingData && !costsData)) {
         setLoading(true)
       }
-      const adminParams = { requestingUserId: currentUser?.id }
+      const adminParams = {}
       const [usersResponse, pricingResponse, costsResponse] = await Promise.all([
-        axios.get(`${API_URL}/api/admin/users`, { params: adminParams }),
-        axios.get(`${API_URL}/api/admin/pricing`, { params: adminParams }),
-        axios.get(`${API_URL}/api/admin/costs`, { params: adminParams }),
+        api.get(`${API_URL}/api/admin/users`, { params: adminParams }),
+        api.get(`${API_URL}/api/admin/pricing`, { params: adminParams }),
+        api.get(`${API_URL}/api/admin/costs`, { params: adminParams }),
       ])
       setUsersData(usersResponse.data)
       setPricingData(pricingResponse.data)

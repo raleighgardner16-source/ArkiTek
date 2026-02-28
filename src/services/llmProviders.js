@@ -1,4 +1,4 @@
-import axios from 'axios'
+import api from '../utils/api'
 import { streamFetch } from '../utils/streamFetch'
 
 // LLM Provider configurations
@@ -129,14 +129,13 @@ export const callLLM = async (providerKey, model, prompt, userId = null, isSumma
 
   try {
     // Call backend proxy - API keys are now stored in the backend
-    const response = await axios.post(
+    const response = await api.post(
       `${BACKEND_URL}/api/llm`,
       {
         provider: providerKey,
         model: model,
         prompt: prompt,
-        userId: userId,
-        isSummary: isSummary, // Flag to indicate this is a summary call, not a user prompt
+        isSummary: isSummary,
       },
       {
         headers: {
@@ -207,7 +206,6 @@ export const callLLMStream = async (providerKey, model, prompt, userId = null, i
     provider: providerKey,
     model,
     prompt,
-    userId,
     isSummary,
   }
   if (rolePrompt) body.rolePrompt = rolePrompt
@@ -252,12 +250,11 @@ export const searchWithSerper = async (query, num = 10, userId = null) => {
 
 
   try {
-    const response = await axios.post(
+    const response = await api.post(
       `${BACKEND_URL}/api/search`,
       {
         query: query.trim(),
         num: num,
-        userId: userId,
       },
       {
         headers: {

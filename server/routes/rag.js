@@ -366,7 +366,7 @@ async function trackQueryUsage(userId) {
 
 // POST /api/rag → router.post('/')
 router.post('/', async (req, res) => {
-  const { userId } = req.body || {}
+  const userId = req.userId
   if (userId) {
     const subscriptionCheck = await checkSubscriptionStatus(userId)
     if (!subscriptionCheck.hasAccess) {
@@ -379,7 +379,7 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const { query, selectedModels, userId, needsContext: needsContextHint } = req.body
+    const { query, selectedModels, needsContext: needsContextHint } = req.body
     
     if (!query || !query.trim()) {
       return res.status(400).json({ error: 'Missing required field: query' })
@@ -729,7 +729,8 @@ router.post('/stream', async (req, res) => {
   }, 15000)
 
   try {
-    const { query, selectedModels, userId, needsContext: needsContextHint, rolePrompts } = req.body || {}
+    const userId = req.userId
+    const { query, selectedModels, needsContext: needsContextHint, rolePrompts } = req.body || {}
 
     if (userId) {
       const subscriptionCheck = await checkSubscriptionStatus(userId)

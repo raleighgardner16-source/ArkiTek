@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Search, Users, User, Plus, ArrowLeft, X, Hash, MessageCircle, UserPlus } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
-import axios from 'axios'
+import api from '../utils/api'
 import { API_URL } from '../utils/config'
 
 const MessagingView = ({ embedded = false }) => {
@@ -50,7 +50,7 @@ const MessagingView = ({ embedded = false }) => {
     if (!currentUser?.id) return
     try {
       const type = activeMessageTab === 'private' ? 'dm' : 'group'
-      const response = await axios.get(`${API_URL}/api/messages/conversations/${currentUser.id}?type=${type}`)
+      const response = await api.get(`${API_URL}/api/messages/conversations/${currentUser.id}?type=${type}`)
       setConversations(response.data.conversations || [])
     } catch (error) {
       console.error('Error fetching conversations:', error)
@@ -63,7 +63,7 @@ const MessagingView = ({ embedded = false }) => {
     if (!currentUser?.id) return
     setLoadingMessages(true)
     try {
-      const response = await axios.get(`${API_URL}/api/messages/conversation/${conversationId}?userId=${currentUser.id}`)
+      const response = await api.get(`${API_URL}/api/messages/conversation/${conversationId}?userId=${currentUser.id}`)
       setMessages(response.data.messages || [])
     } catch (error) {
       console.error('Error fetching messages:', error)
@@ -90,9 +90,8 @@ const MessagingView = ({ embedded = false }) => {
     setMessages(prev => [...prev, tempMessage])
 
     try {
-      await axios.post(`${API_URL}/api/messages/send`, {
+      await api.post(`${API_URL}/api/messages/send`, {
         conversationId: activeConversation._id,
-        senderId: currentUser.id,
         text,
       })
       await fetchMessages(activeConversation._id)
@@ -113,7 +112,7 @@ const MessagingView = ({ embedded = false }) => {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        const response = await axios.get(`${API_URL}/api/users/search?q=${encodeURIComponent(searchQuery.trim())}`)
+        const response = await api.get(`${API_URL}/api/users/search?q=${encodeURIComponent(searchQuery.trim())}`)
         setSearchResults((response.data.users || []).filter(u => u.userId !== currentUser?.id))
       } catch (error) {
         setSearchResults([])
@@ -127,9 +126,8 @@ const MessagingView = ({ embedded = false }) => {
   const handleStartDM = async (targetUser) => {
     if (!currentUser?.id) return
     try {
-      const response = await axios.post(`${API_URL}/api/messages/conversation/create`, {
+      const response = await api.post(`${API_URL}/api/messages/conversation/create`, {
         type: 'dm',
-        creatorId: currentUser.id,
         participantIds: [targetUser.userId],
       })
       setShowNewConversation(false)
@@ -146,8 +144,7 @@ const MessagingView = ({ embedded = false }) => {
   const handleCreateGroup = async () => {
     if (!currentUser?.id || !newGroupName.trim()) return
     try {
-      const response = await axios.post(`${API_URL}/api/messages/group/create`, {
-        creatorId: currentUser.id,
+      const response = await api.post(`${API_URL}/api/messages/group/create`, {
         name: newGroupName.trim(),
         description: newGroupDescription.trim(),
         memberIds: selectedMembers.map(m => m.userId),

@@ -21,7 +21,7 @@ router.post('/', async (req, res) => {
 
     const response = await performSerperSearch(query, num)
 
-    const { userId } = req.body
+    const userId = req.userId
     if (userId) {
       const userUsage = await db.usage.getOrDefault(userId)
       const tz = await getUserTimezone(userId)
@@ -94,7 +94,8 @@ const detectSearchRouter = Router()
 
 detectSearchRouter.post('/', async (req, res) => {
   try {
-    const { query, userId } = req.body
+    const userId = req.userId
+    const { query } = req.body
     
     if (!query) {
       return res.status(400).json({ error: 'query is required' })

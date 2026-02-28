@@ -48,6 +48,9 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 
 const MAX_FREE_TRIALS_PER_IP = 2
 
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production'
+const JWT_EXPIRY = '7d'
+
 const MODEL_MAPPINGS = {
   'claude-4.5-opus': 'claude-opus-4-5-20251101',
   'claude-4.5-sonnet': 'claude-sonnet-4-5-20250929',
@@ -99,4 +102,6 @@ export {
   disposableDomains,
   DAILY_CHALLENGE_REWARD,
   DAILY_CHALLENGES,
+  JWT_SECRET,
+  JWT_EXPIRY,
 }

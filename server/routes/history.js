@@ -7,10 +7,11 @@ const router = Router()
 // POST /api/history/auto-save
 router.post('/auto-save', async (req, res) => {
   try {
-    const { userId, originalPrompt, category, promptMode, responses, summary, sources, facts, ragDebugData } = req.body
+    const userId = req.userId
+    const { originalPrompt, category, promptMode, responses, summary, sources, facts, ragDebugData } = req.body
 
-    if (!userId || !originalPrompt) {
-      return res.status(400).json({ error: 'userId and originalPrompt are required' })
+    if (!originalPrompt) {
+      return res.status(400).json({ error: 'originalPrompt is required' })
     }
 
     const user = await db.users.get(userId)
@@ -83,10 +84,11 @@ router.post('/auto-save', async (req, res) => {
 // POST /api/history/update-summary
 router.post('/update-summary', async (req, res) => {
   try {
-    const { historyId, userId, summary } = req.body
+    const userId = req.userId
+    const { historyId, summary } = req.body
 
-    if (!historyId || !userId || !summary) {
-      return res.status(400).json({ error: 'historyId, userId, and summary are required' })
+    if (!historyId || !summary) {
+      return res.status(400).json({ error: 'historyId and summary are required' })
     }
 
     const dbInstance = await db.getDb()
@@ -161,7 +163,8 @@ router.post('/update-conversation', async (req, res) => {
 // POST /api/history/finalize
 router.post('/finalize', async (req, res) => {
   try {
-    const { historyId, userId } = req.body
+    const userId = req.userId
+    const { historyId } = req.body
 
     if (!historyId) {
       return res.status(400).json({ error: 'historyId is required' })
@@ -254,10 +257,7 @@ router.get('/detail/:historyId', async (req, res) => {
 // GET /api/history/:userId
 router.get('/:userId', async (req, res) => {
   try {
-    const { userId } = req.params
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
 
     const dbInstance = await db.getDb()
     const results = await dbInstance.collection('conversation_history')
@@ -304,11 +304,7 @@ router.get('/:userId', async (req, res) => {
 router.delete('/:historyId', async (req, res) => {
   try {
     const { historyId } = req.params
-    const { userId } = req.body
-
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
 
     const dbInstance = await db.getDb()
 
@@ -354,9 +350,10 @@ router.delete('/:historyId', async (req, res) => {
 // POST /api/history/star
 router.post('/star', async (req, res) => {
   try {
-    const { historyId, userId, starred } = req.body
-    if (!historyId || !userId) {
-      return res.status(400).json({ error: 'historyId and userId are required' })
+    const userId = req.userId
+    const { historyId, starred } = req.body
+    if (!historyId) {
+      return res.status(400).json({ error: 'historyId is required' })
     }
 
     const dbInstance = await db.getDb()
@@ -379,9 +376,10 @@ router.post('/star', async (req, res) => {
 // POST /api/history/restore-context
 router.post('/restore-context', async (req, res) => {
   try {
-    const { historyId, userId } = req.body
-    if (!historyId || !userId) {
-      return res.status(400).json({ error: 'historyId and userId are required' })
+    const userId = req.userId
+    const { historyId } = req.body
+    if (!historyId) {
+      return res.status(400).json({ error: 'historyId is required' })
     }
 
     const dbInstance = await db.getDb()

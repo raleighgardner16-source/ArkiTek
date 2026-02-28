@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore } from './store/useStore'
 import WelcomeScreen from './components/WelcomeScreen'
@@ -24,7 +25,7 @@ import { streamFetch } from './utils/streamFetch'
 import { detectCategory } from './utils/categoryDetector'
 import { getRoleSystemPrompt, getRoleByKey } from './utils/debateRoles'
 import { getTheme } from './utils/theme'
-import axios from 'axios'
+import api from './utils/api'
 import { API_URL } from './utils/config'
 
 // Map full API model names to short friendly names for the judge summary
@@ -49,41 +50,23 @@ function App() {
     return unsub
   }, [])
 
+  const navigate = useNavigate()
+  const location = useLocation()
+
   const showWelcome = useStore((state) => state.showWelcome)
   const currentUser = useStore((state) => state.currentUser)
   const clearCurrentUser = useStore((state) => state.clearCurrentUser)
   const setGeminiDetectionResponse = useStore((state) => state.setGeminiDetectionResponse)
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
-  // Check pathname synchronously on initialization
-  const [isAdminRoute, setIsAdminRoute] = useState(() => {
-    const path = window.location.pathname
-    const hash = window.location.hash
-    return path === '/admin' || path === '/admin/' || hash === '#/admin'
-  })
 
-  // Public page routing for non-logged-in users
-  // Determines which public page to show: 'landing', 'signin', 'signup', 'terms', 'privacy'
-  const [publicPage, setPublicPage] = useState(() => {
-    const path = window.location.pathname
-    const hash = window.location.hash
-    // Hash-based routes that need AuthView to render (verify-email, reset-password)
-    if (hash.startsWith('#verify-email') || hash.startsWith('#reset-password')) return 'signin'
-    if (path === '/signin' || path === '/login') return 'signin'
-    if (path === '/signup' || path === '/register') return 'signup'
-    if (path === '/terms' || path === '/terms-of-service') return 'terms'
-    if (path === '/privacy' || path === '/privacy-policy') return 'privacy'
-    return 'landing'
-  })
+  const isAdminRoute = location.pathname === '/admin' || location.pathname === '/admin/'
 
   // Plan pre-selected from landing page (e.g. clicking a pricing card)
   const [landingPlan, setLandingPlan] = useState(null)
 
-  // Navigate between public pages (updates URL and state)
-  // Optional `plan` param lets the landing page pre-select free_trial or pro
   const navigatePublic = (page, plan) => {
     if (plan) setLandingPlan(plan)
-    setPublicPage(page)
     const pathMap = {
       landing: '/',
       signin: '/signin',
@@ -91,60 +74,21 @@ function App() {
       terms: '/terms',
       privacy: '/privacy',
     }
-    window.history.pushState({}, '', pathMap[page] || '/')
+    navigate(pathMap[page] || '/')
     window.scrollTo(0, 0)
   }
 
   const activeTab = useStore((state) => state.activeTab || 'home')
   const setActiveTab = useStore((state) => state.setActiveTab)
   const isNavExpanded = useStore((state) => state.isNavExpanded)
-  
-  // Listen for navigation changes
-  useEffect(() => {
-    const checkRoutes = () => {
-      const path = window.location.pathname
-      const hash = window.location.hash
-      setIsAdminRoute(path === '/admin' || path === '/admin/' || hash === '#/admin')
-      
-      // Hash-based routes that need AuthView (verify-email, reset-password)
-      if (hash.startsWith('#verify-email') || hash.startsWith('#reset-password')) {
-        setPublicPage('signin')
-      }
-      // Update public page based on URL
-      else if (path === '/signin' || path === '/login') setPublicPage('signin')
-      else if (path === '/signup' || path === '/register') setPublicPage('signup')
-      else if (path === '/terms' || path === '/terms-of-service') setPublicPage('terms')
-      else if (path === '/privacy' || path === '/privacy-policy') setPublicPage('privacy')
-      else if (path === '/' || path === '') setPublicPage('landing')
-    }
-    
-    // Check immediately in case pathname changed after initial render
-    checkRoutes()
-    
-    // Listen for browser back/forward navigation
-    window.addEventListener('popstate', checkRoutes)
-    // Also listen for hash changes (in case using hash routing)
-    window.addEventListener('hashchange', checkRoutes)
-    
-    return () => {
-      window.removeEventListener('popstate', checkRoutes)
-      window.removeEventListener('hashchange', checkRoutes)
-    }
-  }, [])
 
-  // Handle #verify-email links even when a user is already logged in.
-  // This fixes the case where the user opens a verification link on a device
-  // that still has an old/different account cached in localStorage.
-  // We sign out the stale session so AuthView can process the verification token.
+  // Handle verify-email links even when a user is already logged in.
   useEffect(() => {
-    const hash = window.location.hash
-    if (hash.startsWith('#verify-email') && currentUser) {
+    if (location.pathname === '/verify-email' && currentUser) {
       console.log('[App] Verification link detected while logged in — signing out stale session to process verification')
       clearCurrentUser()
-      // publicPage will be set to 'signin' by the route checker, which renders AuthView
-      // AuthView's own useEffect will pick up the #verify-email hash and call handleVerifyEmail
     }
-  }, []) // Run once on mount
+  }, [location.pathname])
 
   // Sync user's timezone to the server on mount (for already-logged-in users)
   // This ensures date bucketing uses the user's local timezone even if they
@@ -153,7 +97,7 @@ function App() {
     if (!currentUser?.id) return
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
     if (!tz) return
-    axios.post(`${API_URL}/api/auth/update-timezone`, { userId: currentUser.id, timezone: tz })
+    api.post('/api/auth/update-timezone', { timezone: tz })
       .catch(() => {}) // Silently ignore — not critical
   }, [currentUser?.id])
 
@@ -179,12 +123,10 @@ function App() {
       }
       // Clear judge and model conversation context
       if (currentUser?.id) {
-        axios.post(`${API_URL}/api/judge/clear-context`, {
-          userId: currentUser.id
-        }).catch(err => console.error('[Clear Context] Error:', err))
-        axios.post(`${API_URL}/api/model/clear-context`, {
-          userId: currentUser.id
-        }).catch(err => console.error('[Clear Model Context] Error:', err))
+        api.post('/api/judge/clear-context')
+          .catch(err => console.error('[Clear Context] Error:', err))
+        api.post('/api/model/clear-context')
+          .catch(err => console.error('[Clear Model Context] Error:', err))
       }
     } catch (error) {
       console.error('[clearAllWindows] Error clearing windows:', error)
@@ -291,7 +233,6 @@ Differences: [notable non-contradictory differences]
 
 Important: Only include each section label followed by a colon and content.`
 
-      const userId = currentUser?.id || null
       const summarySourcesSnapshot = Array.isArray(useStore.getState().searchSources)
         ? [...useStore.getState().searchSources]
         : []
@@ -316,7 +257,6 @@ Important: Only include each section label followed by a colon and content.`
 
       const summaryFinalData = await streamFetch(`${API_URL}/api/summary/stream`, {
         prompt: summaryPrompt,
-        userId,
       }, {
         onToken: (token) => {
           useStore.getState().appendSummaryText(token)
@@ -428,8 +368,7 @@ Important: Only include each section label followed by a colon and content.`
       }
 
       if (currentUser?.id && rawSummaryText) {
-        axios.post(`${API_URL}/api/judge/store-initial-summary`, {
-          userId: currentUser.id,
+        api.post('/api/judge/store-initial-summary', {
           summaryText: rawSummaryText,
           originalPrompt: summaryPrompt,
         }).catch(err => {
@@ -440,9 +379,8 @@ Important: Only include each section label followed by a colon and content.`
       // Update the saved history entry with the summary so it appears in History tab
       const activeHistoryId = useStore.getState().currentHistoryId
       if (activeHistoryId && currentUser?.id) {
-        axios.post(`${API_URL}/api/history/update-summary`, {
+        api.post('/api/history/update-summary', {
           historyId: activeHistoryId,
-          userId: currentUser.id,
           summary: {
             text: finalSummaryText || rawSummaryText,
             consensus,
@@ -472,7 +410,7 @@ Important: Only include each section label followed by a colon and content.`
   // Check if current user is an admin (admins bypass subscription gate)
   useEffect(() => {
     if (currentUser?.id) {
-      axios.get(`${API_URL}/api/admin/check`, { params: { userId: currentUser.id } })
+      api.get('/api/admin/check')
         .then(res => setIsUserAdmin(res.data.isAdmin === true))
         .catch(() => setIsUserAdmin(false))
     } else {
@@ -519,9 +457,8 @@ Important: Only include each section label followed by a colon and content.`
 
     // Finalize the previous history entry before clearing (regenerates embedding with full conversation)
     if (currentHistoryId && currentUser?.id) {
-      axios.post(`${API_URL}/api/history/finalize`, {
+      api.post('/api/history/finalize', {
         historyId: currentHistoryId,
-        userId: currentUser.id,
       }).catch(err => console.error('[History] Error finalizing previous entry:', err.message))
     }
 
@@ -531,12 +468,10 @@ Important: Only include each section label followed by a colon and content.`
     
     // Clear judge and model conversation context when starting a new prompt from main page
     if (currentUser?.id) {
-      axios.post(`${API_URL}/api/judge/clear-context`, {
-        userId: currentUser.id
-      }).catch(err => console.error('[Clear Context] Error:', err))
-      axios.post(`${API_URL}/api/model/clear-context`, {
-        userId: currentUser.id
-      }).catch(err => console.error('[Clear Model Context] Error:', err))
+      api.post('/api/judge/clear-context')
+        .catch(err => console.error('[Clear Context] Error:', err))
+      api.post('/api/model/clear-context')
+        .catch(err => console.error('[Clear Model Context] Error:', err))
     }
 
     try {
@@ -653,7 +588,6 @@ Important: Only include each section label followed by a colon and content.`
         const ragFinalData = await streamFetch(`${API_URL}/api/rag/stream`, {
           query: currentPrompt,
           selectedModels: modelsToUse,
-          userId: userId,
           needsContext: needsContext,
           rolePrompts: Object.keys(rolePromptsForRag).length > 0 ? rolePromptsForRag : undefined,
         }, {
@@ -826,8 +760,7 @@ Important: Only include each section label followed by a colon and content.`
       if (needsContext && currentUser?.id) {
         try {
           console.log('[Memory] Retrieving embedded context for non-search prompt...')
-          const memResponse = await axios.post(`${API_URL}/api/memory/retrieve`, {
-            userId: currentUser.id,
+          const memResponse = await api.post('/api/memory/retrieve', {
             prompt: currentPrompt,
             needsContext: true
           })
@@ -1040,8 +973,7 @@ Important: Only include each section label followed by a colon and content.`
           }
         }
         
-        const response = await axios.post(`${API_URL}/api/stats/prompt`, {
-          userId: currentUser.id,
+        const response = await api.post('/api/stats/prompt', {
           promptText: currentPrompt,
           category: category,
           responses: responses.length > 0 ? responses : null,
@@ -1330,9 +1262,8 @@ Important: Only include each section label followed by a colon and content.`
         // Store initial summary in conversation context
         // The backend will automatically summarize the raw judge response and store it
         if (currentUser?.id && rawSummaryText) {
-          axios.post(`${API_URL}/api/judge/store-initial-summary`, {
-            userId: currentUser.id,
-            summaryText: rawSummaryText, // Raw judge response (not formatted)
+          api.post('/api/judge/store-initial-summary', {
+            summaryText: rawSummaryText,
             originalPrompt: summaryPrompt
           }).catch(err => {
             console.error('[Summary] Error storing initial summary:', err)
@@ -1385,8 +1316,7 @@ Important: Only include each section label followed by a colon and content.`
         const currentResponses = useStore.getState().responses || responses
         const searchSrcs = useStore.getState().searchSources
         
-        const autoSaveResponse = await axios.post(`${API_URL}/api/history/auto-save`, {
-          userId: currentUser.id,
+        const autoSaveResponse = await api.post('/api/history/auto-save', {
           originalPrompt: savedPrompt,
           category: category || 'General',
           promptMode: useStore.getState().promptMode || 'general',
@@ -1499,7 +1429,6 @@ Important: Only include each section label followed by a colon and content.`
   }, [theme, currentTheme])
 
   // Wait for store hydration from localStorage before rendering anything
-  // This prevents the flash of AuthView/SubscriptionGate on page load for logged-in users
   if (!hasHydrated) {
     return (
       <div style={{
@@ -1523,195 +1452,168 @@ Important: Only include each section label followed by a colon and content.`
     )
   }
 
-  // Handle admin route separately - must be checked before other renders
-  // This early return prevents the normal app from rendering
-  // AdminView will handle login if user is not logged in
-  if (isAdminRoute) {
+  // Compute subscription state for the authenticated app shell
+  const renderAuthenticatedApp = () => {
+    if (!currentUser) return null
+
+    // Handle admin route
+    if (isAdminRoute) {
+      return (
+        <div style={{ width: '100vw', height: '100vh', background: 'rgba(0, 0, 0, 0.95)' }}>
+          <AdminView />
+        </div>
+      )
+    }
+
+    const subStatus = currentUser.subscriptionStatus
+    const isWithinPaidPeriod = currentUser.subscriptionRenewalDate && new Date(currentUser.subscriptionRenewalDate) > new Date()
+    const isCanceledOrPaused = subStatus === 'canceled' || subStatus === 'paused'
+
+    if (subStatus === 'pending_verification' && !isUserAdmin) {
+      clearCurrentUser()
+      return null
+    }
+
+    const needsSubscriptionGate = !isCanceledOrPaused && subStatus !== 'active' && subStatus !== 'trialing'
+    if (needsSubscriptionGate && !isUserAdmin) {
+      return <SubscriptionGate currentUser={currentUser} />
+    }
+
+    const subscriptionRestricted = isCanceledOrPaused && !isWithinPaidPeriod && !isUserAdmin
+    const subscriptionExpiring = isCanceledOrPaused && isWithinPaidPeriod && !isUserAdmin
+    const subscriptionPaused = subStatus === 'paused' && !isWithinPaidPeriod && !isUserAdmin
+
     return (
-      <div style={{ width: '100vw', height: '100vh', background: 'rgba(0, 0, 0, 0.95)' }}>
-        <AdminView />
+      <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: currentTheme.background }}>
+        <AnimatePresence>
+          {showWelcome && <WelcomeScreen key="welcome" />}
+        </AnimatePresence>
+
+        {!showWelcome && (
+          <>
+            <NavigationBar />
+
+            {subscriptionRestricted && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                style={{
+                  position: 'fixed',
+                  top: '70px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  zIndex: 300,
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, rgba(255, 59, 48, 0.15), rgba(255, 59, 48, 0.08))',
+                  border: '1px solid rgba(255, 59, 48, 0.4)',
+                  backdropFilter: 'blur(12px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  maxWidth: '600px',
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+                }}
+              >
+                <span style={{ fontSize: '0.9rem', color: '#ff6b6b', lineHeight: '1.4' }}>
+                  {`Your subscription has ${subStatus === 'paused' ? 'been paused' : 'expired'}. You can view your profile, saved conversations, and settings, but prompts are unavailable.`}
+                </span>
+                <motion.button
+                  onClick={() => setActiveTab('settings')}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  style={{
+                    padding: '6px 16px',
+                    background: currentTheme.accentGradient,
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    fontSize: '0.8rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Resubscribe
+                </motion.button>
+              </motion.div>
+            )}
+
+            {activeTab === 'home' && <MainView onClearAll={clearAllWindows} subscriptionRestricted={subscriptionRestricted} subscriptionPaused={subscriptionPaused} subscriptionExpiring={subscriptionExpiring} subscriptionRenewalDate={currentUser.subscriptionRenewalDate} isLoading={isLoading} isGeneratingSummary={isGeneratingSummary} onCancelPrompt={handleCancelPrompt} />}
+            {activeTab === 'saved' && <SavedConversationsView />}
+            {activeTab === 'settings' && <SettingsView />}
+            {activeTab === 'statistics' && <StatisticsView />}
+            {activeTab === 'store' && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: isNavExpanded ? '240px' : '60px',
+                width: `calc(100% - ${isNavExpanded ? '240px' : '60px'})`,
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '16px',
+                padding: '40px',
+                zIndex: 10,
+                transition: 'left 0.3s ease, width 0.3s ease',
+              }}>
+                <ShoppingBag size={48} style={{ color: currentTheme.textMuted, opacity: 0.5 }} />
+                <h2 style={{
+                  fontSize: '1.8rem',
+                  fontWeight: '700',
+                  background: currentTheme.accentGradient,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                  margin: 0,
+                }}>
+                  Store
+                </h2>
+                <p style={{
+                  color: currentTheme.textMuted,
+                  fontSize: '1rem',
+                  margin: 0,
+                }}>
+                  Coming soon
+                </p>
+              </div>
+            )}
+
+            {!isAdminRoute && activeTab === 'home' && <ResponseComparison />}
+            {!isAdminRoute && <SummaryWindow />}
+          </>
+        )}
+
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
     )
   }
 
-  // Show public pages if not logged in
-  if (!currentUser) {
-    // Terms and Privacy are always accessible (even needed by Stripe)
-    if (publicPage === 'terms') return <TermsOfService onNavigate={navigatePublic} />
-    if (publicPage === 'privacy') return <PrivacyPolicy onNavigate={navigatePublic} />
-    // Auth views (sign in / sign up)
-    if (publicPage === 'signin' || publicPage === 'signup' || publicPage === 'select-plan') {
-      return <AuthView initialView={publicPage} initialPlan={landingPlan} onNavigate={navigatePublic} />
-    }
-    // Default: Landing page
-    return <LandingPage onNavigate={navigatePublic} />
-  }
-
-  // Logged-in users on terms/privacy pages — still show those pages
-  if (publicPage === 'terms') return <TermsOfService onNavigate={(page) => { if (page === 'landing') { navigatePublic('landing'); } else { navigatePublic(page); } }} />
-  if (publicPage === 'privacy') return <PrivacyPolicy onNavigate={(page) => { if (page === 'landing') { navigatePublic('landing'); } else { navigatePublic(page); } }} />
-
-  // If a logged-in user somehow lands on /signin, /signup, or /, redirect them to the app
-  if (publicPage === 'signin' || publicPage === 'signup' || publicPage === 'landing') {
-    // Reset URL to / for the app
-    if (window.location.pathname !== '/' && window.location.pathname !== '/admin') {
-      window.history.replaceState({}, '', '/')
-    }
-  }
-
-  // Subscription logic:
-  // - 'inactive' / 'incomplete' / 'past_due' → SubscriptionGate (must subscribe/fix payment)
-  // - 'canceled' / 'paused' within paid period (before renewalDate) → full access with warning banner
-  // - 'canceled' / 'paused' past paid period → restricted mode (can view stats/saved/own profile, no prompts)
-  // - 'active' / 'trialing' → full access
-  // Admins always bypass
-  const subStatus = currentUser.subscriptionStatus
-  const isWithinPaidPeriod = currentUser.subscriptionRenewalDate && new Date(currentUser.subscriptionRenewalDate) > new Date()
-  const isCanceledOrPaused = subStatus === 'canceled' || subStatus === 'paused'
-  
-  // Users with pending email verification → log them out so they see the verification flow
-  if (subStatus === 'pending_verification' && !isUserAdmin) {
-    // Clear user so they see AuthView (where they can sign in and see verification-pending)
-    clearCurrentUser()
-    return null
-  }
-
-  // Users who never subscribed, have incomplete signup, or failed payment → SubscriptionGate
-  const needsSubscriptionGate = !isCanceledOrPaused && subStatus !== 'active' && subStatus !== 'trialing'
-  
-  if (needsSubscriptionGate && !isUserAdmin) {
-    return <SubscriptionGate currentUser={currentUser} />
-  }
-  
-  // Canceled/paused users PAST their paid period → restricted mode
-  const subscriptionRestricted = isCanceledOrPaused && !isWithinPaidPeriod && !isUserAdmin
-  // Canceled/paused users WITHIN their paid period → full access but show a warning
-  const subscriptionExpiring = isCanceledOrPaused && isWithinPaidPeriod && !isUserAdmin
-  // Paused users past their paid period → lock the prompt box (they still had access until period ended)
-  const subscriptionPaused = subStatus === 'paused' && !isWithinPaidPeriod && !isUserAdmin
-
   return (
-    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: currentTheme.background }}>
-      <AnimatePresence>
-        {showWelcome && <WelcomeScreen key="welcome" />}
-      </AnimatePresence>
-
-      {!showWelcome && (
-        <>
-          <NavigationBar />
-
-          {/* Subscription Restricted Banner - only for users past their paid period */}
-          {subscriptionRestricted && (
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              style={{
-                position: 'fixed',
-                top: '70px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                zIndex: 300,
-                padding: '12px 24px',
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, rgba(255, 59, 48, 0.15), rgba(255, 59, 48, 0.08))',
-                border: '1px solid rgba(255, 59, 48, 0.4)',
-                backdropFilter: 'blur(12px)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                maxWidth: '600px',
-                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
-              }}
-            >
-              <span style={{ fontSize: '0.9rem', color: '#ff6b6b', lineHeight: '1.4' }}>
-                {`Your subscription has ${subStatus === 'paused' ? 'been paused' : 'expired'}. You can view your profile, saved conversations, and settings, but prompts are unavailable.`}
-              </span>
-              <motion.button
-                onClick={() => setActiveTab('settings')}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                style={{
-                  padding: '6px 16px',
-                  background: currentTheme.accentGradient,
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: '#fff',
-                  fontSize: '0.8rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                Resubscribe
-              </motion.button>
-            </motion.div>
-          )}
-
-                {/* Main Content Area - Show based on active tab */}
-                {/* Note: AdminView is handled in early return above, so this should never render AdminView */}
-                {activeTab === 'home' && <MainView onClearAll={clearAllWindows} subscriptionRestricted={subscriptionRestricted} subscriptionPaused={subscriptionPaused} subscriptionExpiring={subscriptionExpiring} subscriptionRenewalDate={currentUser.subscriptionRenewalDate} isLoading={isLoading} isGeneratingSummary={isGeneratingSummary} onCancelPrompt={handleCancelPrompt} />}
-                {/* DISABLED: LeaderboardView temporarily removed (social media feature) */}
-                {/* {activeTab === 'leaderboard' && !(currentUser?.plan === 'free_trial' && !currentUser?.stripeSubscriptionId) && <LeaderboardView subscriptionRestricted={subscriptionRestricted} />} */}
-                {activeTab === 'saved' && <SavedConversationsView />}
-                {activeTab === 'settings' && <SettingsView />}
-                {activeTab === 'statistics' && <StatisticsView />}
-                {activeTab === 'store' && (
-                  <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: isNavExpanded ? '240px' : '60px',
-                    width: `calc(100% - ${isNavExpanded ? '240px' : '60px'})`,
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '16px',
-                    padding: '40px',
-                    zIndex: 10,
-                    transition: 'left 0.3s ease, width 0.3s ease',
-                  }}>
-                    <ShoppingBag size={48} style={{ color: currentTheme.textMuted, opacity: 0.5 }} />
-                    <h2 style={{
-                      fontSize: '1.8rem',
-                      fontWeight: '700',
-                      background: currentTheme.accentGradient,
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      backgroundClip: 'text',
-                      margin: 0,
-                    }}>
-                      Store
-                    </h2>
-                    <p style={{
-                      color: currentTheme.textMuted,
-                      fontSize: '1rem',
-                      margin: 0,
-                    }}>
-                      Coming soon
-                    </p>
-                  </div>
-                )}
-
-                {/* Response Comparison - Only show on home tab (not on admin route) */}
-                {!isAdminRoute && activeTab === 'home' && <ResponseComparison />}
-
-                {/* Summary Window - Shows on all tabs except admin */}
-                {!isAdminRoute && <SummaryWindow />}
-
-                {/* Token Usage is now shown inside the Council panel (ResponseComparison) as a tab */}
-
-        </>
-      )}
-
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
-
-    </div>
+    <Routes>
+      {/* Public routes */}
+      <Route path="/" element={currentUser ? renderAuthenticatedApp() : <LandingPage onNavigate={navigatePublic} />} />
+      <Route path="/signin" element={currentUser ? <Navigate to="/" replace /> : <AuthView initialView="signin" initialPlan={landingPlan} onNavigate={navigatePublic} />} />
+      <Route path="/login" element={<Navigate to="/signin" replace />} />
+      <Route path="/signup" element={currentUser ? <Navigate to="/" replace /> : <AuthView initialView="signup" initialPlan={landingPlan} onNavigate={navigatePublic} />} />
+      <Route path="/register" element={<Navigate to="/signup" replace />} />
+      <Route path="/terms" element={<TermsOfService onNavigate={navigatePublic} />} />
+      <Route path="/terms-of-service" element={<Navigate to="/terms" replace />} />
+      <Route path="/privacy" element={<PrivacyPolicy onNavigate={navigatePublic} />} />
+      <Route path="/privacy-policy" element={<Navigate to="/privacy" replace />} />
+      <Route path="/verify-email" element={<AuthView initialView="signin" onNavigate={navigatePublic} />} />
+      <Route path="/reset-password" element={<AuthView initialView="signin" onNavigate={navigatePublic} />} />
+      <Route path="/admin" element={currentUser ? renderAuthenticatedApp() : <Navigate to="/signin" replace />} />
+      {/* Catch-all: authenticated users see app, others see landing */}
+      <Route path="*" element={currentUser ? renderAuthenticatedApp() : <Navigate to="/" replace />} />
+    </Routes>
   )
 }
 

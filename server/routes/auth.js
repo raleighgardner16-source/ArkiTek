@@ -3,7 +3,8 @@ import crypto from 'crypto'
 import db from '../../database/db.js'
 import adminDb from '../../database/adminDb.js'
 import { stripe, resend, APP_NAME, FROM_EMAIL, APP_URL, MAX_FREE_TRIALS_PER_IP } from '../config/index.js'
-import { hashPassword, canonicalizeEmail, isDisposableEmail } from '../helpers/auth.js'
+import { hashPassword, verifyPassword, generateToken, canonicalizeEmail, isDisposableEmail } from '../helpers/auth.js'
+import { requireAuth } from '../middleware/requireAuth.js'
 import { getMonthForUser } from '../helpers/date.js'
 import { getUserTimezone } from '../services/usage.js'
 import { getPlanAllocation } from '../helpers/pricing.js'
@@ -125,7 +126,7 @@ router.post('/signup', async (req, res) => {
     }
 
     // ==================== CREATE USER ====================
-    const hashedPassword = hashPassword(password)
+    const hashedPassword = await hashPassword(password)
     const userId = crypto.randomUUID()
     const signupIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown'
     
@@ -191,7 +192,7 @@ router.post('/signup', async (req, res) => {
     }
 
     // Send verification email
-    const verifyLink = `${APP_URL}/#verify-email?token=${verifyToken}`
+    const verifyLink = `${APP_URL}/verify-email?token=${verifyToken}`
     const emailPurpose = isFreeTrial
       ? 'Please verify your email address to activate your free plan.'
       : 'Please verify your email address to complete your account setup.'
@@ -280,15 +281,22 @@ router.post('/signin', async (req, res) => {
       return res.status(401).json({ error: 'Username not found. Please check your username or sign up.' })
     }
 
-    const hashedPassword = hashPassword(password)
-    
-    if (dbUser.password !== hashedPassword) {
+    const { valid, needsRehash } = await verifyPassword(password, dbUser.password)
+
+    if (!valid) {
       console.log('[Auth] Password mismatch for user:', username)
       return res.status(401).json({ error: 'Invalid password. Please check your password and try again.' })
     }
 
     // Use the actual _id (UUID for new users, username for legacy users)
     const userId = dbUser._id
+
+    // Lazily migrate legacy SHA-256 hashes to bcrypt
+    if (needsRehash) {
+      const bcryptHash = await hashPassword(password)
+      await db.users.update(userId, { password: bcryptHash })
+      console.log('[Auth] Migrated password hash to bcrypt for user:', username)
+    }
 
     // Update last active and timezone in MongoDB
     const loginDate = new Date()
@@ -300,10 +308,13 @@ router.post('/signin', async (req, res) => {
     
     // Check if this user still needs email verification
     const needsVerification = dbUser.subscriptionStatus === 'pending_verification' && !dbUser.emailVerified
+
+    const token = generateToken(userId)
     
     res.json({
       success: true,
       requiresVerification: needsVerification,
+      token,
       user: {
         id: dbUser._id,
         firstName: dbUser.firstName,
@@ -324,11 +335,12 @@ router.post('/signin', async (req, res) => {
   }
 })
 
-router.post('/update-timezone', async (req, res) => {
+router.post('/update-timezone', requireAuth, async (req, res) => {
   try {
-    const { userId, timezone } = req.body
+    const userId = req.userId
+    const { timezone } = req.body
     if (!userId || !timezone) {
-      return res.status(400).json({ error: 'userId and timezone are required' })
+      return res.status(400).json({ error: 'Authentication and timezone are required' })
     }
     await db.users.update(userId, { timezone })
     res.json({ success: true })
@@ -450,7 +462,7 @@ router.post('/forgot-password', async (req, res) => {
     }
 
     // Build the reset link (frontend will handle the #reset-password route)
-    const resetLink = `${APP_URL}/#reset-password?token=${resetToken}`
+    const resetLink = `${APP_URL}/reset-password?token=${resetToken}`
 
     // Send email with reset link
     try {
@@ -558,7 +570,7 @@ router.post('/reset-password', async (req, res) => {
     }
 
     // Update the password
-    const hashedPassword = hashPassword(newPassword)
+    const hashedPassword = await hashPassword(newPassword)
     const userId = tokenData.userId
 
     // Update in MongoDB
@@ -702,8 +714,10 @@ router.post('/verify-email', async (req, res) => {
       }
 
       console.log('[Auth] ✅ Email verified + free plan activated for user:', userId)
+      const token = generateToken(userId)
       res.json({
         success: true,
+        token,
         message: 'Email verified! Your free plan is now active.',
         user: {
           id: dbUser._id,
@@ -737,8 +751,10 @@ router.post('/verify-email', async (req, res) => {
       }
 
       console.log(`[Auth] ✅ Email verified for ${userPlan} user (ready for payment):`, userId)
+      const token = generateToken(userId)
       res.json({
         success: true,
+        token,
         message: 'Email verified! Setting up your account...',
         user: {
           id: dbUser._id,
@@ -765,7 +781,7 @@ router.post('/verify-email', async (req, res) => {
 // When email is verified, returns full user data so the client can auto-login
 router.post('/check-verification', async (req, res) => {
   try {
-    const { userId } = req.body
+    const userId = req.body.userId || req.userId
 
     if (!userId) {
       return res.status(400).json({ error: 'User ID is required' })
@@ -786,9 +802,11 @@ router.post('/check-verification', async (req, res) => {
 
     await db.users.update(userId, { lastActiveAt: new Date() })
 
+    const token = generateToken(userId)
     res.json({
       success: true,
       verified: true,
+      token,
       user: {
         id: dbUser._id,
         firstName: dbUser.firstName,
@@ -867,7 +885,7 @@ router.post('/resend-verification', async (req, res) => {
     })
 
     // Send verification email
-    const verifyLink = `${APP_URL}/#verify-email?token=${verifyToken}`
+    const verifyLink = `${APP_URL}/verify-email?token=${verifyToken}`
     if (resend) {
       await resend.emails.send({
         from: FROM_EMAIL,
@@ -909,12 +927,12 @@ router.post('/resend-verification', async (req, res) => {
 // ACCOUNT DELETION
 // ============================================================================
 
-router.delete('/account', async (req, res) => {
+router.delete('/account', requireAuth, async (req, res) => {
   try {
-    const { userId } = req.body
+    const userId = req.userId
 
     if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
+      return res.status(401).json({ error: 'Authentication required' })
     }
 
     console.log('[Account Deletion] Received delete request for user:', userId)

@@ -6,9 +6,10 @@ const router = Router()
 
 router.post('/retrieve', async (req, res) => {
   try {
-    const { userId, prompt, needsContext, targetModel } = req.body
-    if (!userId || !prompt) {
-      return res.status(400).json({ error: 'userId and prompt are required' })
+    const userId = req.userId
+    const { prompt, needsContext, targetModel } = req.body
+    if (!prompt) {
+      return res.status(400).json({ error: 'prompt is required' })
     }
 
     const scoreThreshold = needsContext ? 0.70 : 0.82
@@ -48,10 +49,9 @@ router.post('/retrieve', async (req, res) => {
   }
 })
 
-router.get('/debug/:userId', async (req, res) => {
+router.get('/debug', async (req, res) => {
   try {
-    const { userId } = req.params
-    if (!userId) return res.status(400).json({ error: 'userId required' })
+    const userId = req.userId
 
     const dbInstance = await db.getDb()
     const col = dbInstance.collection('conversation_history')

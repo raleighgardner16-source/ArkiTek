@@ -5,6 +5,8 @@ import adminDb from './database/adminDb.js'
 import { PORT, SERVER_VERSION, PROJECT_ROOT } from './server/config/index.js'
 import { setupMiddleware } from './server/middleware/index.js'
 import { loadAdminsList } from './server/middleware/requireAdmin.js'
+import { requireAuth } from './server/middleware/requireAuth.js'
+import { authLimiter, llmLimiter, generalLimiter } from './server/middleware/rateLimiter.js'
 import { trackConversationPrompt } from './server/services/usage.js'
 
 // Route imports
@@ -148,17 +150,21 @@ const app = express()
 // Middleware (CORS, body parsing, Stripe raw body)
 setupMiddleware(app)
 
+// General rate limiter for all API routes
+app.use('/api/', generalLimiter)
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ version: SERVER_VERSION, timestamp: new Date().toISOString() })
 })
 
 // Standalone route: track council follow-up prompt (different prefix from other routes)
-app.post('/api/conversation/track-follow-up', async (req, res) => {
+app.post('/api/conversation/track-follow-up', requireAuth, async (req, res) => {
   try {
-    const { userId, userMessage } = req.body
-    if (!userId || !userMessage) {
-      return res.status(400).json({ error: 'userId and userMessage are required' })
+    const userId = req.userId
+    const { userMessage } = req.body
+    if (!userMessage) {
+      return res.status(400).json({ error: 'userMessage is required' })
     }
     await trackConversationPrompt(userId, userMessage)
     res.json({ success: true })
@@ -171,28 +177,31 @@ app.post('/api/conversation/track-follow-up', async (req, res) => {
 // ============================================================================
 // MOUNT ROUTES
 // ============================================================================
-app.use('/api/auth', authRouter)
-app.use('/api/stats', statsRouter)
-app.use('/api/daily-challenge', dailyChallengeRouter)
-app.use('/api/user', userRouter)
-app.use('/api/ratings', ratingsRouter)
-app.use('/api/judge', judgeRouter)
-app.use('/api/model', modelRouter)
-app.use('/api/llm', llmRouter)
-app.use('/api/summary', summaryRouter)
-app.use('/api/search', searchRouter)
-app.use('/api/detect-search-needed', detectSearchRouter)
-app.use('/api/rag', ragRouter)
-app.use('/api/memory', memoryRouter)
-app.use('/api/history', historyRouter)
-app.use('/api/leaderboard', leaderboardRouter)
-app.use('/api/notifications', notificationsRouter)
-app.use('/api/profile', profileRouter)
-app.use('/api/users', usersRouter)
-app.use('/api/messages', messagingRouter)
-app.use('/api/admin', adminRouter)
+// Public routes (no auth required)
+app.use('/api/auth', authLimiter, authRouter)
 app.use('/api/pricing', pricingRouter)
 app.use('/api/stripe', stripeRouter)
+
+// Protected routes (JWT required)
+app.use('/api/stats', requireAuth, statsRouter)
+app.use('/api/daily-challenge', requireAuth, dailyChallengeRouter)
+app.use('/api/user', requireAuth, userRouter)
+app.use('/api/ratings', requireAuth, ratingsRouter)
+app.use('/api/judge', requireAuth, llmLimiter, judgeRouter)
+app.use('/api/model', requireAuth, llmLimiter, modelRouter)
+app.use('/api/llm', requireAuth, llmLimiter, llmRouter)
+app.use('/api/summary', requireAuth, llmLimiter, summaryRouter)
+app.use('/api/search', requireAuth, llmLimiter, searchRouter)
+app.use('/api/detect-search-needed', requireAuth, llmLimiter, detectSearchRouter)
+app.use('/api/rag', requireAuth, llmLimiter, ragRouter)
+app.use('/api/memory', requireAuth, memoryRouter)
+app.use('/api/history', requireAuth, historyRouter)
+app.use('/api/leaderboard', requireAuth, leaderboardRouter)
+app.use('/api/notifications', requireAuth, notificationsRouter)
+app.use('/api/profile', requireAuth, profileRouter)
+app.use('/api/users', requireAuth, usersRouter)
+app.use('/api/messages', requireAuth, messagingRouter)
+app.use('/api/admin', requireAuth, adminRouter)
 
 // ============================================================================
 // SERVERLESS INITIALIZATION (Vercel)

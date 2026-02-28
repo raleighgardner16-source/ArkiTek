@@ -14,10 +14,11 @@ const router = Router()
 
 router.get('/context', async (req, res) => {
   try {
-    const { userId, modelName } = req.query
+    const userId = req.userId
+    const { modelName } = req.query
     
-    if (!userId || !modelName) {
-      return res.status(400).json({ error: 'userId and modelName query parameters are required' })
+    if (!modelName) {
+      return res.status(400).json({ error: 'modelName query parameter is required' })
     }
     
     const decodedUserId = decodeURIComponent(userId)
@@ -38,11 +39,8 @@ router.get('/context', async (req, res) => {
 
 router.post('/clear-context', async (req, res) => {
   try {
-    const { userId, modelName } = req.body
-    
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' })
-    }
+    const userId = req.userId
+    const { modelName } = req.body
     
     const userUsage = await db.usage.getOrDefault(userId)
     if (userUsage.modelConversationContext) {
@@ -79,10 +77,11 @@ router.post('/conversation/stream', async (req, res) => {
   }, 15000)
 
   try {
-    const { userId, modelName, userMessage, originalResponse, responseId, isCouncilFollowUp } = req.body
+    const userId = req.userId
+    const { modelName, userMessage, originalResponse, responseId, isCouncilFollowUp } = req.body
 
-    if (!userId || !modelName || !userMessage) {
-      sendSSE('error', { message: 'userId, modelName, and userMessage are required' })
+    if (!modelName || !userMessage) {
+      sendSSE('error', { message: 'modelName and userMessage are required' })
       clearInterval(heartbeat)
       return res.end()
     }
@@ -421,10 +420,11 @@ router.post('/conversation/stream', async (req, res) => {
 
 router.post('/conversation', async (req, res) => {
   try {
-    const { userId, modelName, userMessage, originalResponse, responseId, isCouncilFollowUp } = req.body
+    const userId = req.userId
+    const { modelName, userMessage, originalResponse, responseId, isCouncilFollowUp } = req.body
     
-    if (!userId || !modelName || !userMessage) {
-      return res.status(400).json({ error: 'userId, modelName, and userMessage are required' })
+    if (!modelName || !userMessage) {
+      return res.status(400).json({ error: 'modelName and userMessage are required' })
     }
     
     const subscriptionCheck = await checkSubscriptionStatusAsync(userId)

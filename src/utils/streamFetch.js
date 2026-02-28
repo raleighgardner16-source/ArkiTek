@@ -1,3 +1,5 @@
+import { getAuthHeaders } from './api'
+
 /**
  * Streaming fetch utility for SSE endpoints.
  * Calls onToken for each incoming token, onStatus for status updates,
@@ -7,7 +9,7 @@
 export async function streamFetch(url, body, { onToken, onStatus, onError, onEvent, signal }) {
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify(body),
     signal,
   })

@@ -225,10 +225,14 @@ export const useStore = create(
       showFactsWindow: true,
       setShowFactsWindow: (show) => set({ showFactsWindow: show }),
 
+      // Auth token (JWT)
+      authToken: null,
+      setAuthToken: (token) => set({ authToken: token }),
+
       // Current user
       currentUser: null,
       setCurrentUser: (user) => set({ currentUser: user }),
-      clearCurrentUser: () => set({ currentUser: null, selectedModels: [], autoSmartProviders: {} }),
+      clearCurrentUser: () => set({ currentUser: null, authToken: null, selectedModels: [], autoSmartProviders: {} }),
 
       // Stats refresh trigger
       statsRefreshTrigger: 0,
@@ -305,6 +309,7 @@ export const useStore = create(
       // Only persist essential state — exclude large/transient data to prevent
       // localStorage bloat (5MB limit) and stale data across sessions
       partialize: (state) => ({
+        authToken: state.authToken,
         currentUser: state.currentUser,
         theme: state.theme,
         activeTab: state.activeTab,
