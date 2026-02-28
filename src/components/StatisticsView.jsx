@@ -987,7 +987,7 @@ const StatisticsView = () => {
             const followingCount = profileData?.followingCount || 0
             const postsCount = profileData?.leaderboard?.totalPosts || 0
             const isFollowing = publicProfile?.isFollowing || false
-            const memberSince = profileData?.createdAt || stats?.createdAt
+            const memberSince = profileData?.createdAt || stats?.createdAt || currentUser?.createdAt
 
             return (
               <div style={{
@@ -1079,11 +1079,9 @@ const StatisticsView = () => {
                       </p>
                     )}
 
-                    {memberSince && (
-                      <p style={{ color: currentTheme.textMuted || currentTheme.textSecondary, fontSize: '0.78rem', margin: '4px 0 0 0' }}>
-                        Member for {formatAccountAge(memberSince)}
-                      </p>
-                    )}
+                    <p style={{ color: currentTheme.textMuted || currentTheme.textSecondary, fontSize: '0.78rem', margin: '4px 0 0 0', minHeight: '1.2em' }}>
+                      {memberSince ? `Member for ${formatAccountAge(memberSince)}` : '\u00A0'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1396,14 +1394,12 @@ const StatisticsView = () => {
                 <p style={{ fontSize: '0.9rem', color: currentTheme.textSecondary, marginBottom: '4px', textAlign: 'center' }}>
                   Daily Usage Percentage (This Month)
                 </p>
-                {(userStats.usagePercentUsed || 0) > 0 && (
-                  <p style={{ fontSize: '0.7rem', color: currentTheme.textMuted, marginBottom: '10px', textAlign: 'center' }}>
-                    {(userStats.usagePercentUsed || 0).toFixed(1)}% used this month
-                    {(userStats.purchasedCreditsPercent || 0) > 0 && (
-                      <span style={{ color: '#00cc66' }}> (includes purchased credits)</span>
-                    )}
-                  </p>
-                )}
+                <p style={{ fontSize: '0.7rem', color: currentTheme.textMuted, marginBottom: '10px', textAlign: 'center', minHeight: '1em', visibility: (userStats.usagePercentUsed || 0) > 0 ? 'visible' : 'hidden' }}>
+                  {(userStats.usagePercentUsed || 0).toFixed(1)}% used this month
+                  {(userStats.purchasedCreditsPercent || 0) > 0 && (
+                    <span style={{ color: '#00cc66' }}> (includes purchased credits)</span>
+                  )}
+                </p>
                 <div style={{ display: 'flex', gap: '8px', height: '220px' }}>
                   {/* Y-axis labels (percentage scale) */}
                   <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', paddingRight: '8px', minWidth: '40px' }}>

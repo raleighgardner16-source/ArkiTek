@@ -55,7 +55,7 @@ const SavedConversationsView = () => {
   useEffect(() => { const id = requestAnimationFrame(() => setMountReady(true)); return () => cancelAnimationFrame(id) }, [])
 
   const [history, setHistory] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [selectedConvo, setSelectedConvo] = useState(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
