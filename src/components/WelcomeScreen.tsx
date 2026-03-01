@@ -2,11 +2,12 @@ import React from 'react'
 import { motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { useStore } from '../store/useStore'
-import logoImage from '../../ARKTEK_LOGO.png'
-import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx } from '../utils/styles'
+import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx, createStyles } from '../utils/styles'
+import { getTheme } from '../utils/theme'
 
 const WelcomeScreen = () => {
   const setShowWelcome = useStore((state) => state.setShowWelcome)
+  const s = createStyles(getTheme('dark'))
 
   return (
     <motion.div
@@ -85,15 +86,13 @@ const WelcomeScreen = () => {
       </div>
 
       {/* Logo */}
-      <motion.img
-        src={logoImage}
-        alt="ArkiTek Logo"
-        style={{
-          width: '300px',
-          height: 'auto',
+      <motion.span
+        style={sx(s.gradientText, {
+          fontSize: 'clamp(2.5rem, 6vw, 4rem)',
+          fontWeight: fontWeight.extrabold,
           marginBottom: spacing['5xl'],
           filter: 'drop-shadow(0 0 20px rgba(93, 173, 226, 0.5))',
-        }}
+        })}
         animate={{
           scale: [1, 1.05, 1],
         }}
@@ -101,7 +100,9 @@ const WelcomeScreen = () => {
           duration: 3,
           repeat: Infinity,
         }}
-      />
+      >
+        ArkitekAI
+      </motion.span>
 
       {/* Slogan */}
       <motion.h1
