@@ -155,14 +155,18 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
         </div>
         <div style={{ display: 'flex', gap: spacing.md, alignItems: 'center' }}>
           {[
-            { label: 'Features', href: '/features' },
-            { label: 'Pricing', href: '/pricing' },
-            { label: 'Compare', href: '/compare' },
-            { label: 'Blog', href: '/blog' },
+            { label: 'Features', href: '#' },
+            { label: 'Shop', href: '#' },
+            { label: 'Community', href: '#' },
+            { label: 'About', href: '#' },
+            { label: 'Blog', href: '#' },
+            { label: 'API', href: '#' },
+            { label: 'Company', href: '#' },
           ].map((link) => (
             <a
-              key={link.href}
+              key={link.label}
               href={link.href}
+              onClick={(e) => e.preventDefault()}
               style={{
                 padding: `${spacing.md} ${spacing.xl}`,
                 color: 'rgba(255, 255, 255, 0.6)',
@@ -170,6 +174,7 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
                 textDecoration: 'none',
                 borderRadius: radius.md,
                 transition: transition.normal,
+                cursor: 'default',
               }}
               onMouseEnter={(e) => {
                 ;(e.target as HTMLElement).style.color = '#fff'
@@ -1158,44 +1163,28 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
             <h4 style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: spacing.xl }}>
               Product
             </h4>
-            {[
-              { label: 'Features', href: '/features' },
-              { label: 'Pricing', href: '/pricing' },
-              { label: 'How It Works', href: '/how-it-works' },
-              { label: 'Use Cases', href: '/use-cases' },
-            ].map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                style={{ display: 'block', padding: '4px 0', color: 'rgba(255, 255, 255, 0.4)', fontSize: fontSize.lg, textDecoration: 'none' }}
-                onMouseEnter={(e) => (e.target as HTMLElement).style.color = '#fff'}
-                onMouseLeave={(e) => (e.target as HTMLElement).style.color = 'rgba(255, 255, 255, 0.4)'}
+            {['Features', 'Shop', 'API'].map((label) => (
+              <span
+                key={label}
+                style={{ display: 'block', padding: '4px 0', color: 'rgba(255, 255, 255, 0.4)', fontSize: fontSize.lg }}
               >
-                {link.label}
-              </a>
+                {label}
+              </span>
             ))}
           </div>
 
-          {/* Compare */}
+          {/* Community */}
           <div>
             <h4 style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: spacing.xl }}>
-              Compare
+              Community
             </h4>
-            {[
-              { label: 'Compare AI Models', href: '/compare' },
-              { label: 'ChatGPT vs Claude', href: '/compare/chatgpt-vs-claude' },
-              { label: 'Gemini vs GPT-4', href: '/compare/gemini-vs-gpt4' },
-              { label: 'Best AI for Coding', href: '/compare/best-ai-for-coding' },
-            ].map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                style={{ display: 'block', padding: '4px 0', color: 'rgba(255, 255, 255, 0.4)', fontSize: fontSize.lg, textDecoration: 'none' }}
-                onMouseEnter={(e) => (e.target as HTMLElement).style.color = '#fff'}
-                onMouseLeave={(e) => (e.target as HTMLElement).style.color = 'rgba(255, 255, 255, 0.4)'}
+            {['Reviews', 'Blog'].map((label) => (
+              <span
+                key={label}
+                style={{ display: 'block', padding: '4px 0', color: 'rgba(255, 255, 255, 0.4)', fontSize: fontSize.lg }}
               >
-                {link.label}
-              </a>
+                {label}
+              </span>
             ))}
           </div>
 
@@ -1204,20 +1193,13 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
             <h4 style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: spacing.xl }}>
               Company
             </h4>
-            {[
-              { label: 'About', href: '/about' },
-              { label: 'Blog', href: '/blog' },
-              { label: 'Contact', href: '/contact' },
-            ].map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                style={{ display: 'block', padding: '4px 0', color: 'rgba(255, 255, 255, 0.4)', fontSize: fontSize.lg, textDecoration: 'none' }}
-                onMouseEnter={(e) => (e.target as HTMLElement).style.color = '#fff'}
-                onMouseLeave={(e) => (e.target as HTMLElement).style.color = 'rgba(255, 255, 255, 0.4)'}
+            {['About'].map((label) => (
+              <span
+                key={label}
+                style={{ display: 'block', padding: '4px 0', color: 'rgba(255, 255, 255, 0.4)', fontSize: fontSize.lg }}
               >
-                {link.label}
-              </a>
+                {label}
+              </span>
             ))}
             <button
               onClick={() => onNavigate('terms')}

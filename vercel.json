@@ -17,20 +17,7 @@
     { "source": "/privacy", "destination": "/index.html" },
     { "source": "/verify-email", "destination": "/index.html" },
     { "source": "/reset-password", "destination": "/index.html" },
-    { "source": "/admin", "destination": "/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/(features|pricing|about|how-it-works|use-cases|contact|compare|blog|guides)(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=3600, s-maxage=86400" }
-      ]
-    },
-    {
-      "source": "/marketing.css",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=86400, s-maxage=604800" }
-      ]
-    }
+    { "source": "/admin", "destination": "/index.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
