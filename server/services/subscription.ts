@@ -149,7 +149,7 @@ const syncSubscriptionFromStripe = async (userId: string, retries = 3): Promise<
       return { synced: false, reason: 'No Stripe customer ID' }
     }
 
-    let subscriptions = await stripe.subscriptions.list({
+    const subscriptions = await stripe.subscriptions.list({
       customer: user.stripeCustomerId,
       status: 'all',
       limit: 10,

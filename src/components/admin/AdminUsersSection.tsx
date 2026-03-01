@@ -718,7 +718,7 @@ const AdminUsersSection = ({
                                   </h3>
                                   {Object.keys(userCost.modelCosts || {}).length > 0 && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-                                      {(Object.entries(userCost.modelCosts) as [string, any][]).map(([modelKey, modelCost]) => (
+                                      {(Object.entries(userCost.modelCosts) as Array<[string, any]>).map(([modelKey, modelCost]) => (
                                         <div
                                           key={modelKey}
                                           style={{

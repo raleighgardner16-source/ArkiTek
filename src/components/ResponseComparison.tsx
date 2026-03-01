@@ -173,9 +173,9 @@ const ResponseComparison = () => {
         const modelName = response?.modelName || responseId.split('-').slice(0, 2).join('-')
         
         await api.post('/ratings', {
-          responseId: responseId,
-          rating: rating,
-          modelName: modelName
+          responseId,
+          rating,
+          modelName
         })
         
         // Trigger stats refresh so the stats page updates
@@ -259,9 +259,9 @@ const ResponseComparison = () => {
         // Skip "grok" and format the rest (e.g., "4-1-fast-reasoning" -> "4.1 Fast Reasoning")
         const grokParts = modelParts.slice(1) // Skip "grok"
         // Join numbers with dots, capitalize words
-        let grokVersion = grokParts.map((word, idx) => {
+        const grokVersion = grokParts.map((word, idx) => {
           if (/^\d+$/.test(word) && idx < grokParts.length - 1 && /^\d+$/.test(grokParts[idx + 1])) {
-            return word + '.' // Join consecutive numbers with dot
+            return `${word  }.` // Join consecutive numbers with dot
           }
           return word.charAt(0).toUpperCase() + word.slice(1)
         }).join(' ').replace(/(\d+)\.\s*(\d+)/g, '$1.$2') // Fix number.number spacing
@@ -309,10 +309,10 @@ const ResponseComparison = () => {
     
     try {
       const finalData = await streamFetch(`${API_URL}${API_PREFIX}/model/conversation/stream`, {
-        modelName: modelName,
+        modelName,
         userMessage: input,
-        originalResponse: originalResponse,
-        responseId: responseId
+        originalResponse,
+        responseId
       }, {
         onToken: (token) => {
           setSearchingInConvo(prev => ({ ...prev, [responseId]: false }))
@@ -374,7 +374,7 @@ const ResponseComparison = () => {
           historyId: activeHistoryId,
           turn: {
             type: 'model',
-            modelName: modelName,
+            modelName,
             user: input,
             assistant: finalData?.response || '',
             sources: finalData?.searchResults || [],

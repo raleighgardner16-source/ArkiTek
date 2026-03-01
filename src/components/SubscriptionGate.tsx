@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import type React from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { CreditCard, LogOut, CheckCircle, AlertCircle, Shield, Loader } from 'lucide-react'
 import { loadStripe } from '@stripe/stripe-js'

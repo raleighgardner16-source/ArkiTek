@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import type React from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Check, XCircle, Sparkles, Info, ChevronDown, Swords } from 'lucide-react'
@@ -62,7 +63,7 @@ const ModelSelector = ({
 
   const providerOrder = ['openai', 'anthropic', 'google', 'xai']
 
-  const sortedProviders: [string, { providerName: string; models: any[]; isPlaceholder?: boolean }][] = Object.entries(modelsByProvider).sort((a, b) => {
+  const sortedProviders: Array<[string, { providerName: string; models: any[]; isPlaceholder?: boolean }]> = Object.entries(modelsByProvider).sort((a, b) => {
     const indexA = providerOrder.indexOf(a[0].toLowerCase())
     const indexB = providerOrder.indexOf(b[0].toLowerCase())
     if (indexA === -1 && indexB === -1) return 0
@@ -77,8 +78,8 @@ const ModelSelector = ({
   const roleDropdownRef = useRef<HTMLDivElement>(null)
 
   const debateRoleEntries = useMemo(() => {
-    if (promptMode !== 'debate') return [] as { key: string; label: string; roleStoreKey: string }[]
-    const entries: { key: string; label: string; roleStoreKey: string }[] = []
+    if (promptMode !== 'debate') return [] as Array<{ key: string; label: string; roleStoreKey: string }>
+    const entries: Array<{ key: string; label: string; roleStoreKey: string }> = []
     const coveredProviders = new Set()
 
     selectedModels.forEach((modelId) => {
@@ -409,9 +410,9 @@ const ModelSelector = ({
 
     setTooltipState({
       show: true,
-      type: type,
-      x: x,
-      y: y,
+      type,
+      x,
+      y,
     })
   }
 

@@ -57,10 +57,10 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }: Props)
     groupedByProvider[provider].totalTokens += total
     groupedByProvider[provider].models.push({
       model: item.modelName || item.tokens.model || 'unknown',
-      input: input,
-      output: output,
-      reasoning: reasoning,
-      total: total,
+      input,
+      output,
+      reasoning,
+      total,
       source: item.tokens.source || 'unknown',
       breakdown: item.tokens.breakdown || null
     })

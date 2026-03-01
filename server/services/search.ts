@@ -147,7 +147,7 @@ const fetchPageContent = async (url: string, timeout: number = 10000): Promise<s
       const sentences = content.match(/[^.!?]+[.!?]+/g) || [content]
       const firstSentences = sentences.slice(0, 10).join(' ')
       if (firstSentences.length > 1500) {
-        content = firstSentences.substring(0, 1500) + '...'
+        content = `${firstSentences.substring(0, 1500)  }...`
       } else {
         content = firstSentences
       }

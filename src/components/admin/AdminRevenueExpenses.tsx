@@ -25,7 +25,7 @@ interface AdminRevenueExpensesProps {
   loadPeriodData: (period?: string, dateVal?: string) => void
   shiftPeriod: (direction: string) => void
   getPeriodLabel: () => string
-  periodOptions: { value: string; label: string }[]
+  periodOptions: Array<{ value: string; label: string }>
   expensesSaving: boolean
   expensesLoaded: boolean
   loadingAggExpenses: boolean
@@ -222,11 +222,11 @@ const AdminRevenueExpenses = ({
                       style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: radius.lg, padding: `10px ${spacing.xl}`, color: '#ffffff', fontSize: fontSize['2xl'], outline: 'none', cursor: 'pointer', colorScheme: 'dark' }} />
                   )}
                   {timePeriod === 'month' && (
-                    <input type="month" value={expenseMonth} onChange={(e) => { const m = e.target.value; setExpenseMonth(m); setReferenceDate(m + '-01'); setExpensesLoaded(false); loadPeriodData('month', m + '-01') }}
+                    <input type="month" value={expenseMonth} onChange={(e) => { const m = e.target.value; setExpenseMonth(m); setReferenceDate(`${m  }-01`); setExpensesLoaded(false); loadPeriodData('month', `${m  }-01`) }}
                       style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: radius.lg, padding: `10px ${spacing.xl}`, color: '#ffffff', fontSize: fontSize['2xl'], outline: 'none', cursor: 'pointer', colorScheme: 'dark' }} />
                   )}
                   {timePeriod === 'quarter' && (() => {
-                    const ref = new Date(referenceDate + 'T00:00:00')
+                    const ref = new Date(`${referenceDate  }T00:00:00`)
                     const currentQ = Math.ceil((ref.getMonth() + 1) / 3)
                     const currentY = ref.getFullYear()
                     return (
@@ -244,7 +244,7 @@ const AdminRevenueExpenses = ({
                     )
                   })()}
                   {timePeriod === 'year' && (
-                    <input type="number" value={new Date(referenceDate + 'T00:00:00').getFullYear()} min={2024} max={2035} onChange={(e) => { const nd = `${e.target.value}-01-01`; setReferenceDate(nd); loadPeriodData('year', nd) }}
+                    <input type="number" value={new Date(`${referenceDate  }T00:00:00`).getFullYear()} min={2024} max={2035} onChange={(e) => { const nd = `${e.target.value}-01-01`; setReferenceDate(nd); loadPeriodData('year', nd) }}
                       style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: radius.lg, padding: `10px ${spacing.xl}`, color: '#ffffff', fontSize: fontSize['2xl'], width: '110px', outline: 'none', colorScheme: 'dark' }} />
                   )}
 
@@ -573,7 +573,7 @@ const AdminRevenueExpenses = ({
                                 onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(93, 173, 226, 0.04)'}
                               >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: spacing.lg }}>
-                                  <User size={14} style={{ color: color, opacity: 0.7 }} />
+                                  <User size={14} style={{ color, opacity: 0.7 }} />
                                   <span style={{ color: '#dddddd', fontSize: fontSize.lg }}>{u.username}</span>
                                   {u.email && <span style={{ color: '#555555', fontSize: fontSize.sm }}>{u.email}</span>}
                                   {u.status && <span style={{ color: u.status === 'canceled' ? '#f87171' : '#999999', fontSize: '0.72rem', background: 'rgba(255,255,255,0.04)', padding: `${spacing['2xs']} ${spacing.md}`, borderRadius: radius.sm }}>{u.status}</span>}
@@ -703,11 +703,11 @@ const AdminRevenueExpenses = ({
                   style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: radius.lg, padding: `10px ${spacing.xl}`, color: '#ffffff', fontSize: fontSize['2xl'], outline: 'none', cursor: 'pointer', colorScheme: 'dark' }} />
               )}
               {timePeriod === 'month' && (
-                <input type="month" value={expenseMonth} onChange={(e) => { const m = e.target.value; setExpenseMonth(m); setReferenceDate(m + '-01'); setExpensesLoaded(false); loadPeriodData('month', m + '-01') }}
+                <input type="month" value={expenseMonth} onChange={(e) => { const m = e.target.value; setExpenseMonth(m); setReferenceDate(`${m  }-01`); setExpensesLoaded(false); loadPeriodData('month', `${m  }-01`) }}
                   style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: radius.lg, padding: `10px ${spacing.xl}`, color: '#ffffff', fontSize: fontSize['2xl'], outline: 'none', cursor: 'pointer', colorScheme: 'dark' }} />
               )}
               {timePeriod === 'quarter' && (() => {
-                const ref = new Date(referenceDate + 'T00:00:00')
+                const ref = new Date(`${referenceDate  }T00:00:00`)
                 const currentQ = Math.ceil((ref.getMonth() + 1) / 3)
                 const currentY = ref.getFullYear()
                 return (
@@ -725,7 +725,7 @@ const AdminRevenueExpenses = ({
                 )
               })()}
               {timePeriod === 'year' && (
-                <input type="number" value={new Date(referenceDate + 'T00:00:00').getFullYear()} min={2024} max={2035} onChange={(e) => { const nd = `${e.target.value}-01-01`; setReferenceDate(nd); loadPeriodData('year', nd) }}
+                <input type="number" value={new Date(`${referenceDate  }T00:00:00`).getFullYear()} min={2024} max={2035} onChange={(e) => { const nd = `${e.target.value}-01-01`; setReferenceDate(nd); loadPeriodData('year', nd) }}
                   style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.2)', borderRadius: radius.lg, padding: `10px ${spacing.xl}`, color: '#ffffff', fontSize: fontSize['2xl'], width: '110px', outline: 'none', colorScheme: 'dark' }} />
               )}
 

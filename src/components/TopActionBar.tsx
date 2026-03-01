@@ -1,4 +1,4 @@
-import React from 'react'
+import type React from 'react'
 import { motion } from 'framer-motion'
 import { Coins, DollarSign, Sparkles } from 'lucide-react'
 import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx, createStyles } from '../utils/styles'

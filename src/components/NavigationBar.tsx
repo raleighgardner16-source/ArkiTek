@@ -27,6 +27,7 @@ const NavigationBar = () => {
   const [showCollapseTooltip, setShowCollapseTooltip] = useState(false)
   const [showExpandTooltip, setShowExpandTooltip] = useState(false)
   const [showSupportPopup, setShowSupportPopup] = useState(false)
+  const [hoveredTabId, setHoveredTabId] = useState<string | null>(null)
   
   const currentTheme = getTheme(theme)
   const s = createStyles(currentTheme)
@@ -210,7 +211,7 @@ const NavigationBar = () => {
         {tabs.map((tab) => {
           const Icon = tab.icon
           const isActive = tab.action ? false : activeTab === tab.id
-          const [isTabHovered, setIsTabHovered] = useState(false)
+          const isTabHovered = hoveredTabId === tab.id
           const shouldHighlight = isActive || isTabHovered
           
           return (
@@ -224,8 +225,8 @@ const NavigationBar = () => {
                 if (tab.id !== 'statistics') clearViewingProfile()
                 setActiveTab(tab.id)
               }}
-              onMouseEnter={() => setIsTabHovered(true)}
-              onMouseLeave={() => setIsTabHovered(false)}
+              onMouseEnter={() => setHoveredTabId(tab.id)}
+              onMouseLeave={() => setHoveredTabId(null)}
               style={sx(s.navItem, {
                 background: shouldHighlight
                   ? currentTheme.buttonBackgroundActive

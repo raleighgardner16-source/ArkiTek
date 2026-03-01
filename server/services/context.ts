@@ -178,7 +178,7 @@ Provide only the summary (max 75 tokens):`
       let tokenCount = 0
       
       for (const word of words) {
-        const wordTokens = await countTokens(word + ' ', 'google', 'gemini-2.5-flash-lite')
+        const wordTokens = await countTokens(`${word  } `, 'google', 'gemini-2.5-flash-lite')
         if (tokenCount + wordTokens > 75) break
         truncated += (truncated ? ' ' : '') + word
         tokenCount += wordTokens

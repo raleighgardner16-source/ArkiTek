@@ -119,7 +119,7 @@ const SummaryWindow = () => {
       ...prev,
       text: '',
       summary: '',
-      initialSummary: initialSummary,
+      initialSummary,
       prompt: `${prev.prompt || ''}\n\nUser: ${userMsg}`,
       conversationHistory: [...(prev.conversationHistory || []), {
         user: userMsg,
@@ -131,7 +131,7 @@ const SummaryWindow = () => {
     try {
       const finalData = await streamFetch(`${API_URL}${API_PREFIX}/judge/conversation/stream`, {
         userMessage: userMsg,
-        conversationContext: conversationContext,
+        conversationContext,
         originalSummaryText: summary.initialSummary || summary.text || ''
       }, {
         onToken: (token) => {

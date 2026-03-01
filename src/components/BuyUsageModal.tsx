@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import type React from 'react';
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, DollarSign, AlertCircle, Check, Loader, CreditCard, Shield, Trash2 } from 'lucide-react'
 import { useStore } from '../store/useStore'
@@ -345,7 +346,7 @@ const BuyUsageModal = ({ isOpen, onClose, onSuccess }: BuyUsageModalProps) => {
         try {
           const cardsRes = await api.get('/stripe/saved-cards')
           setSavedCards(cardsRes.data.cards || [])
-        } catch {}
+        } catch { /* card refresh is non-critical */ }
       }
 
       // Brief delay to show success checkmark, then notify parent

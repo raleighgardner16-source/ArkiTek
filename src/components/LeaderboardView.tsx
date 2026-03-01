@@ -151,7 +151,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }: Props) => {
     
     try {
       const response = await api.post('/leaderboard/like', {
-        promptId: promptId,
+        promptId,
       })
       
       if (response.data.success) {
@@ -192,7 +192,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }: Props) => {
     
     try {
       const response = await api.post('/leaderboard/comment', {
-        promptId: promptId,
+        promptId,
         commentText: commentTexts[promptId],
       })
       
@@ -213,8 +213,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }: Props) => {
     
     try {
       const response = await api.post('/leaderboard/comment/reply', {
-        promptId: promptId,
-        commentId: commentId,
+        promptId,
+        commentId,
         replyText: replyTexts[commentId],
       })
       
@@ -235,8 +235,8 @@ const LeaderboardView = ({ subscriptionRestricted = false }: Props) => {
     
     try {
       const response = await api.post('/leaderboard/comment/like', {
-        promptId: promptId,
-        commentId: commentId,
+        promptId,
+        commentId,
       })
       
       if (response.data.success) {
@@ -255,7 +255,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }: Props) => {
     
     try {
       const response = await api.delete(`/leaderboard/comment/delete/${commentId}`, {
-        data: { promptId: promptId }
+        data: { promptId }
       })
       
       if (response.data.success) {
@@ -275,7 +275,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }: Props) => {
     
     try {
       const response = await api.delete(`/leaderboard/comment/reply/delete/${replyId}`, {
-        data: { promptId: promptId, commentId: commentId }
+        data: { promptId, commentId }
       })
       
       if (response.data.success) {
@@ -1606,7 +1606,7 @@ const LeaderboardView = ({ subscriptionRestricted = false }: Props) => {
                       borderRadius: '14px',
                       transition: 'border-color 0.2s',
                     })}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent + '55' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${currentTheme.accent  }55` }}
                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
                   >
                     <div style={sx(layout.center, {

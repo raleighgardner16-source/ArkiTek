@@ -16,7 +16,7 @@ describe('themes', () => {
     expect(themes.light.name).toBe('light')
   })
 
-  const requiredKeys: (keyof Theme)[] = [
+  const requiredKeys: Array<keyof Theme> = [
     'name', 'background', 'backgroundSecondary', 'backgroundTertiary',
     'text', 'textSecondary', 'textMuted',
     'border', 'borderActive', 'borderLight',

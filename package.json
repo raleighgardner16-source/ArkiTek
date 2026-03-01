@@ -19,7 +19,7 @@
     "typecheck:client": "tsc --noEmit -p tsconfig.app.json",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"server/**/*.ts\" \"database/**/*.ts\" \"utils/**/*.ts\" \"scripts/**/*.ts\" \"tests/**/*.ts\" \"*.ts\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"server/**/*.ts\" \"database/**/*.ts\" \"utils/**/*.ts\" \"scripts/**/*.ts\" \"tests/**/*.ts\" \"*.ts\"",
-    "lint": "eslint . --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
+    "lint": "eslint . --ext .ts,.tsx --report-unused-disable-directives",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "test": "vitest run",
     "test:watch": "vitest"

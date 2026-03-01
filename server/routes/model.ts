@@ -36,7 +36,7 @@ router.get('/context', async (req: Request, res: Response) => {
     sendSuccess(res, { context })
   } catch (error: any) {
     log.error({ err: error }, 'Error fetching model context')
-    sendError(res, 'Failed to fetch model conversation context: ' + error.message)
+    sendError(res, `Failed to fetch model conversation context: ${  error.message}`)
   }
 })
 
@@ -60,7 +60,7 @@ router.post('/clear-context', async (req: Request, res: Response) => {
     sendSuccess(res, { message: 'Model context cleared' })
   } catch (error: any) {
     log.error({ err: error }, 'Error clearing model context')
-    sendError(res, 'Failed to clear model conversation context: ' + error.message)
+    sendError(res, `Failed to clear model conversation context: ${  error.message}`)
   }
 })
 
@@ -149,14 +149,14 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
     let systemMessage = `Today's date is ${await getCurrentDateStringForUser(userId)}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data. If citing sources, cite publication/site/title or URL/domain and NEVER use numeric labels like "source 1" or "source 3".`
 
     if (memoryContextString) {
-      systemMessage += '\n\n' + memoryContextString
+      systemMessage += `\n\n${  memoryContextString}`
     }
 
     if (rawSourcesData && rawSourcesData.sourceCount > 0) {
       systemMessage += `\n\nHere is raw content from recent web sources that may help answer the user's question:\n\n${rawSourcesData.formatted}`
     }
 
-    const conversationMessages: { role: string; content: string }[] = []
+    const conversationMessages: Array<{ role: string; content: string }> = []
     if (contextSummaries.length > 0) {
       const chronological = [...contextSummaries].reverse()
       for (const ctx of chronological) {
@@ -174,7 +174,7 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
 
     conversationMessages.push({ role: 'user', content: userMessage })
 
-    const prompt = systemMessage + '\n\n' + conversationMessages.map(m => `${m.role}: ${m.content}`).join('\n')
+    const prompt = `${systemMessage  }\n\n${  conversationMessages.map(m => `${m.role}: ${m.content}`).join('\n')}`
 
     log.debug({ messageCount: conversationMessages.length, contextCount: contextSummaries.length }, 'Built conversation messages')
 
@@ -412,7 +412,7 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
   } catch (error: any) {
     clearInterval(heartbeat)
     log.error({ err: error, status: error.response?.status, statusText: error.response?.statusText, data: error.response?.data }, 'Model conversation stream API error')
-    sendSSE('error', { message: 'Failed to get model response: ' + (error.response?.data?.error?.message || error.message) })
+    sendSSE('error', { message: `Failed to get model response: ${  error.response?.data?.error?.message || error.message}` })
     res.end()
   }
 })
@@ -490,7 +490,7 @@ router.post('/conversation', async (req: Request, res: Response) => {
     let prompt = `Today's date is ${await getCurrentDateStringForUser(userId)}. You have access to real-time web search — when source content is provided below, read and parse it yourself to answer the user's question. Do NOT tell the user you cannot search the web or ask them for permission. The search has already been performed for you and the source content is included in this prompt. Answer confidently using the provided data. If citing sources, cite publication/site/title or URL/domain and NEVER use numeric labels like "source 1" or "source 3".\n\n`
     
     if (memoryContextString) {
-      prompt += memoryContextString + '\n'
+      prompt += `${memoryContextString  }\n`
     }
     
     if (contextSummaries.length > 0) {
@@ -613,16 +613,16 @@ router.post('/conversation', async (req: Request, res: Response) => {
         total: inputTokens + outputTokens,
         breakdown: rawSourcesData ? buildTokenBreakdown(userMessage, rawSourcesData.formatted, inputTokens) : null
       },
-      category: category,
-      needsSearch: needsSearch,
+      category,
+      needsSearch,
       usedSearch: needsSearch && rawSourcesData !== null && rawSourcesData.sourceCount > 0,
-      searchResults: searchResults,
+      searchResults,
       refinedData: null
     })
     
   } catch (error: any) {
     log.error({ err: error, status: error.response?.status, statusText: error.response?.statusText, data: error.response?.data }, 'Model conversation API error')
-    sendError(res, 'Failed to get model response: ' + (error.response?.data?.error?.message || error.message))
+    sendError(res, `Failed to get model response: ${  error.response?.data?.error?.message || error.message}`)
   }
 })
 

@@ -253,9 +253,9 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
             needsContext: Boolean(needsContext),
             recommendedModelType: recommendedModelType.toLowerCase() || 'versatile',
             recommendedModels,
-            rawResponse: rawResponse, // Include raw response for debugging
+            rawResponse, // Include raw response for debugging
             prompt: categoryPrompt,
-            tokens: tokens // Include tokens from API response
+            tokens // Include tokens from API response
           }
         } else {
           console.warn('[Category Detection] Category not found in valid list:', category)
@@ -312,7 +312,7 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
       recommendedModels: {},
       rawResponse: categoryResponse || 'No response received',
       prompt: categoryPrompt,
-      tokens: tokens // Include tokens from API response
+      tokens // Include tokens from API response
     }
   } catch (error: any) {
     console.error('[Category Detection] Error:', error)

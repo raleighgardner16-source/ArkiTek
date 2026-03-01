@@ -170,8 +170,8 @@ const SavedConversationsView = () => {
   }
 
   const formatNumber = (num: number) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M'
-    if (num >= 1000) return (num / 1000).toFixed(2) + 'K'
+    if (num >= 1000000) return `${(num / 1000000).toFixed(2)  }M`
+    if (num >= 1000) return `${(num / 1000).toFixed(2)  }K`
     return num.toLocaleString()
   }
 
@@ -427,7 +427,7 @@ const SavedConversationsView = () => {
     return MONTH_NAMES[parseInt(month, 10) - 1]
   }
   const getDayLabel = (dayKey: string) => {
-    const d = new Date(dayKey + 'T12:00:00')
+    const d = new Date(`${dayKey  }T12:00:00`)
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
   }
   const formatTime = (dateStr: string) => {
@@ -510,7 +510,7 @@ const SavedConversationsView = () => {
         background: selectedConvo?.id === convo.id
           ? `${currentTheme.accent}15`
           : 'transparent',
-        border: `1px solid ${selectedConvo?.id === convo.id ? currentTheme.accent + '40' : currentTheme.borderLight}`,
+        border: `1px solid ${selectedConvo?.id === convo.id ? `${currentTheme.accent  }40` : currentTheme.borderLight}`,
         borderRadius: radius.lg,
         padding: `${spacing.lg} 14px`,
         marginBottom: spacing.sm,
@@ -745,8 +745,8 @@ const SavedConversationsView = () => {
     const selectedHasSummary = hasSummaryForConversation(selectedConvo)
     const formatDate = (dateStr: string) => {
       const d = new Date(dateStr)
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
-        ' at ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
+        } at ${  d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
     }
 
     return (
@@ -982,7 +982,7 @@ const SavedConversationsView = () => {
               const modelName = r.modelName || r.actualModelName || 'Unknown'
               const modelPart = modelName.includes('-') ? modelName.substring(modelName.indexOf('-') + 1) : modelName
               return {
-                modelName: modelName,
+                modelName,
                 isPipeline: false,
                 isJudge: false,
                 tokens: {
@@ -1679,7 +1679,7 @@ const SavedConversationsView = () => {
                         width: '100%', display: 'flex', alignItems: 'center',
                         justifyContent: 'space-between', padding: '14px 18px',
                         background: isYearOpen ? `${currentTheme.accent}12` : 'transparent',
-                        border: `1px solid ${isYearOpen ? currentTheme.accent + '30' : currentTheme.borderLight}`,
+                        border: `1px solid ${isYearOpen ? `${currentTheme.accent  }30` : currentTheme.borderLight}`,
                         borderRadius: isYearOpen ? '14px 14px 0 0' : '14px',
                         cursor: 'pointer', transition: transition.normal,
                       }}
@@ -1731,7 +1731,7 @@ const SavedConversationsView = () => {
                                     width: '100%', display: 'flex', alignItems: 'center',
                                     justifyContent: 'space-between', padding: '10px 14px',
                                     background: isMonthOpen ? `${currentTheme.accentSecondary}10` : 'transparent',
-                                    border: `1px solid ${isMonthOpen ? currentTheme.accentSecondary + '25' : 'transparent'}`,
+                                    border: `1px solid ${isMonthOpen ? `${currentTheme.accentSecondary  }25` : 'transparent'}`,
                                     borderRadius: isMonthOpen ? '10px 10px 0 0' : '10px',
                                     cursor: 'pointer', transition: transition.normal,
                                   }}

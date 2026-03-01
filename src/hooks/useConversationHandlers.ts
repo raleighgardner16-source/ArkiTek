@@ -104,7 +104,7 @@ export function useConversationHandlers({ isLoading, isGeneratingSummary }: UseC
       ...prev,
       text: '',
       summary: '',
-      initialSummary: initialSummary,
+      initialSummary,
       prompt: `${prev.prompt || ''}\n\nUser: ${userMsg}`,
       conversationHistory: [...(prev.conversationHistory || []), {
         user: userMsg,
@@ -116,7 +116,7 @@ export function useConversationHandlers({ isLoading, isGeneratingSummary }: UseC
     try {
       const finalData = await streamFetch(`${API_URL}${API_PREFIX}/judge/conversation/stream`, {
         userMessage: userMsg,
-        conversationContext: conversationContext,
+        conversationContext,
         originalSummaryText: summary.initialSummary || summary.text || ''
       }, {
         onToken: (token: string) => {
@@ -268,7 +268,7 @@ export function useConversationHandlers({ isLoading, isGeneratingSummary }: UseC
     
     try {
       const finalData = await streamFetch(`${API_URL}${API_PREFIX}/model/conversation/stream`, {
-        modelName: modelName,
+        modelName,
         userMessage: userMsg,
         originalResponse: singleResponse.text || '',
         responseId: singleResponse.id,
@@ -324,7 +324,7 @@ export function useConversationHandlers({ isLoading, isGeneratingSummary }: UseC
           historyId: activeHistoryId,
           turn: {
             type: 'model',
-            modelName: modelName,
+            modelName,
             user: userMsg,
             assistant: finalData?.response || '',
             sources: finalData?.searchResults || [],
@@ -429,7 +429,7 @@ export function useConversationHandlers({ isLoading, isGeneratingSummary }: UseC
             historyId: activeHistoryId,
             turn: {
               type: 'model',
-              modelName: modelName,
+              modelName,
               user: userMsg,
               assistant: assistantText,
               sources: finalData?.searchResults || [],
@@ -593,7 +593,7 @@ export function useConversationHandlers({ isLoading, isGeneratingSummary }: UseC
     const textarea = convoTextareaRef.current
     if (textarea) {
       textarea.style.height = 'auto'
-      textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px'
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 150)  }px`
     }
   }
 
@@ -602,7 +602,7 @@ export function useConversationHandlers({ isLoading, isGeneratingSummary }: UseC
     const textarea = singleConvoTextareaRef.current
     if (textarea) {
       textarea.style.height = 'auto'
-      textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px'
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 150)  }px`
     }
   }
 

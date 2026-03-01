@@ -61,7 +61,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const searchResults = {
-      query: query,
+      query,
       results: response?.organic || [],
       answerBox: response?.answerBox || null,
       knowledgeGraph: response?.knowledgeGraph || null,

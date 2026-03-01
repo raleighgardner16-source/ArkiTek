@@ -56,7 +56,7 @@ const PostToFeedWindow = ({
     if (includedResponseCount === 0 && !includedSummary) return
     setIsSubmittingToVote(true)
     try {
-      let facts = null
+      const facts = null
       let sources = null
 
       const responseBoundSources = Array.isArray(summary?.sources) && summary.sources.length > 0
@@ -94,8 +94,8 @@ const PostToFeedWindow = ({
           })) : null
         })(),
         summary: (summary && postIncludeSummary) ? summary : null,
-        facts: facts,
-        sources: sources,
+        facts,
+        sources,
       })
 
       if (response.data.success) {
@@ -341,7 +341,7 @@ const PostToFeedWindow = ({
                     {summary && (
                       <div style={{
                         background: currentTheme.buttonBackground,
-                        border: `1px solid ${postIncludeSummary ? currentTheme.accent + '55' : currentTheme.borderLight}`,
+                        border: `1px solid ${postIncludeSummary ? `${currentTheme.accent  }55` : currentTheme.borderLight}`,
                         borderRadius: radius.md,
                         overflow: 'hidden',
                         opacity: postIncludeSummary ? 1 : 0.5,
@@ -393,7 +393,7 @@ const PostToFeedWindow = ({
                       return (
                       <div key={idx} style={{
                         background: currentTheme.buttonBackground,
-                        border: `1px solid ${isIncluded ? currentTheme.accent + '55' : currentTheme.borderLight}`,
+                        border: `1px solid ${isIncluded ? `${currentTheme.accent  }55` : currentTheme.borderLight}`,
                         borderRadius: radius.md,
                         overflow: 'hidden',
                         opacity: isIncluded ? 1 : 0.5,

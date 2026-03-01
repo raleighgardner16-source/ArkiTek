@@ -125,8 +125,8 @@ router.post('/', async (req: Request, res: Response) => {
               input: inputTokens || 0,
               output: outputTokens || 0,
               total: totalTokens,
-              provider: provider,
-              model: model,
+              provider,
+              model,
               source: responseTokens ? 'api_response' : 'tokenizer'
             }
           })
@@ -222,7 +222,7 @@ router.post('/', async (req: Request, res: Response) => {
                   input: inputTokens,
                   output: outputTokens,
                   total: inputTokens + outputTokens,
-                  provider: provider,
+                  provider,
                   model: fallbackModel,
                   source: tokenSource
                 } : null
@@ -289,8 +289,8 @@ router.post('/', async (req: Request, res: Response) => {
               input: inputTokens,
               output: outputTokens,
               total: inputTokens + outputTokens,
-              provider: provider,
-              model: model,
+              provider,
+              model,
               source: tokenSource
             } : null
           })
@@ -391,8 +391,8 @@ router.post('/', async (req: Request, res: Response) => {
           output: outputTokens,
           total: totalTokens,
           reasoningTokens: responseTokens?.reasoningTokens || 0,
-          provider: provider,
-          model: model,
+          provider,
+          model,
           source: tokenSource
         } : null
       })

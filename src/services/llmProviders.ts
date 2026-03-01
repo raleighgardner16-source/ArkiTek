@@ -162,9 +162,9 @@ export const callLLM = async (providerKey: string, model: string, prompt: string
       '/llm',
       {
         provider: providerKey,
-        model: model,
-        prompt: prompt,
-        isSummary: isSummary,
+        model,
+        prompt,
+        isSummary,
       },
       {
         headers: {
@@ -254,7 +254,7 @@ export const callLLMStream = async (providerKey: string, model: string, prompt: 
       console.warn(`[LLM Stream] No 'done' event received for ${providerKey}/${model}, using ${accumulatedText.length} chars of streamed text as fallback`)
       return {
         text: accumulatedText,
-        model: model,
+        model,
         originalModel: model,
         tokens: null
       }
@@ -283,7 +283,7 @@ export const searchWithSerper = async (query: string, num: number = 10, userId: 
       '/search',
       {
         query: query.trim(),
-        num: num,
+        num,
       },
       {
         headers: {
@@ -304,7 +304,7 @@ export const searchWithSerper = async (query: string, num: number = 10, userId: 
     }
     
     // Provide more detailed error information
-    let errorMessage = error.response?.data?.error 
+    const errorMessage = error.response?.data?.error 
       || error.response?.data?.message
       || error.message
       || 'Failed to perform search'

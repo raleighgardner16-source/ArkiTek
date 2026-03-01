@@ -24,7 +24,7 @@ router.get('/context/:userId', async (req: Request, res: Response) => {
     sendSuccess(res, { context })
   } catch (error: any) {
     console.error('[Judge Context] Error fetching context:', error)
-    sendError(res, 'Failed to fetch conversation context: ' + error.message)
+    sendError(res, `Failed to fetch conversation context: ${  error.message}`)
   }
 })
 
@@ -39,7 +39,7 @@ router.get('/context', async (req: Request, res: Response) => {
     sendSuccess(res, { context })
   } catch (error: any) {
     console.error('[Judge Context] Error fetching context:', error)
-    sendError(res, 'Failed to fetch conversation context: ' + error.message)
+    sendError(res, `Failed to fetch conversation context: ${  error.message}`)
   }
 })
 
@@ -53,7 +53,7 @@ router.post('/clear-context', async (req: Request, res: Response) => {
     sendSuccess(res, { message: 'Context cleared' })
   } catch (error: any) {
     console.error('[Judge Context] Error clearing context:', error)
-    sendError(res, 'Failed to clear conversation context: ' + error.message)
+    sendError(res, `Failed to clear conversation context: ${  error.message}`)
   }
 })
 
@@ -97,7 +97,7 @@ router.post('/conversation', async (req: Request, res: Response) => {
     
     let contextString = ''
     if (memoryContextString) {
-      contextString += memoryContextString + '\n'
+      contextString += `${memoryContextString  }\n`
     }
     if (contextSummaries.length > 0) {
       contextString += `Here is context from your recent conversation with this user (most recent first — prioritize the latest context):\n\n${contextSummaries.map((ctx: any, idx: number) => {
@@ -200,9 +200,9 @@ router.post('/conversation', async (req: Request, res: Response) => {
       } : null,
       refiner: null,
       categoryDetection: {
-        category: category,
-        needsSearch: needsSearch,
-        needsContext: needsContext
+        category,
+        needsSearch,
+        needsContext
       },
       memoryContext: {
         items: memoryContextItems,
@@ -219,16 +219,16 @@ router.post('/conversation', async (req: Request, res: Response) => {
         total: inputTokens + outputTokens,
         breakdown: rawSourcesData ? buildTokenBreakdown(userMessage, rawSourcesData.formatted, inputTokens) : null
       },
-      category: category,
-      needsSearch: needsSearch,
+      category,
+      needsSearch,
       usedSearch: needsSearch && rawSourcesData !== null && rawSourcesData.sourceCount > 0,
-      debugData: debugData,
-      searchResults: searchResults,
+      debugData,
+      searchResults,
       refinedData: null
     })
   } catch (error: any) {
     console.error('[Judge Conversation] Error:', error)
-    sendError(res, 'Failed to get judge response: ' + error.message)
+    sendError(res, `Failed to get judge response: ${  error.message}`)
   }
 })
 
@@ -282,7 +282,7 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
     
     let contextString = ''
     if (memoryContextString) {
-      contextString += memoryContextString + '\n'
+      contextString += `${memoryContextString  }\n`
     }
     if (contextSummaries.length > 0) {
       contextString += `Here is context from your recent conversation with this user (most recent first — prioritize the latest context):\n\n${contextSummaries.map((ctx: any, idx: number) => {
@@ -438,7 +438,7 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error('[Judge Conversation Stream] Error:', error.message)
-    sendSSE('error', { message: 'Failed to get judge response: ' + error.message })
+    sendSSE('error', { message: `Failed to get judge response: ${  error.message}` })
     res.end()
   }
 })
@@ -457,7 +457,7 @@ router.post('/store-initial-summary', async (req: Request, res: Response) => {
     sendSuccess(res, { message: 'Initial summary stored' })
   } catch (error: any) {
     console.error('[Store Initial Summary] Error:', error)
-    sendError(res, 'Failed to store initial summary: ' + error.message)
+    sendError(res, `Failed to store initial summary: ${  error.message}`)
   }
 })
 

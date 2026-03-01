@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import type React from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Flame, Search, Lock, FileText, PauseCircle, MessageCircle, Swords, AlertTriangle } from 'lucide-react'
 import { useStore } from '../store/useStore'
@@ -1345,7 +1346,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     setCurrentPrompt(e.target.value)
                     const textarea = e.target
                     textarea.style.height = 'auto'
-                    textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px'
+                    textarea.style.height = `${Math.min(textarea.scrollHeight, 200)  }px`
                   }
                 }}
                 disabled={isPromptLocked}

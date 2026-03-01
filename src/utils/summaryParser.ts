@@ -17,13 +17,13 @@ const toBulletArray = (text: string | null | undefined): string[] => {
 
 export function parseDebateSummary(rawText: string): ParsedSummary {
   const normalizedText = rawText
-    .replace(/\*\*(BALANCE|Balance|DEBATE OVERVIEW|Debate Overview|STRONGEST ARGUMENTS?|Strongest Arguments?|KEY TENSIONS|Key Tensions)\*\*[:\-]?/gi, '\n$1:')
-    .replace(/\*(BALANCE|Balance|DEBATE OVERVIEW|Debate Overview|STRONGEST ARGUMENTS?|Strongest Arguments?|KEY TENSIONS|Key Tensions)\*[:\-]?/gi, '\n$1:')
+    .replace(/\*\*(BALANCE|Balance|DEBATE OVERVIEW|Debate Overview|STRONGEST ARGUMENTS?|Strongest Arguments?|KEY TENSIONS|Key Tensions)\*\*[:\s-]?/gi, '\n$1:')
+    .replace(/\*(BALANCE|Balance|DEBATE OVERVIEW|Debate Overview|STRONGEST ARGUMENTS?|Strongest Arguments?|KEY TENSIONS|Key Tensions)\*[:\s-]?/gi, '\n$1:')
 
-  const balanceMatch = normalizedText.match(/(?:Balance|BALANCE)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
-  const overviewMatch = normalizedText.match(/(?:Debate Overview|DEBATE OVERVIEW)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:STRONGEST ARGUMENTS?|Strongest Arguments?)[:\-]|\n\s*(?:KEY TENSIONS|Key Tensions)[:\-]|$)/i)
-  const strongestMatch = normalizedText.match(/(?:Strongest Arguments?|STRONGEST ARGUMENTS?)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:KEY TENSIONS|Key Tensions)[:\-]|$)/i)
-  const tensionsMatch = normalizedText.match(/(?:Key Tensions|KEY TENSIONS)[:\-]?\s*([\s\S]+)$/i)
+  const balanceMatch = normalizedText.match(/(?:Balance|BALANCE)[:\s-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
+  const overviewMatch = normalizedText.match(/(?:Debate Overview|DEBATE OVERVIEW)[:\s-]?\s*([\s\S]+?)(?=\n\s*(?:STRONGEST ARGUMENTS?|Strongest Arguments?)[:\s-]|\n\s*(?:KEY TENSIONS|Key Tensions)[:\s-]|$)/i)
+  const strongestMatch = normalizedText.match(/(?:Strongest Arguments?|STRONGEST ARGUMENTS?)[:\s-]?\s*([\s\S]+?)(?=\n\s*(?:KEY TENSIONS|Key Tensions)[:\s-]|$)/i)
+  const tensionsMatch = normalizedText.match(/(?:Key Tensions|KEY TENSIONS)[:\s-]?\s*([\s\S]+)$/i)
 
   let consensus: number | null = null
   if (balanceMatch) {
@@ -32,7 +32,7 @@ export function parseDebateSummary(rawText: string): ParsedSummary {
   }
 
   const summary = (overviewMatch ? overviewMatch[1] : rawText)
-    .replace(/^(?:\*\*)?(?:Debate Overview|DEBATE OVERVIEW)[:\-]?\s*\*?\*?\s*/i, '')
+    .replace(/^(?:\*\*)?(?:Debate Overview|DEBATE OVERVIEW)[:\s-]?\s*\*?\*?\s*/i, '')
     .replace(/^:\s*/, '')
     .trim()
 
@@ -50,14 +50,14 @@ export function parseDebateSummary(rawText: string): ParsedSummary {
 
 export function parseCouncilSummary(rawText: string): ParsedSummary {
   const normalizedText = rawText
-    .replace(/\*\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*\*[:\-]?/gi, '\n$1:')
-    .replace(/\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*[:\-]?/gi, '\n$1:')
+    .replace(/\*\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*\*[:\s-]?/gi, '\n$1:')
+    .replace(/\*(SUMMARY|Summary|AGREEMENTS|Agreements|CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements|DIFFERENCES|Differences|CONSENSUS|Consensus)\*[:\s-]?/gi, '\n$1:')
 
-  const consensusMatch = normalizedText.match(/(?:Consensus|consensus)[:\-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
-  const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:AGREEMENTS|Agreements)[:\-]|\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
-  const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]|\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
-  const contradictionsMatch = normalizedText.match(/(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\-]?\s*([\s\S]+?)(?=\n\s*(?:DIFFERENCES|Differences)[:\-]|$)/i)
-  const differencesMatch = normalizedText.match(/(?:DIFFERENCES|Differences)[:\-]?\s*([\s\S]+)$/i)
+  const consensusMatch = normalizedText.match(/(?:Consensus|consensus)[:\s-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
+  const summaryMatch = normalizedText.match(/(?:Summary|SUMMARY)[:\s-]?\s*([\s\S]+?)(?=\n\s*(?:AGREEMENTS|Agreements)[:\s-]|\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\s-]|\n\s*(?:DIFFERENCES|Differences)[:\s-]|$)/i)
+  const agreementsMatch = normalizedText.match(/(?:AGREEMENTS|Agreements)[:\s-]?\s*([\s\S]+?)(?=\n\s*(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\s-]|\n\s*(?:DIFFERENCES|Differences)[:\s-]|$)/i)
+  const contradictionsMatch = normalizedText.match(/(?:CONTRADICTIONS|Contradictions|DISAGREEMENTS|Disagreements)[:\s-]?\s*([\s\S]+?)(?=\n\s*(?:DIFFERENCES|Differences)[:\s-]|$)/i)
+  const differencesMatch = normalizedText.match(/(?:DIFFERENCES|Differences)[:\s-]?\s*([\s\S]+)$/i)
 
   let consensus: number | null = null
   if (consensusMatch) {
@@ -66,7 +66,7 @@ export function parseCouncilSummary(rawText: string): ParsedSummary {
   }
 
   const summary = (summaryMatch ? summaryMatch[1] : rawText)
-    .replace(/^(?:\*\*)?(?:Summary|SUMMARY)[:\-]?\s*\*?\*?\s*/i, '')
+    .replace(/^(?:\*\*)?(?:Summary|SUMMARY)[:\s-]?\s*\*?\*?\s*/i, '')
     .replace(/^:\s*/, '')
     .trim()
 

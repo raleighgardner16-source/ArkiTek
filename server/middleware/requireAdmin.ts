@@ -9,7 +9,7 @@ interface AdminsCache {
   admins: string[]
 }
 
-let adminsCache: AdminsCache = { admins: [] }
+const adminsCache: AdminsCache = { admins: [] }
 
 const loadAdminsList = async () => {
   try {

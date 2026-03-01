@@ -81,7 +81,7 @@ export const transition = {
 
 /** Merge multiple CSSProperties objects. Falsy values are skipped. */
 export const sx = (
-  ...styles: (CSSProperties | false | null | undefined)[]
+  ...styles: Array<CSSProperties | false | null | undefined>
 ): CSSProperties => Object.assign({}, ...styles.filter(Boolean))
 
 // ============================================================================

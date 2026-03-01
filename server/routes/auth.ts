@@ -231,7 +231,7 @@ router.post('/signup', async (req: Request, res: Response) => {
         })
         console.log('[Auth] Verification email sent to:', email)
       } else {
-        console.warn('[Auth] Resend not configured — verification email NOT sent. Token:', verifyToken.substring(0, 8) + '...')
+        console.warn('[Auth] Resend not configured — verification email NOT sent. Token:', `${verifyToken.substring(0, 8)  }...`)
       }
     } catch (emailErr) {
       console.error('[Auth] Failed to send verification email:', emailErr)
@@ -529,7 +529,7 @@ router.post('/reset-password', async (req: Request, res: Response) => {
       return sendError(res, 'Password must be at least 8 characters', 400)
     }
 
-    console.log('[Auth] Password reset attempt with token:', token.substring(0, 8) + '...')
+    console.log('[Auth] Password reset attempt with token:', `${token.substring(0, 8)  }...`)
 
     // Check in-memory first
     let tokenData = passwordResetTokens.get(token)
@@ -631,7 +631,7 @@ router.post('/verify-email', async (req: Request, res: Response) => {
       return sendError(res, 'Verification token is required', 400)
     }
 
-    console.log('[Auth] Email verification attempt with token:', token.substring(0, 8) + '...')
+    console.log('[Auth] Email verification attempt with token:', `${token.substring(0, 8)  }...`)
 
     // Check in-memory first
     let tokenData = emailVerificationTokens.get(token)

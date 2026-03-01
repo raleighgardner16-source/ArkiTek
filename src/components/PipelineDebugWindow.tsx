@@ -28,10 +28,6 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
   const currentUser = useStore((state) => state.currentUser)
   const responses = useStore((state) => state.responses || [])
 
-  if (!debugData) {
-    return null
-  }
-
   // Fetch both judge + model conversation contexts with live polling
   useEffect(() => {
     if (!currentUser?.id) return
@@ -76,6 +72,10 @@ const PipelineDebugWindow = ({ debugData, onClose, geminiDetectionResponse, toke
     const interval = setInterval(fetchAllContexts, 5000)
     return () => clearInterval(interval)
   }, [currentUser?.id, responses.length])
+
+  if (!debugData) {
+    return null
+  }
 
   const sections = [
     { key: 'categoryDetection', label: 'Category Detection', icon: Code, color: '#00aaff' },

@@ -66,7 +66,7 @@ describe('JWT Tokens', () => {
 
   it('throws on tampered token', () => {
     const token: string = generateToken('user-789')
-    const tampered: string = token.slice(0, -5) + 'XXXXX'
+    const tampered: string = `${token.slice(0, -5)  }XXXXX`
     expect(() => verifyToken(tampered)).toThrow()
   })
 })

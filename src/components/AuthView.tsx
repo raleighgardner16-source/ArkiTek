@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react'
+import type React from 'react';
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LogIn, UserPlus, Mail, Lock, User, CreditCard, ArrowLeft, CheckCircle, KeyRound, Eye, EyeOff, ShieldCheck, Loader } from 'lucide-react'
 import { useStore } from '../store/useStore'

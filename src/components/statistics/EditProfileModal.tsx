@@ -1,4 +1,4 @@
-import React from 'react'
+import type React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { User, Camera } from 'lucide-react'
 import { spacing, fontSize, fontWeight, radius, zIndex } from '../../utils/styles'

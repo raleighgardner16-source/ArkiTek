@@ -144,7 +144,7 @@ async function migrateUser(db: Db, userId: string, userData: Record<string, any>
     // 2. Migrate prompt history (one document per prompt)
     if (userData.promptHistory && userData.promptHistory.length > 0) {
       const promptDocs = userData.promptHistory.map((prompt: any) => ({
-        userId: userId,
+        userId,
         text: prompt.text,
         category: prompt.category || 'Uncategorized',
         timestamp: new Date(prompt.timestamp),
@@ -176,7 +176,7 @@ async function migrateUser(db: Db, userId: string, userData: Record<string, any>
     // 5. Migrate purchases
     if (userData.purchasedCredits?.purchases && userData.purchasedCredits.purchases.length > 0) {
       const purchaseDocs = userData.purchasedCredits.purchases.map((purchase: any) => ({
-        userId: userId,
+        userId,
         timestamp: new Date(purchase.timestamp),
         amount: purchase.amount,
         fee: purchase.fee,
@@ -199,7 +199,7 @@ async function migrateUser(db: Db, userId: string, userData: Record<string, any>
     if (userData.judgeConversationContext && userData.judgeConversationContext.length > 0) {
       const contextDoc = {
         _id: userId,
-        userId: userId,
+        userId,
         context: userData.judgeConversationContext.map((ctx: any) => ({
           response: ctx.response || null,
           summary: ctx.summary || null,
@@ -473,7 +473,7 @@ async function migrate() {
     }
     
     // Print summary
-    console.log('\n' + '=' .repeat(50))
+    console.log(`\n${  '=' .repeat(50)}`)
     console.log('📊 MIGRATION SUMMARY')
     console.log('=' .repeat(50))
     console.log(`  Users processed:     ${stats.usersProcessed}`)

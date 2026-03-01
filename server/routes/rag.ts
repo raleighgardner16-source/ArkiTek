@@ -82,7 +82,7 @@ User Query: ${query}`
     let fullResponse = ''
     let inputTokens = 0
     let outputTokens = 0
-    let reasoningTokens = 0
+    const reasoningTokens = 0
     let tokenSource = 'none'
 
     if (['openai', 'xai', 'meta', 'deepseek', 'mistral'].includes(providerKey)) {
@@ -301,9 +301,9 @@ User Query: ${query}`
       input: inputTokens,
       output: outputTokens,
       total: inputTokens + outputTokens,
-      reasoningTokens: reasoningTokens,
+      reasoningTokens,
       provider: providerKey,
-      model: model,
+      model,
       source: tokenSource,
       breakdown: buildTokenBreakdown(query, rawSourcesData?.formatted, inputTokens),
     } : null
@@ -453,7 +453,7 @@ router.post('/', async (req: Request, res: Response) => {
       }
       
       const providerKey = modelId.substring(0, firstDashIndex)
-      let model = modelId.substring(firstDashIndex + 1)
+      const model = modelId.substring(firstDashIndex + 1)
       let councilTokenInfo: any = null
       
       const mappedModel = MODEL_MAPPINGS[model] || model
@@ -540,9 +540,9 @@ User Query: ${query}`
             input: inputTokens,
             output: outputTokens,
             total: inputTokens + outputTokens,
-            reasoningTokens: reasoningTokens,
+            reasoningTokens,
             provider: providerKey,
-            model: model,
+            model,
             source: tokenSource,
             breakdown: buildTokenBreakdown(query, rawSourcesData?.formatted, inputTokens)
           } : null
@@ -588,7 +588,7 @@ User Query: ${query}`
               output: outputTokens,
               total: inputTokens + outputTokens,
               provider: providerKey,
-              model: model,
+              model,
               source: tokenSource,
               breakdown: buildTokenBreakdown(query, rawSourcesData?.formatted, inputTokens)
             }
@@ -636,7 +636,7 @@ User Query: ${query}`
               output: outputTokens,
               total: inputTokens + outputTokens,
               provider: providerKey,
-              model: model,
+              model,
               source: tokenSource,
               breakdown: buildTokenBreakdown(query, rawSourcesData?.formatted, inputTokens)
             }

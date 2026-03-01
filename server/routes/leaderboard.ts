@@ -338,7 +338,7 @@ router.get('/user-stats/:userId', async (req: Request, res: Response) => {
         notifications.push({
           type: 'like',
           promptId: prompt._id,
-          promptText: prompt.promptText.substring(0, 50) + '...',
+          promptText: `${prompt.promptText.substring(0, 50)  }...`,
           count: recentLikes.length,
           timestamp: prompt.createdAt,
         })

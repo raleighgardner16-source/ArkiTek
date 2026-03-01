@@ -98,7 +98,7 @@ async function main(): Promise<void> {
 
   let processed = 0
   let failed = 0
-  let totalTokens = 0
+  const totalTokens = 0
 
   // Process in batches
   for (let i = 0; i < docsWithoutEmbeddings.length; i += BATCH_SIZE) {

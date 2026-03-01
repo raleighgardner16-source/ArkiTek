@@ -55,8 +55,8 @@ statsRouter.post('/pricing', async (req: Request, res: Response) => {
     userUsage.models[modelKey] = {
       totalTokens: 0,
       totalQueries: 0,
-      provider: provider,
-      model: model,
+      provider,
+      model,
       pricing: null,
     }
   }
@@ -96,7 +96,7 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
       totalTokens: (providerData.totalInputTokens || 0) + (providerData.totalOutputTokens || 0),
       totalInputTokens: providerData.totalInputTokens || 0,
       totalOutputTokens: providerData.totalOutputTokens || 0,
-      totalPrompts: totalPrompts,
+      totalPrompts,
       monthlyTokens: (providerData.monthlyInputTokens?.[currentMonth] || 0) + (providerData.monthlyOutputTokens?.[currentMonth] || 0),
       monthlyInputTokens: providerData.monthlyInputTokens?.[currentMonth] || 0,
       monthlyOutputTokens: providerData.monthlyOutputTokens?.[currentMonth] || 0,
@@ -120,7 +120,7 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
   // Free plan: $1.00/month. Pro: $7.50/month. Premium: $25.00/month.
   const FREE_MONTHLY_ALLOCATION = getPlanAllocation(user)
   
-  let cachedMonthlyCost = user?.monthlyUsageCost?.[currentMonth] || 0
+  const cachedMonthlyCost = user?.monthlyUsageCost?.[currentMonth] || 0
   
   const pricing: any = getPricingData()
   const dailyData = userUsage.dailyUsage?.[currentMonth] || {}
@@ -144,7 +144,7 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
   })
   
   // Use the higher of cached vs calculated (handles both counter drift and data gaps)
-  let monthlyCost = Math.max(cachedMonthlyCost, calculatedMonthlyCost)
+  const monthlyCost = Math.max(cachedMonthlyCost, calculatedMonthlyCost)
   
   if (calculatedMonthlyCost > cachedMonthlyCost && user) {
     await db.userStats.addMonthlyCost(userId, currentMonth, calculatedMonthlyCost - cachedMonthlyCost)
@@ -153,9 +153,9 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
   
   log.debug({ userId, currentMonth, monthlyCost, cachedMonthlyCost, calculatedMonthlyCost }, 'Monthly cost')
   
-  let remainingFreeAllocation = Math.max(0, FREE_MONTHLY_ALLOCATION - monthlyCost)
+  const remainingFreeAllocation = Math.max(0, FREE_MONTHLY_ALLOCATION - monthlyCost)
   
-  let purchasedCredits = userUsage.purchasedCredits || { total: 0, remaining: 0, purchases: [] }
+  const purchasedCredits = userUsage.purchasedCredits || { total: 0, remaining: 0, purchases: [] }
   
   const overage = Math.max(0, monthlyCost - FREE_MONTHLY_ALLOCATION)
   let purchasedCreditsRemaining = purchasedCredits.remaining || 0
@@ -209,7 +209,7 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
       
       dailyUsage.push({
         date: dateStr,
-        day: day,
+        day,
         cost: dayCost,
         percentage: dayPercentage,
         inputTokens: dayData.inputTokens || 0,
@@ -218,7 +218,7 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
     } else {
       dailyUsage.push({
         date: dateStr,
-        day: day,
+        day,
         cost: 0,
         percentage: 0,
         inputTokens: 0,
@@ -239,14 +239,14 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
   const purchasedCreditsPercent = effectiveAllocation > 0 ? (purchasedCreditsRemaining / effectiveAllocation) * 100 : 0
 
   sendSuccess(res, {
-    totalTokens: totalTokens,
+    totalTokens,
     totalInputTokens: userUsage.totalInputTokens || 0,
     totalOutputTokens: userUsage.totalOutputTokens || 0,
-    totalPrompts: totalPrompts,
-    monthlyTokens: monthlyTokens,
+    totalPrompts,
+    monthlyTokens,
     monthlyInputTokens: monthlyStats.inputTokens || 0,
     monthlyOutputTokens: monthlyStats.outputTokens || 0,
-    monthlyPrompts: monthlyPrompts,
+    monthlyPrompts,
     monthlyCost: roundCents(monthlyCost),
     freeMonthlyAllocation: FREE_MONTHLY_ALLOCATION,
     userPlan: user?.plan || (user?.subscriptionStatus === 'trialing' && !user?.stripeSubscriptionId ? 'free_trial' : 'pro'),
@@ -271,7 +271,7 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
     streakDays: userUsage.streakDays || 0,
     councilPrompts: userUsage.councilPrompts || 0,
     debatePrompts: userUsage.debatePrompts || 0,
-    createdAt: createdAt,
+    createdAt,
     earnedBadges: userUsage.earnedBadges || [],
   })
 })

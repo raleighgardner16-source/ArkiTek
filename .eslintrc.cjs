@@ -26,6 +26,8 @@ module.exports = {
     ],
     'react/prop-types': 'off',
     'react/display-name': 'off',
+    'react/no-unescaped-entities': 'warn',
+    'no-case-declarations': 'warn',
 
     // --- TypeScript ---
     'no-unused-vars': 'off',

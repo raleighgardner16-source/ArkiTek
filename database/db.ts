@@ -199,7 +199,7 @@ const users = {
     signupIp: string,
   ): Promise<WithId<UsedTrialDoc> | null> {
     const trials = await col.usedTrials()
-    const orClause: Record<string, unknown>[] = []
+    const orClause: Array<Record<string, unknown>> = []
     if (canonicalEmail) orClause.push({ canonicalEmail })
     if (fingerprint) orClause.push({ deviceFingerprint: fingerprint })
     if (signupIp) orClause.push({ signupIp })
@@ -252,7 +252,7 @@ const users = {
     )
   },
 
-  async getAll(): Promise<WithId<UserDoc>[]> {
+  async getAll(): Promise<Array<WithId<UserDoc>>> {
     const c = await col.users()
     return c.find({}).toArray()
   },
@@ -426,17 +426,17 @@ const prompts = {
     return result.insertedId
   },
 
-  async getRecent(userId: string, limit = 20): Promise<WithId<PromptDoc>[]> {
+  async getRecent(userId: string, limit = 20): Promise<Array<WithId<PromptDoc>>> {
     const c = await col.prompts()
     return c.find({ userId }).sort({ timestamp: -1 }).limit(limit).toArray()
   },
 
-  async getByCategory(userId: string, category: string, limit = 50): Promise<WithId<PromptDoc>[]> {
+  async getByCategory(userId: string, category: string, limit = 50): Promise<Array<WithId<PromptDoc>>> {
     const c = await col.prompts()
     return c.find({ userId, category }).sort({ timestamp: -1 }).limit(limit).toArray()
   },
 
-  async getByDateRange(userId: string, startDate: Date, endDate: Date): Promise<WithId<PromptDoc>[]> {
+  async getByDateRange(userId: string, startDate: Date, endDate: Date): Promise<Array<WithId<PromptDoc>>> {
     const c = await col.prompts()
     return c.find({
       userId,
@@ -444,7 +444,7 @@ const prompts = {
     } satisfies Filter<PromptDoc>).sort({ timestamp: -1 }).toArray()
   },
 
-  async getByModel(userId: string, modelName: string, limit = 50): Promise<WithId<PromptDoc>[]> {
+  async getByModel(userId: string, modelName: string, limit = 50): Promise<Array<WithId<PromptDoc>>> {
     const c = await col.prompts()
     return c.find({ userId, 'responses.modelName': modelName } satisfies Filter<PromptDoc>).sort({ timestamp: -1 }).limit(limit).toArray()
   },
@@ -553,7 +553,7 @@ const usage = {
     await c.updateOne({ _id: userId } satisfies Filter<UsageDataDoc>, update, { upsert: true })
   },
 
-  async getAll(): Promise<WithId<UsageDataDoc>[]> {
+  async getAll(): Promise<Array<WithId<UsageDataDoc>>> {
     const c = await col.usageData()
     return c.find({}).toArray()
   },
@@ -629,7 +629,7 @@ const userStats = {
     )
   },
 
-  async getAll(): Promise<WithId<UserStatsDoc>[]> {
+  async getAll(): Promise<Array<WithId<UserStatsDoc>>> {
     const c = await col.userStats()
     return c.find({}).toArray()
   },
@@ -667,7 +667,7 @@ const purchases = {
     return result.insertedId
   },
 
-  async getHistory(userId: string, limit = 50): Promise<WithId<PurchaseDoc>[]> {
+  async getHistory(userId: string, limit = 50): Promise<Array<WithId<PurchaseDoc>>> {
     const c = await col.purchases()
     return c.find({ userId }).sort({ timestamp: -1 }).limit(limit).toArray()
   },
@@ -783,23 +783,23 @@ const leaderboardPosts = {
     return postId
   },
 
-  async getRecent(limit = 15): Promise<WithId<LeaderboardPostDoc>[]> {
+  async getRecent(limit = 15): Promise<Array<WithId<LeaderboardPostDoc>>> {
     const c = await col.leaderboardPosts()
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
     return c.find({ createdAt: { $gte: oneDayAgo } } satisfies Filter<LeaderboardPostDoc>).sort({ likeCount: -1, createdAt: -1 }).limit(limit).toArray()
   },
 
-  async getTopAllTime(limit = 15): Promise<WithId<LeaderboardPostDoc>[]> {
+  async getTopAllTime(limit = 15): Promise<Array<WithId<LeaderboardPostDoc>>> {
     const c = await col.leaderboardPosts()
     return c.find({}).sort({ likeCount: -1 }).limit(limit).toArray()
   },
 
-  async getByUser(userId: string): Promise<WithId<LeaderboardPostDoc>[]> {
+  async getByUser(userId: string): Promise<Array<WithId<LeaderboardPostDoc>>> {
     const c = await col.leaderboardPosts()
     return c.find({ userId }).sort({ createdAt: -1 }).toArray()
   },
 
-  async getByCategory(category: string, limit = 15): Promise<WithId<LeaderboardPostDoc>[]> {
+  async getByCategory(category: string, limit = 15): Promise<Array<WithId<LeaderboardPostDoc>>> {
     const c = await col.leaderboardPosts()
     return c.find({ category }).sort({ likeCount: -1, createdAt: -1 }).limit(limit).toArray()
   },
@@ -1032,12 +1032,12 @@ const subscriptionEvents = {
     } satisfies SubscriptionEventDoc)
   },
 
-  async getForUser(userId: string): Promise<WithId<SubscriptionEventDoc>[]> {
+  async getForUser(userId: string): Promise<Array<WithId<SubscriptionEventDoc>>> {
     const c = await col.subscriptionEvents()
     return c.find({ userId }).sort({ createdAt: -1 }).toArray()
   },
 
-  async getInDateRange(startDate: Date, endDate: Date): Promise<WithId<SubscriptionEventDoc>[]> {
+  async getInDateRange(startDate: Date, endDate: Date): Promise<Array<WithId<SubscriptionEventDoc>>> {
     const c = await col.subscriptionEvents()
     return c.find({ createdAt: { $gte: startDate, $lt: endDate } } satisfies Filter<SubscriptionEventDoc>).toArray()
   },
@@ -1092,7 +1092,7 @@ const conversationHistory = {
     return result.matchedCount > 0
   },
 
-  async listForUser(userId: string, projection?: Record<string, 1>): Promise<WithId<ConversationHistoryDoc>[]> {
+  async listForUser(userId: string, projection?: Record<string, 1>): Promise<Array<WithId<ConversationHistoryDoc>>> {
     const c = await col.conversationHistory()
     let cursor = c.find({ userId } satisfies Filter<ConversationHistoryDoc>).sort({ savedAt: -1 })
     if (projection) cursor = cursor.project(projection)
@@ -1256,7 +1256,7 @@ const notifications = {
     } as NotificationDoc)
   },
 
-  async listForUser(userId: string, limit = 50): Promise<WithId<NotificationDoc>[]> {
+  async listForUser(userId: string, limit = 50): Promise<Array<WithId<NotificationDoc>>> {
     const c = await col.notifications()
     return c.find({ userId }).sort({ createdAt: -1 }).limit(limit).toArray()
   },
@@ -1281,7 +1281,7 @@ const notifications = {
 // ============================================================================
 
 const conversations = {
-  async listForUser(userId: string, type?: 'dm' | 'group'): Promise<WithId<ConversationDoc>[]> {
+  async listForUser(userId: string, type?: 'dm' | 'group'): Promise<Array<WithId<ConversationDoc>>> {
     const c = await col.conversations()
     const filter: Filter<ConversationDoc> =
       type ? { 'participants.userId': userId, type } : { 'participants.userId': userId }
@@ -1316,7 +1316,7 @@ const conversations = {
 }
 
 const messages = {
-  async listForConversation(conversationId: string, limit = 200): Promise<WithId<MessageDoc>[]> {
+  async listForConversation(conversationId: string, limit = 200): Promise<Array<WithId<MessageDoc>>> {
     const c = await col.messages()
     return c.find({ conversationId } satisfies Filter<MessageDoc>).sort({ createdAt: 1 }).limit(limit).toArray()
   },

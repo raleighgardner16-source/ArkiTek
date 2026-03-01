@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import type React from 'react';
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Shield, ArrowLeft } from 'lucide-react'
 import { useStore } from '../store/useStore'
@@ -86,7 +87,7 @@ const AdminView = () => {
   ]
 
   const getPeriodLabel = () => {
-    const ref = new Date(referenceDate + 'T00:00:00')
+    const ref = new Date(`${referenceDate  }T00:00:00`)
     switch (timePeriod) {
       case 'day': return ref.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' })
       case 'week': {
@@ -113,7 +114,7 @@ const AdminView = () => {
 
   const shiftPeriod = (direction: string) => {
     if (timePeriod === 'all') return
-    const ref = new Date(referenceDate + 'T00:00:00')
+    const ref = new Date(`${referenceDate  }T00:00:00`)
     const d = direction === 'next' ? 1 : -1
     switch (timePeriod) {
       case 'day': ref.setDate(ref.getDate() + d); break
@@ -375,8 +376,8 @@ const AdminView = () => {
   }
 
   const formatTokens = (num: number) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M'
-    if (num >= 1000) return (num / 1000).toFixed(2) + 'K'
+    if (num >= 1000000) return `${(num / 1000000).toFixed(2)  }M`
+    if (num >= 1000) return `${(num / 1000).toFixed(2)  }K`
     return num.toLocaleString()
   }
 

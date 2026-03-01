@@ -125,7 +125,7 @@ router.get('/debug', async (req: Request, res: Response) => {
                 queryVector: testEmbedding,
                 numCandidates: 20,
                 limit: 5,
-                filter: { userId: userId }
+                filter: { userId }
               }
             },
             {

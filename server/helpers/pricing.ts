@@ -7,7 +7,7 @@ const buildTokenBreakdown = (userQuery: string, sourceContent: string, totalInpu
   return {
     userPrompt: userPromptTokens,
     sourceContext: sourceTokens,
-    systemOverhead: systemOverhead
+    systemOverhead
   }
 }
 

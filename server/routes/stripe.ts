@@ -137,8 +137,8 @@ const calculateAndRecordOverage = async (userId: string, month: string) => {
         currency: 'usd',
         description: `Overage usage for ${month} ($${monthlyCost.toFixed(2)} total - $${FREE_MONTHLY_ALLOCATION.toFixed(2)} included)`,
         metadata: {
-          userId: userId,
-          month: month,
+          userId,
+          month,
           totalCost: monthlyCost.toFixed(2),
           freeAllocation: FREE_MONTHLY_ALLOCATION.toFixed(2),
           baseOverage: baseOverage.toFixed(2),
@@ -499,7 +499,7 @@ router.post('/confirm-usage-purchase', requireAuth, async (req: Request, res: Re
       amount: usageAmount,
       fee: calculatedFee,
       total: calculatedTotal,
-      paymentIntentId: paymentIntentId,
+      paymentIntentId,
       timestamp: new Date().toISOString(),
     })
     
@@ -608,7 +608,7 @@ router.post('/create-subscription-intent', requireAuth, async (req: Request, res
         email: user.email,
         name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || userId,
         metadata: {
-          userId: userId,
+          userId,
         },
       })
       customerId = customer.id
@@ -716,7 +716,7 @@ router.post('/create-subscription-intent', requireAuth, async (req: Request, res
       },
       expand: ['latest_invoice.payment_intent'],
       metadata: {
-        userId: userId,
+        userId,
       },
     })
 
@@ -830,7 +830,7 @@ router.post('/create-checkout-session', requireAuth, async (req: Request, res: R
         email: user.email,
         name: `${user.firstName} ${user.lastName}`,
         metadata: {
-          userId: userId,
+          userId,
         },
       })
       customerId = customer.id
@@ -851,7 +851,7 @@ router.post('/create-checkout-session', requireAuth, async (req: Request, res: R
       success_url: `${req.headers.origin || 'http://localhost:3000'}/?subscription=success`,
       cancel_url: `${req.headers.origin || 'http://localhost:3000'}/`,
       metadata: {
-        userId: userId,
+        userId,
         plan: effectivePlan,
       },
     })

@@ -212,7 +212,7 @@ const expenses = {
     return { _id: monthKey, ...doc }
   },
 
-  async getAll(): Promise<WithId<ExpenseDoc>[]> {
+  async getAll(): Promise<Array<WithId<ExpenseDoc>>> {
     const c = await col.expenses()
     return c.find({}).sort({ _id: -1 }).toArray()
   },

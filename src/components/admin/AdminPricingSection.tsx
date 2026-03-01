@@ -23,7 +23,7 @@ const AdminPricingSection = ({ pricingData, expandedProviders, setExpandedProvid
         Model Pricing (per 1M tokens)
       </h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-        {(Object.entries(pricingData) as [string, any][]).map(([providerKey, providerData]) => {
+        {(Object.entries(pricingData) as Array<[string, any]>).map(([providerKey, providerData]) => {
           const isExpanded = expandedProviders[providerKey]
           
           if (providerData.queryTiers) {
@@ -152,7 +152,7 @@ const AdminPricingSection = ({ pricingData, expandedProviders, setExpandedProvid
               {isExpanded && providerData.models && (
                 <div style={{ padding: `${spacing.lg} ${spacing['2xl']} ${spacing['2xl']} ${spacing['2xl']}`, borderTop: '1px solid rgba(93, 173, 226, 0.2)' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: spacing.md }}>
-                    {(Object.entries(providerData.models) as [string, any][]).map(([modelName, pricing]) => (
+                    {(Object.entries(providerData.models) as Array<[string, any]>).map(([modelName, pricing]) => (
                       <div
                         key={modelName}
                         style={{

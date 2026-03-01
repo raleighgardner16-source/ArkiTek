@@ -144,7 +144,7 @@ router.get('/users', requireAdmin, async (req: Request, res: Response) => {
         lastName: user.lastName,
         createdAt: user.createdAt,
         isAdmin: admins.admins.includes(user._id),
-        status: status,
+        status,
         lastActiveAt: lastActiveAt || null,
       }
     })

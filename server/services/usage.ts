@@ -370,8 +370,8 @@ const trackUsage = async (userId: string, provider: string, model: string, input
         totalOutputTokens: 0,
         totalQueries: 0,
         totalPrompts: 0,
-        provider: provider,
-        model: model,
+        provider,
+        model,
         pricing: null,
       }
     }
