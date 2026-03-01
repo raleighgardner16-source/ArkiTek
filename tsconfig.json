@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowJs": true,
+    "types": ["node"]
+  },
+  "include": [
+    "server.ts",
+    "server/**/*",
+    "database/**/*",
+    "utils/**/*",
+    "tests/**/*",
+    "*.d.ts"
+  ],
+  "exclude": ["node_modules", "dist", "src"]
+}

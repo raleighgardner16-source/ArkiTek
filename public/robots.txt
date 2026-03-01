@@ -1,0 +1,30 @@
+User-agent: *
+Allow: /
+
+# Static marketing pages
+Allow: /features
+Allow: /pricing
+Allow: /about
+Allow: /how-it-works
+Allow: /use-cases
+Allow: /contact
+Allow: /compare
+Allow: /compare/
+Allow: /blog
+Allow: /blog/
+
+# Auth pages (allow for sign-up discoverability)
+Allow: /signin
+Allow: /signup
+
+# Legal
+Allow: /terms
+Allow: /privacy
+
+# Block app-internal routes (no SEO value)
+Disallow: /admin
+Disallow: /verify-email
+Disallow: /reset-password
+Disallow: /api/
+
+Sitemap: https://arkitekai.com/sitemap.xml

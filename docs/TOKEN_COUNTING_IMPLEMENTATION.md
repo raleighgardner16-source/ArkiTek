@@ -26,7 +26,7 @@ We've implemented a **three-tier token counting system** that follows industry b
 
 ## Files Created/Modified
 
-### New File: `utils/tokenCounters.js`
+### New File: `server/helpers/tokenCounters.ts`
 - Contains all token counting logic
 - Provider-specific token counting functions
 - API response token extraction

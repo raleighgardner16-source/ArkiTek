@@ -14,7 +14,7 @@ The pipeline consists of 4 stages:
 ## Installation
 
 ```bash
-pip install -r requirements_rag.txt
+pip install -r scripts/rag/requirements_rag.txt
 ```
 
 ## Environment Variables
