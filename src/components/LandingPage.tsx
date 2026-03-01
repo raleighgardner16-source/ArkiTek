@@ -153,7 +153,7 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
             ArkitekAI
           </span>
         </div>
-        <div style={{ display: 'flex', gap: spacing.md, alignItems: 'center' }}>
+        <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: spacing.lg, alignItems: 'center' }}>
           {[
             { label: 'Features', href: '#' },
             { label: 'Shop', href: '#' },
@@ -188,31 +188,30 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
               {link.label}
             </a>
           ))}
-          <button
-            onClick={() => onNavigate('signin')}
-            style={{
-              padding: `10px ${spacing['3xl']}`,
-              background: 'transparent',
-              border: `1px solid ${currentTheme.border}`,
-              borderRadius: radius.md,
-              color: currentTheme.text,
-              fontSize: fontSize.xl,
-              cursor: 'pointer',
-              transition: transition.normal,
-              marginLeft: spacing.md,
-            }}
-            onMouseEnter={(e) => {
-              ;(e.target as HTMLElement).style.borderColor = currentTheme.accent
-              ;(e.target as HTMLElement).style.background = 'rgba(93, 173, 226, 0.1)'
-            }}
-            onMouseLeave={(e) => {
-              ;(e.target as HTMLElement).style.borderColor = currentTheme.border
-              ;(e.target as HTMLElement).style.background = 'transparent'
-            }}
-          >
-            Sign In
-          </button>
         </div>
+        <button
+          onClick={() => onNavigate('signin')}
+          style={{
+            padding: `10px ${spacing['3xl']}`,
+            background: 'transparent',
+            border: `1px solid ${currentTheme.border}`,
+            borderRadius: radius.md,
+            color: currentTheme.text,
+            fontSize: fontSize.xl,
+            cursor: 'pointer',
+            transition: transition.normal,
+          }}
+          onMouseEnter={(e) => {
+            ;(e.target as HTMLElement).style.borderColor = currentTheme.accent
+            ;(e.target as HTMLElement).style.background = 'rgba(93, 173, 226, 0.1)'
+          }}
+          onMouseLeave={(e) => {
+            ;(e.target as HTMLElement).style.borderColor = currentTheme.border
+            ;(e.target as HTMLElement).style.background = 'transparent'
+          }}
+        >
+          Sign In
+        </button>
       </nav>
 
       {/* Hero Section */}
