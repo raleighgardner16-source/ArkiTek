@@ -348,7 +348,6 @@ export function usePromptSubmission() {
       handlePromptSubmit()
       store.clearSubmit()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldSubmit])
 
   return { isLoading, handlePromptSubmit, handleCancelPrompt, clearAllWindows }

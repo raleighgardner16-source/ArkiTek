@@ -381,7 +381,7 @@ const ModelSelector = ({
     }, 50)
 
     return () => clearTimeout(timer)
-  }, [isAnyProviderExpanded, expandedProviders]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAnyProviderExpanded, expandedProviders])
 
   const handleTooltipShow = (e: React.MouseEvent, type: string) => {
     if (tooltipTimeoutRef.current) {
