@@ -7,11 +7,14 @@ Allow: /pricing
 Allow: /about
 Allow: /how-it-works
 Allow: /use-cases
+Allow: /use-cases/
 Allow: /contact
 Allow: /compare
 Allow: /compare/
 Allow: /blog
 Allow: /blog/
+Allow: /guides
+Allow: /guides/
 
 # Auth pages (allow for sign-up discoverability)
 Allow: /signin

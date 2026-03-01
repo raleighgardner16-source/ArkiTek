@@ -59,12 +59,81 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://arkitekai.com/compare/claude-vs-gemini</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://arkitekai.com/compare/gemini-vs-gpt4</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://arkitekai.com/compare/grok-vs-chatgpt</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/compare/deepseek-vs-chatgpt</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://arkitekai.com/compare/best-ai-for-coding</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/compare/best-ai-for-writing</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/compare/best-ai-for-research</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Use Case Pages -->
+  <url>
+    <loc>https://arkitekai.com/use-cases/research</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/use-cases/coding</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/use-cases/writing</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/use-cases/business</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/use-cases/education</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/use-cases/marketing</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Guide Pages -->
+  <url>
+    <loc>https://arkitekai.com/guides/prompt-engineering</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/guides/choosing-the-right-ai-model</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -76,12 +145,52 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://arkitekai.com/blog/how-ai-debate-improves-critical-thinking</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/blog/ai-for-content-creators</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/blog/ai-hallucinations-how-to-spot-them</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/blog/best-ai-tools-for-students-2026</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/blog/how-to-write-better-ai-prompts</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/blog/ai-for-small-business-owners</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://arkitekai.com/blog/compare-ai-models-side-by-side</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://arkitekai.com/blog/why-one-ai-model-is-not-enough</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://arkitekai.com/blog/chatgpt-vs-claude-vs-gemini</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://arkitekai.com/blog/ai-consensus-why-it-matters</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>

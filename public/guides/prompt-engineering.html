@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prompt Engineering Guide — How to Get Better Results from Any AI Model | ArkitekAI</title>
+  <meta name="description" content="The complete prompt engineering guide. Learn basic to advanced techniques for writing better prompts that get dramatically better results from ChatGPT, Claude, Gemini, and any AI model." />
+  <meta name="keywords" content="prompt engineering guide, how to prompt AI, ChatGPT prompt tips, AI prompt engineering, best AI prompts, prompt engineering for beginners, advanced prompt techniques, prompt templates 2026" />
+  <link rel="canonical" href="https://arkitekai.com/guides/prompt-engineering" />
+  <meta property="og:title" content="Prompt Engineering Guide — How to Get Better Results from Any AI Model" />
+  <meta property="og:description" content="The complete prompt engineering guide. Learn basic to advanced techniques for writing better prompts for ChatGPT, Claude, Gemini, and any AI model." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://arkitekai.com/guides/prompt-engineering" />
+  <meta property="og:site_name" content="ArkitekAI" />
+  <meta property="article:published_time" content="2026-02-28" />
+  <meta property="article:section" content="Guide" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Prompt Engineering Guide — How to Get Better Results from Any AI Model" />
+  <meta name="twitter:description" content="Basic to advanced prompt engineering techniques with before/after examples for ChatGPT, Claude, Gemini, and more." />
+  <link rel="stylesheet" href="/marketing.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Prompt Engineering Guide — How to Get Better Results from Any AI Model",
+    "description": "The complete prompt engineering guide. Learn basic to advanced techniques for writing better prompts that get dramatically better results from ChatGPT, Claude, Gemini, and any AI model.",
+    "url": "https://arkitekai.com/guides/prompt-engineering",
+    "datePublished": "2026-02-28",
+    "dateModified": "2026-02-28",
+    "author": {
+      "@type": "Organization",
+      "name": "ArkitekAI",
+      "url": "https://arkitekai.com"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "ArkitekAI",
+      "url": "https://arkitekai.com"
+    },
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": "https://arkitekai.com/guides/prompt-engineering"
+    },
+    "breadcrumb": {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://arkitekai.com" },
+        { "@type": "ListItem", "position": 2, "name": "Guides", "item": "https://arkitekai.com/guides" },
+        { "@type": "ListItem", "position": 3, "name": "Prompt Engineering Guide", "item": "https://arkitekai.com/guides/prompt-engineering" }
+      ]
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <nav class="nav">
+    <a href="/" class="nav-logo">ArkitekAI</a>
+    <button class="nav-toggle" aria-label="Toggle menu">&#9776;</button>
+    <div class="nav-links">
+      <a href="/features">Features</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/compare">Compare</a>
+      <a href="/blog">Blog</a>
+      <a href="/about">About</a>
+      <a href="/signup" class="nav-cta">Sign Up</a>
+    </div>
+  </nav>
+
+  <main class="page">
+
+    <article class="article">
+
+      <div class="breadcrumbs">
+        <a href="/">Home</a>
+        <span class="sep">/</span>
+        <a href="/guides">Guides</a>
+        <span class="sep">/</span>
+        <span>Prompt Engineering Guide</span>
+      </div>
+
+      <span class="tag tag-blue">Comprehensive Guide</span>
+      <h1>Prompt Engineering Guide — How to Get Better Results from Any AI Model</h1>
+
+      <div class="article-meta">
+        <span>Feb 28, 2026</span>
+        <span>18 min read</span>
+      </div>
+
+      <h2>What Is Prompt Engineering and Why Does It Matter?</h2>
+
+      <p>Prompt engineering is the practice of crafting inputs to AI models that produce the best possible outputs. It's the difference between asking a vague question and getting a vague answer, versus asking a precise question and getting exactly what you need. The same AI model can produce mediocre or exceptional results depending entirely on how you prompt it.</p>
+
+      <p>This matters more than most people realize. Studies on GPT-4 and Claude show that well-engineered prompts can improve output quality by 50-300% compared to naive prompts on the same task. For professionals using AI daily, prompt engineering isn't an optional skill — it's the single highest-leverage way to get more value from the tools you're already paying for.</p>
+
+      <p>This guide covers everything from foundational techniques for beginners to advanced strategies used by AI researchers and power users. Every technique includes before-and-after examples so you can see exactly how each improvement affects the output.</p>
+
+      <h2>The Prompt Anatomy Framework</h2>
+
+      <p>Every effective prompt contains some combination of six elements. Not every prompt needs all six, but understanding each component helps you diagnose why a prompt isn't working and how to fix it.</p>
+
+      <p><strong>Role:</strong> Who should the AI act as? "You are a senior Python developer" or "You are a marketing strategist with 15 years of B2B SaaS experience." Role-setting frames the entire response — it determines vocabulary, depth, assumptions, and perspective.</p>
+
+      <p><strong>Context:</strong> What background information does the AI need? "We're a 20-person startup that just raised Series A" or "This code is part of a FastAPI application using SQLAlchemy." Context prevents the AI from making assumptions that don't match your situation.</p>
+
+      <p><strong>Task:</strong> What specifically should the AI do? "Write a function that..." or "Analyze the pros and cons of..." or "Create a 5-email nurture sequence for..." The clearer the task, the more focused the output.</p>
+
+      <p><strong>Format:</strong> How should the output be structured? "Respond in a numbered list," "Use markdown with H2 headings," "Format as a JSON object with these fields." Format instructions prevent the AI from guessing how you want the response organized.</p>
+
+      <p><strong>Constraints:</strong> What limits or requirements apply? "Keep it under 200 words," "Don't use technical jargon," "Must be compatible with Python 3.9+." Constraints narrow the solution space, producing more relevant results.</p>
+
+      <p><strong>Examples:</strong> What does good output look like? Providing one or more examples of desired output (few-shot prompting) dramatically improves quality, especially for formatting-sensitive tasks.</p>
+
+      <h2>Beginner Techniques</h2>
+
+      <p>These five techniques form the foundation of effective prompting. Master these before moving to intermediate and advanced methods.</p>
+
+      <h3>1. Be Specific and Explicit</h3>
+
+      <p>The most common prompting mistake is being too vague. AI models fill ambiguity with assumptions — and those assumptions may not match your intent.</p>
+
+      <p><strong>Before:</strong> "Write about climate change."</p>
+
+      <p><strong>After:</strong> "Write a 600-word overview of the three most significant impacts of climate change on global agriculture in the past decade, supported by specific data points. Target audience: business executives with no scientific background."</p>
+
+      <p>The "before" prompt could generate anything from a middle school essay to a policy paper. The "after" prompt constrains the topic (agriculture impacts), the scope (past decade), the format (600 words with data), and the audience (non-scientific executives). Every added detail eliminates an assumption the AI would otherwise make on your behalf.</p>
+
+      <h3>2. Provide Context and Background</h3>
+
+      <p>AI doesn't know your situation unless you tell it. Context transforms generic advice into relevant, actionable guidance.</p>
+
+      <p><strong>Before:</strong> "How should I price my product?"</p>
+
+      <p><strong>After:</strong> "I run a B2B SaaS project management tool. We have 200 paying customers at $49/month. Our main competitors are Asana ($10.99/user/month) and Monday.com ($9/seat/month). We're considering moving to per-seat pricing. Our average customer has 8 users. What pricing strategy would you recommend, and what are the risks of the transition?"</p>
+
+      <p>The contextual version gives the AI enough information to provide specific, actionable pricing recommendations instead of a generic pricing theory essay.</p>
+
+      <h3>3. Specify the Output Format</h3>
+
+      <p>Don't leave formatting to chance. If you want a table, ask for a table. If you want bullet points, say so.</p>
+
+      <p><strong>Before:</strong> "Compare React and Vue."</p>
+
+      <p><strong>After:</strong> "Compare React and Vue.js across these dimensions: learning curve, performance, ecosystem size, job market demand, and suitability for large enterprise applications. Format as a table with React and Vue as columns and each dimension as a row. Include a 'Winner' column with brief justification."</p>
+
+      <h3>4. Use Role-Playing</h3>
+
+      <p>Assigning a role changes the AI's vocabulary, assumptions, and depth of expertise in measurable ways.</p>
+
+      <p><strong>Before:</strong> "Review this code for problems."</p>
+
+      <p><strong>After:</strong> "You are a senior security engineer conducting a security audit. Review this code for: SQL injection vulnerabilities, authentication bypass risks, data exposure through error messages, and unsafe deserialization. For each issue found, provide: severity (critical/high/medium/low), the specific vulnerable line, and the recommended fix."</p>
+
+      <p>The role of "senior security engineer" focuses the review on security rather than style or performance. The specific vulnerability categories tell the AI exactly what to look for. The output format ensures findings are actionable.</p>
+
+      <h3>5. Break Complex Tasks into Steps</h3>
+
+      <p>AI models perform better on multi-step tasks when you explicitly break them down.</p>
+
+      <p><strong>Before:</strong> "Create a marketing plan for our new product."</p>
+
+      <p><strong>After:</strong> "Help me create a marketing plan for our new developer tool. Let's do this step by step: Step 1: Identify our top 3 target audience segments based on this product description: [description]. Step 2: For each segment, define the key pain point our product solves. Step 3: Suggest 2 marketing channels best suited to reach each segment. Step 4: Draft a one-paragraph positioning statement for each segment."</p>
+
+      <h2>Intermediate Techniques</h2>
+
+      <p>Once you're comfortable with the basics, these techniques significantly improve output quality for complex tasks.</p>
+
+      <h3>1. Few-Shot Prompting</h3>
+
+      <p>Providing examples of desired output is one of the most powerful prompting techniques available. Instead of describing what you want, you show it.</p>
+
+      <p><strong>Example:</strong> "Convert these customer complaints into structured feedback. Here are two examples of the format I want:</p>
+
+      <p>Input: 'Your app crashed three times today and I lost my work'<br />
+      Output: { category: 'Reliability', severity: 'High', feature: 'Auto-save', sentiment: 'Frustrated', actionable_insight: 'Implement auto-save to prevent data loss during crashes' }</p>
+
+      <p>Input: 'Would be nice if I could export to PDF'<br />
+      Output: { category: 'Feature Request', severity: 'Low', feature: 'Export', sentiment: 'Neutral', actionable_insight: 'Add PDF export to backlog - user expressed interest without urgency' }</p>
+
+      <p>Now convert these complaints: [your complaints here]"</p>
+
+      <p>Two examples are often enough. Three is usually the sweet spot for complex formats. More than five rarely improves quality further.</p>
+
+      <h3>2. Chain-of-Thought Prompting</h3>
+
+      <p>Adding "think step by step" or "show your reasoning" to prompts measurably improves accuracy on reasoning tasks — math, logic, analysis, and decision-making.</p>
+
+      <p><strong>Before:</strong> "Should we open an office in Austin?"</p>
+
+      <p><strong>After:</strong> "Should we open an office in Austin? Think step by step. Consider: (1) our current remote team distribution, (2) the Austin tech talent market, (3) cost of office space relative to SF/NYC, (4) impact on culture and collaboration, (5) tax implications. Show your reasoning for each factor before giving a final recommendation."</p>
+
+      <p>Chain-of-thought prompting works because it forces the model to generate intermediate reasoning steps rather than jumping directly to a conclusion. The intermediate steps serve as a form of self-checking.</p>
+
+      <h3>3. Negative Prompting</h3>
+
+      <p>Sometimes the most efficient way to get what you want is to specify what you don't want.</p>
+
+      <p><strong>Example:</strong> "Write a product description for our project management tool. Do NOT: use the word 'revolutionary', include generic phrases like 'in today's fast-paced world', start with a question, use more than 3 exclamation points, or include unverifiable claims like 'the best' or 'the most powerful.'"</p>
+
+      <p>Negative prompting is especially effective for writing tasks, where AI models have strong default patterns (like opening with a question or using overused marketing phrases) that you want to override.</p>
+
+      <h3>4. Output Formatting Constraints</h3>
+
+      <p>For tasks that feed into other systems, specifying exact output format is critical.</p>
+
+      <p><strong>Example:</strong> "Analyze this customer feedback and return ONLY a valid JSON object with no additional text. Schema: { 'sentiment': 'positive' | 'negative' | 'neutral', 'topics': string[], 'urgency': 1-5, 'suggested_action': string }. Do not include markdown code fences. Do not include any text before or after the JSON."</p>
+
+      <h3>5. Iterative Refinement</h3>
+
+      <p>Don't expect perfect output on the first try. The best results come from a conversation.</p>
+
+      <p>Prompt 1: Generate the initial output.<br />
+      Prompt 2: "This is good, but the tone is too formal. Make it more conversational while keeping the same structure."<br />
+      Prompt 3: "Better. Now expand the section on pricing — it's too brief. Add specific numbers."<br />
+      Prompt 4: "The pricing section is great now. But the conclusion feels generic. Rewrite just the conclusion to end with a specific, actionable next step."</p>
+
+      <p>Each iteration refines a specific aspect while preserving what already works. This approach consistently produces better results than trying to get everything right in a single prompt.</p>
+
+      <h2>Advanced Techniques</h2>
+
+      <p>These techniques are used by AI researchers, prompt engineers at major companies, and power users who optimize AI output systematically.</p>
+
+      <h3>1. Tree of Thought Prompting</h3>
+
+      <p>Tree of Thought extends chain-of-thought by exploring multiple reasoning paths simultaneously, then evaluating which path produces the best result.</p>
+
+      <p><strong>Example:</strong> "Consider three different approaches to solving this problem. For each approach: (1) describe the method, (2) work through the solution, (3) identify potential pitfalls. After completing all three, evaluate which approach is strongest and explain why."</p>
+
+      <p>This technique is particularly effective for problems with multiple valid solution paths — architecture decisions, strategic planning, and complex analysis where the "right" answer depends on which tradeoffs you prioritize.</p>
+
+      <h3>2. Meta-Prompting</h3>
+
+      <p>Ask AI to write prompts for you. This sounds recursive, but it's remarkably effective.</p>
+
+      <p><strong>Example:</strong> "I want to use AI to generate a comprehensive competitive analysis of the project management software market. Write me the ideal prompt to send to an AI model that would produce the most thorough, actionable competitive analysis. Include all the context, constraints, and formatting instructions that would maximize output quality."</p>
+
+      <p>Meta-prompting leverages the model's understanding of what makes prompts effective to generate prompts better than most humans would write intuitively. It's especially useful for complex tasks where you're not sure what information to include.</p>
+
+      <h3>3. Self-Consistency Checking</h3>
+
+      <p>Ask the same question multiple ways and check if the answers are consistent.</p>
+
+      <p><strong>Example:</strong> "Answer this question three times, approaching it from a different angle each time. After all three answers, evaluate whether they're consistent with each other. If there are contradictions, explain why and indicate which answer you have the most confidence in."</p>
+
+      <p>On <a href="/features">ArkitekAI</a>, you get self-consistency checking automatically — by comparing answers from different models, contradictions become visible without any special prompting technique.</p>
+
+      <h3>4. Constitutional Prompting</h3>
+
+      <p>Set principles that govern the response, then ask the question.</p>
+
+      <p><strong>Example:</strong> "Principles: (1) Prioritize accuracy over completeness — it's better to say 'I'm not sure' than to speculate. (2) Cite specific evidence for every claim. (3) Distinguish clearly between established facts and your interpretation. (4) If multiple expert opinions exist, present all of them rather than choosing one. Now, with these principles in mind: What is the current scientific consensus on the health effects of intermittent fasting?"</p>
+
+      <p>Constitutional prompting is powerful for research and analysis tasks where you want to control not just what the AI says, but how it reasons about the topic.</p>
+
+      <h3>5. Multi-Model Comparison as Prompt Testing</h3>
+
+      <p>This technique is unique to platforms like ArkitekAI: send the same prompt to multiple models simultaneously to see which model interprets it best. If all models produce similar, high-quality output, your prompt is clear and effective. If outputs diverge significantly, your prompt has ambiguity that different models resolve differently — revealing areas to make your prompt more precise.</p>
+
+      <p>This is the fastest way to iterate on prompt quality. Instead of revising a prompt multiple times with a single model, you see the effect of prompt ambiguity instantly by observing how multiple models interpret it differently.</p>
+
+      <h2>Model-Specific Prompting Tips</h2>
+
+      <p>While good prompts work across all models, each model responds best to slightly different approaches.</p>
+
+      <h3>ChatGPT (GPT-4o)</h3>
+      <ul>
+        <li>Responds well to system messages and explicit structure</li>
+        <li>Follows formatting instructions more reliably than most models</li>
+        <li>Benefits from numbered step-by-step instructions for complex tasks</li>
+        <li>Tends to be verbose — explicitly request concision when needed ("respond in under 200 words")</li>
+        <li>Strong at maintaining structured output formats (JSON, tables, specific templates)</li>
+      </ul>
+
+      <h3>Claude (Claude 4 Sonnet)</h3>
+      <ul>
+        <li>Responds well to conversational context and nuanced instructions</li>
+        <li>Excels when given examples of desired tone and style</li>
+        <li>Better at understanding implicit intent — doesn't require as much explicit instruction</li>
+        <li>Responds particularly well to "think about this carefully" and similar reflection prompts</li>
+        <li>Handles long, complex prompts with multiple constraints better than most models</li>
+      </ul>
+
+      <h3>Gemini (2.5 Pro)</h3>
+      <ul>
+        <li>Responds well to clear constraints and specific format requests</li>
+        <li>Strongest when you leverage its search and multimodal capabilities explicitly</li>
+        <li>Benefits from concise, direct prompts — less elaborate than what works for Claude</li>
+        <li>Good at following strict output schemas when instructed clearly</li>
+        <li>Effective with data analysis prompts that reference specific numbers or datasets</li>
+      </ul>
+
+      <h2>Prompt Templates for Common Tasks</h2>
+
+      <h3>Research Question Template</h3>
+      <p>"You are a research analyst. I'm investigating [topic]. My specific research question is: [question]. Please provide: (1) A summary of the current consensus on this topic, (2) The 3-5 most significant studies or findings, with specific details (authors, year, key findings), (3) Areas of active debate or disagreement, (4) Gaps in current knowledge, (5) Suggested further reading. Important: If you're uncertain about a specific citation, say so rather than fabricating one."</p>
+
+      <h3>Code Generation Template</h3>
+      <p>"You are a senior [language] developer. Write a [function/class/module] that [specific behavior]. Requirements: [list requirements]. Constraints: [language version, dependencies, performance]. Include: error handling for [specific cases], type hints/annotations, and a brief docstring. Do not include: comments explaining obvious code, or example usage unless requested."</p>
+
+      <h3>Writing Assistance Template</h3>
+      <p>"Write a [content type] about [topic] for [target audience]. Tone: [specific tone description]. Length: [word count]. Key points to cover: [list]. Do NOT: [things to avoid]. Format: [headings, bullets, etc.]. Reference style: [examples of similar content they should emulate]."</p>
+
+      <h3>Data Analysis Template</h3>
+      <p>"Analyze the following data: [paste data or describe]. I want to understand: [specific questions]. Present findings as: [format]. Include: statistical significance where relevant, caveats about data limitations, and actionable recommendations. Distinguish between correlation and causation."</p>
+
+      <h3>Brainstorming Template</h3>
+      <p>"Generate [number] ideas for [objective]. Context: [background on the project/problem]. Constraints: [budget, timeline, audience]. For each idea, provide: a one-line summary, a 2-3 sentence description, and an estimated difficulty rating (easy/medium/hard). Prioritize creativity and diversity of approaches over safe, obvious suggestions."</p>
+
+      <h3>Summarization Template</h3>
+      <p>"Summarize the following [document type] in [word count] words. Preserve: key findings, data points, and direct quotes that are important. Omit: background context the reader already knows, generic statements, and filler. Structure: [bullet points / paragraphs / executive summary format]. Target audience: [who will read this summary]."</p>
+
+      <h3>Translation Template</h3>
+      <p>"Translate the following from [source language] to [target language]. Maintain the original tone and register (formal/informal/technical). For idioms or cultural references that don't translate directly, provide: the closest natural equivalent in the target language, and a brief note explaining the adaptation. Do not translate proper nouns or brand names."</p>
+
+      <h3>Decision Analysis Template</h3>
+      <p>"I'm deciding between [option A] and [option B]. Context: [your situation]. My priorities are: [ranked list]. For each option, analyze: (1) alignment with my priorities, (2) short-term impact (next 6 months), (3) long-term implications (2-3 years), (4) risks and mitigation strategies, (5) what would need to be true for this option to be the right choice. Conclude with a clear recommendation and the key factors that drive it."</p>
+
+      <h2>Common Mistakes and How to Avoid Them</h2>
+
+      <ul>
+        <li><strong>Being too vague.</strong> "Help me with my presentation" tells the AI nothing about the topic, audience, or format. Always specify what, who, and how.</li>
+        <li><strong>Not providing context.</strong> AI doesn't know your industry, team size, budget, or constraints unless you state them. The 30 seconds spent adding context saves minutes of irrelevant output.</li>
+        <li><strong>Accepting the first output.</strong> Treat AI output as a first draft. Iterate: "Make it more concise," "Add more specific examples," "Change the tone to be less formal."</li>
+        <li><strong>Using the same prompt for every model.</strong> While good prompts are transferable, model-specific adjustments (more structure for ChatGPT, more context for Claude, more constraints for Gemini) improve results.</li>
+        <li><strong>Prompt overload.</strong> Putting too many instructions in a single prompt can confuse the model. If your prompt exceeds 500 words, consider breaking it into a multi-turn conversation.</li>
+        <li><strong>Ignoring output format.</strong> If you don't specify format, you get whatever the model defaults to. Always state whether you want bullet points, paragraphs, tables, JSON, or another format.</li>
+        <li><strong>Not using examples.</strong> For complex or unusual output formats, one example is worth a hundred words of description.</li>
+        <li><strong>Forgetting the audience.</strong> "Explain quantum computing" produces very different output depending on whether the audience is PhD physicists or sixth graders. Always specify.</li>
+      </ul>
+
+      <div class="link-grid">
+        <a href="/blog/how-to-write-better-ai-prompts" class="link-card">
+          <span class="link-icon">&#128221;</span>
+          <div>
+            <div class="link-label">Better AI Prompts (Blog)</div>
+            <div class="link-desc">Quick tips for everyday prompting</div>
+          </div>
+          <span class="link-arrow">&#8594;</span>
+        </a>
+        <a href="/compare/chatgpt-vs-claude" class="link-card">
+          <span class="link-icon">&#128064;</span>
+          <div>
+            <div class="link-label">ChatGPT vs Claude</div>
+            <div class="link-desc">See how prompts produce different outputs</div>
+          </div>
+          <span class="link-arrow">&#8594;</span>
+        </a>
+        <a href="/use-cases/coding" class="link-card">
+          <span class="link-icon">&#128187;</span>
+          <div>
+            <div class="link-label">AI for Coding</div>
+            <div class="link-desc">Coding-specific prompt strategies</div>
+          </div>
+          <span class="link-arrow">&#8594;</span>
+        </a>
+        <a href="/use-cases/writing" class="link-card">
+          <span class="link-icon">&#9997;</span>
+          <div>
+            <div class="link-label">AI for Writing</div>
+            <div class="link-desc">Writing-specific prompt strategies</div>
+          </div>
+          <span class="link-arrow">&#8594;</span>
+        </a>
+        <a href="/use-cases/research" class="link-card">
+          <span class="link-icon">&#128270;</span>
+          <div>
+            <div class="link-label">AI for Research</div>
+            <div class="link-desc">Research-specific prompt strategies</div>
+          </div>
+          <span class="link-arrow">&#8594;</span>
+        </a>
+        <a href="/guides/choosing-the-right-ai-model" class="link-card">
+          <span class="link-icon">&#129302;</span>
+          <div>
+            <div class="link-label">Choosing an AI Model</div>
+            <div class="link-desc">Match your task to the right model</div>
+          </div>
+          <span class="link-arrow">&#8594;</span>
+        </a>
+      </div>
+
+      <div class="article-cta">
+        <h3>Test Your Prompts Across Multiple Models</h3>
+        <p>The fastest way to improve your prompts is to see how different models interpret them. ArkitekAI lets you send one prompt to ChatGPT, Claude, Gemini, and more — instantly revealing which models understand your intent best.</p>
+        <a href="/signup" class="btn btn-primary">Start Prompting Free</a>
+      </div>
+
+    </article>
+
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="/" class="nav-logo">ArkitekAI</a>
+        <p>Compare responses from the world's leading AI models side by side. Get AI-powered consensus summaries and make smarter decisions.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <a href="/features">Features</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/how-it-works">How It Works</a>
+        <a href="/use-cases">Use Cases</a>
+      </div>
+      <div class="footer-col">
+        <h4>Compare</h4>
+        <a href="/compare">All Models</a>
+        <a href="/compare/chatgpt-vs-claude">ChatGPT vs Claude</a>
+        <a href="/compare/claude-vs-gemini">Claude vs Gemini</a>
+        <a href="/compare/grok-vs-chatgpt">Grok vs ChatGPT</a>
+        <a href="/compare/best-ai-for-coding">Best AI for Coding</a>
+        <a href="/compare/best-ai-for-writing">Best AI for Writing</a>
+      </div>
+      <div class="footer-col">
+        <h4>Resources</h4>
+        <a href="/blog">Blog</a>
+        <a href="/guides/prompt-engineering">Prompt Engineering Guide</a>
+        <a href="/guides/choosing-the-right-ai-model">Choosing an AI Model</a>
+        <a href="/use-cases/research">AI for Research</a>
+        <a href="/use-cases/coding">AI for Coding</a>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <a href="/about">About</a>
+        <a href="/contact">Contact</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>&copy; 2026 ArkitekAI. All rights reserved.</span>
+      <span><a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a></span>
+    </div>
+  </footer>
+
+</body>
+</html>

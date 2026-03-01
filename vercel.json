@@ -21,7 +21,7 @@
   ],
   "headers": [
     {
-      "source": "/(features|pricing|about|how-it-works|use-cases|contact|compare|blog)(.*)",
+      "source": "/(features|pricing|about|how-it-works|use-cases|contact|compare|blog|guides)(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=3600, s-maxage=86400" }
       ]
