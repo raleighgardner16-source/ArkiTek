@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Eye, HelpCircle, ChevronDown, ChevronUp, Info, Zap, Send, Globe, Settings, Brain, Gavel, Workflow } from 'lucide-react'
-import { spacing, fontSize, fontWeight, radius, zIndex, layout, sx } from '../utils/styles'
+import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx } from '../utils/styles'
 
 // Friendly provider name mapping
 const providerDisplayName = (provider: string): string => {

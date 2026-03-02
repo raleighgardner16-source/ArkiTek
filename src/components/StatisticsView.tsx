@@ -753,7 +753,7 @@ const StatisticsView = () => {
             }}
           >
             <Award size={20} />
-            Badges
+            Badges/Rewards
           </button>
           <button
             onClick={() => handleTabChange('ratings')}

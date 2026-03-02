@@ -575,20 +575,10 @@ const SavedConversationsView = () => {
           </div>
           {/* Title / prompt - click to expand full text */}
           <p
-            onClick={(e) => {
-              e.stopPropagation()
-              setExpandedTitles(prev => ({ ...prev, [convo.id]: !prev[convo.id] }))
-            }}
-            title={expandedTitles[convo.id] ? 'Click to collapse' : 'Click to see full prompt'}
             style={{
               color: currentTheme.text, fontSize: '0.88rem', fontWeight: fontWeight.medium,
               margin: `0 0 ${spacing.xs} 0`, lineHeight: '1.3',
-              cursor: 'pointer',
-              ...(expandedTitles[convo.id]
-                ? { whiteSpace: 'pre-wrap', wordBreak: 'break-word' }
-                : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
-              ),
-              transition: transition.normal,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}
           >
             {convo.title}
