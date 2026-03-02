@@ -1478,7 +1478,7 @@ const SavedConversationsView = () => {
         padding: spacing['5xl'],
       })}
     >
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ width: '100%', maxWidth: '1200px', margin: '0 auto' }}>
         {/* Header */}
         <h1
           key={`title-${theme}`}

@@ -126,6 +126,12 @@ export function usePromptSubmission() {
         ? { ...useStore.getState().modelRoles }
         : {}
 
+      // Debate mode always needs web sources so every model has current data
+      if (isDebateMode && !needsSearch) {
+        needsSearch = true
+        console.log('[handlePromptSubmit] Debate mode active — forcing web search for current sources')
+      }
+
       // ── 2. Execute models (RAG or Direct) ───────────────────────
       if (needsSearch) {
         const ragResult = await executeRAGPipeline({
