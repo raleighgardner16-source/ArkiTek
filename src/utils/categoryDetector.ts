@@ -85,6 +85,56 @@ const shouldForceSearchForTimeSensitivePrompt = (prompt: string): boolean => {
   return false
 }
 
+// Debate mode guardrail — much more aggressive than the general one.
+// Debates about real-world topics almost always benefit from current facts.
+// Only returns false for purely hypothetical/creative/philosophical prompts.
+const shouldForceSearchForDebatePrompt = (prompt: string): boolean => {
+  if (shouldForceSearchForTimeSensitivePrompt(prompt)) return true
+
+  const lower = (prompt || '').toLowerCase()
+  if (!lower.trim()) return false
+
+  // Use word-boundary regex to avoid substring false positives (e.g. "pineapple" matching "apple")
+  const realWorldTerms = [
+    'president', 'congress', 'senate', 'election', 'vote', 'voter',
+    'policy', 'government', 'governor', 'mayor', 'legislation',
+    'law', 'court', 'supreme court', 'constitution', 'amendment',
+    'democrat', 'republican', 'liberal', 'conservative',
+    'economy', 'inflation', 'recession', 'gdp', 'tax', 'tariff', 'trade war',
+    'stock market', 'wall street', 'federal reserve', 'interest rate',
+    'company', 'corporation', 'ceo', 'industry', 'startup',
+    'war', 'military', 'nato', 'nuclear', 'sanctions', 'diplomacy',
+    'climate', 'climate change', 'global warming', 'emissions', 'renewable', 'fossil fuel',
+    'artificial intelligence', 'machine learning', 'automation',
+    'crypto', 'bitcoin', 'blockchain',
+    'healthcare', 'vaccine', 'pandemic', 'fda',
+    'immigration', 'border', 'refugee', 'asylum',
+    'university', 'student loan', 'tuition',
+    'china', 'russia', 'ukraine', 'israel', 'iran', 'north korea',
+    'america', 'united states', 'europe', 'middle east', 'africa',
+    'mexico', 'canada', 'india', 'brazil', 'japan', 'taiwan',
+    'nasa', 'spacex', 'tesla', 'apple', 'google', 'microsoft', 'amazon',
+    'meta', 'openai', 'tiktok', 'facebook', 'twitter',
+    'nfl', 'nba', 'mlb', 'fifa', 'olympics',
+  ]
+
+  if (realWorldTerms.some(term => new RegExp(`\\b${term}\\b`).test(lower))) return true
+
+  // Proper noun heuristic: capitalized words suggest named entities (people, orgs, places)
+  const words = prompt.trim().split(/\s+/)
+  const commonCapitalized = new Set(['i', 'a', 'the', 'is', 'are', 'was', 'were', 'it', 'my', 'we', 'he', 'she', 'they', 'this', 'that', 'but', 'and', 'or', 'if', 'so', 'do', 'can', 'will', 'should', 'would', 'could', 'may', 'not', 'no', 'yes', 'all', 'some', 'any', 'every', 'most', 'more', 'than', 'just', 'only', 'also', 'very', 'too', 'much', 'many', 'few', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'from', 'by', 'about', 'into', 'over', 'after', 'before', 'between', 'under', 'been', 'being', 'have', 'has', 'had', 'having', 'get', 'got', 'never', 'ever', 'always', 'better', 'best', 'worst', 'greatest', 'biggest', 'how', 'what', 'when', 'where', 'why', 'who', 'which'])
+  let properNounCount = 0
+  for (const word of words) {
+    const clean = word.replace(/[^a-zA-Z]/g, '')
+    if (clean.length > 1 && clean[0] === clean[0].toUpperCase() && clean[0] !== clean[0].toLowerCase() && !commonCapitalized.has(clean.toLowerCase())) {
+      properNounCount++
+    }
+  }
+  if (properNounCount >= 1) return true
+
+  return false
+}
+
 // Detect category, determine if web search is needed, and recommend model types using Gemini 2.5 Flash Lite
 // selectedProviders: Array of { providerKey, providerName, models: [{ id, model, type, label }] }
 export const detectCategory = async (prompt: string, selectedProviders: SelectedProvider[] = [], isDebateMode: boolean = false): Promise<CategoryResult> => {
@@ -215,7 +265,9 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
 
     if (!response.ok) {
       console.error('[Category Detection] Error from API:', response.statusText)
-      const forcedSearch = shouldForceSearchForTimeSensitivePrompt(prompt)
+      const forcedSearch = isDebateMode
+        ? shouldForceSearchForDebatePrompt(prompt)
+        : shouldForceSearchForTimeSensitivePrompt(prompt)
       return { 
         category: 'General Knowledge/Other', 
         needsSearch: forcedSearch,
@@ -250,7 +302,9 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
         const category: string = parsed.category || parsed.Category || ''
         const needsSearch: boolean = parsed.needsSearch !== undefined ? parsed.needsSearch : false
         const needsContext: boolean = parsed.needsContext !== undefined ? parsed.needsContext : false
-        const forcedSearch = shouldForceSearchForTimeSensitivePrompt(prompt)
+        const forcedSearch = isDebateMode
+          ? shouldForceSearchForDebatePrompt(prompt)
+          : shouldForceSearchForTimeSensitivePrompt(prompt)
         const recommendedModelType: string = parsed.recommendedModelType || 'versatile'
         const recommendedModels: Record<string, string> = parsed.recommendedModels || {}
 
@@ -327,7 +381,9 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
                        lowerResponse.includes('needsSearch: true') ||
                        lowerResponse.includes('needs search: true') ||
                        lowerResponse.includes('yes') && (lowerResponse.includes('search') || lowerResponse.includes('web') || lowerResponse.includes('internet'))
-    const forcedSearch = shouldForceSearchForTimeSensitivePrompt(prompt)
+    const forcedSearch = isDebateMode
+      ? shouldForceSearchForDebatePrompt(prompt)
+      : shouldForceSearchForTimeSensitivePrompt(prompt)
     const needsContext = lowerResponse.includes('"needsContext":true') || 
                         lowerResponse.includes('needsContext: true')
 
@@ -343,7 +399,9 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
     }
   } catch (error: any) {
     console.error('[Category Detection] Error:', error)
-    const forcedSearch = shouldForceSearchForTimeSensitivePrompt(prompt)
+    const forcedSearch = isDebateMode
+      ? shouldForceSearchForDebatePrompt(prompt)
+      : shouldForceSearchForTimeSensitivePrompt(prompt)
     return { 
       category: 'General Knowledge/Other', 
       needsSearch: forcedSearch,
