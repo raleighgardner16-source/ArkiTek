@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronDown, ChevronUp, Search, Globe, Send, Maximize2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Search, Globe, Send, Maximize2, X, Trophy } from 'lucide-react'
 import MarkdownRenderer from './MarkdownRenderer'
 import { spacing, fontSize, fontWeight, radius, transition, layout, sx, createStyles } from '../utils/styles'
 
@@ -8,6 +8,7 @@ interface Props {
   showCouncilColumns: boolean
   isLoading: boolean
   isGeneratingSummary: boolean
+  isSearchingWeb?: boolean
   onCancelPrompt?: (() => void) | null
   theme: string
   currentTheme: any
@@ -40,12 +41,15 @@ interface Props {
   handleSendCouncilFollowUp: () => void
   responses: any[]
   setIsCouncilColumnInputFocused: (v: boolean) => void
+  currentPromptFavorite: string | null
+  onPickFavorite: (responseId: string) => void
 }
 
 const CouncilColumnsView = ({
   showCouncilColumns,
   isLoading,
   isGeneratingSummary,
+  isSearchingWeb = false,
   onCancelPrompt,
   theme,
   currentTheme,
@@ -78,6 +82,8 @@ const CouncilColumnsView = ({
   handleSendCouncilFollowUp,
   responses,
   setIsCouncilColumnInputFocused,
+  currentPromptFavorite,
+  onPickFavorite,
 }: Props) => {
   const s = createStyles(currentTheme)
   const [maximizedCouncilResponseId, setMaximizedCouncilResponseId] = useState<string | null>(null)
@@ -171,6 +177,36 @@ const CouncilColumnsView = ({
                 </span>
               </motion.div>
             </div>
+          )}
+
+          {/* Real-time web search indicator when a search query is used for the prompt */}
+          {isSearchingWeb && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              style={sx(layout.flexRow, {
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: spacing.sm,
+                marginBottom: spacing.lg,
+                padding: `${spacing.sm} ${spacing.lg}`,
+                background: `${currentTheme.accent}12`,
+                border: `1px solid ${currentTheme.accent}30`,
+                borderRadius: radius.lg,
+                alignSelf: 'center',
+              })}
+            >
+              <Search size={16} color={currentTheme.accent} />
+              <span style={{ color: currentTheme.accent, fontSize: fontSize.sm, fontWeight: fontWeight.medium }}>Searching the web</span>
+              <motion.span
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                style={{ color: currentTheme.accent, fontSize: fontSize.sm }}
+              >
+                ...
+              </motion.span>
+            </motion.div>
           )}
 
           {/* Council Response Columns with scroll gutters */}
@@ -369,6 +405,30 @@ const CouncilColumnsView = ({
                         </motion.div>
                       )}
                     </div>
+                    {!response.isStreaming && response.text && responses.length > 1 && (
+                      <div style={{ marginTop: spacing.lg, display: 'flex' }}>
+                        <button
+                          onClick={() => onPickFavorite(response.id)}
+                          style={{
+                            background: currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
+                            border: `1px solid ${currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
+                            borderRadius: radius.md,
+                            padding: `${spacing.xs} ${spacing.lg}`,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: spacing.xs,
+                            color: currentPromptFavorite === response.id ? '#fff' : currentTheme.textSecondary,
+                            fontSize: fontSize.sm,
+                            fontWeight: currentPromptFavorite === response.id ? fontWeight.semibold : fontWeight.normal,
+                            transition: transition.normal,
+                          }}
+                        >
+                          <Trophy size={14} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
+                          {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
+                        </button>
+                      </div>
+                    )}
                     {(showCouncilReviewPhase || (canToggleResultViews && resultViewMode === 'council') || (!response.isStreaming && response.text)) && (
                       <div style={{ marginTop: '14px', borderTop: `1px solid ${currentTheme.borderLight}`, paddingTop: spacing.lg }}>
                         {/* Initial prompt sources */}
@@ -836,53 +896,97 @@ const CouncilColumnsView = ({
                 lineHeight="1.8"
               />
 
-              {Array.isArray(maximizedCouncilResponse.sources) && maximizedCouncilResponse.sources.length > 0 && (
-                <div style={{ marginTop: '14px', borderTop: `1px solid ${currentTheme.borderLight}`, paddingTop: spacing.lg }}>
-                  <div style={sx(layout.flexRow, {
-                    gap: spacing.sm,
-                    marginBottom: spacing.md,
-                    color: currentTheme.accent,
-                    fontSize: fontSize.base,
-                    fontWeight: fontWeight.semibold,
-                  })}>
-                    <Globe size={14} />
-                    Sources ({maximizedCouncilResponse.sources.length})
-                  </div>
-                  <div style={sx(layout.flexCol, { gap: spacing.sm, maxHeight: '220px', overflowY: 'auto' })}>
-                    {maximizedCouncilResponse.sources.map((source: any, sIdx: number) => (
-                      <a
-                        key={sIdx}
-                        href={source.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          display: 'block',
-                          padding: `${spacing.md} ${spacing.lg}`,
-                          background: currentTheme.buttonBackground,
-                          border: `1px solid ${currentTheme.borderLight}`,
-                          borderRadius: radius.md,
-                          textDecoration: 'none',
-                          transition: 'border-color 0.2s',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
-                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
-                      >
-                        <div style={{ fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: currentTheme.accent, marginBottom: spacing['2xs'], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {source.title}
-                        </div>
-                        <div style={{ fontSize: fontSize.xs, color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {source.link}
-                        </div>
-                        {source.snippet && (
-                          <div style={{ fontSize: '0.75rem', color: currentTheme.textSecondary, marginTop: spacing.xs, lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                            {source.snippet}
-                          </div>
-                        )}
-                      </a>
-                    ))}
-                  </div>
+              {!maximizedCouncilResponse.isStreaming && maximizedCouncilResponse.text && responses.length > 1 && (
+                <div style={{ marginTop: spacing.xl, display: 'flex' }}>
+                  <button
+                    onClick={() => onPickFavorite(maximizedCouncilResponse.id)}
+                    style={{
+                      background: currentPromptFavorite === maximizedCouncilResponse.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
+                      border: `1px solid ${currentPromptFavorite === maximizedCouncilResponse.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
+                      borderRadius: radius.lg,
+                      padding: `${spacing.sm} ${spacing.xl}`,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: spacing.sm,
+                      color: currentPromptFavorite === maximizedCouncilResponse.id ? '#fff' : currentTheme.textSecondary,
+                      fontSize: fontSize.lg,
+                      fontWeight: currentPromptFavorite === maximizedCouncilResponse.id ? fontWeight.semibold : fontWeight.normal,
+                      transition: transition.normal,
+                    }}
+                  >
+                    <Trophy size={18} fill={currentPromptFavorite === maximizedCouncilResponse.id ? '#fff' : 'transparent'} />
+                    {currentPromptFavorite === maximizedCouncilResponse.id ? 'Favorite' : 'Pick as Favorite'}
+                  </button>
                 </div>
               )}
+
+              {Array.isArray(maximizedCouncilResponse.sources) && maximizedCouncilResponse.sources.length > 0 && (() => {
+                const initialSourceKey = `${maximizedCouncilResponse.id}_initial`
+                return (
+                  <div style={{ marginTop: '14px', borderTop: `1px solid ${currentTheme.borderLight}`, paddingTop: spacing.lg }}>
+                    <button
+                      onClick={() => setShowCouncilColumnConvoSources(prev => ({ ...prev, [initialSourceKey]: !prev[initialSourceKey] }))}
+                      style={sx(layout.flexRow, {
+                        gap: spacing.sm,
+                        padding: '5px 10px',
+                        background: showCouncilColumnConvoSources[initialSourceKey] ? `${currentTheme.accent}15` : currentTheme.buttonBackground,
+                        border: `1px solid ${showCouncilColumnConvoSources[initialSourceKey] ? currentTheme.accent : currentTheme.borderLight}`,
+                        borderRadius: radius.md,
+                        color: currentTheme.accent,
+                        fontSize: '0.75rem',
+                        fontWeight: fontWeight.medium,
+                        cursor: 'pointer',
+                        transition: transition.normal,
+                      })}
+                    >
+                      <Globe size={12} />
+                      Sources ({maximizedCouncilResponse.sources.length})
+                      <ChevronDown size={12} style={{ transform: showCouncilColumnConvoSources[initialSourceKey] ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                    </button>
+                    {showCouncilColumnConvoSources[initialSourceKey] && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        style={sx(layout.flexCol, { marginTop: spacing.sm, gap: spacing.sm, maxHeight: '220px', overflowY: 'auto' })}
+                      >
+                        {maximizedCouncilResponse.sources.map((source: any, sIdx: number) => (
+                          <a
+                            key={sIdx}
+                            href={source.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: 'block',
+                              padding: `${spacing.md} ${spacing.lg}`,
+                              background: currentTheme.buttonBackground,
+                              border: `1px solid ${currentTheme.borderLight}`,
+                              borderRadius: radius.md,
+                              textDecoration: 'none',
+                              transition: 'border-color 0.2s',
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = currentTheme.accent }}
+                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                          >
+                            <div style={{ fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: currentTheme.accent, marginBottom: spacing['2xs'], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {source.title}
+                            </div>
+                            <div style={{ fontSize: fontSize.xs, color: currentTheme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {source.link}
+                            </div>
+                            {source.snippet && (
+                              <div style={{ fontSize: '0.75rem', color: currentTheme.textSecondary, marginTop: spacing.xs, lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                {source.snippet}
+                              </div>
+                            )}
+                          </a>
+                        ))}
+                      </motion.div>
+                    )}
+                  </div>
+                )
+              })()}
 
               <div style={{ marginTop: spacing.xl, borderTop: `1px solid ${currentTheme.borderLight}`, paddingTop: spacing.lg }}>
                 {(councilColumnConvoHistory[maximizedCouncilResponse.id] || []).map((turn, turnIdx) => {

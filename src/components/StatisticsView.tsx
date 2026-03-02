@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { Database, Star, Award } from 'lucide-react'
+import { Database, Trophy, Award } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import { spacing, fontSize, fontWeight, transition, sx, createStyles } from '../utils/styles'
@@ -505,9 +505,9 @@ const StatisticsView = () => {
   const fetchRatings = async () => {
     try {
       const response = await api.get(`/stats/${currentUser.id}/ratings`)
-      setRatingsData(response.data.ratings || {})
+      setRatingsData(response.data.modelWins || {})
     } catch (error: any) {
-      console.error('Error fetching ratings:', error)
+      console.error('Error fetching model wins:', error)
       setRatingsData({})
     }
   }
@@ -568,101 +568,42 @@ const StatisticsView = () => {
   }
 
   const ratingsStats = ratingsData ? (() => {
-    const ratingValues = Object.values(ratingsData)
-    const totalRatings = ratingValues.length
-    const averageRating = totalRatings > 0 
-      ? ratingValues.reduce((sum: number, r: any) => sum + (typeof r === 'number' ? r : 0), 0) / totalRatings 
-      : 0
-    const ratingDistribution: Record<string, any> = {}
-    ratingValues.forEach(r => {
-      const rating = typeof r === 'number' ? r : 0
-      ratingDistribution[rating] = (ratingDistribution[rating] || 0) + 1
+    const wins = Object.values(ratingsData) as Array<{ provider: string; model: string; responseId: string }>
+    const totalWins = wins.length
+
+    const providerWins: Record<string, number> = {}
+    const modelWins: Record<string, number> = {}
+
+    wins.forEach((win) => {
+      if (!win || !win.provider) return
+      providerWins[win.provider] = (providerWins[win.provider] || 0) + 1
+      const modelKey = `${win.provider}-${win.model}`
+      modelWins[modelKey] = (modelWins[modelKey] || 0) + 1
     })
 
-    const providerRatings: Record<string, any[]> = {}
-    const modelRatings: Record<string, any[]> = {}
-    
-    Object.entries(ratingsData).forEach(([key, rating]) => {
-      if (typeof rating !== 'number') return
-      const parts = key.split('-')
-      if (parts.length >= 2) {
-        let timestampIndex = -1
-        for (let i = 0; i < parts.length; i++) {
-          if (/^\d{10,}$/.test(parts[i])) {
-            timestampIndex = i
-            break
-          }
-        }
-        
-        if (timestampIndex > 0) {
-          const modelId = parts.slice(0, timestampIndex).join('-')
-          const firstDashIndex = modelId.indexOf('-')
-          if (firstDashIndex > 0) {
-            const provider = modelId.substring(0, firstDashIndex)
-            const modelName = modelId.substring(firstDashIndex + 1)
-            const modelKey = `${provider}-${modelName}`
-            if (!providerRatings[provider]) providerRatings[provider] = []
-            providerRatings[provider].push(rating)
-            if (!modelRatings[modelKey]) modelRatings[modelKey] = []
-            modelRatings[modelKey].push(rating)
-          }
-        } else if (parts.length >= 2) {
-          const provider = parts[0]
-          const modelName = parts[1]
-          const modelKey = `${provider}-${modelName}`
-          if (!providerRatings[provider]) providerRatings[provider] = []
-          providerRatings[provider].push(rating)
-          if (!modelRatings[modelKey]) modelRatings[modelKey] = []
-          modelRatings[modelKey].push(rating)
-        }
-      }
-    })
-    
-    const providerAverages: Record<string, number> = {}
-    Object.entries(providerRatings).forEach(([provider, ratings]) => {
-      providerAverages[provider] = ratings.reduce((sum, r) => sum + r, 0) / ratings.length
-    })
-    
-    const modelAverages: Record<string, number> = {}
-    Object.entries(modelRatings).forEach(([modelKey, ratings]) => {
-      modelAverages[modelKey] = ratings.reduce((sum, r) => sum + r, 0) / ratings.length
-    })
-    
-    let favoriteProvider = null
-    let favoriteProviderAvg = 0
-    Object.entries(providerAverages).forEach(([provider, avg]) => {
-      if (avg > favoriteProviderAvg) {
-        favoriteProviderAvg = avg
-        favoriteProvider = provider
-      }
-    })
-    
-    let favoriteModel = null
-    let favoriteModelAvg = 0
-    Object.entries(modelAverages).forEach(([modelKey, avg]) => {
-      if (avg > favoriteModelAvg) {
-        favoriteModelAvg = avg
-        favoriteModel = modelKey
-      }
-    })
-    
-    return { 
-      totalRatings, 
-      averageRating, 
-      distribution: ratingDistribution,
-      favoriteProvider,
-      favoriteProviderAvg,
-      favoriteModel,
-      favoriteModelAvg
+    const providerLeaderboard = Object.entries(providerWins)
+      .sort((a, b) => b[1] - a[1])
+    const modelLeaderboard = Object.entries(modelWins)
+      .sort((a, b) => b[1] - a[1])
+
+    const topProvider = providerLeaderboard[0] || null
+    const topModel = modelLeaderboard[0] || null
+
+    return {
+      totalRatings: totalWins,
+      totalWins,
+      providerLeaderboard,
+      modelLeaderboard,
+      topProvider,
+      topModel,
     }
-  })() : { 
-    totalRatings: 0, 
-    averageRating: 0, 
-    distribution: {},
-    favoriteProvider: null,
-    favoriteProviderAvg: 0,
-    favoriteModel: null,
-    favoriteModelAvg: 0
+  })() : {
+    totalRatings: 0,
+    totalWins: 0,
+    providerLeaderboard: [] as [string, number][],
+    modelLeaderboard: [] as [string, number][],
+    topProvider: null as [string, number] | null,
+    topModel: null as [string, number] | null,
   }
 
   const onEditProfile = () => {
@@ -774,8 +715,8 @@ const StatisticsView = () => {
               gap: spacing.md,
             }}
           >
-            <Star size={20} />
-            Ratings & Models
+            <Trophy size={20} />
+            Wins & Models
           </button>
           {/* DISABLED: Messages & Notifications tab temporarily removed (social media feature) */}
           {/* DISABLED: My Posts tab temporarily removed (social media feature) */}

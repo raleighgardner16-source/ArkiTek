@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Star, ChevronDown, ChevronUp, ChevronRight, Maximize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe, Coins, Bug, DollarSign } from 'lucide-react'
+import { Trophy, ChevronDown, ChevronUp, ChevronRight, Maximize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe, Coins, Bug, DollarSign } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx, createStyles } from '../utils/styles'
@@ -25,8 +25,9 @@ const ResponseComparison = () => {
     return 'Model'
   }
   const responses = useStore((state) => state.responses)
-  const ratings = useStore((state) => state.ratings)
-  const setRating = useStore((state) => state.setRating)
+  const currentPromptFavorite = useStore((state) => state.currentPromptFavorite)
+  const setCurrentPromptFavorite = useStore((state) => state.setCurrentPromptFavorite)
+  const currentPromptSessionId = useStore((state) => state.currentPromptSessionId)
   const removeResponse = useStore((state) => state.removeResponse)
   const clearResponses = useStore((state) => state.clearResponses)
   const clearLastSubmittedPrompt = useStore((state) => state.clearLastSubmittedPrompt)
@@ -162,33 +163,34 @@ const ResponseComparison = () => {
     }
   }, [draggedCard, dragOffset])
 
-  const handleRating = async (responseId: string, rating: number) => {
-    // Update local state immediately for responsive UI
-    setRating(responseId, rating)
-    
-    // Send rating to backend immediately
-    if (currentUser?.id) {
+  const handleFavorite = async (responseId: string) => {
+    const isAlreadyFavorite = currentPromptFavorite === responseId
+    const newFavorite = isAlreadyFavorite ? null : responseId
+    setCurrentPromptFavorite(newFavorite)
+
+    if (currentUser?.id && currentPromptSessionId) {
       try {
         const response = responses.find(r => r.id === responseId)
-        const modelName = response?.modelName || responseId.split('-').slice(0, 2).join('-')
-        
+        const modelId = response?.modelName || responseId.split('-').slice(0, 2).join('-')
+        const firstDash = modelId.indexOf('-')
+        const provider = firstDash > 0 ? modelId.substring(0, firstDash) : modelId
+        const model = firstDash > 0 ? modelId.substring(firstDash + 1) : modelId
+
         await api.post('/ratings', {
-          responseId,
-          rating,
-          modelName
+          promptSessionId: currentPromptSessionId,
+          responseId: newFavorite ? responseId : null,
+          provider: newFavorite ? provider : null,
+          model: newFavorite ? model : null,
         })
-        
+
         // Trigger stats refresh so the stats page updates
         const triggerStatsRefresh = useStore.getState().triggerStatsRefresh
         if (triggerStatsRefresh) {
           triggerStatsRefresh()
         }
       } catch (error: any) {
-        console.error('[Rating] Error saving rating:', error)
-        // Optionally show an error message to the user
+        console.error('[Favorite] Error saving model win:', error)
       }
-    } else {
-      console.warn('[Rating] No user ID available, rating not saved to backend')
     }
   }
 
@@ -687,7 +689,7 @@ const ResponseComparison = () => {
               )
             })()}
 
-            {/* Rating */}
+            {/* Favorite Button */}
             <div
               style={{
                 marginTop: spacing['3xl'],
@@ -698,25 +700,26 @@ const ResponseComparison = () => {
                 alignItems: 'center',
               }}
             >
-              <span style={{ fontSize: fontSize.lg, color: currentTheme.textSecondary }}>Rate:</span>
-              {[1, 2, 3, 4, 5].map((rating) => (
-                <button
-                  key={rating}
-                  onClick={() => handleRating(response.id, rating)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: spacing.xs,
-                  }}
-                >
-                  <Star
-                    size={24}
-                    fill={ratings[response.id] >= rating ? currentTheme.accentSecondary : 'transparent'}
-                    color={ratings[response.id] >= rating ? currentTheme.accentSecondary : currentTheme.textMuted}
-                  />
-                </button>
-              ))}
+              <button
+                onClick={() => handleFavorite(response.id)}
+                style={{
+                  background: currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
+                  border: `1px solid ${currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
+                  borderRadius: radius.lg,
+                  padding: `${spacing.sm} ${spacing.xl}`,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: spacing.sm,
+                  color: currentPromptFavorite === response.id ? '#fff' : currentTheme.textSecondary,
+                  fontSize: fontSize.lg,
+                  fontWeight: currentPromptFavorite === response.id ? fontWeight.semibold : fontWeight.normal,
+                  transition: transition.normal,
+                }}
+              >
+                <Trophy size={18} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
+                {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
+              </button>
             </div>
 
             {/* Conversation History */}
@@ -1116,7 +1119,7 @@ const ResponseComparison = () => {
           <MarkdownRenderer content={responseText} theme={currentTheme} fontSize="1rem" lineHeight="1.8" />
         </div>
 
-        {/* Rating */}
+        {/* Favorite Button */}
         <div
           style={{
             marginTop: spacing.xl,
@@ -1127,25 +1130,26 @@ const ResponseComparison = () => {
             alignItems: 'center',
           }}
         >
-          <span style={{ fontSize: fontSize.lg, color: currentTheme.textSecondary }}>Rate:</span>
-          {[1, 2, 3, 4, 5].map((rating) => (
-            <button
-              key={rating}
-              onClick={() => handleRating(response.id, rating)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: spacing.xs,
-              }}
-            >
-              <Star
-                size={24}
-                fill={ratings[response.id] >= rating ? currentTheme.accentSecondary : 'transparent'}
-                color={ratings[response.id] >= rating ? currentTheme.accentSecondary : currentTheme.textMuted}
-              />
-            </button>
-          ))}
+          <button
+            onClick={() => handleFavorite(response.id)}
+            style={{
+              background: currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
+              border: `1px solid ${currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
+              borderRadius: radius.lg,
+              padding: `${spacing.sm} ${spacing.xl}`,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: spacing.sm,
+              color: currentPromptFavorite === response.id ? '#fff' : currentTheme.textSecondary,
+              fontSize: fontSize.lg,
+              fontWeight: currentPromptFavorite === response.id ? fontWeight.semibold : fontWeight.normal,
+              transition: transition.normal,
+            }}
+          >
+            <Trophy size={18} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
+            {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
+          </button>
         </div>
       </motion.div>
     )
@@ -1316,25 +1320,26 @@ const ResponseComparison = () => {
               alignItems: 'center',
             }}
           >
-            <span style={{ fontSize: fontSize.lg, color: currentTheme.textSecondary }}>Rate:</span>
-            {[1, 2, 3, 4, 5].map((rating) => (
-              <button
-                key={rating}
-                onClick={() => handleRating(response.id, rating)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: spacing.xs,
-                }}
-              >
-                <Star
-                  size={24}
-                  fill={ratings[response.id] >= rating ? currentTheme.accentSecondary : 'transparent'}
-                  color={ratings[response.id] >= rating ? currentTheme.accentSecondary : currentTheme.textMuted}
-                />
-              </button>
-            ))}
+            <button
+              onClick={() => handleFavorite(response.id)}
+              style={{
+                background: currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
+                border: `1px solid ${currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
+                borderRadius: radius.lg,
+                padding: `${spacing.sm} ${spacing.xl}`,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: spacing.sm,
+                color: currentPromptFavorite === response.id ? '#fff' : currentTheme.textSecondary,
+                fontSize: fontSize.lg,
+                fontWeight: currentPromptFavorite === response.id ? fontWeight.semibold : fontWeight.normal,
+                transition: transition.normal,
+              }}
+            >
+              <Trophy size={18} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
+              {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
+            </button>
           </div>
 
           {/* Conversation History */}
@@ -2251,23 +2256,8 @@ const ResponseComparison = () => {
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: spacing.md, alignItems: 'center' }}>
-                  {ratings[response.id] && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: spacing['2xs'],
-                        alignItems: 'center',
-                      }}
-                    >
-                      {[...Array(5)].map((_, i) => (
-                        <Star
-                          key={i}
-                          size={12}
-                          fill={i < ratings[response.id] ? currentTheme.accentSecondary : 'transparent'}
-                          color={i < ratings[response.id] ? currentTheme.accentSecondary : currentTheme.textMuted}
-                        />
-                      ))}
-                    </div>
+                  {currentPromptFavorite === response.id && (
+                    <Trophy size={14} color={currentTheme.accentSecondary} fill={currentTheme.accentSecondary} />
                   )}
                   <button
                     onClick={(e) => {
@@ -2368,28 +2358,29 @@ const ResponseComparison = () => {
                   flexWrap: 'wrap',
                 }}
               >
-                <span style={{ fontSize: fontSize.sm, color: currentTheme.textSecondary }}>Rate:</span>
-                {[1, 2, 3, 4, 5].map((rating) => (
-                  <button
-                    key={rating}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleRating(response.id, rating)
-                    }}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: spacing['2xs'],
-                    }}
-                  >
-                    <Star
-                      size={16}
-                      fill={ratings[response.id] >= rating ? currentTheme.accentSecondary : 'transparent'}
-                      color={ratings[response.id] >= rating ? currentTheme.accentSecondary : currentTheme.textMuted}
-                    />
-                  </button>
-                ))}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleFavorite(response.id)
+                  }}
+                  style={{
+                    background: currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
+                    border: `1px solid ${currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
+                    borderRadius: radius.md,
+                    padding: `${spacing['2xs']} ${spacing.lg}`,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: spacing.xs,
+                    color: currentPromptFavorite === response.id ? '#fff' : currentTheme.textSecondary,
+                    fontSize: fontSize.sm,
+                    fontWeight: currentPromptFavorite === response.id ? fontWeight.semibold : fontWeight.normal,
+                    transition: transition.normal,
+                  }}
+                >
+                  <Trophy size={14} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
+                  {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
+                </button>
               </div>
               )}
               </div>

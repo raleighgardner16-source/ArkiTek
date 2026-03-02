@@ -217,22 +217,22 @@ describe('ratings routes', () => {
   })
 
   describe('POST /', () => {
-    it('saves a rating', async () => {
-      mockDb.usage.getOrDefault.mockResolvedValue({ ratings: {} } as any)
+    it('saves a model win', async () => {
+      mockDb.usage.getOrDefault.mockResolvedValue({ modelWins: {} } as any)
       mockDb.usage.update.mockResolvedValue(undefined as any)
 
-      const res = await request(app).post('/').send({ responseId: 'r1', rating: 5 })
+      const res = await request(app).post('/').send({
+        promptSessionId: 'session1',
+        responseId: 'r1',
+        provider: 'openai',
+        model: 'gpt-4',
+      })
       expect(res.status).toBe(200)
       expect(res.body.success).toBe(true)
     })
 
-    it('rejects invalid rating value', async () => {
-      const res = await request(app).post('/').send({ responseId: 'r1', rating: 6 })
-      expect(res.status).toBe(400)
-    })
-
-    it('rejects missing responseId', async () => {
-      const res = await request(app).post('/').send({ rating: 5 })
+    it('rejects missing promptSessionId', async () => {
+      const res = await request(app).post('/').send({ responseId: 'r1', provider: 'openai', model: 'gpt-4' })
       expect(res.status).toBe(400)
     })
   })

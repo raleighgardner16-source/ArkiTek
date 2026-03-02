@@ -57,7 +57,7 @@ async function migrate(): Promise<void> {
 
       // For objects (monthlyUsage, dailyUsage, models, providers, categories, etc.)
       // merge keys from both, preferring the one with more data
-      for (const key of ['monthlyUsage', 'dailyUsage', 'models', 'providers', 'categories', 'categoryPrompts', 'ratings']) {
+      for (const key of ['monthlyUsage', 'dailyUsage', 'models', 'providers', 'categories', 'categoryPrompts', 'ratings', 'modelWins']) {
         const oldObj = oldData[key] || {}
         const newObj = newData[key] || {}
         merged[key] = { ...oldObj, ...newObj }

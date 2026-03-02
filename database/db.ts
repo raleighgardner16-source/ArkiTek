@@ -500,6 +500,7 @@ const DEFAULT_USAGE: Omit<UsageDataDoc, '_id'> = {
   categories: {},
   categoryPrompts: {},
   ratings: {},
+  modelWins: {},
   lastActiveAt: null,
   streakDays: 0,
   judgeConversationContext: [],

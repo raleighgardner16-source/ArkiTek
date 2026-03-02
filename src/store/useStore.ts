@@ -5,8 +5,6 @@ interface Stats {
   totalPrompts: number
   promptsByModel: Record<string, number>
   promptsByCategory: Record<string, number>
-  totalRatings: number
-  averageRating: number
 }
 
 export interface StoreState {
@@ -46,9 +44,11 @@ export interface StoreState {
   removeResponse: (responseId: string) => void
   clearResponses: () => void
 
-  // Ratings
-  ratings: Record<string, number>
-  setRating: (responseId: string, rating: number) => void
+  // Favorite model pick (per prompt session)
+  currentPromptFavorite: string | null
+  setCurrentPromptFavorite: (responseId: string | null) => void
+  currentPromptSessionId: string | null
+  setCurrentPromptSessionId: (id: string | null) => void
 
   // Categories
   categories: Record<string, string>
@@ -56,7 +56,7 @@ export interface StoreState {
 
   // Stats
   stats: Stats
-  updateStats: (prompt: string, models: string[], category: string, ratings: Record<string, number>) => void
+  updateStats: (prompt: string, models: string[], category: string) => void
 
   // Active tab
   activeTab: string
@@ -263,17 +263,18 @@ export const useStore = create<StoreState>()(
           showPipelineDebugWindow: true,
           currentHistoryId: null,
           councilColumnConvoHistory: {},
+          currentPromptFavorite: null,
+          currentPromptSessionId: Date.now().toString(),
         })
         // Note: lastSubmittedPrompt is NOT cleared here - it's managed by handlePromptSubmit
         // It will be set before clearResponses is called, so it persists for the voting button
       },
 
-      // Ratings
-      ratings: {},
-      setRating: (responseId: string, rating: number) =>
-        set((state) => ({
-          ratings: { ...state.ratings, [responseId]: rating },
-        })),
+      // Favorite model pick (per prompt session)
+      currentPromptFavorite: null,
+      setCurrentPromptFavorite: (responseId: string | null) => set({ currentPromptFavorite: responseId }),
+      currentPromptSessionId: null,
+      setCurrentPromptSessionId: (id: string | null) => set({ currentPromptSessionId: id }),
 
       // Categories
       categories: {},
@@ -287,17 +288,13 @@ export const useStore = create<StoreState>()(
         totalPrompts: 0,
         promptsByModel: {},
         promptsByCategory: {},
-        totalRatings: 0,
-        averageRating: 0,
       },
-      updateStats: (prompt: string, models: string[], category: string, ratings: Record<string, number>) => {
+      updateStats: (prompt: string, models: string[], category: string) => {
         const currentStats = get().stats
         const newStats: Stats = {
           totalPrompts: currentStats.totalPrompts + 1,
           promptsByModel: { ...currentStats.promptsByModel },
           promptsByCategory: { ...currentStats.promptsByCategory },
-          totalRatings: currentStats.totalRatings + Object.keys(ratings).length,
-          averageRating: 0,
         }
 
         models.forEach((model) => {
@@ -307,15 +304,6 @@ export const useStore = create<StoreState>()(
 
         newStats.promptsByCategory[category] =
           (newStats.promptsByCategory[category] || 0) + 1
-
-        const allRatings = Object.values(ratings)
-        const totalRating = allRatings.reduce((sum, r) => sum + r, 0)
-        const avgRating =
-          allRatings.length > 0 ? totalRating / allRatings.length : 0
-        newStats.averageRating =
-          (currentStats.averageRating * currentStats.totalRatings +
-            totalRating) /
-          (currentStats.totalRatings + allRatings.length)
 
         set({ stats: newStats })
       },

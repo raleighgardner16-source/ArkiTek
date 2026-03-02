@@ -506,6 +506,25 @@ statsRouter.post('/:userId/categories/*/prompts/:promptIndex/move', async (req: 
   }
   userUsage.categoryPrompts[targetCategory].push(prompt)
 
+  // Update any matching saved conversations in history so they no longer appear in the old category
+  const promptSnippet = (prompt.text || '').trim()
+  if (promptSnippet) {
+    try {
+      const convos = await db.conversationHistory.listForUser(userId)
+      for (const convo of convos) {
+        const origSnippet = (convo.originalPrompt || '').substring(0, 500).trim()
+        if (origSnippet && origSnippet === promptSnippet) {
+          if (convo.category === decodedSource || (convo.category && convo.category.toLowerCase() === decodedSource.toLowerCase())) {
+            await db.conversationHistory.updateByUser(convo._id, userId, { category: targetCategory })
+            log.debug({ historyId: convo._id }, 'Updated conversation category to match moved prompt')
+          }
+        }
+      }
+    } catch (histErr: any) {
+      log.warn({ err: histErr }, 'Non-fatal: failed to update history category for moved prompt')
+    }
+  }
+
   // Update category counts as well
   if (userUsage.categories) {
     if (typeof userUsage.categories[sourceKey] === 'number' && userUsage.categories[sourceKey] > 0) {
@@ -527,11 +546,10 @@ statsRouter.post('/:userId/categories/*/prompts/:promptIndex/move', async (req: 
   sendSuccess(res, { message: `Prompt moved from "${decodedSource}" to "${targetCategory}"` })
 })
 
-// Get ratings stats
 statsRouter.get('/:userId/ratings', async (req: Request, res: Response) => {
   const userId = req.userId!
   const userUsage: any = await db.usage.getOrDefault(userId)
-  sendSuccess(res, { ratings: userUsage.ratings || {} })
+  sendSuccess(res, { modelWins: userUsage.modelWins || {} })
 })
 
 // Get streak info
@@ -759,32 +777,32 @@ userRouter.get('/model-preferences/:userId', async (req: Request, res: Response)
 // =============================================================================
 const ratingsRouter = Router()
 
-// Save a rating for a model response
 ratingsRouter.post('/', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!
-    const { responseId, rating, modelName } = req.body
+    const { promptSessionId, responseId, provider, model } = req.body
 
-    if (!responseId || rating === undefined) {
-      return sendError(res, 'responseId and rating are required', 400)
-    }
-
-    if (rating < 1 || rating > 5) {
-      return sendError(res, 'Rating must be between 1 and 5', 400)
+    if (!promptSessionId) {
+      return sendError(res, 'promptSessionId is required', 400)
     }
 
     const userUsage: any = await db.usage.getOrDefault(userId)
-    if (!userUsage.ratings) {
-      userUsage.ratings = {}
+    if (!userUsage.modelWins) {
+      userUsage.modelWins = {}
     }
 
-    userUsage.ratings[responseId] = rating
-    await db.usage.update(userId, { ratings: userUsage.ratings })
+    if (responseId && provider && model) {
+      userUsage.modelWins[promptSessionId] = { provider, model, responseId }
+    } else {
+      delete userUsage.modelWins[promptSessionId]
+    }
 
-    sendSuccess(res, { message: 'Rating saved successfully' })
+    await db.usage.update(userId, { modelWins: userUsage.modelWins })
+
+    sendSuccess(res, { message: 'Model win saved successfully' })
   } catch (error: any) {
-    log.error({ err: error }, 'Save rating error')
-    sendError(res, 'Failed to save rating')
+    log.error({ err: error }, 'Save model win error')
+    sendError(res, 'Failed to save model win')
   }
 })
 

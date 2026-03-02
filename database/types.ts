@@ -161,6 +161,7 @@ export interface UsageDataDoc {
   categories: Record<string, number>
   categoryPrompts: Record<string, Array<PromptHistoryEntry | Record<string, unknown>>>
   ratings: Record<string, unknown>
+  modelWins: Record<string, { provider: string; model: string; responseId: string }>
   lastActiveAt: string | null
   streakDays: number
   judgeConversationContext: Array<Record<string, unknown>>

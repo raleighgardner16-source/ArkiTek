@@ -77,6 +77,9 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const clearModelRoles = useStore((state) => state.clearModelRoles)
   const autoSmartProviders = useStore((state) => state.autoSmartProviders)
   const setAutoSmartProviders = useStore((state) => state.setAutoSmartProviders)
+  const currentPromptFavorite = useStore((state) => state.currentPromptFavorite)
+  const setCurrentPromptFavorite = useStore((state) => state.setCurrentPromptFavorite)
+  const currentPromptSessionId = useStore((state) => state.currentPromptSessionId)
 
   // Conversation handlers hook
   const conversation = useConversationHandlers({ isLoading, isGeneratingSummary })
@@ -148,6 +151,33 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
   const [isCouncilColumnInputFocused, setIsCouncilColumnInputFocused] = useState(false)
   const [isSubmitPending, setIsSubmitPending] = useState(false)
+
+  const handlePickFavorite = useCallback(async (responseId: string) => {
+    const isAlreadyFavorite = currentPromptFavorite === responseId
+    const newFavorite = isAlreadyFavorite ? null : responseId
+    setCurrentPromptFavorite(newFavorite)
+
+    if (currentUser?.id && currentPromptSessionId) {
+      try {
+        const response = responses.find((r: any) => r.id === responseId)
+        const modelId = response?.modelName || responseId.split('-').slice(0, 2).join('-')
+        const firstDash = modelId.indexOf('-')
+        const provider = firstDash > 0 ? modelId.substring(0, firstDash) : modelId
+        const model = firstDash > 0 ? modelId.substring(firstDash + 1) : modelId
+
+        await api.post('/ratings', {
+          promptSessionId: currentPromptSessionId,
+          responseId: newFavorite ? responseId : null,
+          provider: newFavorite ? provider : null,
+          model: newFavorite ? model : null,
+        })
+
+        useStore.getState().triggerStatsRefresh()
+      } catch (error: any) {
+        console.error('[Favorite] Error saving model win:', error)
+      }
+    }
+  }, [currentPromptFavorite, currentPromptSessionId, currentUser?.id, responses, setCurrentPromptFavorite])
 
   // Check if user's usage is exhausted
   useEffect(() => {
@@ -669,6 +699,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 showCouncilColumns={showCouncilColumns}
                 isLoading={isLoading}
                 isGeneratingSummary={isGeneratingSummary}
+                isSearchingWeb={isSearchingWeb}
                 onCancelPrompt={onCancelPrompt ?? null}
                 theme={theme}
                 currentTheme={currentTheme}
@@ -701,6 +732,8 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 handleSendCouncilFollowUp={handleSendCouncilFollowUp}
                 responses={responses}
                 setIsCouncilColumnInputFocused={setIsCouncilColumnInputFocused}
+                currentPromptFavorite={currentPromptFavorite}
+                onPickFavorite={handlePickFavorite}
               />
 
               {/* Phase 2b: Single model streaming - show as normal flowing response */}

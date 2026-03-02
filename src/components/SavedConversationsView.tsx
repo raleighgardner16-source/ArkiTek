@@ -185,7 +185,7 @@ const SavedConversationsView = () => {
     try {
       const encodedCategory = encodeURIComponent(sourceCategory)
       await api.post(`/stats/${currentUser.id}/categories/${encodedCategory}/prompts/${promptIndex}/move`, { targetCategory })
-      await fetchCategories()
+      await Promise.all([fetchCategories(), fetchHistory()])
     } catch (error: any) {
       console.error('[Move Prompt] Error:', error)
       alert(`Failed to move prompt: ${error.response?.data?.error || error.message || 'Unknown error'}`)

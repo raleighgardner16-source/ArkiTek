@@ -1,8 +1,7 @@
 import type React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Star, Cpu, ChevronDown, ChevronRight } from 'lucide-react'
+import { Trophy, Cpu, ChevronDown, ChevronRight } from 'lucide-react'
 import { spacing, fontSize, fontWeight, radius, transition } from '../../utils/styles'
-import { sx } from '../../utils/styles'
 
 interface RatingsTabProps {
   ratingsStats: any
@@ -33,6 +32,20 @@ const RatingsTab = ({
   formatNumber,
   formatTokens,
 }: RatingsTabProps) => {
+  const getMedalColor = (index: number) => {
+    if (index === 0) return '#FFD700'
+    if (index === 1) return '#C0C0C0'
+    if (index === 2) return '#CD7F32'
+    return currentTheme.textSecondary
+  }
+
+  const getMedalEmoji = (index: number) => {
+    if (index === 0) return '🥇'
+    if (index === 1) return '🥈'
+    if (index === 2) return '🥉'
+    return `#${index + 1}`
+  }
+
   return (
     <motion.div
       key="ratings"
@@ -41,131 +54,136 @@ const RatingsTab = ({
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
     >
-      {/* Ratings Section */}
+      {/* Wins Leaderboard Header */}
       <div style={{ display: 'flex', gap: spacing['2xl'], flexDirection: 'row', flexWrap: 'nowrap', marginBottom: spacing['5xl'] }}>
-        {/* Favorite Provider - Separate container */}
-        <div style={{ 
-          background: currentTheme.backgroundOverlay, 
+        {/* Provider Leaderboard */}
+        <div style={{
+          background: currentTheme.backgroundOverlay,
           border: `1px solid ${currentTheme.borderLight}`,
-          padding: spacing['3xl'], 
+          padding: spacing['3xl'],
           borderRadius: radius['2xl'],
           flex: 1,
           minWidth: '400px',
           color: currentTheme.text,
         }}>
-          <p style={{ color: currentTheme.text, fontSize: fontSize['2xl'], marginBottom: spacing.xl }}>Your Favorite Provider:</p>
-          {ratingsStats.totalRatings > 0 && ratingsStats.favoriteProvider ? (
-            <>
-              <p style={{ 
-                fontSize: '2rem', 
-                fontWeight: fontWeight.bold, 
-                margin: `0 0 ${spacing.lg} 0`,
-                color: currentTheme.text,
-              }}>
-                {LLM_PROVIDERS[ratingsStats.favoriteProvider]?.name || ratingsStats.favoriteProvider}
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-                <p style={{ color: currentTheme.textSecondary, fontSize: fontSize.base, margin: 0 }}>Average Score:</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
-                  <p style={{ 
-                    fontSize: fontSize['3xl'], 
-                    margin: 0,
-                    color: currentTheme.text,
+          <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, marginBottom: spacing.xl }}>
+            <Trophy size={22} color="#FFD700" />
+            <p style={{ color: currentTheme.text, fontSize: fontSize['2xl'], margin: 0 }}>Provider Wins</p>
+          </div>
+          {ratingsStats.providerLeaderboard && ratingsStats.providerLeaderboard.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+              {ratingsStats.providerLeaderboard.map(([provider, wins]: [string, number], index: number) => (
+                <div
+                  key={provider}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: `${spacing.lg} ${spacing.xl}`,
+                    background: index === 0 ? `${getMedalColor(0)}12` : currentTheme.backgroundSecondary,
+                    border: `1px solid ${index === 0 ? `${getMedalColor(0)}40` : currentTheme.borderLight}`,
+                    borderRadius: radius.lg,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: spacing.lg }}>
+                    <span style={{ fontSize: fontSize['2xl'], minWidth: '32px', textAlign: 'center' }}>
+                      {getMedalEmoji(index)}
+                    </span>
+                    <span style={{
+                      color: currentTheme.text,
+                      fontSize: fontSize.xl,
+                      fontWeight: index === 0 ? fontWeight.bold : fontWeight.medium,
+                      textTransform: 'capitalize',
+                    }}>
+                      {LLM_PROVIDERS[provider]?.name || provider}
+                    </span>
+                  </div>
+                  <span style={{
+                    color: getMedalColor(index),
+                    fontSize: fontSize['2xl'],
+                    fontWeight: fontWeight.bold,
                   }}>
-                    {ratingsStats.favoriteProviderAvg.toFixed(2)}
-                  </p>
-                  <Star size={20} fill="#FFD700" color="#FFD700" />
-                  <p style={{ color: currentTheme.textSecondary, fontSize: fontSize['3xl'], margin: 0 }}>
-                    / 5
-                  </p>
+                    {wins} {wins === 1 ? 'win' : 'wins'}
+                  </span>
                 </div>
-              </div>
-            </>
+              ))}
+            </div>
           ) : (
-            <>
-              <p style={{ color: currentTheme.textMuted, fontSize: fontSize['6xl'], margin: `0 0 ${spacing.lg} 0` }}>
-                Rate models first
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-                <p style={{ color: currentTheme.textSecondary, fontSize: fontSize.base, margin: 0 }}>Average Score:</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
-                  <p style={{ color: currentTheme.textMuted, fontSize: fontSize['3xl'], margin: 0 }}>
-                    —
-                  </p>
-                  <Star size={20} fill="#FFD700" color="#FFD700" />
-                  <p style={{ color: currentTheme.textSecondary, fontSize: fontSize['3xl'], margin: 0 }}>
-                    / 5
-                  </p>
-                </div>
-              </div>
-            </>
+            <p style={{ color: currentTheme.textMuted, fontSize: fontSize.xl, margin: `${spacing.xl} 0 0 0` }}>
+              Pick your favorite model response to start tracking wins
+            </p>
           )}
         </div>
-        
-        {/* Favorite Model - Separate container */}
-        <div style={{ 
-          background: currentTheme.backgroundOverlay, 
+
+        {/* Model Leaderboard */}
+        <div style={{
+          background: currentTheme.backgroundOverlay,
           border: `1px solid ${currentTheme.borderLight}`,
-          padding: spacing['3xl'], 
+          padding: spacing['3xl'],
           borderRadius: radius['2xl'],
           flex: 1,
           minWidth: '400px',
           color: currentTheme.text,
         }}>
-          <p style={{ color: currentTheme.text, fontSize: fontSize['2xl'], marginBottom: spacing.xl }}>Your Favorite Model:</p>
-          {ratingsStats.totalRatings > 0 && ratingsStats.favoriteModel ? (
-            <>
-              <p style={{ 
-                fontSize: '2rem', 
-                fontWeight: fontWeight.bold, 
-                margin: `0 0 ${spacing.lg} 0`,
-                color: currentTheme.text,
-              }}>
-                {(() => {
-                  const parts = (ratingsStats.favoriteModel as string).split('-')
-                  if (parts.length >= 2) {
-                    const provider = parts[0]
-                    const modelName = parts.slice(1).join('-')
-                    return `${LLM_PROVIDERS[provider]?.name || provider} - ${modelName}`
-                  }
-                  return ratingsStats.favoriteModel
-                })()}
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-                <p style={{ color: currentTheme.textSecondary, fontSize: fontSize.base, margin: 0 }}>Average Score:</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
-                  <p style={{ 
-                    fontSize: fontSize['3xl'], 
-                    margin: 0,
-                    color: currentTheme.text,
-                  }}>
-                    {ratingsStats.favoriteModelAvg.toFixed(2)}
-                  </p>
-                  <Star size={20} fill="#FFD700" color="#FFD700" />
-                  <p style={{ color: currentTheme.textSecondary, fontSize: fontSize['3xl'], margin: 0 }}>
-                    / 5
-                  </p>
-                </div>
-              </div>
-            </>
+          <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, marginBottom: spacing.xl }}>
+            <Trophy size={22} color="#FFD700" />
+            <p style={{ color: currentTheme.text, fontSize: fontSize['2xl'], margin: 0 }}>Model Wins</p>
+          </div>
+          {ratingsStats.modelLeaderboard && ratingsStats.modelLeaderboard.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+              {ratingsStats.modelLeaderboard.map(([modelKey, wins]: [string, number], index: number) => {
+                const parts = modelKey.split('-')
+                const provider = parts[0]
+                const modelName = parts.slice(1).join('-')
+                return (
+                  <div
+                    key={modelKey}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: `${spacing.lg} ${spacing.xl}`,
+                      background: index === 0 ? `${getMedalColor(0)}12` : currentTheme.backgroundSecondary,
+                      border: `1px solid ${index === 0 ? `${getMedalColor(0)}40` : currentTheme.borderLight}`,
+                      borderRadius: radius.lg,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: spacing.lg }}>
+                      <span style={{ fontSize: fontSize['2xl'], minWidth: '32px', textAlign: 'center' }}>
+                        {getMedalEmoji(index)}
+                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{
+                          color: currentTheme.text,
+                          fontSize: fontSize.xl,
+                          fontWeight: index === 0 ? fontWeight.bold : fontWeight.medium,
+                        }}>
+                          {modelName}
+                        </span>
+                        <span style={{
+                          color: currentTheme.textMuted,
+                          fontSize: fontSize.sm,
+                          textTransform: 'capitalize',
+                        }}>
+                          {LLM_PROVIDERS[provider]?.name || provider}
+                        </span>
+                      </div>
+                    </div>
+                    <span style={{
+                      color: getMedalColor(index),
+                      fontSize: fontSize['2xl'],
+                      fontWeight: fontWeight.bold,
+                    }}>
+                      {wins} {wins === 1 ? 'win' : 'wins'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
           ) : (
-            <>
-              <p style={{ color: currentTheme.textMuted, fontSize: fontSize['6xl'], margin: `0 0 ${spacing.lg} 0` }}>
-                Rate models first
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-                <p style={{ color: currentTheme.textSecondary, fontSize: fontSize.base, margin: 0 }}>Average Score:</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
-                  <p style={{ color: currentTheme.textMuted, fontSize: fontSize['3xl'], margin: 0 }}>
-                    —
-                  </p>
-                  <Star size={20} fill="#FFD700" color="#FFD700" />
-                  <p style={{ color: currentTheme.textSecondary, fontSize: fontSize['3xl'], margin: 0 }}>
-                    / 5
-                  </p>
-                </div>
-              </div>
-            </>
+            <p style={{ color: currentTheme.textMuted, fontSize: fontSize.xl, margin: `${spacing.xl} 0 0 0` }}>
+              Pick your favorite model response to start tracking wins
+            </p>
           )}
         </div>
       </div>
@@ -372,7 +390,7 @@ const RatingsTab = ({
                                     </AnimatePresence>
                                   </div>
                                 )
-                              })}
+                            })}
                             </div>
                           </div>
                         </motion.div>
@@ -380,7 +398,7 @@ const RatingsTab = ({
                     </AnimatePresence>
                   </div>
                 )
-              })}
+            })}
           </div>
         </div>
       )}

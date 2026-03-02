@@ -236,12 +236,11 @@ export function usePromptSubmission() {
       }
 
       // ── 5. Update local stats ───────────────────────────────────
-      const ratings = useStore.getState().ratings
       const modelNames = modelsToUse.map((id) => {
         const firstDashIndex = id.indexOf('-')
         return `${id.substring(0, firstDashIndex)}-${id.substring(firstDashIndex + 1)}`
       })
-      useStore.getState().updateStats(currentPrompt, modelNames, category, ratings)
+      useStore.getState().updateStats(currentPrompt, modelNames, category)
 
       // ── 6. Persist token data & refresh stats ───────────────────
       useStore.getState().setTokenData(tokenData)

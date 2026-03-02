@@ -1,4 +1,4 @@
-import { Zap, MessageSquare, Flame, Star, Shield, Swords, Cpu } from 'lucide-react'
+import { Zap, MessageSquare, Flame, Trophy, Shield, Swords, Cpu } from 'lucide-react'
 
 export const BADGE_CATEGORIES = [
   {
@@ -80,22 +80,22 @@ export const BADGE_CATEGORIES = [
   // },
   {
     id: 'ratings',
-    name: 'Rating Guru',
-    icon: Star,
-    description: 'Rate AI responses to unlock these badges',
+    name: 'Model Champion',
+    icon: Trophy,
+    description: 'Pick your favorite model response to unlock these badges',
     statKey: 'totalRatings',
-    unit: 'ratings',
+    unit: 'wins',
     badges: [
-      { name: 'First Critic', threshold: 1, emoji: '📝', color: '#FFD700', desc: '1 rating' },
-      { name: 'Reviewer', threshold: 5, emoji: '📋', color: '#FFA500', desc: '5 ratings' },
-      { name: 'Connoisseur', threshold: 25, emoji: '🍷', color: '#FF8C00', desc: '25 ratings' },
-      { name: 'Appraiser', threshold: 50, emoji: '🔍', color: '#FF6347', desc: '50 ratings' },
-      { name: 'Expert Judge', threshold: 100, emoji: '⚖️', color: '#DC143C', desc: '100 ratings' },
-      { name: 'Grand Arbiter', threshold: 250, emoji: '🔱', color: '#8B0000', desc: '250 ratings' },
-      { name: 'Supreme Arbiter', threshold: 500, emoji: '👑', color: '#660000', desc: '500 ratings' },
-      { name: 'Verdict King', threshold: 750, emoji: '🏰', color: '#4A0000', desc: '750 ratings' },
-      { name: 'Omnijudge', threshold: 1000, emoji: '⚖️', color: '#330000', desc: '1,000 ratings' },
-      { name: 'The Arbiter', threshold: 1500, emoji: '🔮', color: '#1A0000', desc: '1,500 ratings' },
+      { name: 'First Pick', threshold: 1, emoji: '🏆', color: '#FFD700', desc: '1 win picked' },
+      { name: 'Talent Scout', threshold: 5, emoji: '🔍', color: '#FFA500', desc: '5 wins picked' },
+      { name: 'Kingmaker', threshold: 25, emoji: '👑', color: '#FF8C00', desc: '25 wins picked' },
+      { name: 'Grand Selector', threshold: 50, emoji: '⚖️', color: '#FF6347', desc: '50 wins picked' },
+      { name: 'Champion Maker', threshold: 100, emoji: '🥇', color: '#DC143C', desc: '100 wins picked' },
+      { name: 'Elite Judge', threshold: 250, emoji: '🔱', color: '#8B0000', desc: '250 wins picked' },
+      { name: 'Supreme Judge', threshold: 500, emoji: '💎', color: '#660000', desc: '500 wins picked' },
+      { name: 'Verdict King', threshold: 750, emoji: '🏰', color: '#4A0000', desc: '750 wins picked' },
+      { name: 'Grand Arbiter', threshold: 1000, emoji: '⚖️', color: '#330000', desc: '1,000 wins picked' },
+      { name: 'The Decider', threshold: 1500, emoji: '🔮', color: '#1A0000', desc: '1,500 wins picked' },
     ]
   },
   {

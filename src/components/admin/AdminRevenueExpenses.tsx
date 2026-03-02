@@ -755,11 +755,6 @@ const AdminRevenueExpenses = ({
               )}
             </div>
 
-            {timePeriod === 'month' && (
-              <span style={{ color: expensesSaving ? '#5dade2' : '#48c9b0', fontSize: fontSize.base, opacity: 0.8, transition: transition.slow }}>
-                {expensesSaving ? '⏳ Saving...' : expensesLoaded ? '✅ Auto-saved' : ''}
-              </span>
-            )}
           </div>
 
           {/* MONTH VIEW: Editable expense inputs */}
