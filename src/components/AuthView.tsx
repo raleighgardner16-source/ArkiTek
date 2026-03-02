@@ -58,6 +58,13 @@ const AuthView = ({ initialView, initialPlan, onNavigate }: AuthViewProps) => {
 
   const isSignUp = view === 'signup'
 
+  const extractErrorMessage = (err: any): string => {
+    const dataError = err.response?.data?.error
+    if (typeof dataError === 'string') return dataError
+    if (dataError && typeof dataError === 'object' && typeof dataError.message === 'string') return dataError.message
+    return err.response?.data?.message || err.message || 'An error occurred. Please try again.'
+  }
+
   // Initialize FingerprintJS for device fingerprinting (free trial abuse prevention)
   useEffect(() => {
     const loadFingerprint = async () => {
@@ -238,8 +245,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }: AuthViewProps) => {
       }
     } catch (err: any) {
       console.error('Auth error:', err)
-      const errorMessage = err.response?.data?.error || err.message || 'An error occurred. Please try again.'
-      setError(errorMessage)
+      setError(extractErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -286,7 +292,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }: AuthViewProps) => {
       }
     } catch (err: any) {
       console.error('Email verification error:', err)
-      setError(err.response?.data?.error || 'Verification failed. Please try again or request a new link.')
+      setError(extractErrorMessage(err) || 'Verification failed. Please try again or request a new link.')
     } finally {
       setVerifyingEmail(false)
     }
@@ -311,7 +317,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }: AuthViewProps) => {
       }
     } catch (err: any) {
       console.error('Resend verification error:', err)
-      setError(err.response?.data?.error || 'Failed to resend. Please try again.')
+      setError(extractErrorMessage(err) || 'Failed to resend. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -340,7 +346,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }: AuthViewProps) => {
       }
     } catch (err: any) {
       console.error('Forgot username error:', err)
-      setError(err.response?.data?.error || 'An error occurred. Please try again.')
+      setError(extractErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -369,7 +375,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }: AuthViewProps) => {
       }
     } catch (err: any) {
       console.error('Forgot password error:', err)
-      setError(err.response?.data?.error || 'An error occurred. Please try again.')
+      setError(extractErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -415,7 +421,7 @@ const AuthView = ({ initialView, initialPlan, onNavigate }: AuthViewProps) => {
       }
     } catch (err: any) {
       console.error('Reset password error:', err)
-      setError(err.response?.data?.error || 'An error occurred. Please try again.')
+      setError(extractErrorMessage(err))
     } finally {
       setLoading(false)
     }
