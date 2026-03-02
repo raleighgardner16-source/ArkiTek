@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare, Coins, DollarSign, Star, Play, Trophy, Swords } from 'lucide-react'
+import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare, Coins, DollarSign, Star, Play, Trophy, Swords, ArrowRightLeft } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx, createStyles } from '../utils/styles'
@@ -82,6 +82,16 @@ const SavedConversationsView = () => {
 
   // Track how many prompts are visible per category (default 5)
   const [categoryVisibleCount, setCategoryVisibleCount] = useState<Record<string, any>>({})
+
+  // Move-to-category dropdown state: "Science-2" means prompt index 2 in Science
+  const [movingPromptKey, setMovingPromptKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!movingPromptKey) return
+    const close = () => setMovingPromptKey(null)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [movingPromptKey])
 
   // Starred section expanded + visible count (show 5 at a time)
   const [starredExpanded, setStarredExpanded] = useState(true)
@@ -166,6 +176,19 @@ const SavedConversationsView = () => {
     } catch (error: any) {
       console.error('[Delete Prompt] Error:', error)
       alert(`Failed to delete prompt: ${error.response?.data?.error || error.message || 'Unknown error'}`)
+    }
+  }
+
+  const handleMovePrompt = async (sourceCategory: string, promptIndex: number, targetCategory: string) => {
+    if (!currentUser?.id || sourceCategory === targetCategory) return
+    setMovingPromptKey(null)
+    try {
+      const encodedCategory = encodeURIComponent(sourceCategory)
+      await api.post(`/stats/${currentUser.id}/categories/${encodedCategory}/prompts/${promptIndex}/move`, { targetCategory })
+      await fetchCategories()
+    } catch (error: any) {
+      console.error('[Move Prompt] Error:', error)
+      alert(`Failed to move prompt: ${error.response?.data?.error || error.message || 'Unknown error'}`)
     }
   }
 
@@ -1332,31 +1355,114 @@ const SavedConversationsView = () => {
                                           cursor: 'pointer',
                                         }}
                                       >
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation()
-                                            handleDeleteSinglePrompt(category, index)
-                                          }}
-                                          style={{
-                                            position: 'absolute', top: '8px', right: '8px',
-                                            background: 'transparent', border: 'none', cursor: 'pointer',
-                                            padding: spacing.xs, borderRadius: radius.xs,
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            opacity: 0.4, transition: transition.normal,
-                                          }}
-                                          onMouseEnter={(e) => {
-                                            e.currentTarget.style.opacity = '1'
-                                            e.currentTarget.style.background = 'rgba(255, 107, 107, 0.15)'
-                                          }}
-                                          onMouseLeave={(e) => {
-                                            e.currentTarget.style.opacity = '0.4'
-                                            e.currentTarget.style.background = 'transparent'
-                                          }}
-                                          title="Delete this prompt"
-                                        >
-                                          <X size={14} color={currentTheme.error} />
-                                        </button>
-                                        <p key={`${category}-prompt-text-${index}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: fontSize.lg, margin: '0 0 6px 0', lineHeight: '1.4', paddingRight: '24px' }}>
+                                        {/* Top-right action buttons */}
+                                        <div style={{ position: 'absolute', top: '8px', right: '8px', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              const key = `${category}-${index}`
+                                              setMovingPromptKey(prev => prev === key ? null : key)
+                                            }}
+                                            style={{
+                                              background: movingPromptKey === `${category}-${index}` ? `${currentTheme.accent}20` : 'transparent',
+                                              border: 'none', cursor: 'pointer',
+                                              padding: spacing.xs, borderRadius: radius.xs,
+                                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                              opacity: movingPromptKey === `${category}-${index}` ? 1 : 0.4, transition: transition.normal,
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              e.currentTarget.style.opacity = '1'
+                                              e.currentTarget.style.background = `${currentTheme.accent}20`
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              if (movingPromptKey !== `${category}-${index}`) {
+                                                e.currentTarget.style.opacity = '0.4'
+                                                e.currentTarget.style.background = 'transparent'
+                                              }
+                                            }}
+                                            title="Move to another category"
+                                          >
+                                            <ArrowRightLeft size={13} color={currentTheme.accent} />
+                                          </button>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              handleDeleteSinglePrompt(category, index)
+                                            }}
+                                            style={{
+                                              background: 'transparent', border: 'none', cursor: 'pointer',
+                                              padding: spacing.xs, borderRadius: radius.xs,
+                                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                              opacity: 0.4, transition: transition.normal,
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              e.currentTarget.style.opacity = '1'
+                                              e.currentTarget.style.background = 'rgba(255, 107, 107, 0.15)'
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              e.currentTarget.style.opacity = '0.4'
+                                              e.currentTarget.style.background = 'transparent'
+                                            }}
+                                            title="Delete this prompt"
+                                          >
+                                            <X size={14} color={currentTheme.error} />
+                                          </button>
+                                        </div>
+
+                                        {/* Move-to-category dropdown */}
+                                        {movingPromptKey === `${category}-${index}` && (
+                                          <div
+                                            onClick={(e) => e.stopPropagation()}
+                                            style={{
+                                              position: 'absolute', top: '32px', right: '8px', zIndex: 50,
+                                              background: theme === 'light' ? '#ffffff' : 'rgba(30, 30, 45, 0.98)',
+                                              border: `1px solid ${currentTheme.accent}40`,
+                                              borderRadius: radius.md,
+                                              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+                                              padding: '4px 0',
+                                              minWidth: '200px',
+                                              maxHeight: '280px',
+                                              overflowY: 'auto',
+                                            }}
+                                          >
+                                            <div style={{ padding: '6px 12px 4px', fontSize: fontSize.xs, color: currentTheme.textMuted, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                              Move to...
+                                            </div>
+                                            {[
+                                              'Science', 'Tech', 'Business', 'Health', 'Politics/Law',
+                                              'History/Geography', 'Philosophy/Religion', 'Arts/Culture',
+                                              'Lifestyle/Self-Improvement', 'General Knowledge/Other',
+                                            ].filter(c => c !== category).map((targetCat) => (
+                                              <button
+                                                key={targetCat}
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
+                                                  handleMovePrompt(category, index, targetCat)
+                                                }}
+                                                style={{
+                                                  display: 'block', width: '100%', textAlign: 'left',
+                                                  background: 'transparent', border: 'none', cursor: 'pointer',
+                                                  padding: '7px 14px',
+                                                  color: currentTheme.textSecondary,
+                                                  fontSize: fontSize.sm,
+                                                  transition: transition.normal,
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                  e.currentTarget.style.background = `${currentTheme.accent}15`
+                                                  e.currentTarget.style.color = currentTheme.accent
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                  e.currentTarget.style.background = 'transparent'
+                                                  e.currentTarget.style.color = currentTheme.textSecondary
+                                                }}
+                                              >
+                                                {targetCat}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        )}
+
+                                        <p key={`${category}-prompt-text-${index}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: fontSize.lg, margin: '0 0 6px 0', lineHeight: '1.4', paddingRight: '50px' }}>
                                           {prompt.text}
                                         </p>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>

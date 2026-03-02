@@ -215,15 +215,16 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
 
     if (!response.ok) {
       console.error('[Category Detection] Error from API:', response.statusText)
+      const forcedSearch = shouldForceSearchForTimeSensitivePrompt(prompt)
       return { 
         category: 'General Knowledge/Other', 
-        needsSearch: false,
+        needsSearch: forcedSearch,
         needsContext: false,
         recommendedModelType: 'versatile',
         recommendedModels: {},
         rawResponse: `API Error: ${response.statusText}`,
         prompt: categoryPrompt,
-        tokens: null // No tokens on API error
+        tokens: null
       }
     }
 
@@ -342,15 +343,16 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
     }
   } catch (error: any) {
     console.error('[Category Detection] Error:', error)
+    const forcedSearch = shouldForceSearchForTimeSensitivePrompt(prompt)
     return { 
       category: 'General Knowledge/Other', 
-      needsSearch: false,
+      needsSearch: forcedSearch,
       needsContext: false,
       recommendedModelType: 'versatile',
       recommendedModels: {},
       rawResponse: `Error: ${error.message}`,
       prompt: categoryPrompt,
-      tokens: null // No tokens on error
+      tokens: null
     }
   }
 }

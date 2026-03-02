@@ -459,6 +459,74 @@ statsRouter.delete('/:userId/categories/*/prompts/:promptIndex', async (req: Req
   sendSuccess(res, { message: `Prompt deleted from category: ${decodedCategory}` })
 })
 
+// Move a prompt from one category to another
+statsRouter.post('/:userId/categories/*/prompts/:promptIndex/move', async (req: Request, res: Response) => {
+  const userId = req.userId!
+  const categoryPath = req.params[0] || ''
+  const promptIndex = parseInt(req.params.promptIndex as string, 10)
+  const { targetCategory } = req.body
+
+  if (!targetCategory) {
+    return sendError(res, 'targetCategory is required', 400)
+  }
+
+  log.info({ userId, categoryPath, promptIndex, targetCategory }, 'Move prompt request')
+
+  const userUsage: any = await db.usage.getOrDefault(userId)
+  const decodedSource = decodeURIComponent(categoryPath)
+
+  if (!userUsage.categoryPrompts) {
+    return sendError(res, 'No category prompts found', 404)
+  }
+
+  // Find the source category
+  let sourcePrompts: any[] | null = null
+  let sourceKey: string | null = null
+  for (const key of Object.keys(userUsage.categoryPrompts)) {
+    if (key === decodedSource || key.toLowerCase() === decodedSource.toLowerCase() || decodeURIComponent(key) === decodedSource) {
+      sourcePrompts = userUsage.categoryPrompts[key]
+      sourceKey = key
+      break
+    }
+  }
+
+  if (!sourcePrompts || !sourceKey) {
+    return sendError(res, `Source category "${decodedSource}" not found`, 404)
+  }
+
+  if (promptIndex < 0 || promptIndex >= sourcePrompts.length) {
+    return sendError(res, `Invalid prompt index: ${promptIndex}`, 400)
+  }
+
+  const [prompt] = sourcePrompts.splice(promptIndex, 1)
+  userUsage.categoryPrompts[sourceKey] = sourcePrompts
+
+  if (!userUsage.categoryPrompts[targetCategory]) {
+    userUsage.categoryPrompts[targetCategory] = []
+  }
+  userUsage.categoryPrompts[targetCategory].push(prompt)
+
+  // Update category counts as well
+  if (userUsage.categories) {
+    if (typeof userUsage.categories[sourceKey] === 'number' && userUsage.categories[sourceKey] > 0) {
+      userUsage.categories[sourceKey]--
+    }
+    if (typeof userUsage.categories[targetCategory] === 'number') {
+      userUsage.categories[targetCategory]++
+    } else {
+      userUsage.categories[targetCategory] = 1
+    }
+  }
+
+  await db.usage.update(userId, {
+    categoryPrompts: userUsage.categoryPrompts,
+    categories: userUsage.categories,
+  })
+
+  log.info({ userId, from: decodedSource, to: targetCategory, promptIndex }, 'Moved prompt between categories')
+  sendSuccess(res, { message: `Prompt moved from "${decodedSource}" to "${targetCategory}"` })
+})
+
 // Get ratings stats
 statsRouter.get('/:userId/ratings', async (req: Request, res: Response) => {
   const userId = req.userId!

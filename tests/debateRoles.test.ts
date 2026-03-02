@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { DEBATE_ROLES, getRoleByKey, getRoleSystemPrompt } from '../src/utils/debateRoles.js'
 
 describe('DEBATE_ROLES', () => {
-  it('contains 9 roles', () => {
-    expect(DEBATE_ROLES).toHaveLength(9)
+  it('contains 11 roles', () => {
+    expect(DEBATE_ROLES).toHaveLength(11)
   })
 
   it('each role has required fields', () => {
@@ -53,7 +53,7 @@ describe('getRoleByKey', () => {
 describe('getRoleSystemPrompt', () => {
   it('returns system prompt for valid key', () => {
     const prompt = getRoleSystemPrompt('skeptic')
-    expect(prompt).toContain('Skeptic')
+    expect(prompt).toContain('counterarguments')
     expect(prompt.length).toBeGreaterThan(50)
   })
 

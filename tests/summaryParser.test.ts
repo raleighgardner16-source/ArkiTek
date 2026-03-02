@@ -95,7 +95,7 @@ describe('parseDebateSummary', () => {
 **KEY TENSIONS**:
 - Tension one`
     const result = parseDebateSummary(raw)
-    expect(result.consensus).toBe(65)
+    expect(result.consensus).toBeNull()
     expect(result.summary).toContain('economic policy')
     expect(result.agreements).toHaveLength(2)
     expect(result.contradictions).toHaveLength(1)
@@ -105,10 +105,10 @@ describe('parseDebateSummary', () => {
   it('formats with debate-specific headers', () => {
     const raw = `Balance: 70%\nDebate Overview: Overview text\nStrongest Arguments:\n- One\nKey Tensions:\n- Two`
     const result = parseDebateSummary(raw)
-    expect(result.formattedText).toContain('## BALANCE: 70%')
     expect(result.formattedText).toContain('## DEBATE OVERVIEW')
     expect(result.formattedText).toContain('## STRONGEST ARGUMENTS')
     expect(result.formattedText).toContain('## KEY TENSIONS')
+    expect(result.formattedText).not.toContain('BALANCE')
   })
 
   it('always returns empty differences array', () => {
@@ -122,7 +122,7 @@ describe('parseSummaryResponse', () => {
   it('delegates to parseDebateSummary when isDebateMode is true', () => {
     const raw = `Balance: 80%\nDebate Overview: Debate text`
     const result = parseSummaryResponse(raw, true)
-    expect(result.formattedText).toContain('BALANCE')
+    expect(result.formattedText).toContain('DEBATE OVERVIEW')
   })
 
   it('delegates to parseCouncilSummary when isDebateMode is false', () => {
