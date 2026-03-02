@@ -146,6 +146,10 @@ User prompt:
 ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You MUST use the SAME model type (reasoning, versatile, or fast) for ALL providers - no exceptions! Return the model IDs (e.g., "openai-gpt-5.2", "google-gemini-3-pro") in recommendedModels.' : ''}`
 
   try {
+    // #region agent log
+    const _authHdrs = getAuthHeaders()
+    console.log('[Category Detection] Auth check:', { hasToken: !!_authHdrs.Authorization, url: `${API_URL}${API_PREFIX}/llm` })
+    // #endregion
     const response = await fetch(`${API_URL}${API_PREFIX}/llm`, {
       method: 'POST',
       headers: {
@@ -156,12 +160,15 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
         provider: 'google',
         model: 'gemini-2.5-flash-lite',
         prompt: categoryPrompt,
-        userId: null, // Category detection doesn't need user tracking
+        userId: null,
         isSummary: false,
       }),
     })
 
     if (!response.ok) {
+      // #region agent log
+      console.error('[Category Detection] API failed:', { status: response.status, statusText: response.statusText })
+      // #endregion
       console.error('[Category Detection] Error from API:', response.statusText)
       return { 
         category: 'General Knowledge/Other', 
@@ -200,6 +207,9 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
         const recommendedModelType: string = parsed.recommendedModelType || 'versatile'
         const recommendedModels: Record<string, string> = parsed.recommendedModels || {}
 
+        // #region agent log
+        console.log('[Category Detection] Refiner result:', { category, needsSearch, needsContext, promptSnippet: prompt.substring(0, 60) })
+        // #endregion
 
         // Validate category
         const validCategories = [
