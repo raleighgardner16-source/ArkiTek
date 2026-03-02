@@ -93,6 +93,12 @@ export function usePromptSubmission() {
     }
 
     try {
+      // Snapshot debate-mode state for this submission
+      const isDebateMode = useStore.getState().promptMode === 'debate'
+      const submittedRoles: Record<string, string> = isDebateMode
+        ? { ...useStore.getState().modelRoles }
+        : {}
+
       // ── 1. Category detection ───────────────────────────────────
       let category = 'General Knowledge/Other'
       let needsSearch = false
@@ -101,7 +107,7 @@ export function usePromptSubmission() {
       let categoryDetectionTokens: any = null
 
       try {
-        detectionResult = await detectCategory(currentPrompt)
+        detectionResult = await detectCategory(currentPrompt, [], isDebateMode)
         category = detectionResult.category || 'General Knowledge/Other'
         needsSearch = detectionResult.needsSearch || false
         needsContext = detectionResult.needsContext || false
@@ -119,18 +125,6 @@ export function usePromptSubmission() {
 
       let responses: any[] = []
       let ragData: any = null
-
-      // Snapshot debate-mode state for this submission
-      const isDebateMode = useStore.getState().promptMode === 'debate'
-      const submittedRoles: Record<string, string> = isDebateMode
-        ? { ...useStore.getState().modelRoles }
-        : {}
-
-      // Debate mode always needs web sources so every model has current data
-      if (isDebateMode && !needsSearch) {
-        needsSearch = true
-        console.log('[handlePromptSubmit] Debate mode active — forcing web search for current sources')
-      }
 
       // ── 2. Execute models (RAG or Direct) ───────────────────────
       if (needsSearch) {

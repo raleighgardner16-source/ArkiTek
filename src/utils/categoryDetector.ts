@@ -56,9 +56,27 @@ const shouldForceSearchForTimeSensitivePrompt = (prompt: string): boolean => {
     'bracket',
     'march madness',
     'playoffs',
+    'headlines',
+    'trending',
   ]
 
   if (timeSensitiveTerms.some(term => lower.includes(term))) return true
+
+  // Phrases that implicitly ask about current events / news
+  const currentEventsPhrases = [
+    /\bgoing on\b.*\b(world|news|country|nation|us|europe|asia|america|globally)\b/,
+    /\b(world|news|country|nation|us|europe|asia|america|globally)\b.*\bgoing on\b/,
+    /\bhappening\b.*\b(world|news|country|nation|right now|today)\b/,
+    /\b(world|news|country|nation)\b.*\bhappening\b/,
+    /\bwhat'?s new\b/,
+    /\b(latest|recent|current|top)\s+(news|events|headlines|stories|updates)\b/,
+    /\bnews\s+(today|now|this week|this month)\b/,
+    /\bcatch me up\b/,
+    /\bwhat did i miss\b/,
+    /\bwhat'?s\s+(the\s+)?news\b/,
+  ]
+
+  if (currentEventsPhrases.some(pattern => pattern.test(lower))) return true
 
   // Event/date-style prompts are frequently time-bound.
   if (/\b(20\d{2})\b/.test(lower)) return true
@@ -69,7 +87,7 @@ const shouldForceSearchForTimeSensitivePrompt = (prompt: string): boolean => {
 
 // Detect category, determine if web search is needed, and recommend model types using Gemini 2.5 Flash Lite
 // selectedProviders: Array of { providerKey, providerName, models: [{ id, model, type, label }] }
-export const detectCategory = async (prompt: string, selectedProviders: SelectedProvider[] = []): Promise<CategoryResult> => {
+export const detectCategory = async (prompt: string, selectedProviders: SelectedProvider[] = [], isDebateMode: boolean = false): Promise<CategoryResult> => {
   if (!prompt || !prompt.trim()) {
     return { 
       category: 'General Knowledge/Other', 
@@ -115,6 +133,7 @@ export const detectCategory = async (prompt: string, selectedProviders: Selected
   const categoryPrompt = `Today's date is ${todayDate}.
 
 Classify the user prompt into EXACTLY ONE category from the list below.
+IMPORTANT: Always prefer the most specific category. "General Knowledge/Other" is a fallback — only use it when no other category applies. For example, a question about a singer belongs in Arts/Culture, a question about a president belongs in Politics/Law, a question about movies belongs in Arts/Culture.
 Determine if a web search would genuinely help answer the query. Recommend a SINGLE model type for ALL providers.
 Determine if the user's prompt might benefit from context of their previous conversations (memory).
 
@@ -134,7 +153,14 @@ needsSearch = false ONLY when:
 - The query is about well-established historical knowledge that does NOT change (e.g. "when was the French Revolution", "what is the speed of light")
 
 IMPORTANT: When in doubt, set needsSearch = true. It is much better to search unnecessarily than to miss providing current information. If the topic is even slightly time-sensitive or involves entities that change over time, set needsSearch = true.
-
+${isDebateMode ? `
+DEBATE MODE IS ACTIVE — apply a LOWER threshold for needsSearch:
+- needsSearch = true if the topic involves real-world entities (people, organizations, policies, countries, technologies) where current data would strengthen debate arguments
+- needsSearch = true if the user's claim or opinion could be fact-checked, contextualized, or challenged using recent events or data
+- needsSearch = true if the topic touches politics, economics, science, tech, or any domain where the landscape has evolved recently
+- needsSearch = false ONLY when the prompt is purely personal, aspirational, hypothetical, or philosophical with NO grounding in verifiable current facts (e.g. "I will be president some day", "what is the meaning of life", "I think dogs are better than cats", "write me a story")
+- If the user expresses a personal goal or aspiration without referencing specific real-world facts or entities that need verification, set needsSearch = false
+` : ''}
 needsContext = true when:
 - The query references something previously discussed (e.g. "going back to what we talked about", "remember when I asked about", "like I said before")
 - The query is a follow-up or continuation of a topic the user likely discussed before (e.g. "what else should I know about investing" — implies prior investing discussion)

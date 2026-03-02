@@ -806,8 +806,8 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
                   </div>
                   <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: fontSize.lg, lineHeight: 1.6 }}>
                     Assign this role to any model in the council. When you send your prompt, that model will respond 
-                    entirely from this perspective. The AI Judge then evaluates the full debate — scoring balance, 
-                    surfacing the strongest arguments, and pinpointing where perspectives clash.
+                    entirely from this perspective. The AI Judge then evaluates the full debate — 
+                    surfacing the strongest arguments and pinpointing where perspectives clash.
                   </p>
                 </div>
               </div>
@@ -824,7 +824,7 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
                   <span style={{ fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: 'rgba(255,255,255,0.6)' }}>Debate Judge Analysis</span>
                 </div>
                 <div style={sx(layout.flexCol, { gap: spacing.md })}>
-                  {['Balance Score — how evenly perspectives are represented', 'Strongest Arguments — the most compelling points from each side', 'Key Tensions — where perspectives directly conflict', 'Debate Overview — full synthesis of the discussion'].map((item, i) => (
+                  {['Strongest Arguments — the most compelling points from each side', 'Key Tensions — where perspectives directly conflict', 'Debate Overview — full synthesis of the discussion'].map((item, i) => (
                     <div key={i} style={sx(layout.flexRow, { gap: spacing.md })}>
                       <CheckCircle size={14} style={{ color: currentTheme.accent, flexShrink: 0 }} />
                       <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: fontSize.base }}>{item}</span>
@@ -1085,7 +1085,7 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
             {
               step: '3',
               title: 'Compare & Get the Consensus',
-              description: 'See every model\'s response side by side. The AI Judge analyzes them all and delivers a consensus summary — or in debate mode, a full debate analysis with balance scores and strongest arguments.',
+              description: 'See every model\'s response side by side. The AI Judge analyzes them all and delivers a consensus summary — or in debate mode, a full debate analysis with strongest arguments and key tensions.',
             },
             {
               step: '4',

@@ -9,6 +9,7 @@ const detectCategoryForJudge = async (prompt: string, userId: string | null = nu
   const categoryPrompt = `Today's date is ${todayDate}.
 
 Classify the user prompt into EXACTLY ONE category from the list below.
+IMPORTANT: Always prefer the most specific category. "General Knowledge/Other" is a fallback — only use it when no other category applies. For example, a question about a singer belongs in Arts/Culture, a question about a president belongs in Politics/Law, a question about movies belongs in Arts/Culture.
 Determine if a web search would genuinely help answer the query.
 Determine if the user's prompt might benefit from context of their previous conversations (memory).
 

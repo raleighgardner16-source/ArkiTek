@@ -17,19 +17,13 @@ const toBulletArray = (text: string | null | undefined): string[] => {
 
 export function parseDebateSummary(rawText: string): ParsedSummary {
   const normalizedText = rawText
-    .replace(/\*\*(BALANCE|Balance|DEBATE OVERVIEW|Debate Overview|STRONGEST ARGUMENTS?|Strongest Arguments?|KEY TENSIONS|Key Tensions)\*\*[:\s-]?/gi, '\n$1:')
-    .replace(/\*(BALANCE|Balance|DEBATE OVERVIEW|Debate Overview|STRONGEST ARGUMENTS?|Strongest Arguments?|KEY TENSIONS|Key Tensions)\*[:\s-]?/gi, '\n$1:')
+    .replace(/\*\*(DEBATE OVERVIEW|Debate Overview|STRONGEST ARGUMENTS?|Strongest Arguments?|KEY TENSIONS|Key Tensions)\*\*[:\s-]?/gi, '\n$1:')
+    .replace(/\*(DEBATE OVERVIEW|Debate Overview|STRONGEST ARGUMENTS?|Strongest Arguments?|KEY TENSIONS|Key Tensions)\*[:\s-]?/gi, '\n$1:')
+    .replace(/^\s*(?:Balance|BALANCE)[:\s-]?\s*(?:\[|\*\*)?\s*\d+\s*(?:%|]|\*\*)?\s*\n?/im, '')
 
-  const balanceMatch = normalizedText.match(/(?:Balance|BALANCE)[:\s-]?\s*(?:\[|\*\*)?\s*(\d+)\s*(?:%|]|\*\*)?/i)
   const overviewMatch = normalizedText.match(/(?:Debate Overview|DEBATE OVERVIEW)[:\s-]?\s*([\s\S]+?)(?=\n\s*(?:STRONGEST ARGUMENTS?|Strongest Arguments?)[:\s-]|\n\s*(?:KEY TENSIONS|Key Tensions)[:\s-]|$)/i)
   const strongestMatch = normalizedText.match(/(?:Strongest Arguments?|STRONGEST ARGUMENTS?)[:\s-]?\s*([\s\S]+?)(?=\n\s*(?:KEY TENSIONS|Key Tensions)[:\s-]|$)/i)
   const tensionsMatch = normalizedText.match(/(?:Key Tensions|KEY TENSIONS)[:\s-]?\s*([\s\S]+)$/i)
-
-  let consensus: number | null = null
-  if (balanceMatch) {
-    const score = parseInt(balanceMatch[1], 10)
-    if (!Number.isNaN(score)) consensus = Math.max(0, Math.min(100, score))
-  }
 
   const summary = (overviewMatch ? overviewMatch[1] : rawText)
     .replace(/^(?:\*\*)?(?:Debate Overview|DEBATE OVERVIEW)[:\s-]?\s*\*?\*?\s*/i, '')
@@ -40,12 +34,11 @@ export function parseDebateSummary(rawText: string): ParsedSummary {
   const contradictions = toBulletArray((tensionsMatch?.[1] || '').trim())
 
   let formattedText = ''
-  if (consensus !== null) formattedText += `## BALANCE: ${consensus}%\n\n`
   if (summary) formattedText += `## DEBATE OVERVIEW\n${summary}\n\n`
   formattedText += `## STRONGEST ARGUMENTS\n${agreements.length ? agreements.map(a => `- ${a}`).join('\n') : 'None identified.'}\n\n`
   formattedText += `## KEY TENSIONS\n${contradictions.length ? contradictions.map(c => `- ${c}`).join('\n') : 'None identified.'}`
 
-  return { formattedText, consensus, summary, agreements, contradictions, differences: [] }
+  return { formattedText, consensus: null, summary, agreements, contradictions, differences: [] }
 }
 
 export function parseCouncilSummary(rawText: string): ParsedSummary {

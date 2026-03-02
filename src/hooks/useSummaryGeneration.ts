@@ -34,9 +34,8 @@ Original User Query: "${originalPrompt}"
 Debate Responses:
 ${responsesText}
 
-Please analyze this debate and provide ONLY these five sections in this exact format:
+Please analyze this debate and provide ONLY these sections in this exact format:
 
-Balance: [0-100]
 Debate Overview: [2-3 substantial paragraphs synthesizing the debate — what was discussed, how each role approached the topic, and what the collective debate reveals. Give the reader a complete understanding without needing to read individual responses.]
 Strongest Arguments: [3-5 bullet points identifying the most compelling arguments made across all roles, each starting with a dash and naming which role made the point]
 Key Tensions: [List the fundamental disagreements or opposing viewpoints between the roles. These are expected and by design — name which roles clashed and on what. Each starting with a dash.]
