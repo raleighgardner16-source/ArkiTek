@@ -650,12 +650,24 @@ const StatisticsView = () => {
 
         {/* Leaderboard Ranking Card */}
         {!isViewingOther && myRanks && (myRanks.tokens || myRanks.prompts || myRanks.streak) && (
-          <div style={{
-            display: 'flex',
-            gap: spacing.lg,
-            marginBottom: spacing['3xl'],
-            flexWrap: 'wrap',
-          }}>
+          <div style={{ marginBottom: spacing['3xl'] }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: spacing.md,
+              marginBottom: spacing.lg,
+            }}>
+              <Trophy size={16} color={currentTheme.accent} />
+              <span style={{
+                color: currentTheme.textSecondary, fontSize: fontSize.lg,
+                fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px',
+              }}>
+                Leaderboard Rankings
+              </span>
+            </div>
+            <div style={{
+              display: 'flex',
+              gap: spacing.lg,
+              flexWrap: 'wrap',
+            }}>
             {[
               { label: 'Tokens', rank: myRanks.tokens, icon: Zap, color: '#5dade2' },
               { label: 'Prompts', rank: myRanks.prompts, icon: MessageSquare, color: '#48c9b0' },
@@ -703,6 +715,7 @@ const StatisticsView = () => {
                 </div>
               )
             })}
+            </div>
           </div>
         )}
 
