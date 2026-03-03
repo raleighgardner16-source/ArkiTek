@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useStore } from '../store/useStore'
 import { streamFetch } from '../utils/streamFetch'
 import { parseSummaryResponse } from '../utils/summaryParser'
@@ -64,6 +64,7 @@ Important: Only include each section label followed by a colon and content.`
 export function useSummaryGeneration({ isLoading }: { isLoading: boolean }) {
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const shouldGenerateSummary = useStore((state) => state.shouldGenerateSummary)
+  const summaryAbortRef = useRef<AbortController | null>(null)
 
   const handleGenerateSummary = async () => {
     if (isLoading || isGeneratingSummary) return
@@ -74,6 +75,12 @@ export function useSummaryGeneration({ isLoading }: { isLoading: boolean }) {
 
     const promptForSummary = store.lastSubmittedPrompt || ''
     if (!promptForSummary.trim()) return
+
+    if (summaryAbortRef.current) {
+      summaryAbortRef.current.abort()
+    }
+    const abortController = new AbortController()
+    summaryAbortRef.current = abortController
 
     setIsGeneratingSummary(true)
     const isDebateSummary = store.promptMode === 'debate'
@@ -113,6 +120,7 @@ export function useSummaryGeneration({ isLoading }: { isLoading: boolean }) {
           onError: (message) => {
             console.error('[Summary Stream] Error:', message)
           },
+          signal: abortController.signal,
         },
       )
 
@@ -157,6 +165,13 @@ export function useSummaryGeneration({ isLoading }: { isLoading: boolean }) {
         }
       }
 
+      // Skip all persistence if the user cancelled mid-summary
+      if (abortController.signal.aborted) {
+        console.log('[Summary] Generation cancelled — skipping history save')
+        useStore.getState().setSummary(null)
+        return
+      }
+
       // Store initial summary in conversation context
       const currentUser = useStore.getState().currentUser
       if (currentUser?.id && rawSummaryText) {
@@ -190,6 +205,11 @@ export function useSummaryGeneration({ isLoading }: { isLoading: boolean }) {
           })
       }
     } catch (error: any) {
+      if (error.name === 'AbortError' || abortController.signal.aborted) {
+        console.log('[Summary] Generation cancelled by user')
+        useStore.getState().setSummary(null)
+        return
+      }
       console.error('[Summary] Error generating summary:', error.message)
       useStore.getState().setSummary({
         text: `Error generating summary: ${error.message}. Please try again.`,
@@ -199,6 +219,9 @@ export function useSummaryGeneration({ isLoading }: { isLoading: boolean }) {
         sources: [],
       })
     } finally {
+      if (summaryAbortRef.current === abortController) {
+        summaryAbortRef.current = null
+      }
       setIsGeneratingSummary(false)
     }
   }
@@ -212,7 +235,15 @@ export function useSummaryGeneration({ isLoading }: { isLoading: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldGenerateSummary])
 
+  const cancelSummary = () => {
+    if (summaryAbortRef.current) {
+      summaryAbortRef.current.abort()
+      summaryAbortRef.current = null
+    }
+    setIsGeneratingSummary(false)
+  }
+
   const resetSummaryState = () => setIsGeneratingSummary(false)
 
-  return { isGeneratingSummary, handleGenerateSummary, resetSummaryState }
+  return { isGeneratingSummary, handleGenerateSummary, cancelSummary, resetSummaryState }
 }

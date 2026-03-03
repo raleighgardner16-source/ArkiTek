@@ -136,9 +136,9 @@ Categories:
 10 General Knowledge/Other
 
 Model types (choose ONE for ALL providers):
-reasoning = complex logic, math, coding, analysis, step-by-step thinking
-versatile = general conversation, writing, multi-purpose tasks  
-fast = simple queries, quick responses, low-latency needs
+reasoning = complex logic, math, coding, analysis, step-by-step thinking, business strategy, planning, how-to guides, in-depth explanations, research, comparisons, decision-making
+versatile = casual conversation, creative writing, simple Q&A, opinions, brainstorming, short-form content  
+fast = simple queries, quick responses, low-latency needs, trivial facts, greetings
 
 User prompt:
 "${prompt}"${modelsList}

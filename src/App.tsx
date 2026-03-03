@@ -51,11 +51,11 @@ function App() {
 
   // ── Hooks for prompt submission & summary generation ──────────────
   const { isLoading, handleCancelPrompt: cancelSubmission, clearAllWindows } = usePromptSubmission()
-  const { isGeneratingSummary, resetSummaryState } = useSummaryGeneration({ isLoading })
+  const { isGeneratingSummary, cancelSummary } = useSummaryGeneration({ isLoading })
 
   const handleCancelPrompt = () => {
     cancelSubmission()
-    resetSummaryState()
+    cancelSummary()
   }
 
   // ── Navigation helper for public pages ────────────────────────────

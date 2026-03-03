@@ -196,6 +196,12 @@ export function usePromptSubmission() {
 
       setIsLoading(false)
 
+      // Bail out if the user cancelled while models were streaming
+      if (abortController.signal.aborted) {
+        console.log('[handlePromptSubmit] Request cancelled — skipping stats and history save')
+        return
+      }
+
       // ── 3. Collect token data ───────────────────────────────────
       const tokenData: any[] = []
       if (categoryDetectionTokens) {

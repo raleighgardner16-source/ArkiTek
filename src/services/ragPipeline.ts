@@ -187,9 +187,15 @@ export async function executeRAGPipeline({
     }
 
     // Finalize responses from the done payload (fills any gaps from streaming)
+    // Only overwrite if the done payload has richer data (e.g., tokens that model_done missed)
     if (Array.isArray(ragData.council_responses)) {
       ragData.council_responses.forEach((councilResponse: any) => {
         const normalized = normalizeCouncilResponse(councilResponse)
+        const existing = ragResponsesByModel[normalized.modelName]
+        // Preserve existing token data from model_done events if done payload lacks it
+        if (existing?.tokens && !normalized.tokens) {
+          normalized.tokens = existing.tokens
+        }
         ragResponsesByModel[normalized.modelName] = normalized
         useStore.getState().updateResponse(normalized.id, {
           text: normalized.text,
@@ -207,14 +213,15 @@ export async function executeRAGPipeline({
     const responses = models.map((modelId) => {
       if (ragResponsesByModel[modelId]) return ragResponsesByModel[modelId]
       const responseId = responseIds[modelId]
+      const storeResponse = useStore.getState().responses.find((r: any) => r.id === responseId)
       return {
         id: responseId,
         modelName: modelId,
-        actualModelName: modelId,
-        originalModelName: modelId,
-        text: useStore.getState().responses.find((r: any) => r.id === responseId)?.text || '',
+        actualModelName: storeResponse?.actualModelName || modelId,
+        originalModelName: storeResponse?.originalModelName || modelId,
+        text: storeResponse?.text || '',
         error: false,
-        tokens: null,
+        tokens: storeResponse?.tokens || null,
         isStreaming: false,
         sources: latestRagSearchSources,
       }

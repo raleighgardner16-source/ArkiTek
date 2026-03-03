@@ -100,6 +100,7 @@ User Query: ${query}`
           messages: councilMessages,
           ...(shouldUseDefaultTemperature ? {} : { temperature: 0.7 }),
           stream: true,
+          stream_options: { include_usage: true },
         },
         {
           headers: {
@@ -318,7 +319,14 @@ User Query: ${query}`
       tokens: tokenInfo,
     }
 
-    sendSSE('model_done', result)
+    sendSSE('model_done', {
+      model_name: modelId,
+      actual_model_name: mappedModel,
+      original_model_name: model,
+      response: fullResponse,
+      error: null,
+      tokens: tokenInfo,
+    })
     return result
   } catch (error: any) {
     console.error(`[RAG Stream] Error calling ${modelId}:`, error.message)
@@ -821,11 +829,21 @@ router.post('/stream', async (req: Request, res: Response) => {
       }
     }
 
+    // Strip prompt from council_responses to reduce done event payload size
+    const lightCouncilResponses = councilResponses.map(cr => ({
+      model_name: cr.model_name,
+      actual_model_name: cr.actual_model_name,
+      original_model_name: cr.original_model_name,
+      response: cr.response,
+      error: cr.error,
+      tokens: cr.tokens,
+    }))
+
     sendSSE('done', {
       query,
       search_results: searchResults,
       refined_data: null,
-      council_responses: councilResponses,
+      council_responses: lightCouncilResponses,
       raw_sources: {
         source_count: rawSourcesData.sourceCount,
         scraped_sources: rawSourcesData.scrapedSources,
