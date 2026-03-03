@@ -68,7 +68,7 @@ const RatingsTab = ({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, marginBottom: spacing.xl }}>
             <Trophy size={22} color="#FFD700" />
-            <p style={{ color: currentTheme.text, fontSize: fontSize['2xl'], margin: 0 }}>Provider Wins</p>
+            <p style={{ color: currentTheme.text, fontSize: fontSize['2xl'], margin: 0 }}>Times Each Provider Was Favorited</p>
           </div>
           {ratingsStats.providerLeaderboard && ratingsStats.providerLeaderboard.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
@@ -103,14 +103,14 @@ const RatingsTab = ({
                     fontSize: fontSize['2xl'],
                     fontWeight: fontWeight.bold,
                   }}>
-                    {wins} {wins === 1 ? 'win' : 'wins'}
+                    {wins} {wins === 1 ? 'time' : 'times'}
                   </span>
                 </div>
               ))}
             </div>
           ) : (
             <p style={{ color: currentTheme.textMuted, fontSize: fontSize.xl, margin: `${spacing.xl} 0 0 0` }}>
-              Pick your favorite model response to start tracking wins
+              Pick your favorite response after a prompt to start tracking
             </p>
           )}
         </div>
@@ -127,7 +127,7 @@ const RatingsTab = ({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, marginBottom: spacing.xl }}>
             <Trophy size={22} color="#FFD700" />
-            <p style={{ color: currentTheme.text, fontSize: fontSize['2xl'], margin: 0 }}>Model Wins</p>
+            <p style={{ color: currentTheme.text, fontSize: fontSize['2xl'], margin: 0 }}>Times Each Model Was Favorited</p>
           </div>
           {ratingsStats.modelLeaderboard && ratingsStats.modelLeaderboard.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
@@ -174,7 +174,7 @@ const RatingsTab = ({
                       fontSize: fontSize['2xl'],
                       fontWeight: fontWeight.bold,
                     }}>
-                      {wins} {wins === 1 ? 'win' : 'wins'}
+                      {wins} {wins === 1 ? 'time' : 'times'}
                     </span>
                   </div>
                 )
@@ -182,7 +182,7 @@ const RatingsTab = ({
             </div>
           ) : (
             <p style={{ color: currentTheme.textMuted, fontSize: fontSize.xl, margin: `${spacing.xl} 0 0 0` }}>
-              Pick your favorite model response to start tracking wins
+              Pick your favorite response after a prompt to start tracking
             </p>
           )}
         </div>
