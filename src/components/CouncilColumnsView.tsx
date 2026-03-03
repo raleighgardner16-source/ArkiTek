@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, ChevronUp, Search, Globe, Send, Maximize2, X, Trophy } from 'lucide-react'
 import MarkdownRenderer from './MarkdownRenderer'
 import { spacing, fontSize, fontWeight, radius, transition, layout, sx, createStyles } from '../utils/styles'
+import { getModelShortLabel } from '../utils/modelNames'
 
 interface Props {
   showCouncilColumns: boolean
@@ -345,6 +346,9 @@ const CouncilColumnsView = ({
                             textOverflow: 'ellipsis',
                           }}>
                             {getProviderDisplayName(response.modelName)}
+                            {getModelShortLabel(response.modelName) && (
+                              <span style={{ opacity: 0.6 }}>{' '}({getModelShortLabel(response.modelName)})</span>
+                            )}
                           </div>
                         </div>
                       ) : (
@@ -359,6 +363,11 @@ const CouncilColumnsView = ({
                           textOverflow: 'ellipsis',
                         }}>
                           {getProviderDisplayName(response.modelName)}
+                          {getModelShortLabel(response.modelName) && (
+                            <span style={{ color: currentTheme.textMuted, fontWeight: fontWeight.normal, textTransform: 'none', letterSpacing: 'normal' }}>
+                              {' '}({getModelShortLabel(response.modelName)})
+                            </span>
+                          )}
                         </div>
                       )}
                       <div style={{ display: 'flex', alignItems: 'center', gap: spacing.xs }}>
@@ -550,6 +559,11 @@ const CouncilColumnsView = ({
                             )}
                             <div style={{ fontSize: fontSize.xs, color: currentTheme.accent, marginBottom: spacing.xs, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
                               {response.debateRole ? `${response.debateRole.label} · ${getProviderDisplayName(response.modelName)}` : getProviderDisplayName(response.modelName)}
+                              {!response.debateRole && getModelShortLabel(response.modelName) && (
+                                <span style={{ color: currentTheme.textMuted, fontWeight: fontWeight.normal, textTransform: 'none', letterSpacing: 'normal' }}>
+                                  {' '}({getModelShortLabel(response.modelName)})
+                                </span>
+                              )}
                             </div>
                             {turn.assistant ? (
                               <div style={{ fontSize: fontSize.md, color: currentTheme.textSecondary, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
@@ -878,6 +892,9 @@ const CouncilColumnsView = ({
                         fontWeight: fontWeight.medium,
                       }}>
                         {getProviderDisplayName(maximizedCouncilResponse.modelName)}
+                        {getModelShortLabel(maximizedCouncilResponse.modelName) && (
+                          <span style={{ opacity: 0.6 }}>{' '}({getModelShortLabel(maximizedCouncilResponse.modelName)})</span>
+                        )}
                       </span>
                     </div>
                   </>
@@ -890,6 +907,11 @@ const CouncilColumnsView = ({
                     })}
                   >
                     {getProviderDisplayName(maximizedCouncilResponse.modelName)}
+                    {getModelShortLabel(maximizedCouncilResponse.modelName) && (
+                      <span style={{ color: currentTheme.textMuted, fontWeight: fontWeight.normal, fontSize: fontSize.lg }}>
+                        {' '}({getModelShortLabel(maximizedCouncilResponse.modelName)})
+                      </span>
+                    )}
                   </h3>
                 )}
                 {!isReopenedHistoryChat && !maximizedCouncilResponse.isStreaming && maximizedCouncilResponse.text && responses.length > 1 && (
