@@ -632,27 +632,29 @@ const ResponseComparison = () => {
                     {formatModelName(response.modelName)}
                   </h2>
                 )}
-                <button
-                  onClick={() => handleFavorite(response.id)}
-                  style={{
-                    background: currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
-                    border: `1px solid ${currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
-                    borderRadius: radius.md,
-                    padding: `${spacing.xs} ${spacing.lg}`,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: spacing.xs,
-                    color: currentPromptFavorite === response.id ? '#fff' : currentTheme.textSecondary,
-                    fontSize: fontSize.sm,
-                    fontWeight: currentPromptFavorite === response.id ? fontWeight.semibold : fontWeight.normal,
-                    transition: transition.normal,
-                    flexShrink: 0,
-                  }}
-                >
-                  <Trophy size={14} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
-                  {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
-                </button>
+                {responses.length > 1 && (
+                  <button
+                    onClick={() => handleFavorite(response.id)}
+                    style={{
+                      background: currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
+                      border: `1px solid ${currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
+                      borderRadius: radius.md,
+                      padding: `${spacing.xs} ${spacing.lg}`,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: spacing.xs,
+                      color: currentPromptFavorite === response.id ? '#fff' : currentTheme.textSecondary,
+                      fontSize: fontSize.sm,
+                      fontWeight: currentPromptFavorite === response.id ? fontWeight.semibold : fontWeight.normal,
+                      transition: transition.normal,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Trophy size={14} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
+                    {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1037,7 +1039,7 @@ const ResponseComparison = () => {
             )}
           </div>
           <div style={{ display: 'flex', gap: spacing.md, alignItems: 'center' }}>
-            {!response.isStreaming && (
+            {!response.isStreaming && responses.length > 1 && (
               <button
                 onClick={(e) => {
                   e.stopPropagation()
@@ -1244,27 +1246,29 @@ const ResponseComparison = () => {
                   {formatModelName(response.modelName)}
                 </h3>
               )}
-              <button
-                onClick={() => handleFavorite(response.id)}
-                style={{
-                  background: currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
-                  border: `1px solid ${currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
-                  borderRadius: radius.md,
-                  padding: `${spacing['2xs']} ${spacing.lg}`,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: spacing.xs,
-                  color: currentPromptFavorite === response.id ? '#fff' : currentTheme.textSecondary,
-                  fontSize: fontSize.sm,
-                  fontWeight: currentPromptFavorite === response.id ? fontWeight.semibold : fontWeight.normal,
-                  transition: transition.normal,
-                  flexShrink: 0,
-                }}
-              >
-                <Trophy size={14} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
-                {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
-              </button>
+              {responses.length > 1 && (
+                <button
+                  onClick={() => handleFavorite(response.id)}
+                  style={{
+                    background: currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
+                    border: `1px solid ${currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
+                    borderRadius: radius.md,
+                    padding: `${spacing['2xs']} ${spacing.lg}`,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: spacing.xs,
+                    color: currentPromptFavorite === response.id ? '#fff' : currentTheme.textSecondary,
+                    fontSize: fontSize.sm,
+                    fontWeight: currentPromptFavorite === response.id ? fontWeight.semibold : fontWeight.normal,
+                    transition: transition.normal,
+                    flexShrink: 0,
+                  }}
+                >
+                  <Trophy size={14} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
+                  {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -2227,7 +2231,7 @@ const ResponseComparison = () => {
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: spacing.md, alignItems: 'center' }}>
-                  {!response.isStreaming && (
+                  {!response.isStreaming && responses.length > 1 && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation()

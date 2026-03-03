@@ -139,21 +139,9 @@ const LeaderboardView = () => {
     return ranked
   }, [modelRankings])
 
-  useEffect(() => {
-    if (isUserTab) {
-      fetchUserRankings()
-    }
-  }, [activeType])
-
-  useEffect(() => {
-    fetchProviderModelRankings()
-  }, [])
-
-  const fetchUserRankings = async () => {
-    const type = activeType
-    const isCached = !!rankingsCache[type]
+  const fetchUserRankingsForType = async (type: string, showLoading: boolean) => {
     try {
-      if (!isCached) setLoading(true)
+      if (showLoading) setLoading(true)
       setError(null)
       const res = await api.get(`/leaderboard/rankings?type=${type}`)
       setRankingsCache((prev) => ({
@@ -162,9 +150,9 @@ const LeaderboardView = () => {
       }))
     } catch (err: any) {
       console.error('[Leaderboard] Error:', err)
-      if (!isCached) setError('Failed to load leaderboard')
+      if (showLoading) setError('Failed to load leaderboard')
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
     }
   }
 
@@ -182,6 +170,26 @@ const LeaderboardView = () => {
       setLoadingVotes(false)
     }
   }
+
+  useEffect(() => {
+    const prefetchAll = async () => {
+      setLoading(true)
+      await Promise.all([
+        fetchUserRankingsForType('tokens', false),
+        fetchUserRankingsForType('prompts', false),
+        fetchUserRankingsForType('streak', false),
+        fetchProviderModelRankings(),
+      ])
+      setLoading(false)
+    }
+    prefetchAll()
+  }, [])
+
+  useEffect(() => {
+    if (isUserTab) {
+      fetchUserRankingsForType(activeType, !rankingsCache[activeType])
+    }
+  }, [activeType])
 
   const handleUserClick = (userId: string, username: string) => {
     if (userId === currentUser?.id) {
