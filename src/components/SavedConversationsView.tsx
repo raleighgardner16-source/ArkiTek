@@ -78,9 +78,6 @@ const SavedConversationsView = () => {
   const [showClearCategoryConfirm, setShowClearCategoryConfirm] = useState(false)
   const [categoryToClear, setCategoryToClear] = useState<string | null>(null)
 
-  // Tooltip that follows cursor on category prompt hover
-  const [promptTooltip, setPromptTooltip] = useState({ visible: false, x: 0, y: 0 })
-
   // Track how many prompts are visible per category (default 5)
   const [categoryVisibleCount, setCategoryVisibleCount] = useState<Record<string, any>>({})
 
@@ -1270,7 +1267,7 @@ const SavedConversationsView = () => {
                     </span>
                     {hasPrompts && (
                       <span key={`category-prompts-count-${category}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: fontSize.base, marginLeft: spacing.md }}>
-                        ({recentPrompts.length} {recentPrompts.length === 1 ? 'prompt' : 'prompts'})
+                        ({recentPrompts.length} {recentPrompts.length === 1 ? 'prompt' : 'prompts'} · double-click to open in chat history)
                       </span>
                     )}
                     {!hasPrompts && count === 0 && (
@@ -1358,9 +1355,6 @@ const SavedConversationsView = () => {
                                       <div
                                         key={`${category}-prompt-${index}-${theme}`}
                                         onDoubleClick={() => handleOpenPromptInHistory(prompt)}
-                                        onMouseEnter={() => setPromptTooltip(prev => ({ ...prev, visible: true }))}
-                                        onMouseMove={(e) => setPromptTooltip({ visible: true, x: e.clientX, y: e.clientY })}
-                                        onMouseLeave={() => setPromptTooltip({ visible: false, x: 0, y: 0 })}
                                         style={{
                                           background: theme === 'light' ? '#ffffff' : 'rgba(20, 20, 30, 0.9)',
                                           border: `1px solid ${currentTheme.borderLight}`,
@@ -2029,30 +2023,6 @@ const SavedConversationsView = () => {
           </motion.div>
         )}
       </div>
-
-      {/* Cursor-following tooltip for category prompts */}
-      {promptTooltip.visible && (
-        <div
-          style={{
-            position: 'fixed',
-            left: promptTooltip.x + 14,
-            top: promptTooltip.y - 36,
-            background: 'rgba(0, 0, 0, 0.88)',
-            border: `1px solid ${currentTheme.accent}40`,
-            borderRadius: radius.md,
-            padding: `${spacing.sm} ${spacing.lg}`,
-            pointerEvents: 'none',
-            zIndex: zIndex.modal - 1,
-            whiteSpace: 'nowrap',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
-            backdropFilter: 'blur(8px)',
-          }}
-        >
-          <span style={{ color: '#ffffff', fontSize: fontSize.sm, fontWeight: fontWeight.medium }}>
-            Double-click to view in Chat History
-          </span>
-        </div>
-      )}
 
       {/* Confirmation Modal for clearing category prompts */}
       <ConfirmationModal

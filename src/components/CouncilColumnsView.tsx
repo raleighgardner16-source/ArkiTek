@@ -359,23 +359,48 @@ const CouncilColumnsView = ({
                           {getProviderDisplayName(response.modelName)}
                         </div>
                       )}
-                      <button
-                        onClick={() => setMaximizedCouncilResponseId(response.id)}
-                        title="Expand response"
-                        style={sx(layout.center, {
-                          width: '24px',
-                          height: '24px',
-                          borderRadius: radius.sm,
-                          border: `1px solid ${currentTheme.borderLight}`,
-                          background: currentTheme.buttonBackground,
-                          color: currentTheme.textSecondary,
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                          transition: transition.normal,
-                        })}
-                      >
-                        <Maximize2 size={13} />
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.xs }}>
+                        {!response.isStreaming && response.text && responses.length > 1 && (
+                          <button
+                            onClick={() => onPickFavorite(response.id)}
+                            style={{
+                              background: currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
+                              border: `1px solid ${currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
+                              borderRadius: radius.sm,
+                              padding: `${spacing['2xs']} ${spacing.sm}`,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: spacing['2xs'],
+                              color: currentPromptFavorite === response.id ? '#fff' : currentTheme.textSecondary,
+                              fontSize: fontSize['2xs'],
+                              fontWeight: currentPromptFavorite === response.id ? fontWeight.semibold : fontWeight.normal,
+                              transition: transition.normal,
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Trophy size={11} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
+                            {currentPromptFavorite === response.id ? 'Favorite' : 'Pick'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setMaximizedCouncilResponseId(response.id)}
+                          title="Expand response"
+                          style={sx(layout.center, {
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: radius.sm,
+                            border: `1px solid ${currentTheme.borderLight}`,
+                            background: currentTheme.buttonBackground,
+                            color: currentTheme.textSecondary,
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                            transition: transition.normal,
+                          })}
+                        >
+                          <Maximize2 size={13} />
+                        </button>
+                      </div>
                     </div>
                     <div style={{
                       fontSize: arr.length > 3 ? fontSize.md : fontSize.base,
@@ -405,30 +430,6 @@ const CouncilColumnsView = ({
                         </motion.div>
                       )}
                     </div>
-                    {!response.isStreaming && response.text && responses.length > 1 && (
-                      <div style={{ marginTop: spacing.lg, display: 'flex' }}>
-                        <button
-                          onClick={() => onPickFavorite(response.id)}
-                          style={{
-                            background: currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
-                            border: `1px solid ${currentPromptFavorite === response.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
-                            borderRadius: radius.md,
-                            padding: `${spacing.xs} ${spacing.lg}`,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: spacing.xs,
-                            color: currentPromptFavorite === response.id ? '#fff' : currentTheme.textSecondary,
-                            fontSize: fontSize.sm,
-                            fontWeight: currentPromptFavorite === response.id ? fontWeight.semibold : fontWeight.normal,
-                            transition: transition.normal,
-                          }}
-                        >
-                          <Trophy size={14} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
-                          {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
-                        </button>
-                      </div>
-                    )}
                     {(showCouncilReviewPhase || (canToggleResultViews && resultViewMode === 'council') || (!response.isStreaming && response.text)) && (
                       <div style={{ marginTop: '14px', borderTop: `1px solid ${currentTheme.borderLight}`, paddingTop: spacing.lg }}>
                         {/* Initial prompt sources */}
@@ -856,25 +857,27 @@ const CouncilColumnsView = ({
                 <X size={16} />
               </button>
 
-              <div style={{ marginBottom: '14px', paddingRight: '36px' }}>
+              <div style={{ marginBottom: '14px', paddingRight: '36px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.lg }}>
                 {maximizedCouncilResponse.debateRole ? (
                   <>
-                    <h3
-                      style={sx(s.gradientText, {
-                        margin: 0,
-                        fontSize: '1.25rem',
-                        fontWeight: fontWeight.bold,
-                      })}
-                    >
-                      {maximizedCouncilResponse.debateRole.label}
-                    </h3>
-                    <span style={{
-                      fontSize: fontSize.md,
-                      color: currentTheme.textMuted,
-                      fontWeight: fontWeight.medium,
-                    }}>
-                      {getProviderDisplayName(maximizedCouncilResponse.modelName)}
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <h3
+                        style={sx(s.gradientText, {
+                          margin: 0,
+                          fontSize: '1.25rem',
+                          fontWeight: fontWeight.bold,
+                        })}
+                      >
+                        {maximizedCouncilResponse.debateRole.label}
+                      </h3>
+                      <span style={{
+                        fontSize: fontSize.md,
+                        color: currentTheme.textMuted,
+                        fontWeight: fontWeight.medium,
+                      }}>
+                        {getProviderDisplayName(maximizedCouncilResponse.modelName)}
+                      </span>
+                    </div>
                   </>
                 ) : (
                   <h3
@@ -887,6 +890,29 @@ const CouncilColumnsView = ({
                     {getProviderDisplayName(maximizedCouncilResponse.modelName)}
                   </h3>
                 )}
+                {!maximizedCouncilResponse.isStreaming && maximizedCouncilResponse.text && responses.length > 1 && (
+                  <button
+                    onClick={() => onPickFavorite(maximizedCouncilResponse.id)}
+                    style={{
+                      background: currentPromptFavorite === maximizedCouncilResponse.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
+                      border: `1px solid ${currentPromptFavorite === maximizedCouncilResponse.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
+                      borderRadius: radius.md,
+                      padding: `${spacing.xs} ${spacing.lg}`,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: spacing.xs,
+                      color: currentPromptFavorite === maximizedCouncilResponse.id ? '#fff' : currentTheme.textSecondary,
+                      fontSize: fontSize.sm,
+                      fontWeight: currentPromptFavorite === maximizedCouncilResponse.id ? fontWeight.semibold : fontWeight.normal,
+                      transition: transition.normal,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Trophy size={14} fill={currentPromptFavorite === maximizedCouncilResponse.id ? '#fff' : 'transparent'} />
+                    {currentPromptFavorite === maximizedCouncilResponse.id ? 'Favorite' : 'Pick as Favorite'}
+                  </button>
+                )}
               </div>
 
               <MarkdownRenderer
@@ -895,31 +921,6 @@ const CouncilColumnsView = ({
                 fontSize="1rem"
                 lineHeight="1.8"
               />
-
-              {!maximizedCouncilResponse.isStreaming && maximizedCouncilResponse.text && responses.length > 1 && (
-                <div style={{ marginTop: spacing.xl, display: 'flex' }}>
-                  <button
-                    onClick={() => onPickFavorite(maximizedCouncilResponse.id)}
-                    style={{
-                      background: currentPromptFavorite === maximizedCouncilResponse.id ? currentTheme.accentSecondary : currentTheme.buttonBackground,
-                      border: `1px solid ${currentPromptFavorite === maximizedCouncilResponse.id ? currentTheme.accentSecondary : currentTheme.borderLight}`,
-                      borderRadius: radius.lg,
-                      padding: `${spacing.sm} ${spacing.xl}`,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: spacing.sm,
-                      color: currentPromptFavorite === maximizedCouncilResponse.id ? '#fff' : currentTheme.textSecondary,
-                      fontSize: fontSize.lg,
-                      fontWeight: currentPromptFavorite === maximizedCouncilResponse.id ? fontWeight.semibold : fontWeight.normal,
-                      transition: transition.normal,
-                    }}
-                  >
-                    <Trophy size={18} fill={currentPromptFavorite === maximizedCouncilResponse.id ? '#fff' : 'transparent'} />
-                    {currentPromptFavorite === maximizedCouncilResponse.id ? 'Favorite' : 'Pick as Favorite'}
-                  </button>
-                </div>
-              )}
 
               {Array.isArray(maximizedCouncilResponse.sources) && maximizedCouncilResponse.sources.length > 0 && (() => {
                 const initialSourceKey = `${maximizedCouncilResponse.id}_initial`

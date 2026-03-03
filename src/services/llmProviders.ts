@@ -38,8 +38,8 @@ export const LLM_PROVIDERS: Record<string, ProviderConfig> = {
   anthropic: {
     name: 'Claude',
     models: [
-      { id: 'claude-4.5-opus', type: 'reasoning', label: 'Reasoning' },
-      { id: 'claude-4.5-sonnet', type: 'versatile', label: 'Versatile' },
+      { id: 'claude-4.6-opus', type: 'reasoning', label: 'Reasoning' },
+      { id: 'claude-4.6-sonnet', type: 'versatile', label: 'Versatile' },
       { id: 'claude-4.5-haiku', type: 'fast', label: 'Fast' },
     ],
     baseUrl: 'https://api.anthropic.com/v1',
@@ -49,7 +49,7 @@ export const LLM_PROVIDERS: Record<string, ProviderConfig> = {
   google: {
     name: 'Gemini',
     models: [
-      { id: 'gemini-3-pro', type: 'reasoning', label: 'Reasoning' },
+      { id: 'gemini-3.1-pro', type: 'reasoning', label: 'Reasoning' },
       { id: 'gemini-3-flash', type: 'versatile', label: 'Versatile' },
       { id: 'gemini-2.5-flash-lite', type: 'fast', label: 'Fast' },
     ],

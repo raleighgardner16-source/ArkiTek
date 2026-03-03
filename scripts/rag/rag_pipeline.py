@@ -63,9 +63,9 @@ class RAGPipeline:
         
         Args:
             serper_api_key: Serper API key for search
-            openai_api_key: OpenAI API key for refiner (gpt-4o-mini)
+            openai_api_key: OpenAI API key for refiner (gpt-5-mini)
             xai_api_key: xAI API key for judge (Grok)
-            google_api_key: Google API key for secondary refiner (gemini-1.5-flash) - optional
+            google_api_key: Google API key for secondary refiner (gemini-3-flash) - optional
         """
         self.serper_api_key = serper_api_key
         self.openai_api_key = openai_api_key
@@ -182,7 +182,7 @@ class RAGPipeline:
         Returns:
             RefinedData object with extracted data points and citations
         """
-        model_name = "gemini-1.5-flash" if use_secondary else "gpt-4o-mini"
+        model_name = "gemini-3-flash-preview" if use_secondary else "gpt-5-mini"
         print(f"[Refiner] Extracting factual data points for: {query} (using {model_name})")
         
         if not search_results:
@@ -221,7 +221,7 @@ Output a JSON array of facts with citations. Example format:
                 # Use Gemini as secondary model
                 async with aiohttp.ClientSession() as session:
                     async with session.post(
-                        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+                        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent',
                         params={'key': self.google_api_key} if self.google_api_key else {},
                         json={
                             'contents': [{
@@ -255,7 +255,7 @@ Output a JSON array of facts with citations. Example format:
                             'Content-Type': 'application/json',
                         },
                         json={
-                            'model': 'gpt-4o-mini',
+                            'model': 'gpt-5-mini',
                             'messages': [
                                 {'role': 'system', 'content': 'You are a strict data extraction engine. Output only valid JSON.'},
                                 {'role': 'user', 'content': refiner_prompt}
@@ -894,9 +894,9 @@ async def main():
     # Example query and models
     query = "What happened with Charlie Kirk shooting?"
     selected_models = [
-        "openai-gpt-4o",
-        "anthropic-claude-4.5-sonnet",
-        "google-gemini-2.5-pro"
+        "openai-gpt-5.2",
+        "anthropic-claude-4.6-sonnet",
+        "google-gemini-3.1-pro"
     ]
     
     # Run pipeline
