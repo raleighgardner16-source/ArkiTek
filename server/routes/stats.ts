@@ -252,19 +252,27 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
   const levelTitle = getLevelTitle(levelInfo.level)
 
   // Detect streak break (user hasn't been active and streak was lost)
+  // Recovery expires at end of the day the break was detected
   const pendingBreak = userUsage.pendingStreakBreak || null
   let streakBreakInfo = null
   if (pendingBreak && pendingBreak.broken) {
-    const xpCostInfo = getStreakSaveXPCost(totalXP)
-    streakBreakInfo = {
-      previousStreak: pendingBreak.previousStreak,
-      brokenAt: pendingBreak.brokenAt,
-      hasPass: (userUsage.streakPasses || 0) > 0,
-      passCount: userUsage.streakPasses || 0,
-      xpCost: xpCostInfo.xpCost,
-      newLevelAfterXP: xpCostInfo.newLevel,
-      canAffordXP: xpCostInfo.canAfford,
-      currentLevel: levelInfo.level,
+    const tz = await getUserTimezone(userId)
+    const todayKey = getTodayForUser(tz)
+    if (pendingBreak.brokenAt !== todayKey) {
+      // Expired — auto-clear the pending break
+      await db.usage.update(userId, { pendingStreakBreak: null })
+    } else {
+      const xpCostInfo = getStreakSaveXPCost(totalXP)
+      streakBreakInfo = {
+        previousStreak: pendingBreak.previousStreak,
+        brokenAt: pendingBreak.brokenAt,
+        hasPass: (userUsage.streakPasses || 0) > 0,
+        passCount: userUsage.streakPasses || 0,
+        xpCost: xpCostInfo.xpCost,
+        newLevelAfterXP: xpCostInfo.newLevel,
+        canAffordXP: xpCostInfo.canAfford,
+        currentLevel: levelInfo.level,
+      }
     }
   }
 
@@ -616,23 +624,28 @@ statsRouter.get('/:userId/streak', async (req: Request, res: Response) => {
     }
   }
 
-  // Check for pending streak break
+  // Check for pending streak break — expires at end of the day it was detected
   const pendingBreak = userUsage.pendingStreakBreak || null
   let streakBreakInfo = null
   if (pendingBreak && pendingBreak.broken) {
-    const xpData = userUsage.xp || { totalXP: 0 }
-    const totalXP = xpData.totalXP || 0
-    const xpCostInfo = getStreakSaveXPCost(totalXP)
-    const levelInfo = getLevelFromXP(totalXP)
-    streakBreakInfo = {
-      previousStreak: pendingBreak.previousStreak,
-      brokenAt: pendingBreak.brokenAt,
-      hasPass: (userUsage.streakPasses || 0) > 0,
-      passCount: userUsage.streakPasses || 0,
-      xpCost: xpCostInfo.xpCost,
-      newLevelAfterXP: xpCostInfo.newLevel,
-      canAffordXP: xpCostInfo.canAfford,
-      currentLevel: levelInfo.level,
+    if (pendingBreak.brokenAt !== todayKey) {
+      // Expired — auto-clear
+      await db.usage.update(userId, { pendingStreakBreak: null })
+    } else {
+      const xpData = userUsage.xp || { totalXP: 0 }
+      const totalXP = xpData.totalXP || 0
+      const xpCostInfo = getStreakSaveXPCost(totalXP)
+      const levelInfo = getLevelFromXP(totalXP)
+      streakBreakInfo = {
+        previousStreak: pendingBreak.previousStreak,
+        brokenAt: pendingBreak.brokenAt,
+        hasPass: (userUsage.streakPasses || 0) > 0,
+        passCount: userUsage.streakPasses || 0,
+        xpCost: xpCostInfo.xpCost,
+        newLevelAfterXP: xpCostInfo.newLevel,
+        canAffordXP: xpCostInfo.canAfford,
+        currentLevel: levelInfo.level,
+      }
     }
   }
 
@@ -654,6 +667,14 @@ statsRouter.post('/:userId/streak/recover', async (req: Request, res: Response) 
 
     if (!pendingBreak || !pendingBreak.broken) {
       return sendError(res, 'No pending streak break', 400)
+    }
+
+    // Check if recovery window has expired
+    const tz = await getUserTimezone(userId)
+    const todayKey = getTodayForUser(tz)
+    if (pendingBreak.brokenAt !== todayKey) {
+      await db.usage.update(userId, { pendingStreakBreak: null })
+      return sendError(res, 'Recovery window has expired', 400, { expired: true })
     }
 
     if (method === 'decline') {

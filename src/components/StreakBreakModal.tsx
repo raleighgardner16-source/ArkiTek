@@ -99,11 +99,31 @@ const StreakBreakModal = ({ isOpen, streakBreak, onRecover }: Props) => {
               color: currentTheme.textSecondary,
               fontSize: fontSize.lg,
               lineHeight: '1.6',
-              margin: `0 0 ${spacing['2xl']} 0`,
+              margin: `0 0 ${spacing.lg} 0`,
               textAlign: 'center',
             }}>
               You missed a day. Save your streak before it's gone!
             </p>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              padding: `${spacing.sm} ${spacing.xl}`,
+              background: 'rgba(255, 68, 0, 0.08)',
+              border: '1px solid rgba(255, 68, 0, 0.2)',
+              borderRadius: radius.md,
+              marginBottom: spacing['2xl'],
+            }}>
+              <AlertTriangle size={13} color="#FF4400" />
+              <span style={{
+                color: '#FF6347',
+                fontSize: fontSize.sm,
+                fontWeight: fontWeight.semibold,
+              }}>
+                Expires at end of today
+              </span>
+            </div>
 
             {/* Option 1: Use Streak Pass */}
             <motion.button
