@@ -145,4 +145,75 @@ router.get('/my-ranks', async (req: Request, res: Response) => {
   }
 })
 
+// GET /leaderboard/provider-rankings
+// Aggregates all users' modelWins from the current week and ranks providers.
+router.get('/provider-rankings', async (req: Request, res: Response) => {
+  try {
+    const dbInstance = await db.getDb()
+
+    const allUsage = await dbInstance
+      .collection<any>('usage_data')
+      .find({})
+      .project({ modelWins: 1 })
+      .toArray()
+
+    // Current week boundary (Monday 00:00:00 UTC)
+    const now = new Date()
+    const dayOfWeek = now.getUTCDay()
+    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+    const weekStart = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() - mondayOffset,
+      0, 0, 0, 0,
+    ))
+    const weekStartMs = weekStart.getTime()
+
+    const providerWins: Record<string, number> = {}
+    let totalVotes = 0
+
+    for (const usage of allUsage) {
+      const wins = usage.modelWins || {}
+      for (const [sessionId, win] of Object.entries(wins)) {
+        const ts = parseInt(sessionId, 10)
+        if (isNaN(ts) || ts < weekStartMs) continue
+
+        const provider = (win as any).provider
+        if (!provider) continue
+
+        providerWins[provider] = (providerWins[provider] || 0) + 1
+        totalVotes++
+      }
+    }
+
+    const providerNames: Record<string, string> = {
+      openai: 'ChatGPT',
+      anthropic: 'Claude',
+      google: 'Gemini',
+      meta: 'Meta (Llama)',
+      deepseek: 'DeepSeek',
+      mistral: 'Mistral AI',
+      xai: 'Grok',
+    }
+
+    const rankings = Object.entries(providerWins)
+      .map(([key, wins]) => ({
+        provider: key,
+        name: providerNames[key] || key,
+        wins,
+      }))
+      .sort((a, b) => b.wins - a.wins)
+      .map((entry, i) => ({ ...entry, rank: i + 1 }))
+
+    sendSuccess(res, {
+      rankings,
+      totalVotes,
+      weekStart: weekStart.toISOString(),
+    })
+  } catch (error: any) {
+    console.error('[Leaderboard] Error fetching provider rankings:', error)
+    sendError(res, 'Failed to fetch provider rankings')
+  }
+})
+
 export default router

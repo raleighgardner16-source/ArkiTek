@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Trophy, Zap, MessageSquare, Flame, User, ChevronRight } from 'lucide-react'
+import { Trophy, Zap, MessageSquare, Flame, User, ChevronRight, Crown } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import { spacing, fontSize, fontWeight, radius, transition, layout, sx, createStyles } from '../utils/styles'
@@ -16,6 +16,13 @@ interface RankingEntry {
   value: number
 }
 
+interface ProviderRanking {
+  rank: number
+  provider: string
+  name: string
+  wins: number
+}
+
 const TABS: Array<{ id: LeaderboardType; label: string; icon: any; unit: string }> = [
   { id: 'tokens', label: 'Most Tokens', icon: Zap, unit: 'tokens' },
   { id: 'prompts', label: 'Most Prompts', icon: MessageSquare, unit: 'prompts' },
@@ -26,6 +33,16 @@ const MEDAL_COLORS: Record<number, string> = {
   1: '#FFD700',
   2: '#C0C0C0',
   3: '#CD7F32',
+}
+
+const PROVIDER_COLORS: Record<string, string> = {
+  openai: '#10a37f',
+  anthropic: '#d4a574',
+  google: '#4285f4',
+  meta: '#0668E1',
+  deepseek: '#5b6abf',
+  mistral: '#ff7000',
+  xai: '#1DA1F2',
 }
 
 function formatValue(value: number, type: LeaderboardType): string {
@@ -52,10 +69,17 @@ const LeaderboardView = () => {
   const [myRank, setMyRank] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [providerRankings, setProviderRankings] = useState<ProviderRanking[]>([])
+  const [providerTotalVotes, setProviderTotalVotes] = useState(0)
+  const [providerWeekStart, setProviderWeekStart] = useState<string | null>(null)
 
   useEffect(() => {
     fetchRankings()
   }, [activeType])
+
+  useEffect(() => {
+    fetchProviderRankings()
+  }, [])
 
   const fetchRankings = async () => {
     try {
@@ -70,6 +94,17 @@ const LeaderboardView = () => {
       setRankings([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchProviderRankings = async () => {
+    try {
+      const res = await api.get('/leaderboard/provider-rankings')
+      setProviderRankings(res.data.rankings || [])
+      setProviderTotalVotes(res.data.totalVotes || 0)
+      setProviderWeekStart(res.data.weekStart || null)
+    } catch (err: any) {
+      console.error('[Leaderboard] Provider rankings error:', err)
     }
   }
 
@@ -106,6 +141,169 @@ const LeaderboardView = () => {
           <p style={sx(s.subtitle, { margin: 0 })}>
             See how you stack up against other ArkiTek users.
           </p>
+        </div>
+
+        {/* Weekly Provider Rankings */}
+        {providerRankings.length > 0 && (
+          <div style={{ marginBottom: spacing['4xl'] }}>
+            <div style={sx(layout.flexRow, {
+              gap: spacing.md,
+              marginBottom: spacing.xl,
+              alignItems: 'center',
+            })}>
+              <Crown size={20} color={currentTheme.accent} />
+              <h2 style={{
+                color: currentTheme.text,
+                fontSize: fontSize['4xl'],
+                fontWeight: fontWeight.bold,
+                margin: 0,
+              }}>
+                Provider of the Week
+              </h2>
+            </div>
+            <p style={{
+              color: currentTheme.textSecondary,
+              fontSize: fontSize.lg,
+              margin: `0 0 ${spacing.xl} 0`,
+            }}>
+              Ranked by community votes this week
+              {providerTotalVotes > 0 && (
+                <span style={{ color: currentTheme.textMuted }}>
+                  {' '}&middot; {providerTotalVotes} {providerTotalVotes === 1 ? 'vote' : 'votes'} cast
+                </span>
+              )}
+            </p>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: spacing.lg,
+            }}>
+              {providerRankings.map((p) => {
+                const providerColor = PROVIDER_COLORS[p.provider] || currentTheme.accent
+                const medalColor = MEDAL_COLORS[p.rank]
+                const isFirst = p.rank === 1
+                const pct = providerTotalVotes > 0 ? Math.round((p.wins / providerTotalVotes) * 100) : 0
+
+                return (
+                  <motion.div
+                    key={p.provider}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: p.rank * 0.08 }}
+                    style={{
+                      position: 'relative',
+                      padding: isFirst ? spacing['2xl'] : spacing.xl,
+                      background: currentTheme.backgroundOverlay,
+                      border: `1px solid ${isFirst ? `${providerColor}40` : currentTheme.borderLight}`,
+                      borderRadius: radius.xl,
+                      textAlign: 'center',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {isFirst && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: '3px',
+                        background: `linear-gradient(90deg, ${providerColor}, ${providerColor}80)`,
+                      }} />
+                    )}
+
+                    {/* Rank badge */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      marginBottom: spacing.lg,
+                    }}>
+                      <div style={{
+                        width: isFirst ? '40px' : '32px',
+                        height: isFirst ? '40px' : '32px',
+                        borderRadius: radius.circle,
+                        background: medalColor ? `${medalColor}20` : `${currentTheme.textMuted}15`,
+                        border: `2px solid ${medalColor || currentTheme.textMuted}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <span style={{
+                          color: medalColor || currentTheme.textMuted,
+                          fontSize: isFirst ? fontSize['3xl'] : fontSize['2xl'],
+                          fontWeight: fontWeight.bold,
+                        }}>
+                          {p.rank}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Provider name */}
+                    <div style={{
+                      color: providerColor,
+                      fontSize: isFirst ? fontSize['4xl'] : fontSize['2xl'],
+                      fontWeight: fontWeight.bold,
+                      marginBottom: spacing.sm,
+                    }}>
+                      {p.name}
+                    </div>
+
+                    {/* Votes & percentage */}
+                    <div style={{
+                      color: currentTheme.textSecondary,
+                      fontSize: fontSize.lg,
+                      marginBottom: spacing.lg,
+                    }}>
+                      {p.wins} {p.wins === 1 ? 'vote' : 'votes'}
+                    </div>
+
+                    {/* Progress bar */}
+                    <div style={{
+                      height: '6px',
+                      borderRadius: '3px',
+                      background: `${currentTheme.textMuted}20`,
+                      overflow: 'hidden',
+                    }}>
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.6, delay: p.rank * 0.1 }}
+                        style={{
+                          height: '100%',
+                          borderRadius: '3px',
+                          background: providerColor,
+                        }}
+                      />
+                    </div>
+                    <div style={{
+                      color: currentTheme.textMuted,
+                      fontSize: fontSize.base,
+                      marginTop: spacing.xs,
+                    }}>
+                      {pct}%
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* User Rankings Section Header */}
+        <div style={sx(layout.flexRow, {
+          gap: spacing.md,
+          marginBottom: spacing.xl,
+          alignItems: 'center',
+        })}>
+          <Trophy size={20} color={currentTheme.accent} />
+          <h2 style={{
+            color: currentTheme.text,
+            fontSize: fontSize['4xl'],
+            fontWeight: fontWeight.bold,
+            margin: 0,
+          }}>
+            User Rankings
+          </h2>
         </div>
 
         {/* Tabs */}
