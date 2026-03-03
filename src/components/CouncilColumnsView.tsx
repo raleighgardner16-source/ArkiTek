@@ -316,61 +316,15 @@ const CouncilColumnsView = ({
                         </p>
                       </div>
                     )}
-                    <div style={sx(layout.spaceBetween, {
-                      gap: spacing.md,
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: spacing.xs,
                       marginBottom: spacing.lg,
                       paddingBottom: spacing.md,
                       borderBottom: `1px solid ${currentTheme.borderLight}`,
-                      minHeight: '32px',
-                    })}>
-                      {response.debateRole ? (
-                        <div style={sx(layout.flexCol, { gap: spacing.px, minWidth: 0 })}>
-                          <div style={{
-                            fontSize: '0.75rem',
-                            fontWeight: fontWeight.bold,
-                            color: currentTheme.accent,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.8px',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}>
-                            {response.debateRole.label}
-                          </div>
-                          <div style={{
-                            fontSize: fontSize['2xs'],
-                            fontWeight: fontWeight.medium,
-                            color: currentTheme.textMuted,
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}>
-                            {getProviderDisplayName(response.modelName)}
-                            {getModelShortLabel(response.modelName) && (
-                              <span style={{ opacity: 0.6 }}>{' '}({getModelShortLabel(response.modelName)})</span>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{
-                          fontSize: '0.75rem',
-                          fontWeight: fontWeight.bold,
-                          color: currentTheme.accent,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.8px',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}>
-                          {getProviderDisplayName(response.modelName)}
-                          {getModelShortLabel(response.modelName) && (
-                            <span style={{ color: currentTheme.textMuted, fontWeight: fontWeight.normal, textTransform: 'none', letterSpacing: 'normal' }}>
-                              {' '}({getModelShortLabel(response.modelName)})
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.xs }}>
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: spacing.xs }}>
                         {!isReopenedHistoryChat && !response.isStreaming && response.text && responses.length > 1 && (
                           <button
                             onClick={() => onPickFavorite(response.id)}
@@ -391,7 +345,7 @@ const CouncilColumnsView = ({
                             }}
                           >
                             <Trophy size={11} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
-                            Favorite Response
+                            Favorite
                           </button>
                         )}
                         <button
@@ -412,6 +366,44 @@ const CouncilColumnsView = ({
                           <Maximize2 size={13} />
                         </button>
                       </div>
+                      {response.debateRole ? (
+                        <div style={sx(layout.flexCol, { gap: spacing.px })}>
+                          <div style={{
+                            fontSize: '0.75rem',
+                            fontWeight: fontWeight.bold,
+                            color: currentTheme.accent,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.8px',
+                          }}>
+                            {response.debateRole.label}
+                          </div>
+                          <div style={{
+                            fontSize: fontSize['2xs'],
+                            fontWeight: fontWeight.medium,
+                            color: currentTheme.textMuted,
+                          }}>
+                            {getProviderDisplayName(response.modelName)}
+                            {getModelShortLabel(response.modelName) && (
+                              <span style={{ opacity: 0.6 }}>{' '}({getModelShortLabel(response.modelName)})</span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{
+                          fontSize: '0.75rem',
+                          fontWeight: fontWeight.bold,
+                          color: currentTheme.accent,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.8px',
+                        }}>
+                          {getProviderDisplayName(response.modelName)}
+                          {getModelShortLabel(response.modelName) && (
+                            <span style={{ color: currentTheme.textMuted, fontWeight: fontWeight.normal, textTransform: 'none', letterSpacing: 'normal' }}>
+                              {' '}({getModelShortLabel(response.modelName)})
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div style={{
                       fontSize: arr.length > 3 ? fontSize.md : fontSize.base,
