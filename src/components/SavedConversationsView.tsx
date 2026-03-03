@@ -1267,7 +1267,7 @@ const SavedConversationsView = () => {
                     </span>
                     {hasPrompts && (
                       <span key={`category-prompts-count-${category}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: fontSize.base, marginLeft: spacing.md }}>
-                        ({recentPrompts.length} {recentPrompts.length === 1 ? 'prompt' : 'prompts'} · double-click to open in chat history)
+                        ({recentPrompts.length} {recentPrompts.length === 1 ? 'prompt' : 'prompts'}{isExpanded ? ' · double-click a chat to open in history' : ''})
                       </span>
                     )}
                     {!hasPrompts && count === 0 && (

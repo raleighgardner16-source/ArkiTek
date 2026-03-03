@@ -146,7 +146,7 @@ router.get('/my-ranks', async (req: Request, res: Response) => {
 })
 
 // GET /leaderboard/provider-rankings
-// Aggregates all users' modelWins from the current week and ranks providers.
+// Aggregates all users' modelWins from the current week and ranks providers + models.
 router.get('/provider-rankings', async (req: Request, res: Response) => {
   try {
     const dbInstance = await db.getDb()
@@ -170,6 +170,7 @@ router.get('/provider-rankings', async (req: Request, res: Response) => {
     const weekStartMs = weekStart.getTime()
 
     const providerWins: Record<string, number> = {}
+    const modelWins: Record<string, { provider: string; wins: number }> = {}
     let totalVotes = 0
 
     for (const usage of allUsage) {
@@ -179,10 +180,16 @@ router.get('/provider-rankings', async (req: Request, res: Response) => {
         if (isNaN(ts) || ts < weekStartMs) continue
 
         const provider = (win as any).provider
+        const model = (win as any).model
         if (!provider) continue
 
         providerWins[provider] = (providerWins[provider] || 0) + 1
         totalVotes++
+
+        if (model) {
+          if (!modelWins[model]) modelWins[model] = { provider, wins: 0 }
+          modelWins[model].wins++
+        }
       }
     }
 
@@ -196,7 +203,7 @@ router.get('/provider-rankings', async (req: Request, res: Response) => {
       xai: 'Grok',
     }
 
-    const rankings = Object.entries(providerWins)
+    const providerRankings = Object.entries(providerWins)
       .map(([key, wins]) => ({
         provider: key,
         name: providerNames[key] || key,
@@ -205,8 +212,19 @@ router.get('/provider-rankings', async (req: Request, res: Response) => {
       .sort((a, b) => b.wins - a.wins)
       .map((entry, i) => ({ ...entry, rank: i + 1 }))
 
+    const modelRankings = Object.entries(modelWins)
+      .map(([model, data]) => ({
+        model,
+        provider: data.provider,
+        providerName: providerNames[data.provider] || data.provider,
+        wins: data.wins,
+      }))
+      .sort((a, b) => b.wins - a.wins)
+      .map((entry, i) => ({ ...entry, rank: i + 1 }))
+
     sendSuccess(res, {
-      rankings,
+      providerRankings,
+      modelRankings,
       totalVotes,
       weekStart: weekStart.toISOString(),
     })
