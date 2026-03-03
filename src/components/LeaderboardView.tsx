@@ -697,7 +697,7 @@ const LeaderboardView = () => {
             <h1 style={sx(s.pageTitle, { margin: 0 })}>Leaderboard</h1>
           </div>
           <p style={sx(s.subtitle, { margin: 0 })}>
-            See how you stack up against other ArkiTek users.
+            See where you stand vs other ArkiTek users.
           </p>
         </div>
 

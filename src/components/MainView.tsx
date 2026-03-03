@@ -28,9 +28,10 @@ interface MainViewProps {
   isLoading?: boolean
   isGeneratingSummary?: boolean
   onCancelPrompt?: () => void
+  onCancelSummary?: () => void
 }
 
-const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaused = false, subscriptionExpiring = false, subscriptionRenewalDate = null, isLoading = false, isGeneratingSummary = false, onCancelPrompt }: MainViewProps) => {
+const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaused = false, subscriptionExpiring = false, subscriptionRenewalDate = null, isLoading = false, isGeneratingSummary = false, onCancelPrompt, onCancelSummary }: MainViewProps) => {
   const selectedModels = useStore((state) => state.selectedModels)
   const setSelectedModels = useStore((state) => state.setSelectedModels)
   const currentPrompt = useStore((state) => state.currentPrompt)
@@ -703,6 +704,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 isGeneratingSummary={isGeneratingSummary}
                 isSearchingWeb={isSearchingWeb}
                 onCancelPrompt={onCancelPrompt ?? null}
+                onCancelSummary={onCancelSummary ?? null}
                 theme={theme}
                 currentTheme={currentTheme}
                 summaryInitializing={summaryInitializing}
@@ -785,7 +787,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   {isGeneratingSummary && (
                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '18px' }}>
                       <motion.button
-                        onClick={() => { if (onCancelPrompt) onCancelPrompt() }}
+                        onClick={() => { if (onCancelSummary) onCancelSummary() }}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         style={sx(layout.flexRow, {
@@ -801,7 +803,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         })}
                         whileHover={{ scale: 1.03 }}
                         whileTap={{ scale: 0.97 }}
-                        title="Cancel"
+                        title="Cancel Summary"
                       >
                         Cancel
                       </motion.button>

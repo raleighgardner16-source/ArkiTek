@@ -215,6 +215,7 @@ function App() {
                   isLoading={isLoading}
                   isGeneratingSummary={isGeneratingSummary}
                   onCancelPrompt={handleCancelPrompt}
+                  onCancelSummary={cancelSummary}
                 />
               </SectionErrorBoundary>
             )}

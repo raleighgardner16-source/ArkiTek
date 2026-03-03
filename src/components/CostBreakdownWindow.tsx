@@ -63,9 +63,10 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
     return (numQueries / 1000) * pricePer1k
   }
 
-  // Separate judge items from regular council items
+  // Separate judge items, cancelled summary, from regular council items
   const judgeTokenData = tokenData.filter(item => item.isJudge)
-  const councilTokenData = tokenData.filter(item => !item.isJudge && !item.isPipeline)
+  const cancelledSummaryItems = tokenData.filter(item => item.isCancelledSummary)
+  const councilTokenData = tokenData.filter(item => !item.isJudge && !item.isPipeline && !item.isCancelledSummary)
 
   // Process token data and calculate costs (council models only)
   const costBreakdown = councilTokenData.map((item: any) => {

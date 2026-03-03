@@ -241,6 +241,16 @@ export function useSummaryGeneration({ isLoading }: { isLoading: boolean }) {
       summaryAbortRef.current = null
     }
     setIsGeneratingSummary(false)
+    useStore.getState().setSummary(null)
+
+    // Add a marker entry so the token/cost windows show that a summary was cancelled
+    useStore.getState().appendTokenData({
+      modelName: 'Cancelled Summary',
+      isCancelledSummary: true,
+      isJudge: false,
+      isPipeline: false,
+      tokens: null,
+    })
   }
 
   const resetSummaryState = () => setIsGeneratingSummary(false)

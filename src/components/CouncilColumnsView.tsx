@@ -11,6 +11,7 @@ interface Props {
   isGeneratingSummary: boolean
   isSearchingWeb?: boolean
   onCancelPrompt?: (() => void) | null
+  onCancelSummary?: (() => void) | null
   theme: string
   currentTheme: any
   summaryInitializing: boolean
@@ -53,6 +54,7 @@ const CouncilColumnsView = ({
   isGeneratingSummary,
   isSearchingWeb = false,
   onCancelPrompt,
+  onCancelSummary,
   theme,
   currentTheme,
   summaryInitializing,
@@ -128,7 +130,7 @@ const CouncilColumnsView = ({
             <div style={sx(layout.flexCol, { alignItems: 'center', gap: spacing.lg, marginBottom: spacing['4xl'] })}>
               {isGeneratingSummary && (
                 <motion.button
-                  onClick={() => { if (onCancelPrompt) onCancelPrompt() }}
+                  onClick={() => { if (onCancelSummary) onCancelSummary() }}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   style={sx(layout.flexRow, {
@@ -144,7 +146,7 @@ const CouncilColumnsView = ({
                   })}
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
-                  title="Cancel"
+                  title="Cancel Summary"
                 >
                   Cancel
                 </motion.button>
