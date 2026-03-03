@@ -20,6 +20,7 @@ const PROVIDER_MAP: Record<string, { name: string; color: string }> = {
   meta: { name: 'Meta', color: '#0668e1' },
   deepseek: { name: 'DeepSeek', color: '#4d6bfe' },
   mistral: { name: 'Mistral', color: '#f7d046' },
+  judge: { name: 'Judge', color: '#e67e22' },
 }
 
 const getProviderFromModelName = (modelName: any) => {
@@ -877,28 +878,6 @@ const SavedConversationsView = () => {
                 borderRadius: radius.xs, fontSize: fontSize.sm, color: currentTheme.textSecondary,
               }}>
                 {selectedConvo.category}
-              </span>
-            )}
-            {selectedConvo.postedToFeed ? (
-              <span style={{
-                padding: '3px 8px',
-                background: 'rgba(72, 201, 176, 0.12)',
-                border: '1px solid rgba(72, 201, 176, 0.35)',
-                borderRadius: radius.sm, fontSize: fontSize.xs, fontWeight: fontWeight.semibold,
-                color: '#48c9b0',
-                display: 'flex', alignItems: 'center', gap: spacing.xs,
-              }}>
-                <Globe size={11} /> Posted to Feed
-              </span>
-            ) : (
-              <span style={{
-                padding: '3px 8px',
-                background: 'rgba(255, 255, 255, 0.04)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: radius.sm, fontSize: fontSize.xs, fontWeight: fontWeight.medium,
-                color: currentTheme.textMuted,
-              }}>
-                Not Posted
               </span>
             )}
           </div>

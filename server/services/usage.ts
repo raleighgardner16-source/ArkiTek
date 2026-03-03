@@ -2,6 +2,7 @@ import db from '../../database/db.js'
 import { getCurrentDateString, getMonthForUser, getTodayForUser, getDateKeyForUser } from '../helpers/date.js'
 import { getPricingData, calculateModelCost } from '../helpers/pricing.js'
 import { createLogger } from '../config/logger.js'
+import { grantPromptXP, grantFollowUpXP } from './xp.js'
 
 const log = createLogger('usage')
 
@@ -257,6 +258,24 @@ const trackPrompt = async (userId: string, promptText: string, category: string,
   } catch (error: any) {
     console.error(`[User Update] Error updating user ${userId}:`, error)
   }
+
+  // Grant XP for the prompt
+  try {
+    const modelsUsed = (promptData?.responses || [])
+      .filter((r: any) => r && !r.error)
+      .map((r: any) => r.actualModelName || r.modelName || '')
+      .filter(Boolean)
+    await grantPromptXP(userId, {
+      isCouncil: responseCount >= 3,
+      isDebate: promptData?.promptMode === 'debate',
+      today,
+      category: cat,
+      modelsUsed,
+      streakDays: userUsage.streakDays || 0,
+    })
+  } catch (xpErr: any) {
+    console.error(`[XP] Error granting prompt XP for ${userId}:`, xpErr.message)
+  }
 }
 
 // Track a continued conversation prompt (1 per follow-up message in judge or model conversation)
@@ -286,6 +305,13 @@ const trackConversationPrompt = async (userId: string, userMessage: any) => {
     console.log(`[Conversation Prompt] Atomic $inc for ${userId}: totalPrompts +1, monthlyUsage.${currentMonth}.prompts +1`)
   } catch (incErr: any) {
     console.error(`[Conversation Prompt] Atomic $inc failed for ${userId}:`, incErr.message)
+  }
+
+  // Grant XP for follow-up
+  try {
+    await grantFollowUpXP(userId)
+  } catch (xpErr: any) {
+    console.error(`[XP] Error granting follow-up XP for ${userId}:`, xpErr.message)
   }
 }
 

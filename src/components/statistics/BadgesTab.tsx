@@ -299,36 +299,25 @@ const BadgesTab = ({
         )}
       </div>
 
-      {/* Free Plan Overlay for Badge Content */}
       {isFreePlan && (
         <div style={{
           background: 'rgba(255, 170, 0, 0.06)',
           border: '1px solid rgba(255, 170, 0, 0.2)',
           borderRadius: radius.xl,
-          padding: spacing['2xl'],
+          padding: `${spacing.lg} ${spacing['2xl']}`,
           marginBottom: spacing['3xl'],
           display: 'flex',
           alignItems: 'center',
-          gap: spacing.xl,
-          textAlign: 'center',
-          flexDirection: 'column',
+          gap: spacing.lg,
         }}>
-          <Lock size={24} color="#ffaa00" />
-          <div>
-            <p style={{ color: currentTheme.warning, fontSize: fontSize['2xl'], fontWeight: fontWeight.semibold, margin: `0 0 ${spacing.sm} 0` }}>
-              Upgrade to Earn Badges & Rewards
-            </p>
-            <p style={{ color: currentTheme.textMuted, fontSize: fontSize.base, margin: 0, lineHeight: 1.5 }}>
-              Free plan users can preview badges and tiers below, but you need a Pro or Premium plan to earn badges, unlock tier rewards, receive monthly gifts, and complete daily challenges.
-            </p>
-          </div>
+          <Award size={20} color="#ffaa00" style={{ flexShrink: 0 }} />
+          <p style={{ color: currentTheme.textSecondary, fontSize: fontSize.base, margin: 0, lineHeight: 1.5 }}>
+            Upgrade to Pro or Premium to earn badges, unlock tier rewards, and complete daily challenges.
+          </p>
         </div>
       )}
 
-      {/* Badge content wrapper — greyed out for free plan */}
-      <div style={{
-        ...(isFreePlan ? { opacity: 0.45, filter: 'grayscale(70%)', pointerEvents: 'none' as const, userSelect: 'none' as const } : {}),
-      }}>
+      <div>
 
       {/* Overall Badge Summary with Ultimate Badge */}
       <div style={{

@@ -12,7 +12,6 @@ import MarkdownRenderer from './MarkdownRenderer'
 import TokenUsageWindow from './TokenUsageWindow'
 import CostBreakdownWindow from './CostBreakdownWindow'
 import { useConversationHandlers } from '../hooks/useConversationHandlers'
-import PostToFeedWindow from './PostToFeedWindow'
 import ModelSelector from './ModelSelector'
 import TopActionBar from './TopActionBar'
 import CouncilColumnsView from './CouncilColumnsView'
@@ -68,8 +67,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const setGeminiDetectionResponse = useStore((state) => state.setGeminiDetectionResponse)
   const isSearchingWeb = useStore((state) => state.isSearchingWeb)
   const [showNoModelNotification, setShowNoModelNotification] = useState(false)
-  const [showPostWindow, setShowPostWindow] = useState(false)
-  const [userIsPrivate, setUserIsPrivate] = useState(false)
   const [showCouncilTooltip, setShowCouncilTooltip] = useState(false)
   const promptMode = useStore((state) => state.promptMode)
   const setPromptMode = useStore((state) => state.setPromptMode)
@@ -187,7 +184,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     if (!currentUser?.id) return
     const checkUsage = async () => {
       try {
-        const res = await api.get('/stats')
+        const res = await api.get(`/stats/${currentUser.id}`)
         const data = res.data
         setUserPlan(data.userPlan || currentUser?.plan || 'free_trial')
         const balance = data.totalAvailableBalance ?? data.remainingFreeAllocation ?? 0
@@ -209,10 +206,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   useEffect(() => {
     if (currentUser?.id) {
       fetchStreak()
-      api.get(`/profile/${currentUser.id}`).then(res => {
-        const isPriv = res.data?.isPrivate || false
-        setUserIsPrivate(isPriv)
-      }).catch(() => {})
     }
   }, [currentUser, statsRefreshTrigger])
 
@@ -1438,21 +1431,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         </div>
         )}
       </div>
-
-      {/* DISABLED: Post to Prompt Feed Window temporarily removed (social media feature) */}
-      {false && (
-        <PostToFeedWindow
-          isOpen={showPostWindow}
-          onClose={() => setShowPostWindow(false)}
-          currentTheme={currentTheme}
-          lastSubmittedPrompt={lastSubmittedPrompt}
-          lastSubmittedCategory={lastSubmittedCategory}
-          responses={responses}
-          summary={summary}
-          ragDebugData={ragDebugData}
-          userIsPrivate={userIsPrivate}
-        />
-      )}
 
       {/* Token Usage modal for single-model mode */}
       <TokenUsageWindow

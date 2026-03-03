@@ -206,7 +206,6 @@ const TopActionBar = ({
               </motion.button>
             )}
 
-            {/* DISABLED: Post to Prompt Feed button temporarily removed (social media feature) */}
           </div>
         </motion.div>
       )}

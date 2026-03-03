@@ -816,7 +816,7 @@ summaryRouter.post('/stream', async (req: Request, res: Response) => {
     }
 
     if (userId) {
-      trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
+      trackUsage(userId, 'judge', 'summary-model', inputTokens, outputTokens, false)
     }
 
     sendSSE('done', {
@@ -826,8 +826,8 @@ summaryRouter.post('/stream', async (req: Request, res: Response) => {
         input: inputTokens,
         output: outputTokens,
         total: inputTokens + outputTokens,
-        provider: 'google',
-        model: judgeModel,
+        provider: 'judge',
+        model: 'summary-model',
         source: tokenSource
       }
     })

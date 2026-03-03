@@ -11,6 +11,7 @@ const providerDisplayName = (provider: string): string => {
     google: 'Gemini (Google)',
     xai: 'Grok (xAI)',
     mistral: 'Mistral',
+    judge: 'Judge',
   }
   return (map as Record<string, string>)[provider] || provider.charAt(0).toUpperCase() + provider.slice(1)
 }

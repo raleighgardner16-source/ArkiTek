@@ -506,6 +506,12 @@ const DEFAULT_USAGE: Omit<UsageDataDoc, '_id'> = {
   judgeConversationContext: [],
   purchasedCredits: { total: 0, remaining: 0 },
   dailyChallengesClaimed: {},
+  xp: {
+    totalXP: 0,
+    lastDailyBonusDate: null,
+    discoveredModels: [],
+    discoveredCategories: [],
+  },
 }
 
 const usage = {

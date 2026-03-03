@@ -88,6 +88,12 @@ const getPricingData = () => {
         'mistral-small-3.2': { input: 0.10, cachedInput: null, output: 0.30, note: 'Fast model' },
       },
     },
+    judge: {
+      name: 'Judge',
+      models: {
+        'summary-model': { input: 0.50, cachedInput: null, output: 3.00, note: 'Judge summary model' },
+      },
+    },
     serper: {
       name: 'Serper (Search Queries)',
       queryTiers: [

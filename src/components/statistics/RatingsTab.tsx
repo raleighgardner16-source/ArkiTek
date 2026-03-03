@@ -331,7 +331,7 @@ const RatingsTab = ({
                                           <ChevronRight size={16} color={currentTheme.textSecondary} />
                                         )}
                                         <span key={`model-name-${modelKey}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: fontSize.lg, fontWeight: fontWeight.medium }}>
-                                          {modelData.model}
+                                          {modelData.model || modelKey.substring(provider.length + 1)}
                                         </span>
                                       </div>
                                     </div>

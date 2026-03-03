@@ -1588,30 +1588,8 @@ const ResponseComparison = () => {
   if (!showCouncilPanel) return null
 
   return (
-    <AnimatePresence>
-      {showCouncilPanel && (
-    <motion.div
-      initial={{ opacity: 0, x: 40 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 40 }}
-      transition={{ duration: 0.25, ease: 'easeOut' }}
-      style={{
-        position: 'fixed',
-        top: '80px',
-        right: '20px',
-        width: `calc(${cardWidth} + 12px)`,
-        maxHeight: 'calc(100vh - 120px)',
-        zIndex: zIndex.tooltip,
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-end',
-        paddingLeft: spacing.lg,
-        paddingBottom: spacing['2xl'],
-      }}
-    >
-      {/* Token Usage Modal */}
+    <>
+      {/* Modals rendered outside the transform container so position:fixed works correctly */}
       {showTokenUsageModal && tokenData && tokenData.length > 0 && (
         <TokenUsageWindow
           isOpen={true}
@@ -1620,7 +1598,6 @@ const ResponseComparison = () => {
         />
       )}
 
-      {/* Cost Breakdown Modal */}
       {showCostModal && tokenData && tokenData.length > 0 && (
         <CostBreakdownWindow
           isOpen={true}
@@ -1630,7 +1607,6 @@ const ResponseComparison = () => {
         />
       )}
 
-      {/* Pipeline Debug Modal */}
       {showPipelineModal && ragDebugData && (
         <div
           onClick={() => setShowPipelineModal(false)}
@@ -1689,6 +1665,30 @@ const ResponseComparison = () => {
           </motion.div>
         </div>
       )}
+
+    <AnimatePresence>
+      {showCouncilPanel && (
+    <motion.div
+      initial={{ opacity: 0, x: 40 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 40 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+      style={{
+        position: 'fixed',
+        top: '80px',
+        right: '20px',
+        width: `calc(${cardWidth} + 12px)`,
+        maxHeight: 'calc(100vh - 120px)',
+        zIndex: zIndex.tooltip,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        paddingLeft: spacing.lg,
+        paddingBottom: spacing['2xl'],
+      }}
+    >
 
       {/* Response cards (always visible) */}
       <div
@@ -2514,6 +2514,7 @@ const ResponseComparison = () => {
     </motion.div>
       )}
     </AnimatePresence>
+    </>
   )
 }
 

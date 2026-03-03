@@ -4,6 +4,8 @@ import { DAILY_CHALLENGE_REWARD, DAILY_CHALLENGES } from '../config/index.js'
 import { getMonthForUser, getTodayForUser, getDateKeyForUser, getDayDiffFromDateKeys, getUserLocalDate, getTodaysChallenge } from '../helpers/date.js'
 import { getPlanAllocation, getPricingData, calculateModelCost, calculateSerperQueryCost } from '../helpers/pricing.js'
 import { getUserTimezone, trackPrompt } from '../services/usage.js'
+import { grantRatingXP, grantDailyChallengeXP } from '../services/xp.js'
+import { getLevelFromXP, getLevelTitle } from '../config/xp.js'
 import { createLogger } from '../config/logger.js'
 import { sendSuccess, sendError } from '../types/api.js'
 
@@ -103,15 +105,20 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
     }
   })
 
-  // Calculate model stats
+  // Calculate model stats (derive provider/model from key for entries created by older tracking code)
   const modelStats: any = {}
   Object.keys(userUsage.models || {}).forEach((modelKey: string) => {
+    const stored = userUsage.models[modelKey]
+    const derivedProvider = stored.provider || modelKey.split('-')[0]
+    const derivedModel = stored.model || modelKey.substring(derivedProvider.length + 1)
     modelStats[modelKey] = {
-      ...userUsage.models[modelKey],
-      totalInputTokens: userUsage.models[modelKey].totalInputTokens || 0,
-      totalOutputTokens: userUsage.models[modelKey].totalOutputTokens || 0,
-      totalTokens: (userUsage.models[modelKey].totalInputTokens || 0) + (userUsage.models[modelKey].totalOutputTokens || 0),
-      totalPrompts: userUsage.models[modelKey].totalPrompts || 0,
+      ...stored,
+      provider: derivedProvider,
+      model: derivedModel,
+      totalInputTokens: stored.totalInputTokens || 0,
+      totalOutputTokens: stored.totalOutputTokens || 0,
+      totalTokens: (stored.totalInputTokens || 0) + (stored.totalOutputTokens || 0),
+      totalPrompts: stored.totalPrompts || 0,
     }
   })
 
@@ -238,6 +245,12 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
   const usagePercentRemaining = Math.max(0, 100 - usagePercentUsed)
   const purchasedCreditsPercent = effectiveAllocation > 0 ? (purchasedCreditsRemaining / effectiveAllocation) * 100 : 0
 
+  // Compute XP and level
+  const xpData = userUsage.xp || { totalXP: 0, lastDailyBonusDate: null, discoveredModels: [], discoveredCategories: [] }
+  const totalXP = xpData.totalXP || 0
+  const levelInfo = getLevelFromXP(totalXP)
+  const levelTitle = getLevelTitle(levelInfo.level)
+
   sendSuccess(res, {
     totalTokens,
     totalInputTokens: userUsage.totalInputTokens || 0,
@@ -273,6 +286,15 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
     debatePrompts: userUsage.debatePrompts || 0,
     createdAt,
     earnedBadges: userUsage.earnedBadges || [],
+    xp: {
+      totalXP,
+      level: levelInfo.level,
+      currentLevelXP: levelInfo.currentLevelXP,
+      nextLevelXP: levelInfo.nextLevelXP,
+      levelTitle,
+      discoveredModels: xpData.discoveredModels?.length || 0,
+      discoveredCategories: xpData.discoveredCategories?.length || 0,
+    },
   })
 })
 
@@ -718,6 +740,13 @@ dailyChallengeRouter.post('/:userId/claim', async (req: Request, res: Response) 
 
     log.info({ userId, challengeId: challenge.id, reward: DAILY_CHALLENGE_REWARD, percentageReward }, 'User claimed daily challenge')
 
+    // Grant XP for completing daily challenge
+    try {
+      await grantDailyChallengeXP(userId)
+    } catch (xpErr: any) {
+      log.warn({ err: xpErr, userId }, 'Failed to grant daily challenge XP')
+    }
+
     sendSuccess(res, {
       percentageReward: Math.round(percentageReward * 10) / 10,
       newPercentRemaining: Math.round(newPercentRemaining * 10) / 10,
@@ -798,6 +827,15 @@ ratingsRouter.post('/', async (req: Request, res: Response) => {
     }
 
     await db.usage.update(userId, { modelWins: userUsage.modelWins })
+
+    // Grant XP for picking a favorite (only when setting, not clearing)
+    if (responseId && provider && model) {
+      try {
+        await grantRatingXP(userId)
+      } catch (xpErr: any) {
+        log.warn({ err: xpErr, userId }, 'Failed to grant rating XP')
+      }
+    }
 
     sendSuccess(res, { message: 'Model win saved successfully' })
   } catch (error: any) {

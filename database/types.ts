@@ -171,6 +171,12 @@ export interface UsageDataDoc {
   dailyChallengesClaimed: Record<string, unknown>
   councilPrompts?: number
   debatePrompts?: number
+  xp?: {
+    totalXP: number
+    lastDailyBonusDate: string | null
+    discoveredModels: string[]
+    discoveredCategories: string[]
+  }
   updatedAt?: Date
 }
 

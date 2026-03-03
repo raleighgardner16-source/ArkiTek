@@ -25,9 +25,7 @@ import ragRouter from './server/routes/rag.js'
 import memoryRouter from './server/routes/memory.js'
 import historyRouter from './server/routes/history.js'
 import leaderboardRouter from './server/routes/leaderboard.js'
-import notificationsRouter from './server/routes/notifications.js'
-import { profileRouter, usersRouter } from './server/routes/social.js'
-import messagingRouter from './server/routes/messaging.js'
+import profileRouter from './server/routes/profile.js'
 import adminRouter, { pricingRouter } from './server/routes/admin.js'
 import stripeRouter from './server/routes/stripe.js'
 
@@ -202,10 +200,7 @@ v1.use('/rag', requireAuth, llmLimiter, ragRouter)
 v1.use('/memory', requireAuth, memoryRouter)
 v1.use('/history', requireAuth, historyRouter)
 v1.use('/leaderboard', requireAuth, leaderboardRouter)
-v1.use('/notifications', requireAuth, notificationsRouter)
 v1.use('/profile', requireAuth, profileRouter)
-v1.use('/users', requireAuth, usersRouter)
-v1.use('/messages', requireAuth, messagingRouter)
 v1.use('/admin', requireAuth, adminRouter)
 
 // Mount v1 at the canonical versioned path

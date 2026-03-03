@@ -185,7 +185,7 @@ router.post('/conversation', async (req: Request, res: Response) => {
       outputTokens = await countTokens(responseText, 'google', judgeModel)
     }
     
-    trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
+    trackUsage(userId, 'judge', 'summary-model', inputTokens, outputTokens, false)
     
     await trackConversationPrompt(userId, userMessage)
     
@@ -405,7 +405,7 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
       }
     }
 
-    trackUsage(userId, 'google', judgeModel, inputTokens, outputTokens, false)
+    trackUsage(userId, 'judge', 'summary-model', inputTokens, outputTokens, false)
     
     await trackConversationPrompt(userId, userMessage)
 

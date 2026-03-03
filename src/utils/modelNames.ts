@@ -8,6 +8,7 @@ export const getShortModelName = (modelName: string | null | undefined): string 
   if (lower.includes('llama') || lower.includes('meta')) return 'Llama'
   if (lower.includes('mistral')) return 'Mistral'
   if (lower.includes('deepseek')) return 'DeepSeek'
+  if (lower.includes('judge') || lower.includes('summary-model')) return 'Judge'
   return modelName
 }
 
@@ -33,6 +34,7 @@ const MODEL_SHORT_LABELS: Record<string, string> = {
   'magistral-medium': 'Magistral Medium',
   'mistral-medium-3.1': 'Medium 3.1',
   'mistral-small-3.2': 'Small 3.2',
+  'summary-model': 'Summary Model',
 }
 
 export const getModelShortLabel = (modelName: string | null | undefined): string => {
@@ -40,7 +42,7 @@ export const getModelShortLabel = (modelName: string | null | undefined): string
   const lower = modelName.toLowerCase()
 
   // Strip provider prefix (e.g., "openai-gpt-5.2" → "gpt-5.2")
-  const prefixes = ['openai-', 'anthropic-', 'google-', 'xai-', 'meta-', 'deepseek-', 'mistral-']
+  const prefixes = ['openai-', 'anthropic-', 'google-', 'xai-', 'meta-', 'deepseek-', 'mistral-', 'judge-']
   let modelPart = lower
   for (const prefix of prefixes) {
     if (modelPart.startsWith(prefix)) {
