@@ -83,8 +83,7 @@ const LeaderboardView = () => {
   const s = createStyles(currentTheme)
 
   const [activeType, setActiveType] = useState<TabType>('tokens')
-  const [userRankings, setUserRankings] = useState<UserRankingEntry[]>([])
-  const [myRank, setMyRank] = useState<number | null>(null)
+  const [rankingsCache, setRankingsCache] = useState<Record<string, { rankings: UserRankingEntry[]; myRank: number | null }>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -92,6 +91,11 @@ const LeaderboardView = () => {
   const [modelRankings, setModelRankings] = useState<ModelRanking[]>([])
   const [totalVotes, setTotalVotes] = useState(0)
   const [loadingVotes, setLoadingVotes] = useState(true)
+
+  const userRankings = rankingsCache[activeType]?.rankings || []
+  const myRank = rankingsCache[activeType]?.myRank ?? null
+  const hasCachedData = !!rankingsCache[activeType]
+  const hasCachedVotes = providerRankings.length > 0 || modelRankings.length > 0 || totalVotes > 0
 
   const isUserTab = activeType === 'tokens' || activeType === 'prompts' || activeType === 'streak'
 
@@ -146,24 +150,28 @@ const LeaderboardView = () => {
   }, [])
 
   const fetchUserRankings = async () => {
+    const type = activeType
+    const isCached = !!rankingsCache[type]
     try {
-      setLoading(true)
+      if (!isCached) setLoading(true)
       setError(null)
-      const res = await api.get(`/leaderboard/rankings?type=${activeType}`)
-      setUserRankings(res.data.rankings || [])
-      setMyRank(res.data.myRank ?? null)
+      const res = await api.get(`/leaderboard/rankings?type=${type}`)
+      setRankingsCache((prev) => ({
+        ...prev,
+        [type]: { rankings: res.data.rankings || [], myRank: res.data.myRank ?? null },
+      }))
     } catch (err: any) {
       console.error('[Leaderboard] Error:', err)
-      setError('Failed to load leaderboard')
-      setUserRankings([])
+      if (!isCached) setError('Failed to load leaderboard')
     } finally {
       setLoading(false)
     }
   }
 
   const fetchProviderModelRankings = async () => {
+    const isCached = providerRankings.length > 0 || modelRankings.length > 0
     try {
-      setLoadingVotes(true)
+      if (!isCached) setLoadingVotes(true)
       const res = await api.get('/leaderboard/provider-rankings')
       setProviderRankings(res.data.providerRankings || [])
       setModelRankings(res.data.modelRankings || [])
@@ -226,7 +234,7 @@ const LeaderboardView = () => {
   }
 
   const renderUserRankings = () => {
-    if (loading) {
+    if (loading && !hasCachedData) {
       return (
         <div style={{ textAlign: 'center', padding: spacing['5xl'] }}>
           <p style={{ color: currentTheme.textSecondary, fontSize: fontSize['3xl'] }}>
@@ -236,7 +244,7 @@ const LeaderboardView = () => {
       )
     }
 
-    if (error) {
+    if (error && !hasCachedData) {
       return (
         <div style={{ textAlign: 'center', padding: spacing['5xl'], color: currentTheme.error, fontSize: fontSize['2xl'] }}>
           {error}
@@ -388,7 +396,7 @@ const LeaderboardView = () => {
   }
 
   const renderWeeklyRankings = () => {
-    if (loadingVotes) {
+    if (loadingVotes && !hasCachedVotes) {
       return (
         <div style={{ textAlign: 'center', padding: spacing['5xl'] }}>
           <p style={{ color: currentTheme.textSecondary, fontSize: fontSize['3xl'] }}>Loading rankings...</p>
