@@ -652,7 +652,7 @@ const ResponseComparison = () => {
                     }}
                   >
                     <Trophy size={14} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
-                    {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
+                    Favorite Response
                   </button>
                 )}
               </div>
@@ -1062,7 +1062,7 @@ const ResponseComparison = () => {
                 }}
               >
                 <Trophy size={14} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
-                {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
+                Favorite Response
               </button>
             )}
             <button
@@ -1266,7 +1266,7 @@ const ResponseComparison = () => {
                   }}
                 >
                   <Trophy size={14} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
-                  {currentPromptFavorite === response.id ? 'Favorite' : 'Pick as Favorite'}
+                  Favorite Response
                 </button>
               )}
             </div>
@@ -2251,10 +2251,10 @@ const ResponseComparison = () => {
                         fontWeight: currentPromptFavorite === response.id ? fontWeight.semibold : fontWeight.normal,
                         transition: transition.normal,
                       }}
-                      title={currentPromptFavorite === response.id ? 'Selected favorite' : 'Pick as Favorite'}
+                      title="Favorite Response"
                     >
                       <Trophy size={14} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
-                      {currentPromptFavorite === response.id ? 'Favorite' : 'Pick'}
+                      Favorite Response
                     </button>
                   )}
                   <button

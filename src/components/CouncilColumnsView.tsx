@@ -380,7 +380,7 @@ const CouncilColumnsView = ({
                             }}
                           >
                             <Trophy size={11} fill={currentPromptFavorite === response.id ? '#fff' : 'transparent'} />
-                            {currentPromptFavorite === response.id ? 'Favorite' : 'Pick'}
+                            Favorite Response
                           </button>
                         )}
                         <button
@@ -910,7 +910,7 @@ const CouncilColumnsView = ({
                     }}
                   >
                     <Trophy size={14} fill={currentPromptFavorite === maximizedCouncilResponse.id ? '#fff' : 'transparent'} />
-                    {currentPromptFavorite === maximizedCouncilResponse.id ? 'Favorite' : 'Pick as Favorite'}
+                    Favorite Response
                   </button>
                 )}
               </div>
