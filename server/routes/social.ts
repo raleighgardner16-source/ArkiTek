@@ -59,7 +59,7 @@ profileRouter.get('/:userId', async (req: Request, res: Response) => {
       profileImage: user.profileImage || null,
       isAnonymous: user.isAnonymous || false,
       isPrivate: user.isPrivate || false,
-      showOnLeaderboard: user.showOnLeaderboard || false,
+      showOnLeaderboard: user.showOnLeaderboard !== false,
       createdAt: user.createdAt || null,
       followersCount: followers.length,
       followingCount: following.length,

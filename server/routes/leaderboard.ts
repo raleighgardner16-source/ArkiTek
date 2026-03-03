@@ -21,7 +21,7 @@ router.get('/rankings', async (req: Request, res: Response) => {
     for (const u of allUsers) usersMap[u._id] = u
 
     const eligibleUserIds = allUsers
-      .filter((u: any) => u.showOnLeaderboard === true && !u.isAnonymous)
+      .filter((u: any) => u.showOnLeaderboard !== false)
       .map((u: any) => u._id)
 
     if (eligibleUserIds.length === 0) {
@@ -100,7 +100,7 @@ router.get('/my-ranks', async (req: Request, res: Response) => {
 
     const allUsers: any[] = await db.users.getAll()
     const eligibleUserIds = allUsers
-      .filter((u: any) => u.showOnLeaderboard === true && !u.isAnonymous)
+      .filter((u: any) => u.showOnLeaderboard !== false)
       .map((u: any) => u._id)
 
     const isEligible = eligibleUserIds.includes(userId)

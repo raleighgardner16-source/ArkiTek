@@ -58,7 +58,7 @@ const StatisticsView = () => {
   const [loadingPublicProfile, setLoadingPublicProfile] = useState(false)
   const [showEditProfile, setShowEditProfile] = useState(false)
   const [editBio, setEditBio] = useState('')
-  const [editIsAnonymous, setEditIsAnonymous] = useState(false)
+  // editIsAnonymous removed — Anonymous Mode no longer exists in the UI
   const [editProfileImage, setEditProfileImage] = useState<string | null>(null)
   const [savingProfile, setSavingProfile] = useState(false)
   const [ownProfileData, setOwnProfileData] = useState<any>(null)
@@ -71,7 +71,7 @@ const StatisticsView = () => {
   const [loadingFollowersList, setLoadingFollowersList] = useState(false)
   const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false)
   const [editIsPrivate, setEditIsPrivate] = useState(false)
-  const [editShowOnLeaderboard, setEditShowOnLeaderboard] = useState(false)
+  const [editShowOnLeaderboard, setEditShowOnLeaderboard] = useState(true)
   const [notifications, setNotifications] = useState<any[]>([])
   const [unreadNotifCount, setUnreadNotifCount] = useState(0)
   const [loadingNotifications, setLoadingNotifications] = useState(false)
@@ -194,7 +194,6 @@ const StatisticsView = () => {
     try {
       await api.put(`/profile/${currentUser.id}`, {
         bio: editBio,
-        isAnonymous: editIsAnonymous,
         isPrivate: editIsPrivate,
         showOnLeaderboard: editShowOnLeaderboard,
         profileImage: editProfileImage,
@@ -614,9 +613,8 @@ const StatisticsView = () => {
 
   const onEditProfile = () => {
     setEditBio(ownProfileData?.bio || '')
-    setEditIsAnonymous(ownProfileData?.isAnonymous || false)
     setEditIsPrivate(ownProfileData?.isPrivate || false)
-    setEditShowOnLeaderboard(ownProfileData?.showOnLeaderboard || false)
+    setEditShowOnLeaderboard(ownProfileData?.showOnLeaderboard !== false)
     setEditProfileImage(ownProfileData?.profileImage || null)
     setShowEditProfile(true)
   }
@@ -904,8 +902,6 @@ const StatisticsView = () => {
           s={s}
           editBio={editBio}
           setEditBio={setEditBio}
-          editIsAnonymous={editIsAnonymous}
-          setEditIsAnonymous={setEditIsAnonymous}
           editIsPrivate={editIsPrivate}
           setEditIsPrivate={setEditIsPrivate}
           editShowOnLeaderboard={editShowOnLeaderboard}

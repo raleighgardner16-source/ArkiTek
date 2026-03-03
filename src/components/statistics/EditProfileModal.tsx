@@ -11,8 +11,6 @@ interface EditProfileModalProps {
   s: any
   editBio: string
   setEditBio: (bio: string) => void
-  editIsAnonymous: boolean
-  setEditIsAnonymous: (val: boolean) => void
   editIsPrivate: boolean
   setEditIsPrivate: (val: boolean) => void
   editShowOnLeaderboard: boolean
@@ -32,8 +30,6 @@ const EditProfileModal = ({
   s,
   editBio,
   setEditBio,
-  editIsAnonymous,
-  setEditIsAnonymous,
   editIsPrivate,
   setEditIsPrivate,
   editShowOnLeaderboard,
@@ -154,45 +150,16 @@ const EditProfileModal = ({
               </p>
             </div>
 
-            {/* Anonymous toggle */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '12px 14px', background: currentTheme.buttonBackground,
-              border: `1px solid ${currentTheme.borderLight}`, borderRadius: radius.lg, marginBottom: spacing.lg,
-            }}>
-              <div>
-                <p style={{ color: currentTheme.text, fontSize: fontSize.lg, fontWeight: fontWeight.medium, margin: 0 }}>Anonymous Mode</p>
-                <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: `${spacing['2xs']} 0 0 0` }}>
-                  Appear on the leaderboard without showing your username or profile picture
-                </p>
-              </div>
-              <button
-                onClick={() => setEditIsAnonymous(!editIsAnonymous)}
-                style={{
-                  width: '44px', height: '24px', borderRadius: radius.xl, border: 'none', cursor: 'pointer',
-                  background: editIsAnonymous ? currentTheme.accent : (currentTheme.borderLight || '#444'),
-                  position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-                }}
-              >
-                <div style={{
-                  width: '20px', height: '20px', borderRadius: radius.circle, background: '#fff',
-                  position: 'absolute', top: '2px',
-                  left: editIsAnonymous ? '22px' : '2px',
-                  transition: 'left 0.2s',
-                }} />
-              </button>
-            </div>
-
             {/* Private Account toggle */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '12px 14px', background: currentTheme.buttonBackground,
               border: `1px solid ${currentTheme.borderLight}`, borderRadius: radius.lg, marginBottom: spacing.lg,
             }}>
-              <div>
-                <p style={{ color: currentTheme.text, fontSize: fontSize.lg, fontWeight: fontWeight.medium, margin: 0 }}>Private Account</p>
+              <div style={{ marginRight: spacing.lg }}>
+                <p style={{ color: currentTheme.text, fontSize: fontSize.lg, fontWeight: fontWeight.medium, margin: 0 }}>Private Profile</p>
                 <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: `${spacing['2xs']} 0 0 0` }}>
-                  Require follow requests before others can see your posts
+                  Others won't be able to view your stats, badges, or activity when they click on your profile from the leaderboard
                 </p>
               </div>
               <button
@@ -212,33 +179,45 @@ const EditProfileModal = ({
               </button>
             </div>
 
-            {/* Show on Leaderboard toggle */}
+            {/* Leaderboard Visibility */}
             <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '12px 14px', background: currentTheme.buttonBackground,
               border: `1px solid ${currentTheme.borderLight}`, borderRadius: radius.lg, marginBottom: spacing['2xl'],
             }}>
-              <div>
-                <p style={{ color: currentTheme.text, fontSize: fontSize.lg, fontWeight: fontWeight.medium, margin: 0 }}>Show on Leaderboard</p>
-                <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: `${spacing['2xs']} 0 0 0` }}>
-                  Appear on the global leaderboard rankings
-                </p>
+              <p style={{ color: currentTheme.text, fontSize: fontSize.lg, fontWeight: fontWeight.medium, margin: `0 0 ${spacing.md} 0` }}>Leaderboard Visibility</p>
+              <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: `0 0 ${spacing.lg} 0` }}>
+                Choose whether you appear on the global leaderboard rankings
+              </p>
+              <div style={{ display: 'flex', gap: spacing.md }}>
+                <button
+                  onClick={() => setEditShowOnLeaderboard(true)}
+                  style={{
+                    flex: 1, padding: `${spacing.md} ${spacing.lg}`,
+                    background: editShowOnLeaderboard ? `${currentTheme.accent}18` : 'transparent',
+                    border: `1.5px solid ${editShowOnLeaderboard ? currentTheme.accent : (currentTheme.borderLight || '#444')}`,
+                    borderRadius: radius.lg, cursor: 'pointer',
+                    color: editShowOnLeaderboard ? currentTheme.accent : currentTheme.textSecondary,
+                    fontSize: fontSize.lg, fontWeight: editShowOnLeaderboard ? fontWeight.semibold : fontWeight.normal,
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  Show
+                </button>
+                <button
+                  onClick={() => setEditShowOnLeaderboard(false)}
+                  style={{
+                    flex: 1, padding: `${spacing.md} ${spacing.lg}`,
+                    background: !editShowOnLeaderboard ? `${currentTheme.accent}18` : 'transparent',
+                    border: `1.5px solid ${!editShowOnLeaderboard ? currentTheme.accent : (currentTheme.borderLight || '#444')}`,
+                    borderRadius: radius.lg, cursor: 'pointer',
+                    color: !editShowOnLeaderboard ? currentTheme.accent : currentTheme.textSecondary,
+                    fontSize: fontSize.lg, fontWeight: !editShowOnLeaderboard ? fontWeight.semibold : fontWeight.normal,
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  Do Not Show
+                </button>
               </div>
-              <button
-                onClick={() => setEditShowOnLeaderboard(!editShowOnLeaderboard)}
-                style={{
-                  width: '44px', height: '24px', borderRadius: radius.xl, border: 'none', cursor: 'pointer',
-                  background: editShowOnLeaderboard ? currentTheme.accent : (currentTheme.borderLight || '#444'),
-                  position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-                }}
-              >
-                <div style={{
-                  width: '20px', height: '20px', borderRadius: radius.circle, background: '#fff',
-                  position: 'absolute', top: '2px',
-                  left: editShowOnLeaderboard ? '22px' : '2px',
-                  transition: 'left 0.2s',
-                }} />
-              </button>
             </div>
 
             {/* Save / Cancel */}
