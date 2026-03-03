@@ -327,21 +327,26 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }: Props)
               </div>
             </div>
           )}
-          {inlineCancelledSummaryItems.length > 0 && (
-            <div style={{ marginBottom: spacing['2xl'], padding: spacing.lg, background: 'rgba(239, 68, 68, 0.05)', borderRadius: radius.md, border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm }}>
-                <h4 style={{ color: '#ef4444', fontSize: fontSize['2xl'], margin: 0, fontWeight: fontWeight.semibold }}>
-                  Cancelled Summary Model Tokens
-                </h4>
-                <span style={{ fontSize: fontSize['2xs'], color: '#ef4444', background: 'rgba(239, 68, 68, 0.15)', padding: `${spacing['2xs']} ${spacing.sm}`, borderRadius: radius.xs, fontWeight: fontWeight.semibold }}>
-                  Cancelled
-                </span>
+          {inlineCancelledSummaryItems.length > 0 && (() => {
+            const cancelledHasTokens = inlineCancelledSummaryItems.some(item => item.tokens && ((item.tokens.input || 0) + (item.tokens.output || 0)) > 0)
+            return (
+              <div style={{ marginBottom: spacing['2xl'], padding: spacing.lg, background: 'rgba(239, 68, 68, 0.05)', borderRadius: radius.md, border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm }}>
+                  <h4 style={{ color: '#ef4444', fontSize: fontSize['2xl'], margin: 0, fontWeight: fontWeight.semibold }}>
+                    Cancelled Summary Model Tokens
+                  </h4>
+                  <span style={{ fontSize: fontSize['2xs'], color: '#ef4444', background: 'rgba(239, 68, 68, 0.15)', padding: `${spacing['2xs']} ${spacing.sm}`, borderRadius: radius.xs, fontWeight: fontWeight.semibold }}>
+                    Cancelled
+                  </span>
+                </div>
+                <div style={{ fontSize: fontSize.sm, color: '#999', lineHeight: '1.4' }}>
+                  {cancelledHasTokens
+                    ? 'Summary generation was cancelled. Tokens consumed before cancellation are still counted toward your usage.'
+                    : 'Summary generation was cancelled before any tokens were used. No tokens were consumed.'}
+                </div>
               </div>
-              <div style={{ fontSize: fontSize.sm, color: '#999', lineHeight: '1.4' }}>
-                Summary generation was cancelled. Tokens consumed before cancellation are still counted toward your usage.
-              </div>
-            </div>
-          )}
+            )
+          })()}
         </div>
       </div>
     )
@@ -754,36 +759,41 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }: Props)
             )}
 
             {/* Cancelled Summary */}
-            {cancelledSummaryItems.length > 0 && (
-              <div
-                style={{
-                  background: 'rgba(239, 68, 68, 0.05)',
-                  border: '1px solid rgba(239, 68, 68, 0.2)',
-                  borderRadius: radius.xl,
-                  padding: spacing.xl,
-                  marginBottom: spacing.xl,
-                }}
-              >
-                <div style={sx(layout.flexRow, { gap: spacing.md, marginBottom: spacing.md })}>
-                  <h3 style={{ color: '#ef4444', fontSize: fontSize['2xl'], margin: 0, fontWeight: fontWeight.bold }}>
-                    Cancelled Summary Model Tokens
-                  </h3>
-                  <span style={{
-                    fontSize: fontSize['2xs'],
-                    color: '#ef4444',
-                    background: 'rgba(239, 68, 68, 0.15)',
-                    padding: `${spacing['2xs']} ${spacing.md}`,
-                    borderRadius: radius.xs,
-                    fontWeight: fontWeight.semibold,
-                  }}>
-                    Cancelled
-                  </span>
+            {cancelledSummaryItems.length > 0 && (() => {
+              const cancelledHasTokens = cancelledSummaryItems.some(item => item.tokens && ((item.tokens.input || 0) + (item.tokens.output || 0)) > 0)
+              return (
+                <div
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.05)',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    borderRadius: radius.xl,
+                    padding: spacing.xl,
+                    marginBottom: spacing.xl,
+                  }}
+                >
+                  <div style={sx(layout.flexRow, { gap: spacing.md, marginBottom: spacing.md })}>
+                    <h3 style={{ color: '#ef4444', fontSize: fontSize['2xl'], margin: 0, fontWeight: fontWeight.bold }}>
+                      Cancelled Summary Model Tokens
+                    </h3>
+                    <span style={{
+                      fontSize: fontSize['2xs'],
+                      color: '#ef4444',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      padding: `${spacing['2xs']} ${spacing.md}`,
+                      borderRadius: radius.xs,
+                      fontWeight: fontWeight.semibold,
+                    }}>
+                      Cancelled
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#999', lineHeight: '1.4' }}>
+                    {cancelledHasTokens
+                      ? 'The summary generation was cancelled before completion. Tokens consumed before cancellation are still counted toward your usage on the server.'
+                      : 'Summary generation was cancelled before any tokens were used. No tokens were consumed.'}
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#999', lineHeight: '1.4' }}>
-                  The summary generation was cancelled before completion. Tokens consumed before cancellation are still counted toward your usage on the server.
-                </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Pipeline / Internal Models (not counted in stats) */}
             {pipelineItems.length > 0 && (

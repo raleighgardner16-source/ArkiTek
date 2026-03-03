@@ -342,38 +342,43 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
             )}
 
             {/* Cancelled Summary Cost */}
-            {cancelledSummaryItems.length > 0 && (
-              <div
-                style={{
-                  background: 'rgba(239, 68, 68, 0.05)',
-                  border: '1px solid rgba(239, 68, 68, 0.2)',
-                  borderRadius: radius.xl,
-                  padding: spacing.xl,
-                  marginBottom: spacing.lg,
-                }}
-              >
-                <div style={sx(layout.spaceBetween, { marginBottom: spacing.md })}>
-                  <div style={sx(layout.flexRow, { gap: spacing.md })}>
-                    <h4 style={{ color: '#ef4444', fontSize: fontSize['2xl'], margin: 0, fontWeight: fontWeight.semibold }}>
-                      Cancelled Summary Cost
-                    </h4>
-                    <span style={{
-                      fontSize: fontSize['2xs'],
-                      color: '#ef4444',
-                      background: 'rgba(239, 68, 68, 0.15)',
-                      padding: `${spacing['2xs']} ${spacing.md}`,
-                      borderRadius: radius.xs,
-                      fontWeight: fontWeight.semibold,
-                    }}>
-                      Cancelled
-                    </span>
+            {cancelledSummaryItems.length > 0 && (() => {
+              const cancelledHasTokens = cancelledSummaryItems.some(item => item.tokens && ((item.tokens.input || 0) + (item.tokens.output || 0)) > 0)
+              return (
+                <div
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.05)',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    borderRadius: radius.xl,
+                    padding: spacing.xl,
+                    marginBottom: spacing.lg,
+                  }}
+                >
+                  <div style={sx(layout.spaceBetween, { marginBottom: spacing.md })}>
+                    <div style={sx(layout.flexRow, { gap: spacing.md })}>
+                      <h4 style={{ color: '#ef4444', fontSize: fontSize['2xl'], margin: 0, fontWeight: fontWeight.semibold }}>
+                        Cancelled Summary Cost
+                      </h4>
+                      <span style={{
+                        fontSize: fontSize['2xs'],
+                        color: '#ef4444',
+                        background: 'rgba(239, 68, 68, 0.15)',
+                        padding: `${spacing['2xs']} ${spacing.md}`,
+                        borderRadius: radius.xs,
+                        fontWeight: fontWeight.semibold,
+                      }}>
+                        Cancelled
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: fontSize.sm, color: '#999', lineHeight: '1.4' }}>
+                    {cancelledHasTokens
+                      ? 'Summary generation was cancelled. Any cost incurred before cancellation is still counted toward your usage.'
+                      : 'Summary generation was cancelled before any tokens were used. No cost was incurred.'}
                   </div>
                 </div>
-                <div style={{ fontSize: fontSize.sm, color: '#999', lineHeight: '1.4' }}>
-                  Summary generation was cancelled. Any cost incurred before cancellation is still counted toward your usage.
-                </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Query Costs */}
             {queryCount > 0 && (
@@ -673,38 +678,43 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                 )}
 
                 {/* Cancelled Summary Cost */}
-                {cancelledSummaryItems.length > 0 && (
-                  <div
-                    style={{
-                      background: 'rgba(239, 68, 68, 0.05)',
-                      border: '1px solid rgba(239, 68, 68, 0.2)',
-                      borderRadius: radius.xl,
-                      padding: spacing['2xl'],
-                      marginBottom: spacing.xl,
-                    }}
-                  >
-                    <div style={sx(layout.spaceBetween, { marginBottom: spacing.lg })}>
-                      <div style={sx(layout.flexRow, { gap: spacing.md })}>
-                        <h3 style={{ color: '#ef4444', fontSize: fontSize['4xl'], margin: 0, fontWeight: fontWeight.bold }}>
-                          Cancelled Summary Cost
-                        </h3>
-                        <span style={{
-                          fontSize: fontSize['2xs'],
-                          color: '#ef4444',
-                          background: 'rgba(239, 68, 68, 0.15)',
-                          padding: `${spacing['2xs']} ${spacing.md}`,
-                          borderRadius: radius.xs,
-                          fontWeight: fontWeight.semibold,
-                        }}>
-                          Cancelled
-                        </span>
+                {cancelledSummaryItems.length > 0 && (() => {
+                  const cancelledHasTokens = cancelledSummaryItems.some(item => item.tokens && ((item.tokens.input || 0) + (item.tokens.output || 0)) > 0)
+                  return (
+                    <div
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.05)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        borderRadius: radius.xl,
+                        padding: spacing['2xl'],
+                        marginBottom: spacing.xl,
+                      }}
+                    >
+                      <div style={sx(layout.spaceBetween, { marginBottom: spacing.lg })}>
+                        <div style={sx(layout.flexRow, { gap: spacing.md })}>
+                          <h3 style={{ color: '#ef4444', fontSize: fontSize['4xl'], margin: 0, fontWeight: fontWeight.bold }}>
+                            Cancelled Summary Cost
+                          </h3>
+                          <span style={{
+                            fontSize: fontSize['2xs'],
+                            color: '#ef4444',
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            padding: `${spacing['2xs']} ${spacing.md}`,
+                            borderRadius: radius.xs,
+                            fontWeight: fontWeight.semibold,
+                          }}>
+                            Cancelled
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: '#999', lineHeight: '1.5' }}>
+                        {cancelledHasTokens
+                          ? 'Summary generation was cancelled before completion. Any cost incurred before cancellation is still counted toward your usage on the server.'
+                          : 'Summary generation was cancelled before any tokens were used. No cost was incurred.'}
                       </div>
                     </div>
-                    <div style={{ fontSize: '0.78rem', color: '#999', lineHeight: '1.5' }}>
-                      Summary generation was cancelled before completion. Any cost incurred before cancellation is still counted toward your usage on the server.
-                    </div>
-                  </div>
-                )}
+                  )
+                })()}
 
                 {/* Query Costs */}
                 {queryCount > 0 && (
