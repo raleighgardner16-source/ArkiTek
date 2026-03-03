@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Trophy, Zap, MessageSquareText, Flame, User, ChevronRight } from 'lucide-react'
+import { Trophy, Zap, MessageSquare, Flame, User, ChevronRight } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import { spacing, fontSize, fontWeight, radius, transition, layout, sx, createStyles } from '../utils/styles'
@@ -18,7 +18,7 @@ interface RankingEntry {
 
 const TABS: Array<{ id: LeaderboardType; label: string; icon: any; unit: string }> = [
   { id: 'tokens', label: 'Most Tokens', icon: Zap, unit: 'tokens' },
-  { id: 'prompts', label: 'Most Prompts', icon: MessageSquareText, unit: 'prompts' },
+  { id: 'prompts', label: 'Most Prompts', icon: MessageSquare, unit: 'prompts' },
   { id: 'streak', label: 'Longest Streak', icon: Flame, unit: 'days' },
 ]
 

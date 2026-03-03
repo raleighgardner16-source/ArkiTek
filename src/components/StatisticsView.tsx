@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { Database, Trophy, Award, Zap, MessageSquareText, Flame } from 'lucide-react'
+import { Database, Trophy, Award, Zap, MessageSquare, Flame } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import { spacing, fontSize, fontWeight, radius, transition, layout, sx, createStyles } from '../utils/styles'
@@ -660,7 +660,7 @@ const StatisticsView = () => {
           }}>
             {[
               { label: 'Tokens', rank: myRanks.tokens, icon: Zap, color: '#5dade2' },
-              { label: 'Prompts', rank: myRanks.prompts, icon: MessageSquareText, color: '#48c9b0' },
+              { label: 'Prompts', rank: myRanks.prompts, icon: MessageSquare, color: '#48c9b0' },
               { label: 'Streak', rank: myRanks.streak, icon: Flame, color: '#f39c12' },
             ].map((item) => {
               const Icon = item.icon
