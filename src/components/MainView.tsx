@@ -67,7 +67,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [streakDays, setStreakDays] = useState(0)
   const [streakBreakData, setStreakBreakData] = useState<any>(null)
   const [showStreakBreakModal, setShowStreakBreakModal] = useState(false)
-  const [streakTotalXP, setStreakTotalXP] = useState(0)
   const setGeminiDetectionResponse = useStore((state) => state.setGeminiDetectionResponse)
   const isSearchingWeb = useStore((state) => state.isSearchingWeb)
   const [showNoModelNotification, setShowNoModelNotification] = useState(false)
@@ -221,13 +220,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       if (response.data.streakBreak) {
         setStreakBreakData(response.data.streakBreak)
         setShowStreakBreakModal(true)
-        // Fetch actual totalXP for the modal's "can't afford" display
-        try {
-          const statsRes = await api.get(`/stats/${currentUser.id}`)
-          setStreakTotalXP(statsRes.data.xp?.totalXP || 0)
-        } catch {
-          setStreakTotalXP(0)
-        }
       }
     } catch (error: any) {
       console.error('Error fetching streak:', error)
@@ -1480,7 +1472,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       <StreakBreakModal
         isOpen={showStreakBreakModal}
         streakBreak={streakBreakData}
-        totalXP={streakTotalXP}
         onRecover={handleStreakRecover}
       />
 

@@ -4,7 +4,7 @@ import { Flame, X, Zap, Shield, AlertTriangle, ChevronDown } from 'lucide-react'
 import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx, createStyles } from '../utils/styles'
 import { getTheme } from '../utils/theme'
 import { useStore } from '../store/useStore'
-import { getStreakSaveXPCost, getLevelFromXP, STREAK_SAVE_LEVEL_COST } from '../utils/xpConstants'
+import { STREAK_SAVE_LEVEL_COST } from '../utils/xpConstants'
 
 interface StreakBreakData {
   previousStreak: number
@@ -20,11 +20,10 @@ interface StreakBreakData {
 interface Props {
   isOpen: boolean
   streakBreak: StreakBreakData
-  totalXP: number
   onRecover: (method: 'pass' | 'xp' | 'decline') => Promise<void>
 }
 
-const StreakBreakModal = ({ isOpen, streakBreak, totalXP, onRecover }: Props) => {
+const StreakBreakModal = ({ isOpen, streakBreak, onRecover }: Props) => {
   const theme = useStore((state) => state.theme || 'dark')
   const currentTheme = getTheme(theme)
   const s = createStyles(currentTheme)
@@ -207,7 +206,7 @@ const StreakBreakModal = ({ isOpen, streakBreak, totalXP, onRecover }: Props) =>
                 }}>
                   {canAffordXP
                     ? `Drop ${STREAK_SAVE_LEVEL_COST} levels (Lv.${currentLevel} → Lv.${newLevelAfterXP})`
-                    : `Need ${xpCost.toLocaleString()} XP — you only have ${totalXP.toLocaleString()}`
+                    : `Requires level ${STREAK_SAVE_LEVEL_COST}+ (you're level ${currentLevel})`
                   }
                 </div>
               </div>
