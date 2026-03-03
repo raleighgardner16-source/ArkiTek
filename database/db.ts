@@ -512,6 +512,8 @@ const DEFAULT_USAGE: Omit<UsageDataDoc, '_id'> = {
     discoveredModels: [],
     discoveredCategories: [],
   },
+  streakPasses: 0,
+  pendingStreakBreak: null,
 }
 
 const usage = {

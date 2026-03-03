@@ -5,7 +5,7 @@ import { getMonthForUser, getTodayForUser, getDateKeyForUser, getDayDiffFromDate
 import { getPlanAllocation, getPricingData, calculateModelCost, calculateSerperQueryCost } from '../helpers/pricing.js'
 import { getUserTimezone, trackPrompt } from '../services/usage.js'
 import { grantRatingXP, grantDailyChallengeXP } from '../services/xp.js'
-import { getLevelFromXP, getLevelTitle } from '../config/xp.js'
+import { getLevelFromXP, getLevelTitle, getStreakSaveXPCost } from '../config/xp.js'
 import { createLogger } from '../config/logger.js'
 import { sendSuccess, sendError } from '../types/api.js'
 
@@ -251,6 +251,23 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
   const levelInfo = getLevelFromXP(totalXP)
   const levelTitle = getLevelTitle(levelInfo.level)
 
+  // Detect streak break (user hasn't been active and streak was lost)
+  const pendingBreak = userUsage.pendingStreakBreak || null
+  let streakBreakInfo = null
+  if (pendingBreak && pendingBreak.broken) {
+    const xpCostInfo = getStreakSaveXPCost(totalXP)
+    streakBreakInfo = {
+      previousStreak: pendingBreak.previousStreak,
+      brokenAt: pendingBreak.brokenAt,
+      hasPass: (userUsage.streakPasses || 0) > 0,
+      passCount: userUsage.streakPasses || 0,
+      xpCost: xpCostInfo.xpCost,
+      newLevelAfterXP: xpCostInfo.newLevel,
+      canAffordXP: xpCostInfo.canAfford,
+      currentLevel: levelInfo.level,
+    }
+  }
+
   sendSuccess(res, {
     totalTokens,
     totalInputTokens: userUsage.totalInputTokens || 0,
@@ -295,6 +312,8 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
       discoveredModels: xpData.discoveredModels?.length || 0,
       discoveredCategories: xpData.discoveredCategories?.length || 0,
     },
+    streakBreak: streakBreakInfo,
+    streakPasses: userUsage.streakPasses || 0,
   })
 })
 
@@ -581,7 +600,7 @@ statsRouter.get('/:userId/streak', async (req: Request, res: Response) => {
     db.users.get(userId),
     db.usage.getOrDefault(userId),
   ])
-  if (!user) return sendSuccess(res, { streakDays: 0, lastActiveAt: null })
+  if (!user) return sendSuccess(res, { streakDays: 0, lastActiveAt: null, streakBreak: null })
 
   const tz = user.timezone || null
   const todayKey = getTodayForUser(tz)
@@ -597,10 +616,89 @@ statsRouter.get('/:userId/streak', async (req: Request, res: Response) => {
     }
   }
 
+  // Check for pending streak break
+  const pendingBreak = userUsage.pendingStreakBreak || null
+  let streakBreakInfo = null
+  if (pendingBreak && pendingBreak.broken) {
+    const xpData = userUsage.xp || { totalXP: 0 }
+    const totalXP = xpData.totalXP || 0
+    const xpCostInfo = getStreakSaveXPCost(totalXP)
+    const levelInfo = getLevelFromXP(totalXP)
+    streakBreakInfo = {
+      previousStreak: pendingBreak.previousStreak,
+      brokenAt: pendingBreak.brokenAt,
+      hasPass: (userUsage.streakPasses || 0) > 0,
+      passCount: userUsage.streakPasses || 0,
+      xpCost: xpCostInfo.xpCost,
+      newLevelAfterXP: xpCostInfo.newLevel,
+      canAffordXP: xpCostInfo.canAfford,
+      currentLevel: levelInfo.level,
+    }
+  }
+
   sendSuccess(res, { 
     streakDays,
     lastActiveAt: userUsage.lastActiveAt || null,
+    streakBreak: streakBreakInfo,
   })
+})
+
+// Recover a broken streak (use pass or spend XP)
+statsRouter.post('/:userId/streak/recover', async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!
+    const { method } = req.body // 'pass', 'xp', or 'decline'
+
+    const userUsage: any = await db.usage.getOrDefault(userId)
+    const pendingBreak = userUsage.pendingStreakBreak
+
+    if (!pendingBreak || !pendingBreak.broken) {
+      return sendError(res, 'No pending streak break', 400)
+    }
+
+    if (method === 'decline') {
+      await db.usage.update(userId, { pendingStreakBreak: null })
+      return sendSuccess(res, { streakDays: userUsage.streakDays || 1, recovered: false })
+    }
+
+    if (method === 'pass') {
+      const passes = userUsage.streakPasses || 0
+      if (passes <= 0) {
+        return sendError(res, 'No streak passes available', 400)
+      }
+      await db.usage.update(userId, {
+        streakDays: pendingBreak.previousStreak,
+        streakPasses: passes - 1,
+        pendingStreakBreak: null,
+      })
+      log.info({ userId, previousStreak: pendingBreak.previousStreak, method: 'pass' }, 'Streak recovered with pass')
+      return sendSuccess(res, { streakDays: pendingBreak.previousStreak, recovered: true, method: 'pass' })
+    }
+
+    if (method === 'xp') {
+      const xpData = userUsage.xp || { totalXP: 0, lastDailyBonusDate: null, discoveredModels: [], discoveredCategories: [] }
+      const totalXP = xpData.totalXP || 0
+      const costInfo = getStreakSaveXPCost(totalXP)
+
+      if (!costInfo.canAfford) {
+        return sendError(res, 'Not enough XP to recover streak', 400)
+      }
+
+      const newTotalXP = totalXP - costInfo.xpCost
+      await db.usage.update(userId, {
+        streakDays: pendingBreak.previousStreak,
+        pendingStreakBreak: null,
+        'xp.totalXP': Math.max(0, newTotalXP),
+      })
+      log.info({ userId, previousStreak: pendingBreak.previousStreak, xpCost: costInfo.xpCost, newTotalXP, method: 'xp' }, 'Streak recovered with XP')
+      return sendSuccess(res, { streakDays: pendingBreak.previousStreak, recovered: true, method: 'xp', xpSpent: costInfo.xpCost })
+    }
+
+    return sendError(res, 'Invalid method — must be pass, xp, or decline', 400)
+  } catch (error: any) {
+    log.error({ err: error }, 'Streak recovery error')
+    sendError(res, 'Failed to recover streak')
+  }
 })
 
 // =============================================================================

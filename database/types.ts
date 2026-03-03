@@ -177,6 +177,12 @@ export interface UsageDataDoc {
     discoveredModels: string[]
     discoveredCategories: string[]
   }
+  streakPasses?: number
+  pendingStreakBreak?: {
+    broken: boolean
+    previousStreak: number
+    brokenAt: string
+  } | null
   updatedAt?: Date
 }
 

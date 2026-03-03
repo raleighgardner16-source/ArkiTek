@@ -206,8 +206,21 @@ const trackPrompt = async (userId: string, promptText: string, category: string,
       if (diffDays === 1) {
         // Consecutive day, increment streak
         userUsage.streakDays = (userUsage.streakDays || 0) + 1
+        // Clear any pending break since user is back on track
+        if (userUsage.pendingStreakBreak) {
+          userUsage.pendingStreakBreak = null
+        }
       } else {
-        // Streak broken (or future date edge case), reset to 1
+        // Streak broken — save pending break if there was a meaningful streak,
+        // unless one is already pending (don't overwrite with lower value)
+        const oldStreak = userUsage.streakDays || 0
+        if (oldStreak >= 2 && !userUsage.pendingStreakBreak) {
+          userUsage.pendingStreakBreak = {
+            broken: true,
+            previousStreak: oldStreak,
+            brokenAt: today,
+          }
+        }
         userUsage.streakDays = 1
       }
     }
@@ -221,6 +234,7 @@ const trackPrompt = async (userId: string, promptText: string, category: string,
   const setFields: Record<string, any> = {
     streakDays: userUsage.streakDays,
     lastActiveAt: userUsage.lastActiveAt,
+    pendingStreakBreak: userUsage.pendingStreakBreak || null,
     [`categories.${cat}`]: userUsage.categories[cat],
   }
   if (promptText) {

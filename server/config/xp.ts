@@ -61,3 +61,28 @@ export function getLevelTitle(level: number): string {
   }
   return 'ArkiTek Master'
 }
+
+export const STREAK_SAVE_LEVEL_COST = 10
+
+/**
+ * Calculate total XP needed to reach a given level from level 1.
+ */
+export function getTotalXPForLevel(targetLevel: number): number {
+  let accumulated = 0
+  for (let lvl = 1; lvl < targetLevel; lvl++) {
+    accumulated += Math.floor(100 * Math.pow(1.15, lvl - 1))
+  }
+  return accumulated
+}
+
+/**
+ * Calculate XP cost to save a streak: the XP difference between
+ * the user's current level and 10 levels below it.
+ * Returns { xpCost, newLevel, canAfford }.
+ */
+export function getStreakSaveXPCost(totalXP: number): { xpCost: number; newLevel: number; canAfford: boolean } {
+  const { level } = getLevelFromXP(totalXP)
+  const newLevel = Math.max(1, level - STREAK_SAVE_LEVEL_COST)
+  const xpCost = totalXP - getTotalXPForLevel(newLevel)
+  return { xpCost: Math.max(0, xpCost), newLevel, canAfford: totalXP >= xpCost && xpCost > 0 }
+}

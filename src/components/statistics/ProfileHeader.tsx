@@ -1,6 +1,6 @@
-import React from 'react'
-import { motion } from 'framer-motion'
-import { ArrowLeft, User, Edit3, Star, Flame, Zap } from 'lucide-react'
+import React, { useState, useRef, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ArrowLeft, User, Edit3, Star, Flame, Zap, HelpCircle, X } from 'lucide-react'
 import { spacing, fontSize, fontWeight, radius } from '../../utils/styles'
 import { getLevelFromXP, getLevelTitle, getStreakMultiplier } from '../../utils/xpConstants'
 
@@ -47,6 +47,32 @@ const ProfileHeader = ({
 
   const streakDays = stats?.streakDays || 0
   const streakInfo = getStreakMultiplier(streakDays)
+
+  const [showXpGuide, setShowXpGuide] = useState(false)
+  const xpGuideRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showXpGuide) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (xpGuideRef.current && !xpGuideRef.current.contains(e.target as Node)) {
+        setShowXpGuide(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showXpGuide])
+
+  const xpActions = [
+    { action: 'Send a prompt', xp: 10 },
+    { action: 'Send a follow-up', xp: 15 },
+    { action: 'Rate a response', xp: 20 },
+    { action: 'First prompt of the day', xp: 25 },
+    { action: 'Complete a daily challenge', xp: 50 },
+    { action: 'Use Council mode', xp: 15 },
+    { action: 'Use Debate mode', xp: 20 },
+    { action: 'Discover a new category', xp: 75 },
+    { action: 'Discover a new model', xp: 100 },
+  ]
 
   return (
     <div style={{ marginBottom: spacing['4xl'] }}>
@@ -104,30 +130,6 @@ const ProfileHeader = ({
                 <User size={36} color="#fff" />
               )}
             </div>
-            {/* Level badge on avatar */}
-            <div style={{
-              position: 'absolute',
-              bottom: '-4px',
-              right: '-4px',
-              background: currentTheme.accentGradient,
-              borderRadius: radius.circle,
-              width: '32px',
-              height: '32px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: `2px solid ${currentTheme.buttonBackground}`,
-              boxShadow: `0 2px 8px ${currentTheme.accent}40`,
-            }}>
-              <span style={{
-                color: '#fff',
-                fontSize: '0.7rem',
-                fontWeight: fontWeight.bold,
-                lineHeight: 1,
-              }}>
-                {level}
-              </span>
-            </div>
           </div>
 
           {/* Info + Stats */}
@@ -159,6 +161,127 @@ const ProfileHeader = ({
                 <Star size={12} />
                 {levelTitle}
               </span>
+
+              {/* How to Gain XP button */}
+              <div style={{ position: 'relative' }} ref={xpGuideRef}>
+                <motion.button
+                  onClick={() => setShowXpGuide(!showXpGuide)}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  style={{
+                    padding: `${spacing.sm} ${spacing.xl}`,
+                    background: `${currentTheme.accent}12`,
+                    border: `1px solid ${currentTheme.accent}30`,
+                    borderRadius: radius.md,
+                    color: currentTheme.accent,
+                    fontSize: fontSize.base,
+                    fontWeight: fontWeight.medium,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: spacing.sm,
+                  }}
+                >
+                  <HelpCircle size={14} /> How to Gain XP
+                </motion.button>
+
+                <AnimatePresence>
+                  {showXpGuide && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                      transition={{ duration: 0.18 }}
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 8px)',
+                        left: 0,
+                        zIndex: 100,
+                        minWidth: '300px',
+                        background: currentTheme.cardBg || currentTheme.buttonBackground,
+                        border: `1px solid ${currentTheme.borderLight}`,
+                        borderRadius: radius.xl,
+                        boxShadow: `0 8px 32px rgba(0,0,0,0.25)`,
+                        padding: spacing['2xl'],
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.lg }}>
+                        <span style={{
+                          color: currentTheme.text,
+                          fontSize: fontSize.lg,
+                          fontWeight: fontWeight.bold,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: spacing.sm,
+                        }}>
+                          <Zap size={16} color={currentTheme.accent} />
+                          Ways to Earn XP
+                        </span>
+                        <motion.button
+                          onClick={() => setShowXpGuide(false)}
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: currentTheme.textMuted,
+                            cursor: 'pointer',
+                            padding: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <X size={16} />
+                        </motion.button>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+                        {xpActions.map((item, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: `${spacing.sm} ${spacing.md}`,
+                              background: `${currentTheme.accent}08`,
+                              borderRadius: radius.md,
+                            }}
+                          >
+                            <span style={{ color: currentTheme.text, fontSize: fontSize.base }}>
+                              {item.action}
+                            </span>
+                            <span style={{
+                              color: currentTheme.accent,
+                              fontSize: fontSize.sm,
+                              fontWeight: fontWeight.bold,
+                              whiteSpace: 'nowrap',
+                              marginLeft: spacing.lg,
+                            }}>
+                              +{item.xp} XP
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {streakDays >= 3 && (
+                        <div style={{
+                          marginTop: spacing.lg,
+                          padding: `${spacing.sm} ${spacing.md}`,
+                          background: '#FF634712',
+                          borderRadius: radius.md,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: spacing.sm,
+                        }}>
+                          <Flame size={14} color="#FF6347" />
+                          <span style={{ color: currentTheme.text, fontSize: fontSize.sm }}>
+                            Streak bonus active: <strong style={{ color: '#FF6347' }}>{streakInfo.label}</strong> multiplier on all XP
+                          </span>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
 
               {isViewingOther ? null : (
                 <motion.button
