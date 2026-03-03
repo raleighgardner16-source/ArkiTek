@@ -1,5 +1,5 @@
 import React from 'react'
-import { TrendingUp, Receipt, Users, User, CreditCard, DollarSign, ChevronDown, ChevronRight, ChevronLeft, BarChart3, Package, Award, Trophy } from 'lucide-react'
+import { TrendingUp, Receipt, Users, User, CreditCard, DollarSign, ChevronDown, ChevronRight, ChevronLeft, BarChart3, Package, Trophy } from 'lucide-react'
 import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx } from '../../utils/styles'
 
 interface AdminRevenueExpensesProps {
@@ -842,37 +842,6 @@ const AdminRevenueExpenses = ({
                 </div>
               )}
 
-              {revenueData?.badgeTierUsers?.length > 0 && (
-                <div style={{ background: 'rgba(205, 127, 50, 0.08)', border: '1px solid rgba(205, 127, 50, 0.20)', borderRadius: radius.xl, padding: spacing['3xl'] }}>
-                  <h3 style={{ fontSize: '1.15rem', color: '#CD7F32', marginBottom: spacing.xl, display: 'flex', alignItems: 'center', gap: spacing.lg }}>
-                    <Award size={20} color="#CD7F32" />
-                    Badge Tier Rewards
-                  </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: spacing.md, marginBottom: spacing.lg }}>
-                    {[
-                      { name: 'Bronze', color: '#CD7F32', count: revenueData.badgeTierSummary?.Bronze ?? 0, reward: '$0.25' },
-                      { name: 'Silver', color: '#C0C0C0', count: revenueData.badgeTierSummary?.Silver ?? 0, reward: '$0.50' },
-                      { name: 'Gold', color: '#FFD700', count: revenueData.badgeTierSummary?.Gold ?? 0, reward: '$0.75' },
-                      { name: 'Platinum', color: '#E5E4E2', count: revenueData.badgeTierSummary?.Platinum ?? 0, reward: '$1.00' },
-                    ].map(({ name, color, count, reward }) => (
-                      <div key={name} style={{ padding: spacing.md, background: `${color}08`, border: `1px solid ${color}25`, borderRadius: radius.md, textAlign: 'center' }}>
-                        <p style={{ color, fontSize: fontSize.sm, fontWeight: fontWeight.bold, margin: 0 }}>{name}</p>
-                        <p style={{ color: '#ffffff', fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, margin: '2px 0' }}>{count}</p>
-                        <p style={{ color: '#888888', fontSize: fontSize['2xs'], margin: 0 }}>{reward}/mo</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(205, 127, 50, 0.04)', borderRadius: radius.lg }}>
-                    <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>
-                      {revenueData.badgeTierUsers.length} user{revenueData.badgeTierUsers.length !== 1 ? 's' : ''} with rewards
-                    </span>
-                    <span style={{ color: '#ffffff', fontSize: fontSize['4xl'], fontWeight: fontWeight.bold, fontFamily: 'monospace' }}>
-                      ${(revenueData.totalBadgeTierCost ?? 0).toFixed(2)}/mo
-                    </span>
-                  </div>
-                </div>
-              )}
-
               <div style={{ background: 'rgba(168, 85, 247, 0.06)', border: '1px solid rgba(168, 85, 247, 0.20)', borderRadius: radius.xl, padding: spacing['3xl'], position: 'relative', opacity: 0.7 }}>
                 <div style={{ position: 'absolute', top: spacing.lg, right: spacing.xl, background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: radius.sm, padding: '3px 10px' }}>
                   <span style={{ color: '#a855f7', fontSize: fontSize.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Not Yet Enabled</span>
@@ -1003,38 +972,6 @@ const AdminRevenueExpenses = ({
                           </span>
                           <span style={{ color: '#ffffff', fontSize: fontSize['4xl'], fontWeight: fontWeight.bold, fontFamily: 'monospace' }}>
                             ${(revenueData.totalFreeTrialCost ?? 0).toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Badge Tier Rewards Cost (aggregated) */}
-                    {revenueData?.badgeTierUsers?.length > 0 && (
-                      <div style={{ background: 'rgba(205, 127, 50, 0.08)', border: '1px solid rgba(205, 127, 50, 0.20)', borderRadius: radius.xl, padding: spacing['3xl'] }}>
-                        <h3 style={{ fontSize: '1.15rem', color: '#CD7F32', marginBottom: spacing.xl, display: 'flex', alignItems: 'center', gap: spacing.lg }}>
-                          <Award size={20} color="#CD7F32" />
-                          Badge Tier Rewards
-                        </h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: spacing.md, marginBottom: spacing.lg }}>
-                          {[
-                            { name: 'Bronze', color: '#CD7F32', count: revenueData.badgeTierSummary?.Bronze ?? 0, reward: '$0.25' },
-                            { name: 'Silver', color: '#C0C0C0', count: revenueData.badgeTierSummary?.Silver ?? 0, reward: '$0.50' },
-                            { name: 'Gold', color: '#FFD700', count: revenueData.badgeTierSummary?.Gold ?? 0, reward: '$0.75' },
-                            { name: 'Platinum', color: '#E5E4E2', count: revenueData.badgeTierSummary?.Platinum ?? 0, reward: '$1.00' },
-                          ].map(({ name, color, count, reward }) => (
-                            <div key={name} style={{ padding: spacing.md, background: `${color}08`, border: `1px solid ${color}25`, borderRadius: radius.md, textAlign: 'center' }}>
-                              <p style={{ color, fontSize: fontSize.sm, fontWeight: fontWeight.bold, margin: 0 }}>{name}</p>
-                              <p style={{ color: '#ffffff', fontSize: fontSize['3xl'], fontWeight: fontWeight.bold, margin: '2px 0' }}>{count}</p>
-                              <p style={{ color: '#888888', fontSize: fontSize['2xs'], margin: 0 }}>{reward}/mo</p>
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(205, 127, 50, 0.04)', borderRadius: radius.lg }}>
-                          <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>
-                            {revenueData.badgeTierUsers.length} user{revenueData.badgeTierUsers.length !== 1 ? 's' : ''} with rewards
-                          </span>
-                          <span style={{ color: '#ffffff', fontSize: fontSize['4xl'], fontWeight: fontWeight.bold, fontFamily: 'monospace' }}>
-                            ${(revenueData.totalBadgeTierCost ?? 0).toFixed(2)}/mo
                           </span>
                         </div>
                       </div>

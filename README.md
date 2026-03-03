@@ -11,7 +11,7 @@ A multi-LLM comparison platform that sends one prompt to ChatGPT, Claude, Gemini
 - **Category detection** — Gemini classifies each prompt to decide search/context needs
 - **Conversation memory** — OpenAI embeddings + MongoDB Atlas vector search for follow-up context
 - **Saved history** — auto-save conversations organized by date; star, search, and browse
-- **Gamification** — streaks, badges, tiers (Bronze–Platinum), daily challenges, monthly rewards
+- **Gamification** — streaks, badges, daily challenges
 - **Subscriptions & credits** — free trial, Pro ($19.95/mo), Premium ($49.95/mo), plus one-time credit purchases via Stripe
 - **Admin panel** — user management, expense tracking, revenue stats
 - **Social features** — follow system, leaderboard posts, DMs and group chats (partially disabled in UI)

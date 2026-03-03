@@ -73,7 +73,7 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
     {
       icon: <Trophy size={32} />,
       title: 'Rewards & Monthly Gifts',
-      description: 'Pro subscribers earn badges across multiple categories — Token Titan, Prompt Pioneer, Streak Warrior, and more — each with multiple unlock tiers. Maintain daily streaks, level up, and receive monthly gifts including bonus usage and exclusive badges.',
+      description: 'Pro subscribers earn badges across multiple categories — Token Titan, Prompt Pioneer, Streak Warrior, and more. Maintain daily streaks, complete challenges, and collect badges as you explore everything ArkiTek has to offer.',
     },
     {
       icon: <BookOpen size={32} />,
@@ -884,32 +884,26 @@ const LandingPage = ({ onNavigate }: LandingPageProps) => {
               margin: '0 auto',
               lineHeight: 1.6,
             }}>
-              Every prompt and every streak counts. Earn badges to unlock new tiers and rewards!
+              Every prompt and every streak counts. Earn badges and complete daily challenges!
             </p>
           </motion.div>
 
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
+            gridTemplateColumns: 'repeat(2, 1fr)',
             gap: spacing['3xl'],
           }}>
             {[
               {
                 icon: <Award size={28} />,
                 title: 'Badges',
-                desc: 'Earn badges across multiple categories — Token Titan, Prompt Pioneer, Streak Warrior, and more. Each badge you unlock contributes to your tier and earns you rewards like bonus monthly usage. The more you explore, the more you\'re rewarded.',
+                desc: 'Earn badges across multiple categories — Token Titan, Prompt Pioneer, Streak Warrior, and more. The more you explore, the more badges you collect. Can you earn them all and become The ArkiTek?',
                 color: '#FFD700',
               },
               {
-                icon: <Trophy size={28} />,
-                title: 'Tiers',
-                desc: 'Progress through Bronze, Silver, Gold, and Platinum tiers as you earn badges. Each tier unlocks bonus monthly usage — and paid plan subscribers get even more. The higher your tier, the more free usage you receive every month.',
-                color: '#FF4500',
-              },
-              {
                 icon: <Gift size={28} />,
-                title: 'Monthly Rewards',
-                desc: 'Every month, paid subscribers receive rewards based on their tier. The higher you climb, the more bonus usage you unlock — on top of what your plan already includes. Rewards reset monthly, so there\'s always something new to earn.',
+                title: 'Daily Challenges',
+                desc: 'Complete daily challenges to earn bonus usage on top of what your plan already includes. New challenges appear every day, so there\'s always something fresh to work toward.',
                 color: '#48c9b0',
               },
             ].map((item, idx) => (

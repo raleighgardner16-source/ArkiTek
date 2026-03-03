@@ -1,6 +1,6 @@
 import type React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Award, Trophy, Lock, ChevronDown, ChevronRight, Zap } from 'lucide-react'
+import { Award, Lock, ChevronDown, ChevronRight, Zap } from 'lucide-react'
 import { spacing, fontSize, fontWeight, radius, transition } from '../../utils/styles'
 import { sx } from '../../utils/styles'
 import { BADGE_CATEGORIES, formatBadgeNumber } from './badgeConstants'
@@ -52,9 +52,22 @@ const BadgesTab = ({
   claimDailyChallenge,
 }: BadgesTabProps) => {
   const providers = isViewingOther ? {} : (userStats.providers || {})
-  const earnedBadgesList = isViewingOther ? (publicProfile?.earnedBadges || []) : (userStats.earnedBadges || [])
+  const earnedBadgesList = isFreePlan ? [] : (isViewingOther ? (publicProfile?.earnedBadges || []) : (userStats.earnedBadges || []))
   const persistedBadges = new Set(earnedBadgesList)
-  const badgeStats = {
+  const badgeStats = isFreePlan ? {
+    totalTokens: 0,
+    totalPrompts: 0,
+    streakDays: 0,
+    totalLikes: 0,
+    totalRatings: 0,
+    totalComments: 0,
+    councilPrompts: 0,
+    debatePrompts: 0,
+    provider_openai_prompts: 0,
+    provider_anthropic_prompts: 0,
+    provider_google_prompts: 0,
+    provider_xai_prompts: 0,
+  } : {
     totalTokens: userStats.totalTokens || 0,
     totalPrompts: isViewingOther ? (publicProfile?.leaderboard?.totalPosts || 0) : (userStats.totalPrompts || 0),
     streakDays: userStats.streakDays || 0,
@@ -312,7 +325,7 @@ const BadgesTab = ({
         }}>
           <Award size={20} color="#ffaa00" style={{ flexShrink: 0 }} />
           <p style={{ color: currentTheme.textSecondary, fontSize: fontSize.base, margin: 0, lineHeight: 1.5 }}>
-            Upgrade to Pro or Premium to earn badges, unlock tier rewards, and complete daily challenges.
+            Upgrade to Pro or Premium to earn badges and complete daily challenges.
           </p>
         </div>
       )}
@@ -401,113 +414,8 @@ const BadgesTab = ({
         </div>
 
         <p style={{ color: currentTheme.textSecondary, fontSize: fontSize['2xl'], margin: `0 0 ${spacing['2xl']} 0` }}>
-          Unlock badges by using ArkiTek. The more badges you earn, the greater the rewards.
+          Unlock badges by using ArkiTek. Collect them all to become The ArkiTek.
         </p>
-
-        {/* Rewards tier indicator */}
-        {(() => {
-          const TIERS = [
-            { name: 'Bronze', min: 0, max: 25, color: '#CD7F32', glow: 'rgba(205,127,50,0.12)', reward: 0.25 },
-            { name: 'Silver', min: 26, max: 50, color: '#C0C0C0', glow: 'rgba(192,192,192,0.12)', reward: 0.50 },
-            { name: 'Gold', min: 51, max: 75, color: '#FFD700', glow: 'rgba(255,215,0,0.12)', reward: 0.75 },
-            { name: 'Platinum', min: 76, max: Infinity, color: '#00E5FF', glow: 'rgba(0,229,255,0.15)', reward: 1.00 },
-          ]
-          const currentTier = TIERS.find(t => totalEarned >= t.min && totalEarned <= t.max) || TIERS[0]
-          const currentTierIndex = TIERS.indexOf(currentTier)
-          const nextTier = currentTierIndex < TIERS.length - 1 ? TIERS[currentTierIndex + 1] : null
-          const badgesToNext = nextTier ? nextTier.min - totalEarned : 0
-
-          return (
-            <div style={{
-              width: '100%',
-              marginBottom: spacing['3xl'],
-            }}>
-              {/* Current tier badge */}
-              <div style={{
-                display: 'inline-flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: spacing.sm,
-                padding: '14px 28px',
-                borderRadius: radius.xl,
-                background: currentTier.glow,
-                border: `1px solid ${currentTier.color}50`,
-                marginBottom: spacing.xl,
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
-                  <Trophy size={18} color={currentTier.color} />
-                  <span style={{
-                    fontSize: fontSize['2xl'],
-                    fontWeight: fontWeight.bold,
-                    color: currentTier.color,
-                    letterSpacing: '1px',
-                    textTransform: 'uppercase',
-                  }}>
-                    {currentTier.name} Tier
-                  </span>
-                  <Trophy size={18} color={currentTier.color} />
-                </div>
-                <span style={{ fontSize: fontSize.md, color: currentTheme.textSecondary }}>
-                  Monthly usage bonus
-                </span>
-                {nextTier && (
-                  <span style={{ fontSize: fontSize.xs, color: currentTheme.textMuted, fontStyle: 'italic' }}>
-                    {badgesToNext} more badge{badgesToNext !== 1 ? 's' : ''} to reach {nextTier.name}
-                  </span>
-                )}
-              </div>
-
-              {/* All tiers overview */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gap: spacing.lg,
-              }}>
-                {TIERS.map((tier) => {
-                  const isActive = tier.name === currentTier.name
-                  return (
-                    <div
-                      key={tier.name}
-                      style={{
-                        padding: '12px 10px',
-                        borderRadius: radius.lg,
-                        background: isActive ? tier.glow : 'transparent',
-                        border: `1.5px solid ${isActive ? tier.color : `${tier.color}40`}`,
-                        textAlign: 'center',
-                        transition: transition.slow,
-                      }}
-                    >
-                      <Trophy size={16} color={tier.color} style={{ marginBottom: spacing.xs }} />
-                      <p style={{
-                        fontSize: fontSize.md,
-                        fontWeight: fontWeight.bold,
-                        color: currentTheme.text,
-                        margin: `0 0 ${spacing['2xs']} 0`,
-                      }}>
-                        {tier.name}
-                      </p>
-                      <p style={{
-                        fontSize: fontSize['2xs'],
-                        color: currentTheme.text,
-                        margin: `0 0 ${spacing.xs} 0`,
-                      }}>
-                        {tier.max === Infinity ? `${tier.min}+ badges` : `${tier.min}–${tier.max} badges`}
-                      </p>
-                      <p style={{
-                        fontSize: '0.75rem',
-                        fontWeight: fontWeight.semibold,
-                        color: currentTheme.text,
-                        margin: 0,
-                      }}>
-                        Usage bonus
-                      </p>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })()}
 
         <div style={{
           display: 'flex',

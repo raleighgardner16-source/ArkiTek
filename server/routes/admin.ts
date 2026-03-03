@@ -489,45 +489,6 @@ router.get('/revenue', requireAdmin, async (req: Request, res: Response) => {
 
     const grandTotalRevenue = totalSubscriptionRevenue + totalCreditRevenue + totalStoreRevenue
 
-    const allUsageForBadges = await db.usage.getAll() as any[]
-    const usageMapForBadges: Record<string, any> = {}
-    for (const u of allUsageForBadges) usageMapForBadges[u._id] = u
-    const BADGE_TIERS = [
-      { name: 'Bronze', min: 1, max: 25, reward: 0.25 },
-      { name: 'Silver', min: 26, max: 50, reward: 0.50 },
-      { name: 'Gold', min: 51, max: 75, reward: 0.75 },
-      { name: 'Platinum', min: 76, max: Infinity, reward: 1.00 },
-    ]
-    const getBadgeTier = (badgeCount: number) => {
-      if (badgeCount <= 0) return null
-      return BADGE_TIERS.find(t => badgeCount >= t.min && badgeCount <= t.max) || null
-    }
-
-    const badgeTierUsers: any[] = []
-    const badgeTierSummary: Record<string, number> = { Bronze: 0, Silver: 0, Gold: 0, Platinum: 0 }
-    let totalBadgeTierCost = 0
-
-    for (const user of allUsers) {
-      const userId = user._id
-      const status = user.subscriptionStatus
-      if (!status || status === 'inactive' || status === 'pending_verification') continue
-      const userUsage = usageMapForBadges[userId]
-      const badgeCount = (userUsage?.earnedBadges || []).length
-      if (badgeCount <= 0) continue
-      const tier = getBadgeTier(badgeCount)
-      if (!tier) continue
-      badgeTierSummary[tier.name]++
-      totalBadgeTierCost += tier.reward
-      badgeTierUsers.push({
-        username: user.username || 'Anonymous',
-        email: user.email || '',
-        tier: tier.name,
-        badgeCount,
-        reward: tier.reward,
-      })
-    }
-    badgeTierUsers.sort((a, b) => b.badgeCount - a.badgeCount)
-
     sendSuccess(res, {
       revenue: {
         period,
@@ -557,9 +518,6 @@ router.get('/revenue', requireAdmin, async (req: Request, res: Response) => {
         activeUsersList,
         freeTrialUsersList,
         inactiveUsersList,
-        badgeTierUsers,
-        badgeTierSummary,
-        totalBadgeTierCost,
       },
     })
   } catch (error: any) {
