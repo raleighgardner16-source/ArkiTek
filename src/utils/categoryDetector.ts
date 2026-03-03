@@ -143,7 +143,7 @@ fast = simple queries, quick responses, low-latency needs
 User prompt:
 "${prompt}"${modelsList}
 
-${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You MUST use the SAME model type (reasoning, versatile, or fast) for ALL providers - no exceptions! Return the model IDs (e.g., "openai-gpt-5.2", "google-gemini-3-pro") in recommendedModels.' : ''}`
+${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You MUST use the SAME model type (reasoning, versatile, or fast) for ALL providers - no exceptions! Return the model IDs (e.g., "openai-gpt-5.2", "google-gemini-3.1-pro") in recommendedModels.' : ''}`
 
   try {
     const response = await fetch(`${API_URL}${API_PREFIX}/llm`, {

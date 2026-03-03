@@ -62,7 +62,7 @@ const TokenUsageTab = ({
                   Monthly Usage
                 </h2>
                 <p style={{ fontSize: fontSize.base, color: (userStats.usagePercentUsed || 0) > 0 ? '#f0a050' : currentTheme.textMuted, margin: `0 0 ${spacing.xs} 0`, fontStyle: 'italic' }}>
-                  {(userStats.usagePercentUsed || 0).toFixed(1)}% of allocation used
+                  {(userStats.usagePercentUsed || 0).toFixed(1)}% used
                 </p>
                 {(userStats.usagePercentUsed || 0) > 100 && (
                   <p style={{ fontSize: fontSize.base, color: currentTheme.error, margin: `0 0 ${spacing.xs} 0`, fontStyle: 'italic' }}>

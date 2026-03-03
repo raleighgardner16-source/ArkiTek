@@ -43,15 +43,15 @@ const getPricingData = () => {
     anthropic: {
       name: 'Anthropic (Claude)',
       models: {
-        'claude-4.5-opus': { input: 5.00, cachedInput: null, output: 25.00, note: 'Reasoning model' },
-        'claude-4.5-sonnet': { input: 3.00, cachedInput: null, output: 15.00, note: 'Versatile model' },
+        'claude-4.6-opus': { input: 5.00, cachedInput: null, output: 25.00, note: 'Reasoning model' },
+        'claude-4.6-sonnet': { input: 3.00, cachedInput: null, output: 15.00, note: 'Versatile model' },
         'claude-4.5-haiku': { input: 1.00, cachedInput: null, output: 5.00, note: 'Fast model' },
       },
     },
     google: {
       name: 'Google (Gemini)',
       models: {
-        'gemini-3-pro': { input: 2.00, cachedInput: null, output: 12.00, note: 'Reasoning model' },
+        'gemini-3.1-pro': { input: 2.00, cachedInput: null, output: 12.00, note: 'Reasoning model' },
         'gemini-3-flash': { input: 0.50, cachedInput: null, output: 3.00, note: 'Versatile model' },
         'gemini-2.5-flash-lite': { input: 0.10, cachedInput: null, output: 0.40, note: 'Fast model' },
       },
