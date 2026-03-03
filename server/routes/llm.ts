@@ -410,16 +410,19 @@ router.post('/', async (req: Request, res: Response) => {
       || error.message
       || 'Unknown error occurred'
     
-    if (error.response?.status === 401) {
+    const status = error.response?.status
+    if (status === 401) {
       errorMessage = `Unauthorized (401): Invalid API key for ${requestProvider}.`
-    } else if (error.response?.status === 400) {
+    } else if (status === 400) {
       errorMessage = `Bad Request (400): ${errorMessage}. Check if the model name "${requestModel}" is correct for ${requestProvider}.`
-    } else if (error.response?.status === 404) {
+    } else if (status === 404) {
       errorMessage = `Not Found (404): Model "${requestModel}" not found for ${requestProvider}.`
+    } else if (status === 503 || status === 429 || status === 529) {
+      errorMessage = `⚠️ ${requestModel} is currently experiencing high demand and is temporarily unavailable. Please try again in a moment or select a different model.`
     }
 
-    return sendError(res, errorMessage, error.response?.status || 500, {
-      status: error.response?.status,
+    return sendError(res, errorMessage, status || 500, {
+      status,
       model: requestModel,
       provider: requestProvider
     })
@@ -704,7 +707,14 @@ router.post('/stream', async (req: Request, res: Response) => {
     clearInterval(heartbeat)
     log.error({ err: error, provider, model }, 'LLM stream error')
     try {
-      sendSSE('error', { message: error.response?.data?.error?.message || error.message || 'Unknown error' })
+      const status = error.response?.status
+      let errorMsg = error.response?.data?.error?.message || error.message || 'Unknown error'
+      
+      if (status === 503 || status === 429 || status === 529) {
+        errorMsg = `⚠️ ${model} is currently experiencing high demand and is temporarily unavailable. Please try again in a moment or select a different model.`
+      }
+      
+      sendSSE('error', { message: errorMsg })
       res.end()
     } catch (e) {
       log.error({ err: e }, 'Failed to send error to client')
