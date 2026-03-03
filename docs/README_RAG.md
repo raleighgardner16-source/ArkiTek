@@ -57,9 +57,9 @@ async def run():
     results = await pipeline.run_full_pipeline(
         query="What happened with Charlie Kirk shooting?",
         selected_models=[
-            "openai-gpt-5.2",
-            "anthropic-claude-4.6-sonnet",
-            "google-gemini-3.1-pro"
+            "openai-gpt-4o",
+            "anthropic-claude-4.5-sonnet",
+            "google-gemini-2.5-pro"
         ]
     )
     
@@ -82,7 +82,7 @@ refined_data = await pipeline.refiner_step("your query", search_results)
 # Stage 3: Council (parallel)
 council_responses = await pipeline.council_processing(
     refined_data, 
-    ["openai-gpt-5.2", "anthropic-claude-4.6-sonnet"]
+    ["openai-gpt-4o", "anthropic-claude-4.5-sonnet"]
 )
 
 # Stage 4: Judge
@@ -91,7 +91,7 @@ judge_analysis = await pipeline.judge_finalization("your query", council_respons
 
 ## Cost Optimization
 
-- **Refiner uses GPT-5-mini**: Cheaper than using full models for extraction
+- **Refiner uses GPT-4o-mini**: Cheaper than using full models for extraction
 - **Parallel Council Processing**: All models process simultaneously, reducing total latency
 - **Single Search**: One Serper call instead of multiple
 - **Focused Data**: Only relevant facts are sent to expensive models
@@ -101,9 +101,9 @@ judge_analysis = await pipeline.judge_finalization("your query", council_respons
 Models should be specified in the format: `provider-modelname`
 
 Examples:
-- `openai-gpt-5.2`
-- `anthropic-claude-4.6-sonnet`
-- `google-gemini-3.1-pro`
+- `openai-gpt-4o`
+- `anthropic-claude-4.5-sonnet`
+- `google-gemini-2.5-pro`
 - `xai-grok-4-1-fast-reasoning`
 
 ## Output Structure

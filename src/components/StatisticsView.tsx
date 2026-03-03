@@ -630,20 +630,18 @@ const StatisticsView = () => {
           margin: '0 auto',
         }}
       >
-        {activeTab !== 'tokens' && (
-          <ProfileHeader
-            isViewingOther={isViewingOther}
-            publicProfile={publicProfile}
-            ownProfileData={ownProfileData}
-            viewingProfile={viewingProfile}
-            currentUser={currentUser}
-            stats={stats}
-            currentTheme={currentTheme}
-            formatAccountAge={formatAccountAge}
-            clearViewingProfile={clearViewingProfile}
-            onEditProfile={onEditProfile}
-          />
-        )}
+        <ProfileHeader
+          isViewingOther={isViewingOther}
+          publicProfile={publicProfile}
+          ownProfileData={ownProfileData}
+          viewingProfile={viewingProfile}
+          currentUser={currentUser}
+          stats={stats}
+          currentTheme={currentTheme}
+          formatAccountAge={formatAccountAge}
+          clearViewingProfile={clearViewingProfile}
+          onEditProfile={onEditProfile}
+        />
 
         {/* Tab Buttons — evenly distributed (hidden when viewing another user's profile) */}
         {!isViewingOther && (

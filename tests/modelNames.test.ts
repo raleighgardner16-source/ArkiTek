@@ -24,7 +24,7 @@ describe('getShortModelName', () => {
   })
 
   it('returns Claude for anthropic models', () => {
-    expect(getShortModelName('anthropic-claude-4.6-sonnet')).toBe('Claude')
+    expect(getShortModelName('anthropic-claude-4.5-sonnet')).toBe('Claude')
   })
 
   it('returns Claude for claude models', () => {
@@ -32,7 +32,7 @@ describe('getShortModelName', () => {
   })
 
   it('returns Gemini for google models', () => {
-    expect(getShortModelName('google-gemini-3.1-pro')).toBe('Gemini')
+    expect(getShortModelName('google-gemini-3-pro')).toBe('Gemini')
   })
 
   it('returns Gemini for gemini models', () => {

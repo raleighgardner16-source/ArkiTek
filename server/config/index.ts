@@ -52,10 +52,10 @@ const JWT_SECRET = env.JWT_SECRET
 const JWT_EXPIRY = '7d'
 
 const MODEL_MAPPINGS: Record<string, string> = {
-  'claude-4.6-opus': 'claude-opus-4-6',
-  'claude-4.6-sonnet': 'claude-sonnet-4-6',
+  'claude-4.5-opus': 'claude-opus-4-5-20251101',
+  'claude-4.5-sonnet': 'claude-sonnet-4-5-20250929',
   'claude-4.5-haiku': 'claude-haiku-4-5-20251001',
-  'gemini-3.1-pro': 'gemini-3.1-pro-preview',
+  'gemini-3-pro': 'gemini-3-pro-preview',
   'gemini-3-flash': 'gemini-3-flash-preview',
   'magistral-medium': 'magistral-medium-latest',
   'mistral-medium-3.1': 'mistral-medium-latest',
