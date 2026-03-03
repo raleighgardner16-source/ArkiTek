@@ -175,7 +175,9 @@ const BadgesTab = ({
               Daily Challenge
             </h3>
             <p style={{ fontSize: fontSize.md, color: currentTheme.textMuted, margin: 0 }}>
-              Complete the challenge to earn bonus usage
+              {isFreePlan
+                ? 'Upgrade to Pro or Premium to earn badges and complete daily challenges.'
+                : 'Complete the challenge to earn bonus usage'}
             </p>
           </div>
           {challengeClaimedAnim && (
@@ -312,24 +314,6 @@ const BadgesTab = ({
         )}
       </div>
 
-      {isFreePlan && (
-        <div style={{
-          background: 'rgba(255, 170, 0, 0.06)',
-          border: '1px solid rgba(255, 170, 0, 0.2)',
-          borderRadius: radius.xl,
-          padding: `${spacing.lg} ${spacing['2xl']}`,
-          marginBottom: spacing['3xl'],
-          display: 'flex',
-          alignItems: 'center',
-          gap: spacing.lg,
-        }}>
-          <Award size={20} color="#ffaa00" style={{ flexShrink: 0 }} />
-          <p style={{ color: currentTheme.textSecondary, fontSize: fontSize.base, margin: 0, lineHeight: 1.5 }}>
-            Upgrade to Pro or Premium to earn badges and complete daily challenges.
-          </p>
-        </div>
-      )}
-
       <div>
 
       {/* Overall Badge Summary with Ultimate Badge */}
@@ -357,12 +341,17 @@ const BadgesTab = ({
           }} />
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: spacing.xl, marginBottom: spacing.xl }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: spacing.xl, marginBottom: isFreePlan ? spacing.sm : spacing.xl }}>
           <Award size={36} color={currentTheme.accent} />
           <h2 style={sx(s.gradientText, { fontSize: '1.8rem', margin: 0 })}>
             Achievement Badges
           </h2>
         </div>
+        {isFreePlan && (
+          <p style={{ color: currentTheme.textMuted, fontSize: fontSize.md, margin: `0 0 ${spacing.xl} 0`, textAlign: 'center' }}>
+            Upgrade to Pro or Premium to earn badges and complete daily challenges.
+          </p>
+        )}
 
         {/* Ultimate 100th Badge - "The Architect" */}
         <div style={{
