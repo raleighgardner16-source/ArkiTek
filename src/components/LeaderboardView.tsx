@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Trophy, Zap, MessageSquare, Flame, User, ChevronRight, Crown, Cpu } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import { spacing, fontSize, fontWeight, radius, transition, layout, sx, createStyles } from '../utils/styles'
 import api from '../utils/api'
+import { LLM_PROVIDERS } from '../services/llmProviders'
 
-type TabType = 'tokens' | 'prompts' | 'streak' | 'providers' | 'models'
+type TabType = 'tokens' | 'prompts' | 'streak' | 'weekly'
 
 interface UserRankingEntry {
   rank: number
@@ -35,9 +36,10 @@ const TABS: Array<{ id: TabType; label: string; icon: any }> = [
   { id: 'tokens', label: 'Most Tokens', icon: Zap },
   { id: 'prompts', label: 'Most Prompts', icon: MessageSquare },
   { id: 'streak', label: 'Longest Streak', icon: Flame },
-  { id: 'providers', label: 'Provider of the Week', icon: Crown },
-  { id: 'models', label: 'Model of the Week', icon: Cpu },
+  { id: 'weekly', label: 'Best of the Week', icon: Crown },
 ]
+
+const ACTIVE_PROVIDER_KEYS = ['openai', 'anthropic', 'google', 'xai']
 
 const USER_TAB_UNITS: Record<string, string> = {
   tokens: 'tokens',
@@ -92,6 +94,46 @@ const LeaderboardView = () => {
   const [loadingVotes, setLoadingVotes] = useState(true)
 
   const isUserTab = activeType === 'tokens' || activeType === 'prompts' || activeType === 'streak'
+
+  const fullProviderRankings = useMemo(() => {
+    const ranked = ACTIVE_PROVIDER_KEYS.map((key) => {
+      const existing = providerRankings.find((p) => p.provider === key)
+      return {
+        provider: key,
+        name: LLM_PROVIDERS[key]?.name || key,
+        wins: existing?.wins || 0,
+        rank: 0,
+      }
+    })
+    ranked.sort((a, b) => b.wins - a.wins)
+    ranked.forEach((entry, i) => { entry.rank = i + 1 })
+    return ranked
+  }, [providerRankings])
+
+  const fullModelRankings = useMemo(() => {
+    const activeModels: Array<{ model: string; provider: string; providerName: string }> = []
+    ACTIVE_PROVIDER_KEYS.forEach((key) => {
+      const prov = LLM_PROVIDERS[key]
+      if (!prov) return
+      prov.models.forEach((m) => {
+        const modelId = typeof m === 'string' ? m : m.id
+        activeModels.push({ model: modelId, provider: key, providerName: prov.name })
+      })
+    })
+    const ranked = activeModels.map((am) => {
+      const existing = modelRankings.find((mr) => mr.model === am.model)
+      return {
+        model: am.model,
+        provider: am.provider,
+        providerName: am.providerName,
+        wins: existing?.wins || 0,
+        rank: 0,
+      }
+    })
+    ranked.sort((a, b) => b.wins - a.wins)
+    ranked.forEach((entry, i) => { entry.rank = i + 1 })
+    return ranked
+  }, [modelRankings])
 
   useEffect(() => {
     if (isUserTab) {
@@ -345,7 +387,7 @@ const LeaderboardView = () => {
     )
   }
 
-  const renderProviderRankings = () => {
+  const renderWeeklyRankings = () => {
     if (loadingVotes) {
       return (
         <div style={{ textAlign: 'center', padding: spacing['5xl'] }}>
@@ -354,152 +396,185 @@ const LeaderboardView = () => {
       )
     }
 
-    if (providerRankings.length === 0) {
-      return (
-        <div style={{
-          textAlign: 'center', padding: `60px ${spacing['2xl']}`,
-          background: currentTheme.backgroundOverlay, border: `1px solid ${currentTheme.borderLight}`,
-          borderRadius: radius.xl,
-        }}>
-          <Crown size={40} color={currentTheme.textMuted} style={{ opacity: 0.4, marginBottom: spacing.lg }} />
-          <p style={{ color: currentTheme.textMuted, fontSize: fontSize['2xl'], margin: 0, lineHeight: '1.6' }}>
-            No votes cast this week yet.<br />
-            Pick your favorite response after submitting a prompt to vote!
-          </p>
-        </div>
-      )
-    }
+    const renderProviderList = () => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+        {fullProviderRankings.map((entry) => {
+          const providerColor = PROVIDER_COLORS[entry.provider] || currentTheme.accent
+          const isFirst = entry.rank === 1 && entry.wins > 0
+          const pct = totalVotes > 0 ? Math.round((entry.wins / totalVotes) * 100) : 0
 
-    return (
-      <>
-        {totalVotes > 0 && (
-          <div style={{
-            padding: `${spacing.lg} ${spacing['2xl']}`,
-            marginBottom: spacing['2xl'],
-            background: theme === 'light' ? 'rgba(0, 136, 204, 0.05)' : 'rgba(93, 173, 226, 0.05)',
-            border: `1px solid ${currentTheme.borderLight}`,
-            borderRadius: radius.xl,
-            color: currentTheme.textSecondary,
-            fontSize: fontSize.lg,
-            textAlign: 'center',
-          }}>
-            {totalVotes} {totalVotes === 1 ? 'vote' : 'votes'} cast this week &middot; Resets every Monday
-          </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-          {providerRankings.map((entry) => {
-            const providerColor = PROVIDER_COLORS[entry.provider] || currentTheme.accent
-            const isTop3 = entry.rank <= 3
-            const pct = totalVotes > 0 ? Math.round((entry.wins / totalVotes) * 100) : 0
-
-            return (
-              <motion.div
-                key={entry.provider}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: entry.rank * 0.06 }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: spacing.xl,
-                  padding: `${isTop3 ? spacing.xl : '10px'} ${spacing['2xl']}`,
-                  background: currentTheme.backgroundOverlay,
-                  border: `1px solid ${isTop3 ? `${providerColor}30` : currentTheme.borderLight}`,
-                  borderRadius: radius.lg,
-                  position: 'relative',
-                  overflow: 'hidden',
-                }}
-              >
-                {entry.rank === 1 && (
-                  <div style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
-                    background: `linear-gradient(90deg, ${providerColor}, ${providerColor}60)`,
-                  }} />
-                )}
-
-                <div style={{ width: '44px', textAlign: 'center', flexShrink: 0 }}>
-                  {renderRankBadge(entry.rank, true)}
-                </div>
-
-                {/* Provider color dot */}
+          return (
+            <motion.div
+              key={entry.provider}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: entry.rank * 0.05 }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: spacing.md,
+                padding: `${spacing.md} ${spacing.lg}`,
+                background: currentTheme.backgroundOverlay,
+                border: `1px solid ${isFirst ? `${providerColor}40` : currentTheme.borderLight}`,
+                borderRadius: radius.lg,
+                position: 'relative',
+                overflow: 'hidden',
+                opacity: entry.wins === 0 ? 0.5 : 1,
+              }}
+            >
+              {isFirst && (
                 <div style={{
-                  width: isTop3 ? '44px' : '36px', height: isTop3 ? '44px' : '36px',
-                  borderRadius: radius.circle, flexShrink: 0,
-                  background: `${providerColor}18`, border: `2px solid ${providerColor}40`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
+                  background: `linear-gradient(90deg, ${providerColor}, ${providerColor}60)`,
+                }} />
+              )}
+
+              <div style={{ width: '28px', textAlign: 'center', flexShrink: 0 }}>
+                {renderRankBadge(entry.rank, false)}
+              </div>
+
+              <div style={{
+                width: '28px', height: '28px',
+                borderRadius: radius.circle, flexShrink: 0,
+                background: `${providerColor}18`, border: `2px solid ${providerColor}40`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <div style={{
+                  width: '10px', height: '10px',
+                  borderRadius: radius.circle, background: providerColor,
+                }} />
+              </div>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{
+                  color: providerColor,
+                  fontSize: fontSize.xl,
+                  fontWeight: isFirst ? fontWeight.bold : fontWeight.semibold,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
-                  <div style={{
-                    width: isTop3 ? '16px' : '12px', height: isTop3 ? '16px' : '12px',
-                    borderRadius: radius.circle, background: providerColor,
-                  }} />
-                </div>
+                  {entry.name}
+                </span>
+              </div>
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{
-                    color: providerColor,
-                    fontSize: isTop3 ? fontSize['3xl'] : fontSize['2xl'],
-                    fontWeight: isTop3 ? fontWeight.bold : fontWeight.semibold,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {entry.name}
-                  </span>
-                </div>
-
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <span style={{
-                    color: isTop3 ? providerColor : currentTheme.text,
-                    fontSize: isTop3 ? fontSize['3xl'] : fontSize['2xl'],
-                    fontWeight: fontWeight.semibold,
-                  }}>
-                    {entry.wins}
-                  </span>
-                  <span style={{ color: currentTheme.textMuted, fontSize: fontSize.base, marginLeft: spacing.xs }}>
-                    {entry.wins === 1 ? 'vote' : 'votes'}
-                  </span>
-                  <span style={{
-                    color: currentTheme.textMuted, fontSize: fontSize.base,
-                    marginLeft: spacing.md,
-                  }}>
-                    ({pct}%)
-                  </span>
-                </div>
-              </motion.div>
-            )
-          })}
-
-          <div style={{ textAlign: 'center', padding: `${spacing['3xl']} 0`, color: currentTheme.textMuted, fontSize: fontSize.lg }}>
-            End of rankings &middot; {providerRankings.length} {providerRankings.length === 1 ? 'provider' : 'providers'}
-          </div>
+              <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: spacing.xs }}>
+                <span style={{
+                  color: isFirst ? providerColor : currentTheme.text,
+                  fontSize: fontSize.xl,
+                  fontWeight: fontWeight.semibold,
+                }}>
+                  {entry.wins}
+                </span>
+                <span style={{ color: currentTheme.textMuted, fontSize: fontSize.sm }}>
+                  {entry.wins === 1 ? 'vote' : 'votes'}
+                </span>
+                <span style={{
+                  color: currentTheme.textMuted, fontSize: fontSize.sm,
+                  minWidth: '36px', textAlign: 'right',
+                }}>
+                  ({pct}%)
+                </span>
+              </div>
+            </motion.div>
+          )
+        })}
+        <div style={{ textAlign: 'center', padding: `${spacing.xl} 0`, color: currentTheme.textMuted, fontSize: fontSize.sm }}>
+          {fullProviderRankings.length} {fullProviderRankings.length === 1 ? 'provider' : 'providers'}
         </div>
-      </>
+      </div>
     )
-  }
 
-  const renderModelRankings = () => {
-    if (loadingVotes) {
-      return (
-        <div style={{ textAlign: 'center', padding: spacing['5xl'] }}>
-          <p style={{ color: currentTheme.textSecondary, fontSize: fontSize['3xl'] }}>Loading rankings...</p>
-        </div>
-      )
-    }
+    const renderModelList = () => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+        {fullModelRankings.map((entry) => {
+          const providerColor = PROVIDER_COLORS[entry.provider] || currentTheme.accent
+          const isFirst = entry.rank === 1 && entry.wins > 0
+          const pct = totalVotes > 0 ? Math.round((entry.wins / totalVotes) * 100) : 0
 
-    if (modelRankings.length === 0) {
-      return (
-        <div style={{
-          textAlign: 'center', padding: `60px ${spacing['2xl']}`,
-          background: currentTheme.backgroundOverlay, border: `1px solid ${currentTheme.borderLight}`,
-          borderRadius: radius.xl,
-        }}>
-          <Cpu size={40} color={currentTheme.textMuted} style={{ opacity: 0.4, marginBottom: spacing.lg }} />
-          <p style={{ color: currentTheme.textMuted, fontSize: fontSize['2xl'], margin: 0, lineHeight: '1.6' }}>
-            No votes cast this week yet.<br />
-            Pick your favorite response after submitting a prompt to vote!
-          </p>
+          return (
+            <motion.div
+              key={entry.model}
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: entry.rank * 0.03 }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: spacing.md,
+                padding: `${spacing.md} ${spacing.lg}`,
+                background: currentTheme.backgroundOverlay,
+                border: `1px solid ${isFirst ? `${providerColor}40` : currentTheme.borderLight}`,
+                borderRadius: radius.lg,
+                position: 'relative',
+                overflow: 'hidden',
+                opacity: entry.wins === 0 ? 0.5 : 1,
+              }}
+            >
+              {isFirst && (
+                <div style={{
+                  position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
+                  background: `linear-gradient(90deg, ${providerColor}, ${providerColor}60)`,
+                }} />
+              )}
+
+              <div style={{ width: '28px', textAlign: 'center', flexShrink: 0 }}>
+                {renderRankBadge(entry.rank, false)}
+              </div>
+
+              <div style={{
+                width: '28px', height: '28px',
+                borderRadius: radius.circle, flexShrink: 0,
+                background: `${providerColor}18`, border: `2px solid ${providerColor}40`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Cpu size={12} color={providerColor} />
+              </div>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{
+                  color: currentTheme.text,
+                  fontSize: fontSize.xl,
+                  fontWeight: isFirst ? fontWeight.bold : fontWeight.semibold,
+                  display: 'block',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  lineHeight: '1.2',
+                }}>
+                  {entry.model}
+                </span>
+                <span style={{
+                  color: providerColor,
+                  fontSize: fontSize.xs,
+                  fontWeight: fontWeight.medium,
+                }}>
+                  {entry.providerName}
+                </span>
+              </div>
+
+              <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: spacing.xs }}>
+                <span style={{
+                  color: isFirst ? providerColor : currentTheme.text,
+                  fontSize: fontSize.xl,
+                  fontWeight: fontWeight.semibold,
+                }}>
+                  {entry.wins}
+                </span>
+                <span style={{ color: currentTheme.textMuted, fontSize: fontSize.sm }}>
+                  {entry.wins === 1 ? 'vote' : 'votes'}
+                </span>
+                <span style={{
+                  color: currentTheme.textMuted, fontSize: fontSize.sm,
+                  minWidth: '36px', textAlign: 'right',
+                }}>
+                  ({pct}%)
+                </span>
+              </div>
+            </motion.div>
+          )
+        })}
+        <div style={{ textAlign: 'center', padding: `${spacing.xl} 0`, color: currentTheme.textMuted, fontSize: fontSize.sm }}>
+          {fullModelRankings.length} {fullModelRankings.length === 1 ? 'model' : 'models'}
         </div>
-      )
-    }
+      </div>
+    )
 
     return (
       <>
@@ -518,93 +593,69 @@ const LeaderboardView = () => {
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-          {modelRankings.map((entry) => {
-            const providerColor = PROVIDER_COLORS[entry.provider] || currentTheme.accent
-            const isTop3 = entry.rank <= 3
-            const pct = totalVotes > 0 ? Math.round((entry.wins / totalVotes) * 100) : 0
+        {totalVotes === 0 && (
+          <div style={{
+            padding: `${spacing.lg} ${spacing['2xl']}`,
+            marginBottom: spacing['2xl'],
+            background: theme === 'light' ? 'rgba(0, 136, 204, 0.05)' : 'rgba(93, 173, 226, 0.05)',
+            border: `1px solid ${currentTheme.borderLight}`,
+            borderRadius: radius.xl,
+            color: currentTheme.textMuted,
+            fontSize: fontSize.lg,
+            textAlign: 'center',
+          }}>
+            No votes cast this week yet &middot; Pick your favorite response to vote!
+          </div>
+        )}
 
-            return (
-              <motion.div
-                key={entry.model}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: entry.rank * 0.06 }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: spacing.xl,
-                  padding: `${isTop3 ? spacing.xl : '10px'} ${spacing['2xl']}`,
-                  background: currentTheme.backgroundOverlay,
-                  border: `1px solid ${isTop3 ? `${providerColor}30` : currentTheme.borderLight}`,
-                  borderRadius: radius.lg,
-                  position: 'relative',
-                  overflow: 'hidden',
-                }}
-              >
-                {entry.rank === 1 && (
-                  <div style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
-                    background: `linear-gradient(90deg, ${providerColor}, ${providerColor}60)`,
-                  }} />
-                )}
+        <div style={{
+          display: 'flex',
+          gap: 0,
+          alignItems: 'stretch',
+        }}>
+          {/* Provider of the Week — left side */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: spacing.md,
+              marginBottom: spacing.lg, paddingBottom: spacing.md,
+              borderBottom: `1px solid ${currentTheme.borderLight}`,
+            }}>
+              <Crown size={18} color={currentTheme.accent} />
+              <h3 style={{
+                margin: 0, color: currentTheme.accent,
+                fontSize: fontSize['2xl'], fontWeight: fontWeight.semibold,
+              }}>
+                Provider of the Week
+              </h3>
+            </div>
+            {renderProviderList()}
+          </div>
 
-                <div style={{ width: '44px', textAlign: 'center', flexShrink: 0 }}>
-                  {renderRankBadge(entry.rank, true)}
-                </div>
+          {/* Vertical divider */}
+          <div style={{
+            width: '1px',
+            background: 'rgba(255, 255, 255, 0.2)',
+            margin: `0 ${spacing.xl}`,
+            flexShrink: 0,
+            alignSelf: 'stretch',
+          }} />
 
-                <div style={{
-                  width: isTop3 ? '44px' : '36px', height: isTop3 ? '44px' : '36px',
-                  borderRadius: radius.circle, flexShrink: 0,
-                  background: `${providerColor}18`, border: `2px solid ${providerColor}40`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Cpu size={isTop3 ? 18 : 14} color={providerColor} />
-                </div>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{
-                    color: currentTheme.text,
-                    fontSize: isTop3 ? fontSize['3xl'] : fontSize['2xl'],
-                    fontWeight: isTop3 ? fontWeight.bold : fontWeight.semibold,
-                    display: 'block',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {entry.model}
-                  </span>
-                  <span style={{
-                    color: providerColor,
-                    fontSize: fontSize.base,
-                    fontWeight: fontWeight.medium,
-                  }}>
-                    {entry.providerName}
-                  </span>
-                </div>
-
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <span style={{
-                    color: isTop3 ? providerColor : currentTheme.text,
-                    fontSize: isTop3 ? fontSize['3xl'] : fontSize['2xl'],
-                    fontWeight: fontWeight.semibold,
-                  }}>
-                    {entry.wins}
-                  </span>
-                  <span style={{ color: currentTheme.textMuted, fontSize: fontSize.base, marginLeft: spacing.xs }}>
-                    {entry.wins === 1 ? 'vote' : 'votes'}
-                  </span>
-                  <span style={{
-                    color: currentTheme.textMuted, fontSize: fontSize.base,
-                    marginLeft: spacing.md,
-                  }}>
-                    ({pct}%)
-                  </span>
-                </div>
-              </motion.div>
-            )
-          })}
-
-          <div style={{ textAlign: 'center', padding: `${spacing['3xl']} 0`, color: currentTheme.textMuted, fontSize: fontSize.lg }}>
-            End of rankings &middot; {modelRankings.length} {modelRankings.length === 1 ? 'model' : 'models'}
+          {/* Model of the Week — right side */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: spacing.md,
+              marginBottom: spacing.lg, paddingBottom: spacing.md,
+              borderBottom: `1px solid ${currentTheme.borderLight}`,
+            }}>
+              <Cpu size={18} color={currentTheme.accent} />
+              <h3 style={{
+                margin: 0, color: currentTheme.accent,
+                fontSize: fontSize['2xl'], fontWeight: fontWeight.semibold,
+              }}>
+                Model of the Week
+              </h3>
+            </div>
+            {renderModelList()}
           </div>
         </div>
       </>
@@ -622,7 +673,7 @@ const LeaderboardView = () => {
         color: currentTheme.text,
       })}
     >
-      <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
+      <div style={{ width: '100%', maxWidth: activeType === 'weekly' ? '1100px' : '800px', margin: '0 auto', transition: 'max-width 0.3s ease' }}>
         {/* Header */}
         <div style={{ marginBottom: spacing['4xl'] }}>
           <div style={sx(layout.flexRow, { gap: spacing.lg, marginBottom: spacing.lg, alignItems: 'center' })}>
@@ -676,8 +727,7 @@ const LeaderboardView = () => {
 
         {/* Tab Content */}
         {isUserTab && renderUserRankings()}
-        {activeType === 'providers' && renderProviderRankings()}
-        {activeType === 'models' && renderModelRankings()}
+        {activeType === 'weekly' && renderWeeklyRankings()}
       </div>
     </motion.div>
   )
