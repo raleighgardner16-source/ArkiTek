@@ -84,6 +84,7 @@ export function usePromptSubmission() {
     }
 
     store.clearResponses()
+    store.setIsReopenedHistoryChat(false)
     store.setSearchSources(null)
 
     // Clear server-side judge/model conversation context

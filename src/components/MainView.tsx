@@ -80,6 +80,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const currentPromptFavorite = useStore((state) => state.currentPromptFavorite)
   const setCurrentPromptFavorite = useStore((state) => state.setCurrentPromptFavorite)
   const currentPromptSessionId = useStore((state) => state.currentPromptSessionId)
+  const isReopenedHistoryChat = useStore((state) => state.isReopenedHistoryChat)
 
   // Conversation handlers hook
   const conversation = useConversationHandlers({ isLoading, isGeneratingSummary })
@@ -153,6 +154,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [isSubmitPending, setIsSubmitPending] = useState(false)
 
   const handlePickFavorite = useCallback(async (responseId: string) => {
+    if (isReopenedHistoryChat) return
     const isAlreadyFavorite = currentPromptFavorite === responseId
     const newFavorite = isAlreadyFavorite ? null : responseId
     setCurrentPromptFavorite(newFavorite)
@@ -177,7 +179,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
         console.error('[Favorite] Error saving model win:', error)
       }
     }
-  }, [currentPromptFavorite, currentPromptSessionId, currentUser?.id, responses, setCurrentPromptFavorite])
+  }, [isReopenedHistoryChat, currentPromptFavorite, currentPromptSessionId, currentUser?.id, responses, setCurrentPromptFavorite])
 
   // Check if user's usage is exhausted
   useEffect(() => {
@@ -734,6 +736,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 setIsCouncilColumnInputFocused={setIsCouncilColumnInputFocused}
                 currentPromptFavorite={currentPromptFavorite}
                 onPickFavorite={handlePickFavorite}
+                isReopenedHistoryChat={isReopenedHistoryChat}
               />
 
               {/* Phase 2b: Single model streaming - show as normal flowing response */}

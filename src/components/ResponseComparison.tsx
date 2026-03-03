@@ -28,6 +28,7 @@ const ResponseComparison = () => {
   const currentPromptFavorite = useStore((state) => state.currentPromptFavorite)
   const setCurrentPromptFavorite = useStore((state) => state.setCurrentPromptFavorite)
   const currentPromptSessionId = useStore((state) => state.currentPromptSessionId)
+  const isReopenedHistoryChat = useStore((state) => state.isReopenedHistoryChat)
   const removeResponse = useStore((state) => state.removeResponse)
   const clearResponses = useStore((state) => state.clearResponses)
   const clearLastSubmittedPrompt = useStore((state) => state.clearLastSubmittedPrompt)
@@ -164,6 +165,7 @@ const ResponseComparison = () => {
   }, [draggedCard, dragOffset])
 
   const handleFavorite = async (responseId: string) => {
+    if (isReopenedHistoryChat) return
     const isAlreadyFavorite = currentPromptFavorite === responseId
     const newFavorite = isAlreadyFavorite ? null : responseId
     setCurrentPromptFavorite(newFavorite)
@@ -632,7 +634,7 @@ const ResponseComparison = () => {
                     {formatModelName(response.modelName)}
                   </h2>
                 )}
-                {responses.length > 1 && (
+                {!isReopenedHistoryChat && responses.length > 1 && (
                   <button
                     onClick={() => handleFavorite(response.id)}
                     style={{
@@ -1039,7 +1041,7 @@ const ResponseComparison = () => {
             )}
           </div>
           <div style={{ display: 'flex', gap: spacing.md, alignItems: 'center' }}>
-            {!response.isStreaming && responses.length > 1 && (
+            {!isReopenedHistoryChat && !response.isStreaming && responses.length > 1 && (
               <button
                 onClick={(e) => {
                   e.stopPropagation()
@@ -1246,7 +1248,7 @@ const ResponseComparison = () => {
                   {formatModelName(response.modelName)}
                 </h3>
               )}
-              {responses.length > 1 && (
+              {!isReopenedHistoryChat && responses.length > 1 && (
                 <button
                   onClick={() => handleFavorite(response.id)}
                   style={{
@@ -2231,7 +2233,7 @@ const ResponseComparison = () => {
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: spacing.md, alignItems: 'center' }}>
-                  {!response.isStreaming && responses.length > 1 && (
+                  {!isReopenedHistoryChat && !response.isStreaming && responses.length > 1 && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation()

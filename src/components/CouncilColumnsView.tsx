@@ -43,6 +43,7 @@ interface Props {
   setIsCouncilColumnInputFocused: (v: boolean) => void
   currentPromptFavorite: string | null
   onPickFavorite: (responseId: string) => void
+  isReopenedHistoryChat: boolean
 }
 
 const CouncilColumnsView = ({
@@ -84,6 +85,7 @@ const CouncilColumnsView = ({
   setIsCouncilColumnInputFocused,
   currentPromptFavorite,
   onPickFavorite,
+  isReopenedHistoryChat,
 }: Props) => {
   const s = createStyles(currentTheme)
   const [maximizedCouncilResponseId, setMaximizedCouncilResponseId] = useState<string | null>(null)
@@ -360,7 +362,7 @@ const CouncilColumnsView = ({
                         </div>
                       )}
                       <div style={{ display: 'flex', alignItems: 'center', gap: spacing.xs }}>
-                        {!response.isStreaming && response.text && responses.length > 1 && (
+                        {!isReopenedHistoryChat && !response.isStreaming && response.text && responses.length > 1 && (
                           <button
                             onClick={() => onPickFavorite(response.id)}
                             style={{
@@ -890,7 +892,7 @@ const CouncilColumnsView = ({
                     {getProviderDisplayName(maximizedCouncilResponse.modelName)}
                   </h3>
                 )}
-                {!maximizedCouncilResponse.isStreaming && maximizedCouncilResponse.text && responses.length > 1 && (
+                {!isReopenedHistoryChat && !maximizedCouncilResponse.isStreaming && maximizedCouncilResponse.text && responses.length > 1 && (
                   <button
                     onClick={() => onPickFavorite(maximizedCouncilResponse.id)}
                     style={{

@@ -44,6 +44,7 @@ const SavedConversationsView = () => {
   const setSummary = useStore((state: any) => state.setSummary)
   const setCurrentPrompt = useStore((state: any) => state.setCurrentPrompt)
   const setCurrentHistoryId = useStore((state: any) => state.setCurrentHistoryId)
+  const setIsReopenedHistoryChat = useStore((state: any) => state.setIsReopenedHistoryChat)
   const setSearchSources = useStore((state: any) => state.setSearchSources)
   const setLastSubmittedPrompt = useStore((state: any) => state.setLastSubmittedPrompt)
   const setLastSubmittedCategory = useStore((state: any) => state.setLastSubmittedCategory)
@@ -441,6 +442,7 @@ const SavedConversationsView = () => {
       setLastSubmittedPrompt(convo.originalPrompt || '')
       setLastSubmittedCategory(convo.category || '')
       setCurrentHistoryId(convoId)
+      setIsReopenedHistoryChat(true)
       setCurrentPrompt('')
       setSummaryMinimized(false)
 

@@ -158,6 +158,8 @@ export interface StoreState {
   currentHistoryId: string | null
   setCurrentHistoryId: (id: string | null) => void
   clearCurrentHistoryId: () => void
+  isReopenedHistoryChat: boolean
+  setIsReopenedHistoryChat: (isReopened: boolean) => void
 
   // Council column follow-up conversation history (per response) — used when continuing from history
   councilColumnConvoHistory: Record<string, any[]>
@@ -262,6 +264,7 @@ export const useStore = create<StoreState>()(
           showFactsWindow: true,
           showPipelineDebugWindow: true,
           currentHistoryId: null,
+          isReopenedHistoryChat: false,
           councilColumnConvoHistory: {},
           currentPromptFavorite: null,
           currentPromptSessionId: Date.now().toString(),
@@ -442,6 +445,8 @@ export const useStore = create<StoreState>()(
       currentHistoryId: null,
       setCurrentHistoryId: (id: string | null) => set({ currentHistoryId: id }),
       clearCurrentHistoryId: () => set({ currentHistoryId: null }),
+      isReopenedHistoryChat: false,
+      setIsReopenedHistoryChat: (isReopened: boolean) => set({ isReopenedHistoryChat: isReopened }),
 
       // Council column follow-up conversation history (per response) — used when continuing from history
       councilColumnConvoHistory: {},
