@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { Database, Trophy, Award } from 'lucide-react'
+import { Database, Trophy, Award, Zap, MessageSquare, Flame } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import { spacing, fontSize, fontWeight, radius, transition, layout, sx, createStyles } from '../utils/styles'
