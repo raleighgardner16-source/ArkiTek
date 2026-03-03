@@ -19,6 +19,7 @@ import SubscriptionGate from './components/SubscriptionGate'
 import AdminView from './components/AdminView'
 import { SectionErrorBoundary } from './components/SectionErrorBoundary'
 import SavedConversationsView from './components/SavedConversationsView'
+import LeaderboardView from './components/LeaderboardView'
 import LandingPage from './components/LandingPage'
 import TermsOfService from './components/TermsOfService'
 import PrivacyPolicy from './components/PrivacyPolicy'
@@ -215,6 +216,11 @@ function App() {
                   isGeneratingSummary={isGeneratingSummary}
                   onCancelPrompt={handleCancelPrompt}
                 />
+              </SectionErrorBoundary>
+            )}
+            {activeTab === 'leaderboard' && (
+              <SectionErrorBoundary sectionName="Leaderboard">
+                <LeaderboardView />
               </SectionErrorBoundary>
             )}
             {activeTab === 'saved' && (

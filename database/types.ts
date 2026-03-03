@@ -40,6 +40,7 @@ export interface UserDoc {
   profileImage: string | null
   isAnonymous: boolean
   isPrivate: boolean
+  showOnLeaderboard: boolean
   timezone?: string | null
   modelPreferences?: Record<string, unknown> | null
   followers?: string[]

@@ -15,6 +15,8 @@ interface EditProfileModalProps {
   setEditIsAnonymous: (val: boolean) => void
   editIsPrivate: boolean
   setEditIsPrivate: (val: boolean) => void
+  editShowOnLeaderboard: boolean
+  setEditShowOnLeaderboard: (val: boolean) => void
   editProfileImage: string | null
   setEditProfileImage: (img: string | null) => void
   fileInputRef: React.RefObject<HTMLInputElement | null>
@@ -34,6 +36,8 @@ const EditProfileModal = ({
   setEditIsAnonymous,
   editIsPrivate,
   setEditIsPrivate,
+  editShowOnLeaderboard,
+  setEditShowOnLeaderboard,
   editProfileImage,
   setEditProfileImage,
   fileInputRef,
@@ -159,7 +163,7 @@ const EditProfileModal = ({
               <div>
                 <p style={{ color: currentTheme.text, fontSize: fontSize.lg, fontWeight: fontWeight.medium, margin: 0 }}>Anonymous Mode</p>
                 <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: `${spacing['2xs']} 0 0 0` }}>
-                  Hide your name and username from other users
+                  Appear on the leaderboard without showing your username or profile picture
                 </p>
               </div>
               <button
@@ -183,12 +187,12 @@ const EditProfileModal = ({
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '12px 14px', background: currentTheme.buttonBackground,
-              border: `1px solid ${currentTheme.borderLight}`, borderRadius: radius.lg, marginBottom: spacing['2xl'],
+              border: `1px solid ${currentTheme.borderLight}`, borderRadius: radius.lg, marginBottom: spacing.lg,
             }}>
               <div>
                 <p style={{ color: currentTheme.text, fontSize: fontSize.lg, fontWeight: fontWeight.medium, margin: 0 }}>Private Account</p>
                 <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: `${spacing['2xs']} 0 0 0` }}>
-                  Require approval before others can follow you
+                  Require follow requests before others can see your posts
                 </p>
               </div>
               <button
@@ -203,6 +207,35 @@ const EditProfileModal = ({
                   width: '20px', height: '20px', borderRadius: radius.circle, background: '#fff',
                   position: 'absolute', top: '2px',
                   left: editIsPrivate ? '22px' : '2px',
+                  transition: 'left 0.2s',
+                }} />
+              </button>
+            </div>
+
+            {/* Show on Leaderboard toggle */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '12px 14px', background: currentTheme.buttonBackground,
+              border: `1px solid ${currentTheme.borderLight}`, borderRadius: radius.lg, marginBottom: spacing['2xl'],
+            }}>
+              <div>
+                <p style={{ color: currentTheme.text, fontSize: fontSize.lg, fontWeight: fontWeight.medium, margin: 0 }}>Show on Leaderboard</p>
+                <p style={{ color: currentTheme.textSecondary, fontSize: '0.78rem', margin: `${spacing['2xs']} 0 0 0` }}>
+                  Appear on the global leaderboard rankings
+                </p>
+              </div>
+              <button
+                onClick={() => setEditShowOnLeaderboard(!editShowOnLeaderboard)}
+                style={{
+                  width: '44px', height: '24px', borderRadius: radius.xl, border: 'none', cursor: 'pointer',
+                  background: editShowOnLeaderboard ? currentTheme.accent : (currentTheme.borderLight || '#444'),
+                  position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                }}
+              >
+                <div style={{
+                  width: '20px', height: '20px', borderRadius: radius.circle, background: '#fff',
+                  position: 'absolute', top: '2px',
+                  left: editShowOnLeaderboard ? '22px' : '2px',
                   transition: 'left 0.2s',
                 }} />
               </button>

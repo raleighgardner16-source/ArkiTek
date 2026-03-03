@@ -83,13 +83,11 @@ const NavigationBar = () => {
       icon: isOnChat ? MessageSquarePlus : MessageSquare,
       label: isOnChat ? 'New Chat' : 'Chat',
     },
-    // DISABLED: Prompt Feed tab temporarily removed (social media feature)
-    // {
-    //   id: 'leaderboard',
-    //   icon: Trophy,
-    //   label: 'Prompt Feed',
-    //   proOnly: true,
-    // },
+    {
+      id: 'leaderboard',
+      icon: Trophy,
+      label: 'Leaderboard',
+    },
     {
       id: 'saved',
       icon: History,

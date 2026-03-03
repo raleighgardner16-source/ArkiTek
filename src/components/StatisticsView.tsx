@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { Database, Trophy, Award } from 'lucide-react'
+import { Database, Trophy, Award, Zap, MessageSquareText, Flame } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
-import { spacing, fontSize, fontWeight, transition, sx, createStyles } from '../utils/styles'
+import { spacing, fontSize, fontWeight, radius, transition, layout, sx, createStyles } from '../utils/styles'
 import api from '../utils/api'
 import BuyUsageModal from './BuyUsageModal'
 import ConfirmationModal from './ConfirmationModal'
@@ -71,6 +71,7 @@ const StatisticsView = () => {
   const [loadingFollowersList, setLoadingFollowersList] = useState(false)
   const [showUnfollowConfirm, setShowUnfollowConfirm] = useState(false)
   const [editIsPrivate, setEditIsPrivate] = useState(false)
+  const [editShowOnLeaderboard, setEditShowOnLeaderboard] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
   const [unreadNotifCount, setUnreadNotifCount] = useState(0)
   const [loadingNotifications, setLoadingNotifications] = useState(false)
@@ -81,6 +82,7 @@ const StatisticsView = () => {
   const [loadingFollowRequests, setLoadingFollowRequests] = useState(false)
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null)
   const [notifSubTab, setNotifSubTab] = useState('notifications')
+  const [myRanks, setMyRanks] = useState<{ tokens: number | null; prompts: number | null; streak: number | null; totalParticipants: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [mountReady, setMountReady] = useState(false)
   useEffect(() => { const id = requestAnimationFrame(() => setMountReady(true)); return () => cancelAnimationFrame(id) }, [])
@@ -154,6 +156,9 @@ const StatisticsView = () => {
   useEffect(() => {
     if (currentUser?.id && !isViewingOther) {
       fetchOwnProfile()
+      api.get('/leaderboard/my-ranks')
+        .then((res) => setMyRanks(res.data))
+        .catch(() => setMyRanks(null))
     }
   }, [currentUser?.id, isViewingOther, statsRefreshTrigger])
 
@@ -191,6 +196,7 @@ const StatisticsView = () => {
         bio: editBio,
         isAnonymous: editIsAnonymous,
         isPrivate: editIsPrivate,
+        showOnLeaderboard: editShowOnLeaderboard,
         profileImage: editProfileImage,
       })
       await fetchOwnProfile()
@@ -610,6 +616,7 @@ const StatisticsView = () => {
     setEditBio(ownProfileData?.bio || '')
     setEditIsAnonymous(ownProfileData?.isAnonymous || false)
     setEditIsPrivate(ownProfileData?.isPrivate || false)
+    setEditShowOnLeaderboard(ownProfileData?.showOnLeaderboard || false)
     setEditProfileImage(ownProfileData?.profileImage || null)
     setShowEditProfile(true)
   }
@@ -642,6 +649,64 @@ const StatisticsView = () => {
           clearViewingProfile={clearViewingProfile}
           onEditProfile={onEditProfile}
         />
+
+        {/* Leaderboard Ranking Card */}
+        {!isViewingOther && myRanks && (myRanks.tokens || myRanks.prompts || myRanks.streak) && (
+          <div style={{
+            display: 'flex',
+            gap: spacing.lg,
+            marginBottom: spacing['3xl'],
+            flexWrap: 'wrap',
+          }}>
+            {[
+              { label: 'Tokens', rank: myRanks.tokens, icon: Zap, color: '#5dade2' },
+              { label: 'Prompts', rank: myRanks.prompts, icon: MessageSquareText, color: '#48c9b0' },
+              { label: 'Streak', rank: myRanks.streak, icon: Flame, color: '#f39c12' },
+            ].map((item) => {
+              const Icon = item.icon
+              return (
+                <div
+                  key={item.label}
+                  onClick={() => useStore.getState().setActiveTab('leaderboard')}
+                  style={{
+                    flex: 1,
+                    minWidth: '160px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: spacing.lg,
+                    padding: `${spacing.xl} ${spacing['2xl']}`,
+                    background: currentTheme.backgroundOverlay,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    borderRadius: radius.xl,
+                    cursor: 'pointer',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${item.color}55` }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = currentTheme.borderLight }}
+                >
+                  <div style={{
+                    width: '36px', height: '36px', borderRadius: radius.circle,
+                    background: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    <Icon size={18} color={item.color} />
+                  </div>
+                  <div>
+                    <div style={{ color: currentTheme.textSecondary, fontSize: fontSize.base, marginBottom: '2px' }}>
+                      {item.label}
+                    </div>
+                    <div style={{ color: currentTheme.text, fontSize: fontSize['3xl'], fontWeight: fontWeight.bold }}>
+                      {item.rank ? `#${item.rank}` : '—'}
+                      <span style={{ color: currentTheme.textMuted, fontSize: fontSize.base, fontWeight: fontWeight.normal, marginLeft: spacing.xs }}>
+                        / {myRanks.totalParticipants}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Tab Buttons — evenly distributed (hidden when viewing another user's profile) */}
         {!isViewingOther && (
@@ -843,6 +908,8 @@ const StatisticsView = () => {
           setEditIsAnonymous={setEditIsAnonymous}
           editIsPrivate={editIsPrivate}
           setEditIsPrivate={setEditIsPrivate}
+          editShowOnLeaderboard={editShowOnLeaderboard}
+          setEditShowOnLeaderboard={setEditShowOnLeaderboard}
           editProfileImage={editProfileImage}
           setEditProfileImage={setEditProfileImage}
           fileInputRef={fileInputRef}

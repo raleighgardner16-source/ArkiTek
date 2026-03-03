@@ -59,6 +59,7 @@ profileRouter.get('/:userId', async (req: Request, res: Response) => {
       profileImage: user.profileImage || null,
       isAnonymous: user.isAnonymous || false,
       isPrivate: user.isPrivate || false,
+      showOnLeaderboard: user.showOnLeaderboard || false,
       createdAt: user.createdAt || null,
       followersCount: followers.length,
       followingCount: following.length,
@@ -115,7 +116,7 @@ profileRouter.get('/:userId', async (req: Request, res: Response) => {
 profileRouter.put('/:userId', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!
-    const { bio, profileImage, isAnonymous, isPrivate } = req.body
+    const { bio, profileImage, isAnonymous, isPrivate, showOnLeaderboard } = req.body
 
     const user: any = await db.users.get(userId)
 
@@ -154,6 +155,10 @@ profileRouter.put('/:userId', async (req: Request, res: Response) => {
         })
         log.info({ userId, count: user.followRequests.length }, 'Auto-approved pending follow requests (switched to public)')
       }
+    }
+
+    if (showOnLeaderboard !== undefined) {
+      updates.showOnLeaderboard = !!showOnLeaderboard
     }
 
     await db.users.update(userId, updates)

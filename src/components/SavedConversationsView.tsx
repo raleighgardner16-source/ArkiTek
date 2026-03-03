@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import ReactDOM from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Trash2, ChevronRight, ChevronDown, ChevronUp, MessageCircle, X, Layers, Calendar, Globe, Clock, FolderOpen, MessageSquare, Coins, DollarSign, Star, Play, Trophy, Swords, ArrowRightLeft } from 'lucide-react'
 import { useStore } from '../store/useStore'
@@ -83,12 +84,28 @@ const SavedConversationsView = () => {
   // Track how many prompts are visible per category (default 5)
   const [categoryVisibleCount, setCategoryVisibleCount] = useState<Record<string, any>>({})
 
-  // Move-to-category dropdown state: "Science-2" means prompt index 2 in Science
+  // Move-to-category dropdown state: key + fixed position for portal
   const [movingPromptKey, setMovingPromptKey] = useState<string | null>(null)
+  const [moveDropdownPos, setMoveDropdownPos] = useState<{ top: number; left: number } | null>(null)
+
+  const openMoveDropdown = useCallback((key: string, buttonEl: HTMLElement) => {
+    if (movingPromptKey === key) {
+      setMovingPromptKey(null)
+      setMoveDropdownPos(null)
+      return
+    }
+    const rect = buttonEl.getBoundingClientRect()
+    const dropdownHeight = 320
+    const spaceBelow = window.innerHeight - rect.bottom
+    const top = spaceBelow < dropdownHeight ? Math.max(8, rect.top - dropdownHeight + rect.height) : rect.bottom + 4
+    const left = Math.max(8, rect.right - 210)
+    setMoveDropdownPos({ top, left })
+    setMovingPromptKey(key)
+  }, [movingPromptKey])
 
   useEffect(() => {
     if (!movingPromptKey) return
-    const close = () => setMovingPromptKey(null)
+    const close = () => { setMovingPromptKey(null); setMoveDropdownPos(null) }
     document.addEventListener('click', close)
     return () => document.removeEventListener('click', close)
   }, [movingPromptKey])
@@ -1192,6 +1209,7 @@ const SavedConversationsView = () => {
     })
 
     return (
+    <>
       <div style={{
         background: currentTheme.backgroundOverlay,
         border: `1px solid ${currentTheme.borderLight}`,
@@ -1361,7 +1379,7 @@ const SavedConversationsView = () => {
                                             onClick={(e) => {
                                               e.stopPropagation()
                                               const key = `${category}-${index}`
-                                              setMovingPromptKey(prev => prev === key ? null : key)
+                                              openMoveDropdown(key, e.currentTarget)
                                             }}
                                             style={{
                                               background: movingPromptKey === `${category}-${index}` ? `${currentTheme.accent}20` : 'transparent',
@@ -1408,59 +1426,6 @@ const SavedConversationsView = () => {
                                             <X size={14} color={currentTheme.error} />
                                           </button>
                                         </div>
-
-                                        {/* Move-to-category dropdown */}
-                                        {movingPromptKey === `${category}-${index}` && (
-                                          <div
-                                            onClick={(e) => e.stopPropagation()}
-                                            style={{
-                                              position: 'absolute', top: '32px', right: '8px', zIndex: 50,
-                                              background: theme === 'light' ? '#ffffff' : 'rgba(30, 30, 45, 0.98)',
-                                              border: `1px solid ${currentTheme.accent}40`,
-                                              borderRadius: radius.md,
-                                              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
-                                              padding: '4px 0',
-                                              minWidth: '200px',
-                                              maxHeight: '280px',
-                                              overflowY: 'auto',
-                                            }}
-                                          >
-                                            <div style={{ padding: '6px 12px 4px', fontSize: fontSize.xs, color: currentTheme.textMuted, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                              Move to...
-                                            </div>
-                                            {[
-                                              'Science', 'Tech', 'Business', 'Health', 'Politics/Law',
-                                              'History/Geography', 'Philosophy/Religion', 'Arts/Culture',
-                                              'Lifestyle/Self-Improvement', 'General Knowledge/Other',
-                                            ].filter(c => c !== category).map((targetCat) => (
-                                              <button
-                                                key={targetCat}
-                                                onClick={(e) => {
-                                                  e.stopPropagation()
-                                                  handleMovePrompt(category, index, targetCat)
-                                                }}
-                                                style={{
-                                                  display: 'block', width: '100%', textAlign: 'left',
-                                                  background: 'transparent', border: 'none', cursor: 'pointer',
-                                                  padding: '7px 14px',
-                                                  color: currentTheme.textSecondary,
-                                                  fontSize: fontSize.sm,
-                                                  transition: transition.normal,
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                  e.currentTarget.style.background = `${currentTheme.accent}15`
-                                                  e.currentTarget.style.color = currentTheme.accent
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                  e.currentTarget.style.background = 'transparent'
-                                                  e.currentTarget.style.color = currentTheme.textSecondary
-                                                }}
-                                              >
-                                                {targetCat}
-                                              </button>
-                                            ))}
-                                          </div>
-                                        )}
 
                                         <p key={`${category}-prompt-text-${index}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: fontSize.lg, margin: '0 0 6px 0', lineHeight: '1.4', paddingRight: '50px' }}>
                                           {prompt.text}
@@ -1562,6 +1527,68 @@ const SavedConversationsView = () => {
           })}
         </div>
       </div>
+
+      {/* Portal-based move dropdown — renders outside all overflow:hidden containers */}
+      {movingPromptKey && moveDropdownPos && (() => {
+        const [sourceCat, idxStr] = [movingPromptKey.substring(0, movingPromptKey.lastIndexOf('-')), movingPromptKey.substring(movingPromptKey.lastIndexOf('-') + 1)]
+        const promptIdx = parseInt(idxStr, 10)
+        return ReactDOM.createPortal(
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: moveDropdownPos.top,
+              left: moveDropdownPos.left,
+              zIndex: 99999,
+              background: theme === 'light' ? '#ffffff' : 'rgba(30, 30, 45, 0.98)',
+              border: `1px solid ${currentTheme.accent}40`,
+              borderRadius: radius.md,
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+              padding: '4px 0',
+              minWidth: '210px',
+              maxHeight: '320px',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ padding: '6px 12px 4px', fontSize: fontSize.xs, color: currentTheme.textMuted, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Move to...
+            </div>
+            {[
+              'Science', 'Tech', 'Business', 'Health', 'Politics/Law',
+              'History/Geography', 'Philosophy/Religion', 'Arts/Culture',
+              'Lifestyle/Self-Improvement', 'General Knowledge/Other',
+            ].filter(c => c !== sourceCat).map((targetCat) => (
+              <button
+                key={targetCat}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleMovePrompt(sourceCat, promptIdx, targetCat)
+                }}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  padding: '7px 14px',
+                  color: currentTheme.textSecondary,
+                  fontSize: fontSize.sm,
+                  transition: transition.normal,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = `${currentTheme.accent}15`
+                  e.currentTarget.style.color = currentTheme.accent
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = currentTheme.textSecondary
+                }}
+              >
+                {targetCat}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )
+      })()}
+    </>
     )
   }
 
