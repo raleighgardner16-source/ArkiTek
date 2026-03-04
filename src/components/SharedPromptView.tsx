@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Maximize2, Minimize2, FileText, MessageSquare, AlertCircle } from 'lucide-react'
@@ -69,6 +69,11 @@ const SharedPromptView = () => {
   const toggleMaximize = (id: string) => {
     setMaximizedCard(prev => prev === id ? null : id)
   }
+
+  const handleGutterWheel = useCallback((e: React.WheelEvent) => {
+    const columns = document.querySelectorAll('[data-shared-col]')
+    columns.forEach(col => { col.scrollTop += e.deltaY })
+  }, [])
 
   const formatModelName = (name: string) => {
     return name
@@ -346,12 +351,11 @@ const SharedPromptView = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="shared-column-scroll"
             style={{
+              display: 'flex',
               flex: 1,
               minHeight: 0,
-              overflowY: 'auto',
-              overflowX: 'hidden',
+              overflow: 'hidden',
             }}
           >
             {/* Maximized overlay */}
@@ -404,14 +408,19 @@ const SharedPromptView = () => {
               )
             })()}
 
+            {/* Left gutter — scrolls all columns */}
+            <div
+              onWheel={handleGutterWheel}
+              style={{ width: '25px', minWidth: '25px', flexShrink: 0, cursor: 'default' }}
+            />
+
             {/* Side-by-side columns */}
             <div style={{
               display: 'flex',
-              width: '100%',
-              minHeight: '100%',
-              maxWidth: data.responses.length <= 2 ? '900px' : data.responses.length === 3 ? '1100px' : '100%',
-              margin: '0 auto',
-              padding: `0 ${spacing['3xl']}`,
+              flex: 1,
+              minWidth: 0,
+              height: '100%',
+              overflow: 'hidden',
             }}>
               {data.responses.map((response, index) => {
                 const id = `response-${index}`
@@ -426,13 +435,18 @@ const SharedPromptView = () => {
                         alignSelf: 'stretch',
                       }} />
                     )}
-                    <div style={{
-                      flex: 1,
-                      minWidth: 0,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      padding: `0 ${spacing.xl}`,
-                    }}>
+                    <div
+                      className="shared-column-scroll"
+                      data-shared-col
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        height: '100%',
+                        overflowY: 'auto',
+                        overflowX: 'hidden',
+                        padding: `0 ${spacing.xl} ${spacing['4xl']}`,
+                      }}
+                    >
                       {/* Column header */}
                       <div style={{
                         position: 'sticky',
@@ -469,18 +483,22 @@ const SharedPromptView = () => {
                       </div>
 
                       {/* Column content */}
-                      <div style={{ paddingBottom: spacing['4xl'] }}>
-                        {response.error ? (
-                          <p style={{ color: '#ff6b6b', fontStyle: 'italic' }}>This response encountered an error.</p>
-                        ) : (
-                          <MarkdownRenderer content={typeof response.text === 'string' ? response.text : ''} theme={currentTheme} />
-                        )}
-                      </div>
+                      {response.error ? (
+                        <p style={{ color: '#ff6b6b', fontStyle: 'italic' }}>This response encountered an error.</p>
+                      ) : (
+                        <MarkdownRenderer content={typeof response.text === 'string' ? response.text : ''} theme={currentTheme} />
+                      )}
                     </div>
                   </React.Fragment>
                 )
               })}
             </div>
+
+            {/* Right gutter — scrolls all columns */}
+            <div
+              onWheel={handleGutterWheel}
+              style={{ width: '25px', minWidth: '25px', flexShrink: 0, cursor: 'default' }}
+            />
           </motion.div>
         ) : (
           <motion.div
