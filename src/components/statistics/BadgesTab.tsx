@@ -113,21 +113,29 @@ const BadgesTab = ({
 
   const newlyEarned: any[] = []
 
+  const isSecretCategory = (cat: any) => cat.secret === true
+
   const badgeProgress = BADGE_CATEGORIES.map(category => {
-    const currentValue = (badgeStats as Record<string, any>)[category.statKey] || 0
-    const badges = category.badges.map((badge, badgeIndex) => {
+    const isSecret = isSecretCategory(category)
+    const categoryValue = isSecret ? 0 : ((badgeStats as Record<string, any>)[category.statKey] || 0)
+    const badges = category.badges.map((badge: any, badgeIndex: number) => {
       const badgeId = `${category.id}-${badgeIndex}`
-      const meetsThreshold = currentValue >= badge.threshold
+      const badgeValue = isSecret
+        ? ((badgeStats as Record<string, any>)[badge.secretStatKey] || 0)
+        : categoryValue
+      const meetsThreshold = badgeValue >= badge.threshold
       const wasPreviouslyEarned = persistedBadges.has(badgeId)
       const earned = meetsThreshold || wasPreviouslyEarned
       if (meetsThreshold && !wasPreviouslyEarned) {
         newlyEarned.push(badgeId)
       }
-      const prevThreshold = badgeIndex > 0 ? category.badges[badgeIndex - 1].threshold : 0
+      const absoluteProgress = isSecret
+        ? Math.min(1, badgeValue / badge.threshold)
+        : Math.min(1, categoryValue / badge.threshold)
+      const prevThreshold = (!isSecret && badgeIndex > 0) ? category.badges[badgeIndex - 1].threshold : 0
       const range = badge.threshold - prevThreshold
-      const progressInRange = Math.max(0, currentValue - prevThreshold)
+      const progressInRange = Math.max(0, badgeValue - prevThreshold)
       const relativeProgress = range > 0 ? Math.min(1, progressInRange / range) : 0
-      const absoluteProgress = Math.min(1, currentValue / badge.threshold)
       return {
         ...badge,
         earned,
@@ -136,19 +144,21 @@ const BadgesTab = ({
         prevThreshold,
       }
     })
-    const earnedCount = badges.filter(b => b.earned).length
+    const earnedCount = badges.filter((b: any) => b.earned).length
 
     let nextBadge = null
     let nextBadgeProgress = 0
-    for (let i = 0; i < badges.length; i++) {
-      if (!badges[i].earned) {
-        nextBadge = badges[i]
-        nextBadgeProgress = badges[i].relativeProgress
-        break
+    if (!isSecret) {
+      for (let i = 0; i < badges.length; i++) {
+        if (!badges[i].earned) {
+          nextBadge = badges[i]
+          nextBadgeProgress = badges[i].relativeProgress
+          break
+        }
       }
     }
 
-    return { ...category, badges, earnedCount, totalCount: badges.length, currentValue, nextBadge, nextBadgeProgress }
+    return { ...category, badges, earnedCount, totalCount: badges.length, currentValue: categoryValue, nextBadge, nextBadgeProgress }
   })
 
   if (newlyEarned.length > 0 && currentUser?.id && !isViewingOther && !isFreePlan) {
@@ -575,7 +585,7 @@ const BadgesTab = ({
                           transition: transition.slow,
                         }}
                       >
-                        {badge.emoji}
+                        {(category.secret && !badge.earned) ? '?' : badge.emoji}
                       </div>
                     ))}
                     {category.badges.length > 5 && (
@@ -624,87 +634,105 @@ const BadgesTab = ({
                           (Upgrade to a paid plan to earn these badges)
                         </p>
                       )}
-                      {/* Total stat display */}
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: `${spacing.lg} ${spacing.xl}`,
-                        marginBottom: spacing.xl,
-                        background: currentTheme.backgroundSecondary,
-                        borderRadius: radius.lg,
-                        border: `1px solid ${currentTheme.borderLight}`,
-                      }}>
-                        <span style={sx(s.gradientText, { fontSize: '1.4rem', fontWeight: fontWeight.bold, marginRight: spacing.md })}>
-                          {formatBadgeNumber(category.currentValue)}
-                        </span>
-                        <span style={{ color: currentTheme.textSecondary, fontSize: fontSize.lg }}>
-                          {category.unit || category.statKey} total
-                        </span>
-                      </div>
 
-                      {/* Next badge progress bar */}
-                      <div style={{
-                        marginBottom: spacing['2xl'],
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          marginBottom: spacing.sm,
+                      {category.secret ? (
+                        <p style={{
+                          color: currentTheme.textMuted,
+                          fontSize: fontSize.lg,
+                          textAlign: 'center',
+                          margin: `0 0 ${spacing.xl} 0`,
+                          fontStyle: 'italic',
                         }}>
-                          <span style={{ color: currentTheme.textMuted, fontSize: fontSize.md }}>
-                            {category.nextBadge
-                              ? `Next: ${category.nextBadge.name} (${category.nextBadge.desc})`
-                              : 'All badges earned!'
-                            }
-                          </span>
-                          <span style={{ color: currentTheme.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.semibold }}>
-                            {category.nextBadge
-                              ? `${formatBadgeNumber(category.currentValue)} / ${formatBadgeNumber(category.nextBadge.threshold)}`
-                              : `${category.earnedCount}/${category.totalCount}`
-                            }
-                          </span>
-                        </div>
-                        <div style={{
-                          width: '100%',
-                          height: '8px',
-                          background: currentTheme.backgroundTertiary,
-                          borderRadius: radius.xs,
-                          overflow: 'hidden',
-                        }}>
+                          These badges are earned through hidden actions. Keep exploring to discover them!
+                        </p>
+                      ) : (
+                        <>
+                          {/* Total stat display */}
                           <div style={{
-                            width: `${category.nextBadge ? (category.nextBadgeProgress * 100) : 100}%`,
-                            height: '100%',
-                            background: category.nextBadge
-                              ? `${category.nextBadge.color}CC`
-                              : currentTheme.accentGradient,
-                            borderRadius: radius.xs,
-                            transition: 'width 0.5s ease',
-                          }} />
-                        </div>
-                        <div style={{
-                          display: 'flex',
-                          justifyContent: 'flex-end',
-                          marginTop: spacing.xs,
-                        }}>
-                          <span style={{ color: currentTheme.textSecondary, fontSize: '0.75rem' }}>
-                            {category.nextBadge
-                              ? `${Math.round(category.nextBadgeProgress * 100)}%`
-                              : '100%'
-                            }
-                          </span>
-                        </div>
-                      </div>
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: `${spacing.lg} ${spacing.xl}`,
+                            marginBottom: spacing.xl,
+                            background: currentTheme.backgroundSecondary,
+                            borderRadius: radius.lg,
+                            border: `1px solid ${currentTheme.borderLight}`,
+                          }}>
+                            <span style={sx(s.gradientText, { fontSize: '1.4rem', fontWeight: fontWeight.bold, marginRight: spacing.md })}>
+                              {formatBadgeNumber(category.currentValue)}
+                            </span>
+                            <span style={{ color: currentTheme.textSecondary, fontSize: fontSize.lg }}>
+                              {category.unit || category.statKey} total
+                            </span>
+                          </div>
+
+                          {/* Next badge progress bar */}
+                          <div style={{
+                            marginBottom: spacing['2xl'],
+                          }}>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              marginBottom: spacing.sm,
+                            }}>
+                              <span style={{ color: currentTheme.textMuted, fontSize: fontSize.md }}>
+                                {category.nextBadge
+                                  ? `Next: ${category.nextBadge.name} (${category.nextBadge.desc})`
+                                  : 'All badges earned!'
+                                }
+                              </span>
+                              <span style={{ color: currentTheme.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.semibold }}>
+                                {category.nextBadge
+                                  ? `${formatBadgeNumber(category.currentValue)} / ${formatBadgeNumber(category.nextBadge.threshold)}`
+                                  : `${category.earnedCount}/${category.totalCount}`
+                                }
+                              </span>
+                            </div>
+                            <div style={{
+                              width: '100%',
+                              height: '8px',
+                              background: currentTheme.backgroundTertiary,
+                              borderRadius: radius.xs,
+                              overflow: 'hidden',
+                            }}>
+                              <div style={{
+                                width: `${category.nextBadge ? (category.nextBadgeProgress * 100) : 100}%`,
+                                height: '100%',
+                                background: category.nextBadge
+                                  ? `${category.nextBadge.color}CC`
+                                  : currentTheme.accentGradient,
+                                borderRadius: radius.xs,
+                                transition: 'width 0.5s ease',
+                              }} />
+                            </div>
+                            <div style={{
+                              display: 'flex',
+                              justifyContent: 'flex-end',
+                              marginTop: spacing.xs,
+                            }}>
+                              <span style={{ color: currentTheme.textSecondary, fontSize: '0.75rem' }}>
+                                {category.nextBadge
+                                  ? `${Math.round(category.nextBadgeProgress * 100)}%`
+                                  : '100%'
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      )}
 
                       {/* Badge Grid */}
                       <div style={{
                         display: 'grid',
-                        gridTemplateColumns: `repeat(${category.badges.length <= 6 ? category.badges.length : Math.ceil(category.badges.length / 2)}, 1fr)`,
+                        gridTemplateColumns: category.secret
+                          ? 'repeat(7, 1fr)'
+                          : `repeat(${category.badges.length <= 6 ? category.badges.length : Math.ceil(category.badges.length / 2)}, 1fr)`,
                         gap: spacing.xl,
                       }}>
                         {category.badges.map((badge, index) => {
                           const isHovered = hoveredBadge === `${category.id}-${index}`
+                          const isSecret = category.secret && !badge.earned
 
                           return (
                             <div
@@ -744,7 +772,7 @@ const BadgesTab = ({
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                fontSize: fontSize['6xl'],
+                                fontSize: isSecret ? fontSize['3xl'] : fontSize['6xl'],
                                 marginBottom: '10px',
                                 opacity: badge.earned ? 1 : 0.35,
                                 transition: transition.slow,
@@ -754,7 +782,9 @@ const BadgesTab = ({
                                 position: 'relative',
                               }}>
                                 {badge.earned ? badge.emoji : (
-                                  <Lock size={18} color={currentTheme.textMuted} style={{ opacity: 0.5 }} />
+                                  isSecret
+                                    ? <span style={{ color: currentTheme.textMuted, fontWeight: fontWeight.bold }}>?</span>
+                                    : <Lock size={18} color={currentTheme.textMuted} style={{ opacity: 0.5 }} />
                                 )}
                               </div>
 
@@ -767,7 +797,7 @@ const BadgesTab = ({
                                 textAlign: 'center',
                                 lineHeight: '1.2',
                               }}>
-                                {badge.name}
+                                {isSecret ? '???' : badge.name}
                               </p>
 
                               {/* Badge Requirement */}
@@ -777,11 +807,11 @@ const BadgesTab = ({
                                 margin: 0,
                                 textAlign: 'center',
                               }}>
-                                {badge.desc}
+                                {isSecret ? 'Keep exploring...' : badge.desc}
                               </p>
 
-                              {/* Progress for unearned */}
-                              {!badge.earned && (
+                              {/* Progress for unearned (hidden for secret badges) */}
+                              {!badge.earned && !category.secret && (
                                 <div style={{
                                   width: '100%',
                                   marginTop: spacing.md,
