@@ -71,6 +71,9 @@ const SharedPromptView = () => {
   }
 
   const handleContainerWheel = useCallback((e: React.WheelEvent) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/923f17af-518e-4f09-b71e-dba96827f84e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6e54cd'},body:JSON.stringify({sessionId:'6e54cd',location:'SharedPromptView.tsx:handleContainerWheel',message:'wheel event fired',data:{targetTag:(e.target as HTMLElement).tagName,insideCol:!!(e.target as HTMLElement).closest('[data-shared-col]'),colCount:document.querySelectorAll('[data-shared-col]').length,deltaY:e.deltaY},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     const target = e.target as HTMLElement
     if (target.closest('[data-shared-col]')) return
     const columns = document.querySelectorAll('[data-shared-col]')
@@ -234,6 +237,25 @@ const SharedPromptView = () => {
       </div>
     )
 
+    sections.push(
+      <div key="differences" style={{ marginBottom: spacing.xl }}>
+        <h4 style={{ color: '#88aaff', fontSize: fontSize.lg, fontWeight: fontWeight.semibold, marginBottom: spacing.md }}>
+          Differences
+        </h4>
+        {summary.differences && summary.differences.length > 0 ? (
+          summary.differences.map((point, i) => (
+            <p key={i} style={{ color: currentTheme.textSecondary, fontSize: fontSize.base, margin: `0 0 ${spacing.sm} 0`, paddingLeft: spacing.lg, borderLeft: '2px solid #88aaff40' }}>
+              {point}
+            </p>
+          ))
+        ) : (
+          <p style={{ color: currentTheme.textMuted, fontSize: fontSize.base, margin: 0, paddingLeft: spacing.lg, borderLeft: '2px solid #88aaff40', fontStyle: 'italic' }}>
+            No notable differences in model responses
+          </p>
+        )}
+      </div>
+    )
+
     return sections
   }
 
@@ -363,9 +385,10 @@ const SharedPromptView = () => {
               flex: 1,
               minHeight: 0,
               overflow: 'hidden',
-              padding: '0 20px',
             }}
           >
+            {/* Left spacer */}
+            <div style={{ width: 20, minWidth: 20, flexShrink: 0, flexGrow: 0 }} />
             {/* Maximized overlay */}
             {maximizedCard && (() => {
               const idx = parseInt(maximizedCard.replace('response-', ''))
@@ -486,7 +509,8 @@ const SharedPromptView = () => {
                 </React.Fragment>
               )
             })}
-
+            {/* Right spacer */}
+            <div style={{ width: 20, minWidth: 20, flexShrink: 0, flexGrow: 0 }} />
           </motion.div>
         ) : (
           <motion.div
@@ -495,7 +519,8 @@ const SharedPromptView = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            style={{ maxWidth: '1200px', margin: '0 auto', padding: spacing['4xl'] }}
+            className="shared-column-scroll"
+            style={{ flex: 1, minHeight: 0, overflowY: 'auto', maxWidth: '1200px', margin: '0 auto', padding: spacing['4xl'], width: '100%' }}
           >
             <div style={{
               background: currentTheme.backgroundOverlay,
