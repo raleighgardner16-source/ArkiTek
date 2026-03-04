@@ -9,6 +9,7 @@ interface RAGPipelineParams {
   isDebateMode: boolean
   submittedRoles: Record<string, string>
   needsContext: boolean
+  geminiThinkingLevel?: string
   signal: AbortSignal
 }
 
@@ -30,6 +31,7 @@ export async function executeRAGPipeline({
   isDebateMode,
   submittedRoles,
   needsContext,
+  geminiThinkingLevel,
   signal,
 }: RAGPipelineParams): Promise<RAGPipelineResult | null> {
   const store = useStore.getState()
@@ -116,6 +118,7 @@ export async function executeRAGPipeline({
         selectedModels: models,
         needsContext,
         rolePrompts: Object.keys(rolePromptsForRag).length > 0 ? rolePromptsForRag : undefined,
+        geminiThinkingLevel,
       },
       {
         onToken: () => {},

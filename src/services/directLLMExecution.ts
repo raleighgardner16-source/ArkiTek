@@ -9,6 +9,7 @@ interface DirectLLMParams {
   isDebateMode: boolean
   submittedRoles: Record<string, string>
   needsContext: boolean
+  geminiThinkingLevel?: string
   userId: string | null
   signal: AbortSignal
 }
@@ -29,6 +30,7 @@ export async function executeDirectLLM({
   isDebateMode,
   submittedRoles,
   needsContext,
+  geminiThinkingLevel,
   userId,
   signal,
 }: DirectLLMParams): Promise<DirectLLMResult> {
@@ -102,6 +104,7 @@ export async function executeDirectLLM({
 
     try {
       const rolePrompt = isDebateMode ? getRoleSystemPrompt(submittedRoles[modelId] || 'neutral') : null
+      const thinkingLevel = providerKey === 'google' ? geminiThinkingLevel : undefined
       const llmResponse = await callLLMStream(
         providerKey,
         model,
@@ -115,6 +118,7 @@ export async function executeDirectLLM({
         },
         signal,
         rolePrompt,
+        thinkingLevel,
       )
 
       const responseText = llmResponse.text

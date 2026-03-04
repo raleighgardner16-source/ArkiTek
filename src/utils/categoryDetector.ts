@@ -20,6 +20,7 @@ interface CategoryResult {
   needsContext: boolean
   recommendedModelType: string
   recommendedModels: Record<string, string>
+  geminiThinkingLevel: string
   rawResponse?: string
   prompt?: string
   tokens: any | null
@@ -42,7 +43,8 @@ export const detectCategory = async (prompt: string, selectedProviders: Selected
       needsContext: false,
       recommendedModelType: 'versatile',
       recommendedModels: {},
-      tokens: null // No tokens when prompt is empty
+      geminiThinkingLevel: 'low',
+      tokens: null
     }
   }
 
@@ -64,7 +66,8 @@ export const detectCategory = async (prompt: string, selectedProviders: Selected
   "category": "CategoryName",
   "needsSearch": false,
   "needsContext": false,
-  "recommendedModelType": "versatile"`
+  "recommendedModelType": "versatile",
+  "geminiThinkingLevel": "low"`
   
   if (selectedProviders.length > 0) {
     jsonStructure += `,
@@ -140,6 +143,11 @@ reasoning = complex logic, math, coding, analysis, step-by-step thinking, busine
 versatile = casual conversation, creative writing, simple Q&A, opinions, brainstorming, short-form content  
 fast = simple queries, quick responses, low-latency needs, trivial facts, greetings
 
+Gemini thinking level (controls how deeply Google's Gemini reasoning model thinks before responding):
+low = greetings, trivial facts, casual chat, simple Q&A, anything that does NOT require multi-step reasoning (use this for fast and versatile model types)
+medium = moderate analysis, code generation, explanations, how-to guides, comparisons, research, most reasoning tasks
+high = ONLY for very complex multi-step math proofs, advanced scientific analysis, or novel algorithm design — rarely needed
+
 User prompt:
 "${prompt}"${modelsList}
 
@@ -169,6 +177,7 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
         needsContext: false,
         recommendedModelType: 'versatile',
         recommendedModels: {},
+        geminiThinkingLevel: 'low',
         rawResponse: `API Error: ${response.statusText}`,
         prompt: categoryPrompt,
         tokens: null
@@ -199,6 +208,8 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
         const needsContext: boolean = parsed.needsContext !== undefined ? parsed.needsContext : false
         const recommendedModelType: string = parsed.recommendedModelType || 'versatile'
         const recommendedModels: Record<string, string> = parsed.recommendedModels || {}
+        const rawThinkingLevel: string = (parsed.geminiThinkingLevel || 'low').toLowerCase()
+        const geminiThinkingLevel = ['low', 'medium', 'high'].includes(rawThinkingLevel) ? rawThinkingLevel : 'low'
 
         // Validate category
         const validCategories = [
@@ -225,9 +236,10 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
             needsContext: Boolean(needsContext),
             recommendedModelType: recommendedModelType.toLowerCase() || 'versatile',
             recommendedModels,
-            rawResponse, // Include raw response for debugging
+            geminiThinkingLevel,
+            rawResponse,
             prompt: categoryPrompt,
-            tokens // Include tokens from API response
+            tokens
           }
         } else {
           console.warn('[Category Detection] Category not found in valid list:', category)
@@ -281,9 +293,10 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
       needsContext: Boolean(needsContext),
       recommendedModelType: 'versatile',
       recommendedModels: {},
+      geminiThinkingLevel: 'low',
       rawResponse: categoryResponse || 'No response received',
       prompt: categoryPrompt,
-      tokens // Include tokens from API response
+      tokens
     }
   } catch (error: any) {
     console.error('[Category Detection] Error:', error)
@@ -293,6 +306,7 @@ ${selectedProviders.length > 0 ? 'IMPORTANT: Select ONE model per provider. You 
       needsContext: false,
       recommendedModelType: 'versatile',
       recommendedModels: {},
+      geminiThinkingLevel: 'low',
       rawResponse: `Error: ${error.message}`,
       prompt: categoryPrompt,
       tokens: null

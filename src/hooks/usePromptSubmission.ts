@@ -165,12 +165,15 @@ export function usePromptSubmission() {
       let detectionResult: any = null
       let categoryDetectionTokens: any = null
 
+      let geminiThinkingLevel = 'low'
+
       try {
         detectionResult = await detectCategory(currentPrompt, [], isDebateMode)
         category = detectionResult.category || 'General Knowledge/Other'
         needsSearch = detectionResult.needsSearch || false
         needsContext = detectionResult.needsContext || false
         categoryDetectionTokens = detectionResult.tokens || null
+        geminiThinkingLevel = detectionResult.geminiThinkingLevel || 'low'
 
         if (detectionResult?.rawResponse) {
           useStore.getState().setGeminiDetectionResponse(detectionResult.rawResponse)
@@ -193,6 +196,7 @@ export function usePromptSubmission() {
           isDebateMode,
           submittedRoles,
           needsContext,
+          geminiThinkingLevel,
           signal: abortController.signal,
         })
 
@@ -230,6 +234,7 @@ export function usePromptSubmission() {
           isDebateMode,
           submittedRoles,
           needsContext,
+          geminiThinkingLevel,
           userId: currentUser?.id || null,
           signal: abortController.signal,
         })

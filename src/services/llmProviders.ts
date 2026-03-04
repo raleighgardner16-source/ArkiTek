@@ -224,7 +224,7 @@ export const callLLM = async (providerKey: string, model: string, prompt: string
 
 // Streaming version of callLLM — uses SSE to stream tokens
 // onToken is called for each token, returns final metadata on completion
-export const callLLMStream = async (providerKey: string, model: string, prompt: string, userId: string | null = null, isSummary: boolean = false, onToken: (token: string) => void = () => {}, signal: AbortSignal | null = null, rolePrompt: string | null = null): Promise<LLMResult> => {
+export const callLLMStream = async (providerKey: string, model: string, prompt: string, userId: string | null = null, isSummary: boolean = false, onToken: (token: string) => void = () => {}, signal: AbortSignal | null = null, rolePrompt: string | null = null, geminiThinkingLevel?: string): Promise<LLMResult> => {
   let accumulatedText = ''
   const wrappedOnToken = (token: string) => {
     accumulatedText += token
@@ -238,6 +238,7 @@ export const callLLMStream = async (providerKey: string, model: string, prompt: 
     isSummary,
   }
   if (rolePrompt) body.rolePrompt = rolePrompt
+  if (geminiThinkingLevel && providerKey === 'google') body.geminiThinkingLevel = geminiThinkingLevel
 
   const finalData = await streamFetch(`${BACKEND_URL}${API_PREFIX}/llm/stream`, body, {
     onToken: wrappedOnToken,

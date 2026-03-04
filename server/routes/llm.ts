@@ -14,7 +14,7 @@ const router = Router()
 // POST /api/llm → router.post('/')
 router.post('/', async (req: Request, res: Response) => {
   const userId = req.userId
-  const { provider, model, prompt, isSummary } = req.body || {}
+  const { provider, model, prompt, isSummary, geminiThinkingLevel } = req.body || {}
   let apiKey = null
   let responseText = null
   
@@ -320,12 +320,19 @@ router.post('/', async (req: Request, res: Response) => {
       const baseUrl = `https://generativelanguage.googleapis.com/${apiVersion}`
       const endpoint = `/models/${mappedGeminiModel}:generateContent`
 
+      const geminiRequestBody: Record<string, any> = {
+        contents: [{ parts: [{ text: prompt }] }],
+      }
+      if (geminiThinkingLevel && ['low', 'medium', 'high'].includes(geminiThinkingLevel.toLowerCase())) {
+        geminiRequestBody.generationConfig = {
+          thinkingConfig: { thinkingLevel: geminiThinkingLevel.toUpperCase() },
+        }
+      }
+
       try {
         response = await axios.post(
           `${baseUrl}${endpoint}`,
-          {
-            contents: [{ parts: [{ text: prompt }] }],
-          },
+          geminiRequestBody,
           {
             headers: {
               'x-goog-api-key': apiKey,
@@ -339,9 +346,7 @@ router.post('/', async (req: Request, res: Response) => {
         try {
           response = await axios.post(
             `${baseUrl}${endpoint}?key=${apiKey}`,
-            {
-              contents: [{ parts: [{ text: prompt }] }],
-            },
+            geminiRequestBody,
             {
               headers: {
                 'Content-Type': 'application/json',
@@ -462,7 +467,7 @@ router.post('/stream', async (req: Request, res: Response) => {
   }, 15000)
 
   const userId = req.userId
-  const { provider, model, prompt, isSummary, rolePrompt } = req.body || {}
+  const { provider, model, prompt, isSummary, rolePrompt, geminiThinkingLevel } = req.body || {}
   const mappedModel = MODEL_MAPPINGS[model] || model
   let fullResponse = ''
   let inputTokens = 0
@@ -635,6 +640,13 @@ router.post('/stream', async (req: Request, res: Response) => {
       }
       if (rolePrompt) {
         geminiBody.systemInstruction = { parts: [{ text: rolePrompt }] }
+      }
+      if (geminiThinkingLevel && ['low', 'medium', 'high'].includes(geminiThinkingLevel.toLowerCase())) {
+        geminiBody.generationConfig = {
+          ...geminiBody.generationConfig,
+          thinkingConfig: { thinkingLevel: geminiThinkingLevel.toUpperCase() },
+        }
+        log.debug({ model, thinkingLevel: geminiThinkingLevel.toUpperCase() }, 'Gemini thinking level set')
       }
 
       const streamResponse = await axios.post(

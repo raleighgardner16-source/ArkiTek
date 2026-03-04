@@ -29,6 +29,7 @@ async function streamRagCouncilModel({
   sendSSE,
   rolePrompt,
   clientClosedRef,
+  geminiThinkingLevel,
 }: {
   modelId: string
   query: string
@@ -38,6 +39,7 @@ async function streamRagCouncilModel({
   sendSSE: (type: string, data: any) => void
   rolePrompt: string | null
   clientClosedRef: { closed: boolean }
+  geminiThinkingLevel?: string
 }) {
   const firstDashIndex = modelId.indexOf('-')
   if (firstDashIndex === -1) {
@@ -259,6 +261,12 @@ User Query: ${query}`
       if (rolePrompt) {
         geminiCouncilBody.systemInstruction = { parts: [{ text: rolePrompt }] }
       }
+      if (geminiThinkingLevel && ['low', 'medium', 'high'].includes(geminiThinkingLevel.toLowerCase())) {
+        geminiCouncilBody.generationConfig = {
+          ...geminiCouncilBody.generationConfig,
+          thinkingConfig: { thinkingLevel: geminiThinkingLevel.toUpperCase() },
+        }
+      }
       const streamResponse = await axios.post(
         `${baseUrl}/models/${mappedModel}:streamGenerateContent?key=${apiKey}&alt=sse`,
         geminiCouncilBody,
@@ -471,7 +479,7 @@ router.post('/', async (req: Request, res: Response) => {
   }
 
   try {
-    const { query, selectedModels, needsContext: needsContextHint } = req.body
+    const { query, selectedModels, needsContext: needsContextHint, geminiThinkingLevel } = req.body
     
     if (!query || !query.trim()) {
       return sendError(res, 'Missing required field: query', 400)
@@ -640,11 +648,18 @@ User Query: ${query}`
           const apiVersion = isPreviewModel ? 'v1beta' : 'v1'
           const baseUrl = `https://generativelanguage.googleapis.com/${apiVersion}`
           
+          const geminiRagBody: Record<string, any> = {
+            contents: [{ parts: [{ text: councilPrompt }] }],
+          }
+          if (geminiThinkingLevel && ['low', 'medium', 'high'].includes(geminiThinkingLevel.toLowerCase())) {
+            geminiRagBody.generationConfig = {
+              thinkingConfig: { thinkingLevel: geminiThinkingLevel.toUpperCase() },
+            }
+          }
+
           const response = await axios.post(
             `${baseUrl}/models/${mappedModel}:generateContent?key=${apiKey}`,
-            {
-              contents: [{ parts: [{ text: councilPrompt }] }],
-            },
+            geminiRagBody,
             {
               headers: { 'Content-Type': 'application/json' },
             }
@@ -833,7 +848,7 @@ router.post('/stream', async (req: Request, res: Response) => {
 
   try {
     const userId = req.userId
-    const { query, selectedModels, needsContext: needsContextHint, rolePrompts } = req.body || {}
+    const { query, selectedModels, needsContext: needsContextHint, rolePrompts, geminiThinkingLevel: ragGeminiThinkingLevel } = req.body || {}
 
     if (userId) {
       const subscriptionCheck = await checkSubscriptionStatus(userId)
@@ -911,6 +926,7 @@ router.post('/stream', async (req: Request, res: Response) => {
         sendSSE,
         rolePrompt: rolePrompts?.[modelId] || null,
         clientClosedRef,
+        geminiThinkingLevel: ragGeminiThinkingLevel,
       }))
     )
 
