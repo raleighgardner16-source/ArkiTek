@@ -381,14 +381,18 @@ const SharedPromptView = () => {
             transition={{ duration: 0.15 }}
             onWheel={handleContainerWheel}
             style={{
-              display: 'flex',
               flex: 1,
               minHeight: 0,
-              overflow: 'hidden',
+              paddingLeft: 20,
+              paddingRight: 20,
             }}
           >
-            {/* Left spacer */}
-            <div style={{ width: 20, minWidth: 20, flexShrink: 0, flexGrow: 0 }} />
+            <div style={{
+              display: 'flex',
+              width: '100%',
+              height: '100%',
+              overflow: 'hidden',
+            }}>
             {/* Maximized overlay */}
             {maximizedCard && (() => {
               const idx = parseInt(maximizedCard.replace('response-', ''))
@@ -509,8 +513,7 @@ const SharedPromptView = () => {
                 </React.Fragment>
               )
             })}
-            {/* Right spacer */}
-            <div style={{ width: 20, minWidth: 20, flexShrink: 0, flexGrow: 0 }} />
+            </div>
           </motion.div>
         ) : (
           <motion.div
