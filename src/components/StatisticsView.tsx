@@ -31,7 +31,6 @@ const StatisticsView = () => {
   const [activeTab, setActiveTab] = useState('badges')
   const [ratingsData, setRatingsData] = useState<any>(null)
   const [hoveredDay, setHoveredDay] = useState<string | null>(null)
-  const [loadingLeaderboardStats, setLoadingLeaderboardStats] = useState(false)
   const [showBuyUsageModal, setShowBuyUsageModal] = useState(false)
   const [userPlan, setUserPlan] = useState(currentUser?.plan || 'free_trial')
   const [expandedBadgeCategory, setExpandedBadgeCategory] = useState<string | null>(null)
@@ -692,7 +691,7 @@ const StatisticsView = () => {
               isViewingOther={!!isViewingOther}
               userStats={isViewingOther ? (viewedUserStats || userStats) : userStats}
               publicProfile={publicProfile}
-              leaderboardStats={leaderboardStats}
+              leaderboardStats={null}
               ratingsStats={isViewingOther ? (viewedRatingsStats || ratingsStats) : ratingsStats}
               currentUser={currentUser}
               currentTheme={currentTheme}

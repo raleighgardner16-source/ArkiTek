@@ -80,8 +80,9 @@ const TopActionBar = ({
         summary: shareSummary,
       })
 
-      if (res.data?.data?.shareToken) {
-        const shareUrl = `${window.location.origin}/share/${res.data.data.shareToken}`
+      const shareToken = res.data?.shareToken || res.data?.data?.shareToken
+      if (shareToken) {
+        const shareUrl = `${window.location.origin}/share/${shareToken}`
         if (navigator.share) {
           try {
             await navigator.share({
