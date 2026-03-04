@@ -1,7 +1,9 @@
-import type React from 'react'
+import React, { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Coins, DollarSign, Sparkles, Share2, Check } from 'lucide-react'
+import { Coins, DollarSign, Sparkles, Share2, Check, Loader2 } from 'lucide-react'
 import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx, createStyles } from '../utils/styles'
+import { useStore } from '../store/useStore'
+import api from '../utils/api'
 
 interface Props {
   canGenerateSummary: boolean
@@ -15,10 +17,6 @@ interface Props {
   setShowTopCostBreakdown: (v: boolean) => void
   triggerGenerateSummary: () => void
   isCancelledPrompt?: boolean
-  onShare?: () => Promise<void> | void
-  sharingPrompt?: boolean
-  shareSuccess?: boolean
-  canShare?: boolean
 }
 
 const TopActionBar = ({
@@ -33,12 +31,81 @@ const TopActionBar = ({
   setShowTopCostBreakdown,
   triggerGenerateSummary,
   isCancelledPrompt = false,
-  onShare,
-  sharingPrompt = false,
-  shareSuccess = false,
-  canShare = false,
 }: Props) => {
   const s = createStyles(currentTheme)
+  const [sharing, setSharing] = useState(false)
+  const [shared, setShared] = useState(false)
+
+  const responses = useStore((state) => state.responses || [])
+  const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
+  const canShare = responses.length > 0 && !!lastSubmittedPrompt
+
+  const handleShare = async () => {
+    if (sharing) return
+    const store = useStore.getState()
+    const currentResponses = store.responses || []
+    const prompt = store.lastSubmittedPrompt || ''
+    const category = store.lastSubmittedCategory || ''
+    const summary = store.summary
+
+    if (currentResponses.length === 0 || !prompt) return
+    setSharing(true)
+    try {
+      const shareResponses = currentResponses
+        .filter((r: any) => r.text && !r.error)
+        .map((r: any) => ({
+          modelName: r.modelName,
+          actualModelName: r.actualModelName,
+          originalModelName: r.originalModelName,
+          text: r.text,
+          error: false,
+        }))
+      if (shareResponses.length === 0) { setSharing(false); return }
+
+      const shareSummary = summary && !summary.error ? {
+        text: summary.text || '',
+        consensus: summary.consensus ?? null,
+        summary: summary.summary || '',
+        agreements: summary.agreements || [],
+        disagreements: summary.disagreements || [],
+        differences: summary.differences || [],
+        singleModel: summary.singleModel || false,
+        modelName: summary.modelName || null,
+      } : null
+
+      const res = await api.post('/share', {
+        prompt,
+        category,
+        responses: shareResponses,
+        summary: shareSummary,
+      })
+
+      if (res.data?.data?.shareToken) {
+        const shareUrl = `${window.location.origin}/share/${res.data.data.shareToken}`
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: 'ArkiTek Council Response',
+              text: prompt.length > 100 ? prompt.slice(0, 100) + '...' : prompt,
+              url: shareUrl,
+            })
+          } catch (shareErr: any) {
+            if (shareErr.name !== 'AbortError') {
+              await navigator.clipboard.writeText(shareUrl)
+            }
+          }
+        } else {
+          await navigator.clipboard.writeText(shareUrl)
+        }
+        setShared(true)
+        setTimeout(() => setShared(false), 3000)
+      }
+    } catch (err) {
+      console.error('[Share] Error:', err)
+    } finally {
+      setSharing(false)
+    }
+  }
 
   const barContainer: React.CSSProperties = {
     position: 'absolute',
@@ -92,6 +159,24 @@ const TopActionBar = ({
     transition: transition.normal,
   }
 
+  const shareButton = (
+    <motion.button
+      onClick={handleShare}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      style={{
+        ...pillButton,
+        opacity: sharing ? 0.6 : 1,
+        cursor: sharing ? 'wait' : 'pointer',
+        color: shared ? '#00cc66' : currentTheme.accent,
+      }}
+      title="Share this prompt and responses"
+    >
+      {sharing ? <Loader2 size={13} className="animate-spin" /> : shared ? <Check size={13} /> : <Share2 size={13} />}
+      {sharing ? 'Sharing...' : shared ? 'Shared!' : 'Share'}
+    </motion.button>
+  )
+
   return (
     <>
       {canGenerateSummary && (
@@ -142,21 +227,7 @@ const TopActionBar = ({
             {canShare && (
               <>
                 <div style={divider} />
-                <motion.button
-                  onClick={() => onShare?.()}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  style={{
-                    ...pillButton,
-                    opacity: sharingPrompt ? 0.6 : 1,
-                    cursor: sharingPrompt ? 'wait' : 'pointer',
-                    color: shareSuccess ? '#00cc66' : currentTheme.accent,
-                  }}
-                  title="Share this prompt and responses"
-                >
-                  {shareSuccess ? <Check size={13} /> : <Share2 size={13} />}
-                  {sharingPrompt ? 'Sharing...' : shareSuccess ? 'Link Copied!' : 'Share'}
-                </motion.button>
+                {shareButton}
               </>
             )}
 
@@ -240,21 +311,7 @@ const TopActionBar = ({
             {canShare && (
               <>
                 <div style={divider} />
-                <motion.button
-                  onClick={() => onShare?.()}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  style={{
-                    ...pillButton,
-                    opacity: sharingPrompt ? 0.6 : 1,
-                    cursor: sharingPrompt ? 'wait' : 'pointer',
-                    color: shareSuccess ? '#00cc66' : currentTheme.accent,
-                  }}
-                  title="Share this prompt and responses"
-                >
-                  {shareSuccess ? <Check size={13} /> : <Share2 size={13} />}
-                  {sharingPrompt ? 'Sharing...' : shareSuccess ? 'Link Copied!' : 'Share'}
-                </motion.button>
+                {shareButton}
               </>
             )}
 
@@ -295,21 +352,7 @@ const TopActionBar = ({
             {canShare && (
               <>
                 <div style={divider} />
-                <motion.button
-                  onClick={() => onShare?.()}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  style={{
-                    ...pillButton,
-                    opacity: sharingPrompt ? 0.6 : 1,
-                    cursor: sharingPrompt ? 'wait' : 'pointer',
-                    color: shareSuccess ? '#00cc66' : currentTheme.accent,
-                  }}
-                  title="Share this prompt and responses"
-                >
-                  {shareSuccess ? <Check size={13} /> : <Share2 size={13} />}
-                  {sharingPrompt ? 'Sharing...' : shareSuccess ? 'Link Copied!' : 'Share'}
-                </motion.button>
+                {shareButton}
               </>
             )}
           </div>

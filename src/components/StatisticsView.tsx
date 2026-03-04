@@ -31,7 +31,6 @@ const StatisticsView = () => {
   const [activeTab, setActiveTab] = useState('badges')
   const [ratingsData, setRatingsData] = useState<any>(null)
   const [hoveredDay, setHoveredDay] = useState<string | null>(null)
-  const [leaderboardStats, setLeaderboardStats] = useState<any>(null)
   const [loadingLeaderboardStats, setLoadingLeaderboardStats] = useState(false)
   const [showBuyUsageModal, setShowBuyUsageModal] = useState(false)
   const [userPlan, setUserPlan] = useState(currentUser?.plan || 'free_trial')
@@ -39,7 +38,6 @@ const StatisticsView = () => {
   const [hoveredBadge, setHoveredBadge] = useState<string | null>(null)
   const [showBadgeScrollHint, setShowBadgeScrollHint] = useState(true)
   const badgeCategoriesRef = useRef<HTMLDivElement | null>(null)
-  const [hasLoadedLeaderboard, setHasLoadedLeaderboard] = useState(false)
   const [publicProfile, setPublicProfile] = useState<any>(null)
   const [loadingPublicProfile, setLoadingPublicProfile] = useState(false)
   const [showEditProfile, setShowEditProfile] = useState(false)
@@ -243,7 +241,6 @@ const StatisticsView = () => {
   useEffect(() => {
     if (isViewingOther || !currentUser?.id) return
     if (activeTab === 'badges') {
-      fetchLeaderboardStats()
       fetchDailyChallenge()
     }
   }, [currentUser?.id, activeTab, isViewingOther])
@@ -264,25 +261,6 @@ const StatisticsView = () => {
     return () => observer.disconnect()
   }, [activeTab])
 
-  const fetchLeaderboardStats = async () => {
-    if (!currentUser?.id) return
-    try {
-      if (!hasLoadedLeaderboard) {
-        setLoadingLeaderboardStats(true)
-      }
-      const response = await api.get(`/leaderboard/user-stats/${currentUser.id}`)
-      setLeaderboardStats(response.data)
-      if (response.data.wins?.length > 0) {
-        setWinningPrompts(response.data.wins)
-      }
-    } catch (error: any) {
-      console.error('Error fetching leaderboard stats:', error)
-      setLeaderboardStats(null)
-    } finally {
-      setLoadingLeaderboardStats(false)
-      setHasLoadedLeaderboard(true)
-    }
-  }
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)

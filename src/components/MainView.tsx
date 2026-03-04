@@ -84,71 +84,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const currentPromptSessionId = useStore((state) => state.currentPromptSessionId)
   const isReopenedHistoryChat = useStore((state) => state.isReopenedHistoryChat)
   const isCancelledPrompt = useStore((state) => state.isCancelledPrompt)
-  const [sharingPrompt, setSharingPrompt] = useState(false)
-  const [shareSuccess, setShareSuccess] = useState(false)
-
-  const handleSharePrompt = async () => {
-    const currentResponses = useStore.getState().responses || []
-    const currentPrompt = useStore.getState().lastSubmittedPrompt || ''
-    const currentCategory = useStore.getState().lastSubmittedCategory || ''
-    const currentSummary = useStore.getState().summary
-
-    if (sharingPrompt || currentResponses.length === 0 || !currentPrompt) return
-    setSharingPrompt(true)
-    try {
-      const shareResponses = currentResponses
-        .filter((r: any) => r.text && !r.error)
-        .map((r: any) => ({
-          modelName: r.modelName,
-          actualModelName: r.actualModelName,
-          originalModelName: r.originalModelName,
-          text: r.text,
-          error: false,
-        }))
-      if (shareResponses.length === 0) { setSharingPrompt(false); return }
-      const shareSummary = currentSummary && !currentSummary.error ? {
-        text: currentSummary.text || '',
-        consensus: currentSummary.consensus ?? null,
-        summary: currentSummary.summary || '',
-        agreements: currentSummary.agreements || [],
-        disagreements: currentSummary.disagreements || [],
-        differences: currentSummary.differences || [],
-        singleModel: currentSummary.singleModel || false,
-        modelName: currentSummary.modelName || null,
-      } : null
-      const res = await api.post('/share', {
-        prompt: currentPrompt,
-        category: currentCategory,
-        responses: shareResponses,
-        summary: shareSummary,
-      })
-      if (res.data?.data?.shareToken) {
-        const shareUrl = `${window.location.origin}/share/${res.data.data.shareToken}`
-        if (navigator.share) {
-          try {
-            await navigator.share({
-              title: 'ArkiTek Council Response',
-              text: currentPrompt.length > 100 ? currentPrompt.slice(0, 100) + '...' : currentPrompt,
-              url: shareUrl,
-            })
-          } catch (shareErr: any) {
-            if (shareErr.name !== 'AbortError') {
-              await navigator.clipboard.writeText(shareUrl)
-            }
-          }
-        } else {
-          await navigator.clipboard.writeText(shareUrl)
-        }
-        setShareSuccess(true)
-        setTimeout(() => setShareSuccess(false), 3000)
-      }
-    } catch (err) {
-      console.error('[Share] Error sharing prompt:', err)
-    } finally {
-      setSharingPrompt(false)
-    }
-  }
-
   // Conversation handlers hook
   const conversation = useConversationHandlers({ isLoading, isGeneratingSummary })
   const {
@@ -708,10 +643,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           setShowTopCostBreakdown={setShowTopCostBreakdown}
           triggerGenerateSummary={triggerGenerateSummary}
           isCancelledPrompt={isCancelledPrompt}
-          onShare={handleSharePrompt}
-          sharingPrompt={sharingPrompt}
-          shareSuccess={shareSuccess}
-          canShare={responses.length > 0 && !!lastSubmittedPrompt}
         />
 
         {/* ===== SCROLLABLE CHAT AREA ===== */}
