@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Flame, Search, Lock, FileText, PauseCircle, MessageCircle, Swords, AlertTriangle } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels } from '../services/llmProviders'
+import { getModelShortLabel } from '../utils/modelNames'
 import { detectCategory } from '../utils/categoryDetector'
 import { getTheme } from '../utils/theme'
 import api from '../utils/api'
@@ -783,10 +784,15 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     </div>
                   </div>
                   {/* Model name label */}
-                  <div style={sx(layout.flexRow, { gap: spacing.md, marginBottom: '14px' })}>
+                  <div style={sx(layout.flexRow, { gap: spacing.md, alignItems: 'center', marginBottom: '14px' })}>
                     <FileText size={16} color={currentTheme.accent} />
-                    <span style={{ color: currentTheme.accent, fontSize: fontSize.md, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: fontWeight.bold, color: currentTheme.accent, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
                       {getProviderDisplayName(primaryResponse?.modelName)}
+                      {getModelShortLabel(primaryResponse?.modelName) && (
+                        <span style={{ color: currentTheme.textMuted, fontWeight: fontWeight.normal, textTransform: 'none', letterSpacing: 'normal' }}>
+                          {' '}({getModelShortLabel(primaryResponse?.modelName)})
+                        </span>
+                      )}
                     </span>
                   </div>
                   {/* Streaming response */}
@@ -922,6 +928,19 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 {/* Response - Free flowing text, NO container/border */}
                 {inlineResponseText && (
                   <div ref={responseAreaRef} style={{ padding: `${spacing.xs} 0 0 ${spacing.xs}` }}>
+                    {inlineResponseLabel && (
+                      <div style={sx(layout.flexRow, { gap: spacing.md, alignItems: 'center', marginBottom: '14px' })}>
+                        <FileText size={16} color={currentTheme.accent} />
+                        <span style={{ fontSize: '0.75rem', fontWeight: fontWeight.bold, color: currentTheme.accent, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                          {getProviderDisplayName(inlineResponseLabel)}
+                          {getModelShortLabel(inlineResponseLabel) && (
+                            <span style={{ color: currentTheme.textMuted, fontWeight: fontWeight.normal, textTransform: 'none', letterSpacing: 'normal' }}>
+                              {' '}({getModelShortLabel(inlineResponseLabel)})
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    )}
                     <div>
                       <MarkdownRenderer content={inlineResponseText} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
                     </div>
