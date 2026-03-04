@@ -70,7 +70,9 @@ const SharedPromptView = () => {
     setMaximizedCard(prev => prev === id ? null : id)
   }
 
-  const handleGutterWheel = useCallback((e: React.WheelEvent) => {
+  const handleContainerWheel = useCallback((e: React.WheelEvent) => {
+    const target = e.target as HTMLElement
+    if (target.closest('[data-shared-col]')) return
     const columns = document.querySelectorAll('[data-shared-col]')
     columns.forEach(col => { col.scrollTop += e.deltaY })
   }, [])
@@ -213,20 +215,24 @@ const SharedPromptView = () => {
       )
     }
 
-    if (summary.disagreements && summary.disagreements.length > 0) {
-      sections.push(
-        <div key="disagreements" style={{ marginBottom: spacing.xl }}>
-          <h4 style={{ color: '#ff6b6b', fontSize: fontSize.lg, fontWeight: fontWeight.semibold, marginBottom: spacing.md }}>
-            Points of Disagreement
-          </h4>
-          {summary.disagreements.map((point, i) => (
+    sections.push(
+      <div key="disagreements" style={{ marginBottom: spacing.xl }}>
+        <h4 style={{ color: '#ff6b6b', fontSize: fontSize.lg, fontWeight: fontWeight.semibold, marginBottom: spacing.md }}>
+          Contradictions
+        </h4>
+        {summary.disagreements && summary.disagreements.length > 0 ? (
+          summary.disagreements.map((point, i) => (
             <p key={i} style={{ color: currentTheme.textSecondary, fontSize: fontSize.base, margin: `0 0 ${spacing.sm} 0`, paddingLeft: spacing.lg, borderLeft: '2px solid #ff6b6b40' }}>
               {point}
             </p>
-          ))}
-        </div>
-      )
-    }
+          ))
+        ) : (
+          <p style={{ color: currentTheme.textMuted, fontSize: fontSize.base, margin: 0, paddingLeft: spacing.lg, borderLeft: '2px solid #ff6b6b40', fontStyle: 'italic' }}>
+            No contradictions in model responses
+          </p>
+        )}
+      </div>
+    )
 
     return sections
   }
@@ -351,11 +357,13 @@ const SharedPromptView = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
+            onWheel={handleContainerWheel}
             style={{
               display: 'flex',
               flex: 1,
               minHeight: 0,
               overflow: 'hidden',
+              padding: '0 20px',
             }}
           >
             {/* Maximized overlay */}
@@ -407,12 +415,6 @@ const SharedPromptView = () => {
                 </motion.div>
               )
             })()}
-
-            {/* Left gutter — scrolls all columns */}
-            <div
-              onWheel={handleGutterWheel}
-              style={{ width: '20px', minWidth: '20px', flexShrink: 0 }}
-            />
 
             {data.responses.map((response, index) => {
               const id = `response-${index}`
@@ -485,11 +487,6 @@ const SharedPromptView = () => {
               )
             })}
 
-            {/* Right gutter — scrolls all columns */}
-            <div
-              onWheel={handleGutterWheel}
-              style={{ width: '20px', minWidth: '20px', flexShrink: 0 }}
-            />
           </motion.div>
         ) : (
           <motion.div
