@@ -28,11 +28,12 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }: Props)
 
   if (!isOpen || !tokenData || tokenData.length === 0) return null
 
-  // Separate pipeline (category detection), judge, cancelled summary, and regular counted items
+  // Separate pipeline (category detection), judge, cancelled summary/prompt, and regular counted items
   const pipelineItems = tokenData.filter(item => item.isPipeline)
   const judgeItems = tokenData.filter(item => item.isJudge)
   const cancelledSummaryItems = tokenData.filter(item => item.isCancelledSummary)
-  const countedItems = tokenData.filter(item => !item.isPipeline && !item.isJudge && !item.isCancelledSummary)
+  const cancelledPromptItems = tokenData.filter(item => item.isCancelledPrompt)
+  const countedItems = tokenData.filter(item => !item.isPipeline && !item.isJudge && !item.isCancelledSummary && !item.isCancelledPrompt)
 
   // Group COUNTED tokens by provider and aggregate totals
   const groupedByProvider: Record<string, any> = {}
@@ -223,7 +224,8 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }: Props)
     const inlinePipelineItems = tokenData.filter(item => item.isPipeline)
     const inlineJudgeItems = tokenData.filter(item => item.isJudge)
     const inlineCancelledSummaryItems = tokenData.filter(item => item.isCancelledSummary)
-    const inlineCountedItems = tokenData.filter(item => !item.isPipeline && !item.isJudge && !item.isCancelledSummary)
+    const inlineCancelledPromptItems = tokenData.filter(item => item.isCancelledPrompt)
+    const inlineCountedItems = tokenData.filter(item => !item.isPipeline && !item.isJudge && !item.isCancelledSummary && !item.isCancelledPrompt)
 
     const inlineGrouped: Record<string, any> = {}
     inlineCountedItems.forEach((item: any) => {
@@ -347,6 +349,23 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }: Props)
               </div>
             )
           })()}
+          {inlineCancelledPromptItems.length > 0 && (
+            <div style={{ marginBottom: spacing['2xl'], padding: spacing.lg, background: 'rgba(239, 68, 68, 0.05)', borderRadius: radius.md, border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm }}>
+                <h4 style={{ color: '#ef4444', fontSize: fontSize['2xl'], margin: 0, fontWeight: fontWeight.semibold }}>
+                  Cancelled Prompt
+                </h4>
+                <span style={{ fontSize: fontSize['2xs'], color: '#ef4444', background: 'rgba(239, 68, 68, 0.15)', padding: `${spacing['2xs']} ${spacing.sm}`, borderRadius: radius.xs, fontWeight: fontWeight.semibold }}>
+                  Cancelled
+                </span>
+              </div>
+              <div style={{ fontSize: fontSize.sm, color: '#999', lineHeight: '1.4' }}>
+                {inlineCountedItems.length > 0
+                  ? 'Prompt was cancelled. Tokens consumed by models that completed before cancellation are shown above and still count toward your usage.'
+                  : 'Prompt was cancelled before any model responses completed. No tokens were consumed.'}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -794,6 +813,40 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }: Props)
                 </div>
               )
             })()}
+
+            {/* Cancelled Prompt */}
+            {cancelledPromptItems.length > 0 && (
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.05)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  borderRadius: radius.xl,
+                  padding: spacing.xl,
+                  marginBottom: spacing.xl,
+                }}
+              >
+                <div style={sx(layout.flexRow, { gap: spacing.md, marginBottom: spacing.md })}>
+                  <h3 style={{ color: '#ef4444', fontSize: fontSize['2xl'], margin: 0, fontWeight: fontWeight.bold }}>
+                    Cancelled Prompt
+                  </h3>
+                  <span style={{
+                    fontSize: fontSize['2xs'],
+                    color: '#ef4444',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    padding: `${spacing['2xs']} ${spacing.md}`,
+                    borderRadius: radius.xs,
+                    fontWeight: fontWeight.semibold,
+                  }}>
+                    Cancelled
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#999', lineHeight: '1.4' }}>
+                  {countedItems.length > 0
+                    ? 'Prompt was cancelled. Tokens consumed by models that completed before cancellation are shown above and still count toward your usage.'
+                    : 'Prompt was cancelled before any model responses completed. No tokens were consumed.'}
+                </div>
+              </div>
+            )}
 
             {/* Pipeline / Internal Models (not counted in stats) */}
             {pipelineItems.length > 0 && (

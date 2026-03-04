@@ -45,6 +45,22 @@ export function usePromptSubmission() {
     const hasVisibleContent = store.responses.some((r: any) => r.text && r.text.trim().length > 0)
     if (hasVisibleContent) {
       store.setIsCancelledPrompt(true)
+
+      // Collect whatever tokens are already available and add a cancelled marker
+      const cancelledTokenData: any[] = []
+      store.responses.forEach((r: any) => {
+        if (r.tokens) {
+          cancelledTokenData.push({ modelName: r.modelName || r.actualModelName, tokens: r.tokens })
+        }
+      })
+      cancelledTokenData.push({
+        modelName: 'Cancelled Prompt',
+        isCancelledPrompt: true,
+        isJudge: false,
+        isPipeline: false,
+        tokens: null,
+      })
+      store.setTokenData(cancelledTokenData)
     } else {
       store.clearResponses()
       store.setCurrentPrompt('')
@@ -217,9 +233,14 @@ export function usePromptSubmission() {
         responses.forEach((r) => {
           if (r.tokens) cancelledTokenData.push({ modelName: r.modelName, tokens: r.tokens })
         })
-        if (cancelledTokenData.length > 0) {
-          useStore.getState().setTokenData(cancelledTokenData)
-        }
+        cancelledTokenData.push({
+          modelName: 'Cancelled Prompt',
+          isCancelledPrompt: true,
+          isJudge: false,
+          isPipeline: false,
+          tokens: null,
+        })
+        useStore.getState().setTokenData(cancelledTokenData)
         return
       }
 
@@ -334,9 +355,14 @@ export function usePromptSubmission() {
             cancelledTokenData.push({ modelName: r.modelName || r.actualModelName, tokens: r.tokens })
           }
         })
-        if (cancelledTokenData.length > 0) {
-          store.setTokenData(cancelledTokenData)
-        }
+        cancelledTokenData.push({
+          modelName: 'Cancelled Prompt',
+          isCancelledPrompt: true,
+          isJudge: false,
+          isPipeline: false,
+          tokens: null,
+        })
+        store.setTokenData(cancelledTokenData)
         return
       }
 

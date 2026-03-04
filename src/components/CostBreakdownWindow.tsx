@@ -63,10 +63,11 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
     return (numQueries / 1000) * pricePer1k
   }
 
-  // Separate judge items, cancelled summary, from regular council items
+  // Separate judge items, cancelled summary/prompt, from regular council items
   const judgeTokenData = tokenData.filter(item => item.isJudge)
   const cancelledSummaryItems = tokenData.filter(item => item.isCancelledSummary)
-  const councilTokenData = tokenData.filter(item => !item.isJudge && !item.isPipeline && !item.isCancelledSummary)
+  const cancelledPromptItems = tokenData.filter(item => item.isCancelledPrompt)
+  const councilTokenData = tokenData.filter(item => !item.isJudge && !item.isPipeline && !item.isCancelledSummary && !item.isCancelledPrompt)
 
   // Process token data and calculate costs (council models only)
   const costBreakdown = councilTokenData.map((item: any) => {
@@ -379,6 +380,42 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                 </div>
               )
             })()}
+
+            {/* Cancelled Prompt Cost */}
+            {cancelledPromptItems.length > 0 && (
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.05)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  borderRadius: radius.xl,
+                  padding: spacing.xl,
+                  marginBottom: spacing.lg,
+                }}
+              >
+                <div style={sx(layout.spaceBetween, { marginBottom: spacing.md })}>
+                  <div style={sx(layout.flexRow, { gap: spacing.md })}>
+                    <h4 style={{ color: '#ef4444', fontSize: fontSize['2xl'], margin: 0, fontWeight: fontWeight.semibold }}>
+                      Cancelled Prompt Cost
+                    </h4>
+                    <span style={{
+                      fontSize: fontSize['2xs'],
+                      color: '#ef4444',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      padding: `${spacing['2xs']} ${spacing.md}`,
+                      borderRadius: radius.xs,
+                      fontWeight: fontWeight.semibold,
+                    }}>
+                      Cancelled
+                    </span>
+                  </div>
+                </div>
+                <div style={{ fontSize: fontSize.sm, color: '#999', lineHeight: '1.4' }}>
+                  {costBreakdown.length > 0
+                    ? 'Prompt was cancelled. Any cost incurred by models that completed before cancellation is shown above and still counts toward your usage.'
+                    : 'Prompt was cancelled before any model responses completed. No cost was incurred.'}
+                </div>
+              </div>
+            )}
 
             {/* Query Costs */}
             {queryCount > 0 && (
@@ -715,6 +752,42 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                     </div>
                   )
                 })()}
+
+                {/* Cancelled Prompt Cost */}
+                {cancelledPromptItems.length > 0 && (
+                  <div
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.05)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                      borderRadius: radius.xl,
+                      padding: spacing['2xl'],
+                      marginBottom: spacing.xl,
+                    }}
+                  >
+                    <div style={sx(layout.spaceBetween, { marginBottom: spacing.lg })}>
+                      <div style={sx(layout.flexRow, { gap: spacing.md })}>
+                        <h3 style={{ color: '#ef4444', fontSize: fontSize['4xl'], margin: 0, fontWeight: fontWeight.bold }}>
+                          Cancelled Prompt Cost
+                        </h3>
+                        <span style={{
+                          fontSize: fontSize['2xs'],
+                          color: '#ef4444',
+                          background: 'rgba(239, 68, 68, 0.15)',
+                          padding: `${spacing['2xs']} ${spacing.md}`,
+                          borderRadius: radius.xs,
+                          fontWeight: fontWeight.semibold,
+                        }}>
+                          Cancelled
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#999', lineHeight: '1.5' }}>
+                      {costBreakdown.length > 0
+                        ? 'Prompt was cancelled. Any cost incurred by models that completed before cancellation is shown above and still counts toward your usage.'
+                        : 'Prompt was cancelled before any model responses completed. No cost was incurred.'}
+                    </div>
+                  </div>
+                )}
 
                 {/* Query Costs */}
                 {queryCount > 0 && (
