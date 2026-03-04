@@ -7,7 +7,7 @@ import { checkSubscriptionStatusAsync } from '../services/subscription.js'
 import { buildTokenBreakdown } from '../helpers/pricing.js'
 import { detectCategoryForJudge, storeModelContext } from '../services/context.js'
 import { findRelevantContext, formatMemoryContext } from '../services/memory.js'
-import { performSerperSearch, buildSearchContextSnippet, reformulateSearchQuery, formatRawSourcesForPrompt } from '../services/search.js'
+import { performSerperSearch, buildSearchContextSnippet, reformulateSearchQuery, formatRawSourcesForPrompt, buildSnippetFallback } from '../services/search.js'
 import db from '../../database/db.js'
 import { createLogger } from '../config/logger.js'
 import { sendSuccess, sendError } from '../types/api.js'
@@ -162,6 +162,10 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
           }
         } catch (searchError: any) {
           log.error({ err: searchError }, 'Model conversation stream: search/scrape error')
+        }
+        if ((!rawSourcesData || !rawSourcesData.formatted) && searchResults.length > 0) {
+          log.warn('Scraping returned empty content, falling back to snippets')
+          rawSourcesData = buildSnippetFallback(searchResults)
         }
       }
     }
@@ -548,6 +552,10 @@ router.post('/conversation', async (req: Request, res: Response) => {
           }
         } catch (searchError: any) {
           log.error({ err: searchError }, 'Model conversation: search/scrape error')
+        }
+        if ((!rawSourcesData || !rawSourcesData.formatted) && searchResults.length > 0) {
+          log.warn('Scraping returned empty content, falling back to snippets')
+          rawSourcesData = buildSnippetFallback(searchResults)
         }
       } else {
         log.warn('Serper API key not configured, skipping search')

@@ -12,6 +12,7 @@ import {
   performSerperSearch,
   reformulateSearchQuery,
   formatRawSourcesForPrompt,
+  buildSnippetFallback,
   cleanMistralResponse,
 } from '../services/search.js'
 import db from '../../database/db.js'
@@ -515,7 +516,11 @@ router.post('/', async (req: Request, res: Response) => {
       rawSourcesData = await formatRawSourcesForPrompt(searchResults, 5)
     } catch (scrapeError: any) {
       console.error('[RAG Pipeline] Source scraping error:', scrapeError.message)
-      rawSourcesData = { formatted: '', sourceCount: 0, scrapedSources: [] }
+      rawSourcesData = buildSnippetFallback(searchResults)
+    }
+    if (!rawSourcesData.formatted && searchResults.length > 0) {
+      console.warn('[RAG Pipeline] Scraping returned empty content, falling back to snippets')
+      rawSourcesData = buildSnippetFallback(searchResults)
     }
     
     let memoryContextString = ''
@@ -880,7 +885,11 @@ router.post('/stream', async (req: Request, res: Response) => {
       rawSourcesData = await formatRawSourcesForPrompt(searchResults, 5)
     } catch (scrapeError: any) {
       console.error('[RAG Stream] Source scraping error:', scrapeError.message)
-      rawSourcesData = { formatted: '', sourceCount: 0, scrapedSources: [] }
+      rawSourcesData = buildSnippetFallback(searchResults)
+    }
+    if (!rawSourcesData.formatted && searchResults.length > 0) {
+      console.warn('[RAG Stream] Scraping returned empty content, falling back to snippets')
+      rawSourcesData = buildSnippetFallback(searchResults)
     }
 
     let memoryContextString = ''

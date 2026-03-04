@@ -227,36 +227,49 @@ const formatRawSourcesForPrompt = async (searchResults: any[], maxParseableSourc
   const scrapedSources: any[] = []
   
   for (let index = 0; index < searchResults.length; index++) {
-    const result = searchResults[index]
-    
-    if (isNonParseableSource(result.link)) {
-      console.log(`[Raw Sources] Skipping non-parseable source: ${result.link}`)
-      continue
+    try {
+      const result = searchResults[index]
+      if (!result?.link) continue
+      
+      if (isNonParseableSource(result.link)) {
+        console.log(`[Raw Sources] Skipping non-parseable source: ${result.link}`)
+        continue
+      }
+      
+      if (parseableCount >= maxParseableSources) {
+        console.log(`[Raw Sources] Reached maximum of ${maxParseableSources} parseable sources, stopping`)
+        break
+      }
+      
+      console.log(`[Raw Sources] Fetching content from: ${result.link}`)
+      const pageContent = await fetchPageContent(result.link)
+      
+      parseableCount++
+      const sourceNum = parseableCount
+      
+      formatted += `Source ${sourceNum}: "${result.title}"\n`
+      formatted += `URL: ${result.link}\n`
+      
+      if (pageContent && pageContent.trim().length > 100) {
+        formatted += `Content: ${pageContent}\n`
+        scrapedSources.push({ title: result.title, link: result.link, snippet: result.snippet, hasContent: true })
+      } else {
+        formatted += `Content: ${result.snippet || '[Unable to fetch content]'}\n`
+        scrapedSources.push({ title: result.title, link: result.link, snippet: result.snippet, hasContent: false })
+      }
+      
+      formatted += '\n'
+    } catch (sourceError: any) {
+      console.error(`[Raw Sources] Error processing source ${index}:`, sourceError.message)
+      const result = searchResults[index]
+      if (result?.title || result?.snippet) {
+        parseableCount++
+        formatted += `Source ${parseableCount}: "${result.title || 'Unknown'}"\n`
+        formatted += `URL: ${result.link || 'N/A'}\n`
+        formatted += `Content: ${result.snippet || '[Error fetching content]'}\n\n`
+        scrapedSources.push({ title: result.title, link: result.link, snippet: result.snippet, hasContent: false })
+      }
     }
-    
-    if (parseableCount >= maxParseableSources) {
-      console.log(`[Raw Sources] Reached maximum of ${maxParseableSources} parseable sources, stopping`)
-      break
-    }
-    
-    console.log(`[Raw Sources] Fetching content from: ${result.link}`)
-    const pageContent = await fetchPageContent(result.link)
-    
-    parseableCount++
-    const sourceNum = parseableCount
-    
-    formatted += `Source ${sourceNum}: "${result.title}"\n`
-    formatted += `URL: ${result.link}\n`
-    
-    if (pageContent && pageContent.trim().length > 100) {
-      formatted += `Content: ${pageContent}\n`
-      scrapedSources.push({ title: result.title, link: result.link, snippet: result.snippet, hasContent: true })
-    } else {
-      formatted += `Content: ${result.snippet || '[Unable to fetch content]'}\n`
-      scrapedSources.push({ title: result.title, link: result.link, snippet: result.snippet, hasContent: false })
-    }
-    
-    formatted += '\n'
   }
   
   if (parseableCount < maxParseableSources) {
@@ -402,6 +415,24 @@ const cleanMistralResponse = (content: string | null | undefined): string | null
   return content
 }
 
+const buildSnippetFallback = (searchResults: any[]): { formatted: string; sourceCount: number; scrapedSources: any[] } => {
+  let formatted = ''
+  const scrapedSources: any[] = []
+  let count = 0
+  for (const result of searchResults) {
+    if (!result?.title && !result?.snippet) continue
+    count++
+    formatted += `Source ${count}: "${result.title || 'Unknown'}"\n`
+    formatted += `URL: ${result.link || 'N/A'}\n`
+    formatted += `Content: ${result.snippet || '[No content available]'}\n\n`
+    scrapedSources.push({ title: result.title, link: result.link, snippet: result.snippet, hasContent: false })
+  }
+  if (count > 0) {
+    console.log(`[Raw Sources] Snippet fallback: built ${count} sources from search snippets`)
+  }
+  return { formatted, sourceCount: count, scrapedSources }
+}
+
 export {
   performSerperSearch,
   buildSearchContextSnippet,
@@ -410,6 +441,7 @@ export {
   isNonParseableSource,
   formatSearchResults,
   formatRawSourcesForPrompt,
+  buildSnippetFallback,
   verifyExtraction,
   cleanMistralResponse,
 }

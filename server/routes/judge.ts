@@ -7,7 +7,7 @@ import { checkSubscriptionStatusAsync } from '../services/subscription.js'
 import { buildTokenBreakdown } from '../helpers/pricing.js'
 import { detectCategoryForJudge, storeJudgeContext } from '../services/context.js'
 import { findRelevantContext, formatMemoryContext } from '../services/memory.js'
-import { performSerperSearch, buildSearchContextSnippet, reformulateSearchQuery, formatRawSourcesForPrompt } from '../services/search.js'
+import { performSerperSearch, buildSearchContextSnippet, reformulateSearchQuery, formatRawSourcesForPrompt, buildSnippetFallback } from '../services/search.js'
 import db from '../../database/db.js'
 import { sendSuccess, sendError } from '../types/api.js'
 
@@ -140,6 +140,10 @@ router.post('/conversation', async (req: Request, res: Response) => {
           }
         } catch (searchError) {
           console.error('[Judge Conversation] Search/scrape error:', searchError)
+        }
+        if ((!rawSourcesData || !rawSourcesData.formatted) && searchResults.length > 0) {
+          console.warn('[Judge Conversation] Scraping returned empty content, falling back to snippets')
+          rawSourcesData = buildSnippetFallback(searchResults)
         }
       }
     }
@@ -340,6 +344,10 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
           }
         } catch (searchError) {
           console.error('[Judge Conversation Stream] Search/scrape error:', searchError)
+        }
+        if ((!rawSourcesData || !rawSourcesData.formatted) && searchResults.length > 0) {
+          console.warn('[Judge Conversation Stream] Scraping returned empty content, falling back to snippets')
+          rawSourcesData = buildSnippetFallback(searchResults)
         }
       }
     }
