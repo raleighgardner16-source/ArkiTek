@@ -98,23 +98,14 @@ const StatisticsView = () => {
   } : null
 
   const viewedRatingsStats = isViewingOther ? (() => {
-    const wins = Object.values(publicStats.modelWins || {}) as Array<{ provider: string; model: string; responseId: string }>
-    const totalWins = wins.length
-    const providerWins: Record<string, number> = {}
-    const modelWins: Record<string, number> = {}
-    wins.forEach((win) => {
-      if (!win || !win.provider) return
-      providerWins[win.provider] = (providerWins[win.provider] || 0) + 1
-      const modelKey = `${win.provider}-${win.model}`
-      modelWins[modelKey] = (modelWins[modelKey] || 0) + 1
-    })
+    const rs = publicStats.ratingsStats || { totalWins: 0, providerLeaderboard: [], modelLeaderboard: [] }
     return {
-      totalRatings: totalWins,
-      totalWins,
-      providerLeaderboard: Object.entries(providerWins).sort((a, b) => b[1] - a[1]),
-      modelLeaderboard: Object.entries(modelWins).sort((a, b) => b[1] - a[1]),
-      topProvider: Object.entries(providerWins).sort((a, b) => b[1] - a[1])[0] || null,
-      topModel: Object.entries(modelWins).sort((a, b) => b[1] - a[1])[0] || null,
+      totalRatings: rs.totalWins || 0,
+      totalWins: rs.totalWins || 0,
+      providerLeaderboard: (rs.providerLeaderboard || []) as [string, number][],
+      modelLeaderboard: (rs.modelLeaderboard || []) as [string, number][],
+      topProvider: (rs.providerLeaderboard?.[0] || null) as [string, number] | null,
+      topModel: (rs.modelLeaderboard?.[0] || null) as [string, number] | null,
     }
   })() : null
 
@@ -308,10 +299,10 @@ const StatisticsView = () => {
   const fetchRatings = async () => {
     try {
       const response = await api.get(`/stats/${currentUser.id}/ratings`)
-      setRatingsData(response.data.modelWins || {})
+      setRatingsData(response.data)
     } catch (error: any) {
       console.error('Error fetching model wins:', error)
-      setRatingsData({})
+      setRatingsData(null)
     }
   }
 
@@ -370,37 +361,14 @@ const StatisticsView = () => {
     models: {},
   }
 
-  const ratingsStats = ratingsData ? (() => {
-    const wins = Object.values(ratingsData) as Array<{ provider: string; model: string; responseId: string }>
-    const totalWins = wins.length
-
-    const providerWins: Record<string, number> = {}
-    const modelWins: Record<string, number> = {}
-
-    wins.forEach((win) => {
-      if (!win || !win.provider) return
-      providerWins[win.provider] = (providerWins[win.provider] || 0) + 1
-      const modelKey = `${win.provider}-${win.model}`
-      modelWins[modelKey] = (modelWins[modelKey] || 0) + 1
-    })
-
-    const providerLeaderboard = Object.entries(providerWins)
-      .sort((a, b) => b[1] - a[1])
-    const modelLeaderboard = Object.entries(modelWins)
-      .sort((a, b) => b[1] - a[1])
-
-    const topProvider = providerLeaderboard[0] || null
-    const topModel = modelLeaderboard[0] || null
-
-    return {
-      totalRatings: totalWins,
-      totalWins,
-      providerLeaderboard,
-      modelLeaderboard,
-      topProvider,
-      topModel,
-    }
-  })() : {
+  const ratingsStats = ratingsData ? {
+    totalRatings: ratingsData.totalWins || 0,
+    totalWins: ratingsData.totalWins || 0,
+    providerLeaderboard: (ratingsData.providerLeaderboard || []) as [string, number][],
+    modelLeaderboard: (ratingsData.modelLeaderboard || []) as [string, number][],
+    topProvider: (ratingsData.providerLeaderboard?.[0] || null) as [string, number] | null,
+    topModel: (ratingsData.modelLeaderboard?.[0] || null) as [string, number] | null,
+  } : {
     totalRatings: 0,
     totalWins: 0,
     providerLeaderboard: [] as [string, number][],

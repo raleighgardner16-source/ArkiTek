@@ -14,7 +14,7 @@ const router = Router()
 // POST /api/llm → router.post('/')
 router.post('/', async (req: Request, res: Response) => {
   const userId = req.userId
-  const { provider, model, prompt, isSummary, geminiThinkingLevel } = req.body || {}
+  const { provider, model, prompt, isSummary, geminiThinkingLevel, images } = req.body || {}
   let apiKey = null
   let responseText = null
   
@@ -70,9 +70,21 @@ router.post('/', async (req: Request, res: Response) => {
         const modelsWithFixedTemperature = ['gpt-5-mini']
         const shouldUseDefaultTemperature = modelsWithFixedTemperature.includes(mappedModel) || modelsWithFixedTemperature.includes(model)
         
+        const hasImgs = Array.isArray(images) && images.length > 0
+        let userContent: any = prompt
+        if (hasImgs) {
+          userContent = [
+            { type: 'text', text: prompt },
+            ...images.map((img: any) => ({
+              type: 'image_url',
+              image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
+            })),
+          ]
+        }
+
         const apiRequestBody = {
           model: mappedModel,
-          messages: [{ role: 'user', content: prompt }],
+          messages: [{ role: 'user', content: userContent }],
           ...(shouldUseDefaultTemperature ? {} : { temperature: 0.7 }),
         }
         
@@ -84,6 +96,8 @@ router.post('/', async (req: Request, res: Response) => {
               'Authorization': `Bearer ${apiKey}`,
               'Content-Type': 'application/json',
             },
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
           }
         )
         
@@ -241,13 +255,25 @@ router.post('/', async (req: Request, res: Response) => {
     if (provider === 'anthropic') {
       log.debug({ mappedModel, model }, 'Calling Anthropic')
       
+      const hasImgs = Array.isArray(images) && images.length > 0
+      let anthropicContent: any = prompt
+      if (hasImgs) {
+        anthropicContent = [
+          ...images.map((img: any) => ({
+            type: 'image',
+            source: { type: 'base64', media_type: img.mimeType, data: img.base64 },
+          })),
+          { type: 'text', text: prompt },
+        ]
+      }
+
       try {
         response = await axios.post(
           'https://api.anthropic.com/v1/messages',
           {
             model: mappedModel,
             max_tokens: 1024,
-            messages: [{ role: 'user', content: prompt }],
+            messages: [{ role: 'user', content: anthropicContent }],
           },
           {
             headers: {
@@ -255,6 +281,8 @@ router.post('/', async (req: Request, res: Response) => {
               'anthropic-version': '2023-06-01',
               'Content-Type': 'application/json',
             },
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
           }
         )
 
@@ -320,8 +348,18 @@ router.post('/', async (req: Request, res: Response) => {
       const baseUrl = `https://generativelanguage.googleapis.com/${apiVersion}`
       const endpoint = `/models/${mappedGeminiModel}:generateContent`
 
+      const hasImgs = Array.isArray(images) && images.length > 0
+      const geminiParts: any[] = [{ text: prompt }]
+      if (hasImgs) {
+        for (const img of images) {
+          geminiParts.push({
+            inline_data: { mime_type: img.mimeType, data: img.base64 },
+          })
+        }
+      }
+
       const geminiRequestBody: Record<string, any> = {
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [{ parts: geminiParts }],
       }
       if (geminiThinkingLevel && ['low', 'medium', 'high'].includes(geminiThinkingLevel.toLowerCase())) {
         geminiRequestBody.generationConfig = {
@@ -338,6 +376,8 @@ router.post('/', async (req: Request, res: Response) => {
               'x-goog-api-key': apiKey,
               'Content-Type': 'application/json',
             },
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
           }
         )
       } catch (headerError: any) {
@@ -467,11 +507,12 @@ router.post('/stream', async (req: Request, res: Response) => {
   }, 15000)
 
   const userId = req.userId
-  const { provider, model, prompt, isSummary, rolePrompt, geminiThinkingLevel } = req.body || {}
+  const { provider, model, prompt, isSummary, rolePrompt, geminiThinkingLevel, images } = req.body || {}
   const mappedModel = MODEL_MAPPINGS[model] || model
   let fullResponse = ''
   let inputTokens = 0
   let outputTokens = 0
+  const hasImages = Array.isArray(images) && images.length > 0
 
   try {
     if (!provider || !model || !prompt) {
@@ -502,7 +543,19 @@ router.post('/stream', async (req: Request, res: Response) => {
 
       const messages: any[] = []
       if (rolePrompt) messages.push({ role: 'system', content: rolePrompt })
-      messages.push({ role: 'user', content: prompt })
+
+      if (hasImages) {
+        const contentParts: any[] = [{ type: 'text', text: prompt }]
+        for (const img of images) {
+          contentParts.push({
+            type: 'image_url',
+            image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
+          })
+        }
+        messages.push({ role: 'user', content: contentParts })
+      } else {
+        messages.push({ role: 'user', content: prompt })
+      }
 
       const streamResponse = await axios.post(
         `${PROVIDER_BASE_URLS[provider]}/chat/completions`,
@@ -515,7 +568,9 @@ router.post('/stream', async (req: Request, res: Response) => {
         },
         {
           headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          responseType: 'stream'
+          responseType: 'stream',
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
         }
       )
 
@@ -550,10 +605,23 @@ router.post('/stream', async (req: Request, res: Response) => {
       }
 
     } else if (provider === 'anthropic') {
+      let anthropicUserContent: any = prompt
+      if (hasImages) {
+        const contentParts: any[] = []
+        for (const img of images) {
+          contentParts.push({
+            type: 'image',
+            source: { type: 'base64', media_type: img.mimeType, data: img.base64 },
+          })
+        }
+        contentParts.push({ type: 'text', text: prompt })
+        anthropicUserContent = contentParts
+      }
+
       const anthropicBody: Record<string, any> = {
         model: mappedModel,
         max_tokens: 4096,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: 'user', content: anthropicUserContent }],
         stream: true
       }
       if (rolePrompt) anthropicBody.system = rolePrompt
@@ -568,7 +636,9 @@ router.post('/stream', async (req: Request, res: Response) => {
             'Content-Type': 'application/json'
           },
           responseType: 'stream',
-          timeout: 120000
+          timeout: 120000,
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
         }
       )
 
@@ -635,8 +705,17 @@ router.post('/stream', async (req: Request, res: Response) => {
       const apiVersion = isPreviewModel ? 'v1beta' : 'v1'
       const baseUrl = `https://generativelanguage.googleapis.com/${apiVersion}`
 
+      const geminiParts: any[] = [{ text: prompt }]
+      if (hasImages) {
+        for (const img of images) {
+          geminiParts.push({
+            inline_data: { mime_type: img.mimeType, data: img.base64 },
+          })
+        }
+      }
+
       const geminiBody: Record<string, any> = {
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [{ parts: geminiParts }],
       }
       if (rolePrompt) {
         geminiBody.systemInstruction = { parts: [{ text: rolePrompt }] }
@@ -652,7 +731,7 @@ router.post('/stream', async (req: Request, res: Response) => {
       const streamResponse = await axios.post(
         `${baseUrl}/models/${mappedModel}:streamGenerateContent?key=${apiKey}&alt=sse`,
         geminiBody,
-        { responseType: 'stream' }
+        { responseType: 'stream', maxContentLength: Infinity, maxBodyLength: Infinity }
       )
 
       upstreamStream = streamResponse.data

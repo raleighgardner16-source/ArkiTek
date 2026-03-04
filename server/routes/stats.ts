@@ -597,8 +597,8 @@ statsRouter.post('/:userId/categories/*/prompts/:promptIndex/move', async (req: 
 
 statsRouter.get('/:userId/ratings', async (req: Request, res: Response) => {
   const userId = req.userId!
-  const userUsage: any = await db.usage.getOrDefault(userId)
-  sendSuccess(res, { modelWins: userUsage.modelWins || {} })
+  const aggregated = await db.modelWins.aggregateForUser(userId)
+  sendSuccess(res, aggregated)
 })
 
 // Get streak info
@@ -934,20 +934,12 @@ ratingsRouter.post('/', async (req: Request, res: Response) => {
       return sendError(res, 'promptSessionId is required', 400)
     }
 
-    const userUsage: any = await db.usage.getOrDefault(userId)
-    if (!userUsage.modelWins) {
-      userUsage.modelWins = {}
-    }
-
     if (responseId && provider && model) {
-      userUsage.modelWins[promptSessionId] = { provider, model, responseId }
+      await db.modelWins.upsert(userId, { promptSessionId, provider, model, responseId })
     } else {
-      delete userUsage.modelWins[promptSessionId]
+      await db.modelWins.remove(userId, promptSessionId)
     }
 
-    await db.usage.update(userId, { modelWins: userUsage.modelWins })
-
-    // Grant XP for picking a favorite (only when setting, not clearing)
     if (responseId && provider && model) {
       try {
         await grantFavoriteXP(userId)

@@ -173,58 +173,24 @@ function getWeekBoundary(date: Date = new Date()) {
   return { weekStart, weekEnd, weekId }
 }
 
-async function computeWeeklyRankings(weekStartMs: number, weekEndMs: number) {
-  const dbInstance = await db.getDb()
-  const allUsage = await dbInstance
-    .collection<any>('usage_data')
-    .find({})
-    .project({ modelWins: 1 })
-    .toArray()
+async function computeWeeklyRankings(weekStart: Date, weekEnd: Date) {
+  const { providerRankings: rawProviders, modelRankings: rawModels, totalVotes } =
+    await db.modelWins.aggregateForWeek(weekStart, weekEnd)
 
-  const providerWins: Record<string, number> = {}
-  const modelWinsMap: Record<string, { provider: string; wins: number }> = {}
-  let totalVotes = 0
+  const providerRankings = rawProviders.map((entry, i) => ({
+    provider: entry.provider,
+    name: PROVIDER_NAMES[entry.provider] || entry.provider,
+    wins: entry.wins,
+    rank: i + 1,
+  }))
 
-  for (const usage of allUsage) {
-    const wins = usage.modelWins || {}
-    for (const [sessionId, win] of Object.entries(wins)) {
-      const ts = parseInt(sessionId, 10)
-      if (isNaN(ts) || ts < weekStartMs || ts >= weekEndMs) continue
-
-      const provider = (win as any).provider
-      const model = (win as any).model
-      if (!provider) continue
-
-      providerWins[provider] = (providerWins[provider] || 0) + 1
-      totalVotes++
-
-      if (model) {
-        if (!modelWinsMap[model]) modelWinsMap[model] = { provider, wins: 0 }
-        modelWinsMap[model].wins++
-      }
-    }
-  }
-
-  const providerRankings = Object.entries(providerWins)
-    .map(([key, wins]) => ({
-      provider: key,
-      name: PROVIDER_NAMES[key] || key,
-      wins,
-      rank: 0,
-    }))
-    .sort((a, b) => b.wins - a.wins)
-  providerRankings.forEach((entry, i) => { entry.rank = i + 1 })
-
-  const modelRankings = Object.entries(modelWinsMap)
-    .map(([model, data]) => ({
-      model,
-      provider: data.provider,
-      providerName: PROVIDER_NAMES[data.provider] || data.provider,
-      wins: data.wins,
-      rank: 0,
-    }))
-    .sort((a, b) => b.wins - a.wins)
-  modelRankings.forEach((entry, i) => { entry.rank = i + 1 })
+  const modelRankings = rawModels.map((entry, i) => ({
+    model: entry.model,
+    provider: entry.provider,
+    providerName: PROVIDER_NAMES[entry.provider] || entry.provider,
+    wins: entry.wins,
+    rank: i + 1,
+  }))
 
   return { providerRankings, modelRankings, totalVotes }
 }
@@ -243,8 +209,8 @@ async function ensurePreviousWeeksFinalized(currentWeekId: string) {
   if (existing?.finalized) return
 
   const { providerRankings, modelRankings, totalVotes } = await computeWeeklyRankings(
-    prevWeek.weekStart.getTime(),
-    prevWeek.weekEnd.getTime(),
+    prevWeek.weekStart,
+    prevWeek.weekEnd,
   )
 
   await db.weeklyLeaderboard.upsert({
@@ -269,8 +235,8 @@ router.get('/provider-rankings', async (req: Request, res: Response) => {
     await ensurePreviousWeeksFinalized(weekId)
 
     const { providerRankings, modelRankings, totalVotes } = await computeWeeklyRankings(
-      weekStart.getTime(),
-      weekEnd.getTime(),
+      weekStart,
+      weekEnd,
     )
 
     await db.weeklyLeaderboard.upsert({

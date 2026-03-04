@@ -27,6 +27,7 @@ import type {
   PurchaseDoc,
   JudgeContextDoc,
   JudgeContextItem,
+  ModelWinDoc,
   WeeklyLeaderboardDoc,
   ConversationHistoryDoc,
   ConversationTurn,
@@ -108,6 +109,7 @@ const col = {
   userStats: async (): Promise<Collection<UserStatsDoc>> => (await getDb()).collection<UserStatsDoc>('user_stats'),
   purchases: async (): Promise<Collection<PurchaseDoc>> => (await getDb()).collection<PurchaseDoc>('purchases'),
   judgeContext: async (): Promise<Collection<JudgeContextDoc>> => (await getDb()).collection<JudgeContextDoc>('judge_context'),
+  modelWins: async (): Promise<Collection<ModelWinDoc>> => (await getDb()).collection<ModelWinDoc>('model_wins'),
   weeklyLeaderboard: async (): Promise<Collection<WeeklyLeaderboardDoc>> => (await getDb()).collection<WeeklyLeaderboardDoc>('weekly_leaderboard'),
   relationships: async (): Promise<Collection<RelationshipDoc>> => (await getDb()).collection<RelationshipDoc>('relationships'),
   subscriptionEvents: async (): Promise<Collection<SubscriptionEventDoc>> => (await getDb()).collection<SubscriptionEventDoc>('subscription_events'),
@@ -362,6 +364,7 @@ const users = {
       judgeCol.deleteOne({ _id: userId } satisfies Filter<JudgeContextDoc>),
       usageCol.deleteOne({ _id: userId } satisfies Filter<UsageDataDoc>),
       statsCol.deleteOne({ _id: userId } satisfies Filter<UserStatsDoc>),
+      db.collection('model_wins').deleteMany({ userId }),
       db.collection('conversation_history').deleteMany({ userId }),
       db.collection('daily_usage').deleteMany({ userId }),
       db.collection('email_verifications').deleteMany({ userId }),
@@ -479,7 +482,6 @@ const DEFAULT_USAGE: Omit<UsageDataDoc, '_id'> = {
   categories: {},
   categoryPrompts: {},
   ratings: {},
-  modelWins: {},
   lastActiveAt: null,
   streakDays: 0,
   judgeConversationContext: [],
@@ -811,6 +813,98 @@ const weeklyLeaderboard = {
       }
     }
     return { providers, models }
+  },
+}
+
+// ============================================================================
+// MODEL WIN OPERATIONS (model_wins collection)
+// ============================================================================
+
+const modelWins = {
+  async upsert(userId: string, data: { promptSessionId: string; provider: string; model: string; responseId: string }): Promise<void> {
+    const c = await col.modelWins()
+    await c.updateOne(
+      { userId, promptSessionId: data.promptSessionId } as Filter<ModelWinDoc>,
+      { $set: { provider: data.provider, model: data.model, responseId: data.responseId, timestamp: new Date() } } as UpdateFilter<ModelWinDoc>,
+      { upsert: true },
+    )
+  },
+
+  async remove(userId: string, promptSessionId: string): Promise<void> {
+    const c = await col.modelWins()
+    await c.deleteOne({ userId, promptSessionId } as Filter<ModelWinDoc>)
+  },
+
+  async aggregateForUser(userId: string): Promise<{
+    providerLeaderboard: Array<[string, number]>
+    modelLeaderboard: Array<[string, number]>
+    totalWins: number
+  }> {
+    const c = await col.modelWins()
+
+    const [providerResults, modelResults, totalWins] = await Promise.all([
+      c.aggregate([
+        { $match: { userId } },
+        { $group: { _id: '$provider', wins: { $sum: 1 } } },
+        { $sort: { wins: -1 } },
+      ]).toArray(),
+
+      c.aggregate([
+        { $match: { userId } },
+        { $group: { _id: { provider: '$provider', model: '$model' }, wins: { $sum: 1 } } },
+        { $sort: { wins: -1 } },
+      ]).toArray(),
+
+      c.countDocuments({ userId }),
+    ])
+
+    const providerLeaderboard: Array<[string, number]> = providerResults.map(r => [r._id as string, r.wins as number])
+    const modelLeaderboard: Array<[string, number]> = modelResults.map(r => [`${(r._id as any).provider}-${(r._id as any).model}`, r.wins as number])
+
+    return { providerLeaderboard, modelLeaderboard, totalWins }
+  },
+
+  async aggregateForWeek(weekStart: Date, weekEnd: Date): Promise<{
+    providerRankings: Array<{ provider: string; wins: number }>
+    modelRankings: Array<{ model: string; provider: string; wins: number }>
+    totalVotes: number
+  }> {
+    const c = await col.modelWins()
+    const match = { timestamp: { $gte: weekStart, $lt: weekEnd } }
+
+    const [providerResults, modelResults, totalVotes] = await Promise.all([
+      c.aggregate([
+        { $match: match },
+        { $group: { _id: '$provider', wins: { $sum: 1 } } },
+        { $sort: { wins: -1 } },
+      ]).toArray(),
+
+      c.aggregate([
+        { $match: match },
+        { $group: { _id: '$model', provider: { $first: '$provider' }, wins: { $sum: 1 } } },
+        { $sort: { wins: -1 } },
+      ]).toArray(),
+
+      c.countDocuments(match as Filter<ModelWinDoc>),
+    ])
+
+    const providerRankings = providerResults.map(r => ({
+      provider: r._id as string,
+      wins: r.wins as number,
+    }))
+
+    const modelRankings = modelResults.map(r => ({
+      model: r._id as string,
+      provider: r.provider as string,
+      wins: r.wins as number,
+    }))
+
+    return { providerRankings, modelRankings, totalVotes }
+  },
+
+  async deleteForUser(userId: string): Promise<void> {
+    const c = await col.modelWins()
+    await c.deleteMany({ userId } as Filter<ModelWinDoc>)
   },
 }
 
@@ -1290,6 +1384,7 @@ export default {
   judgeContext,
   leaderboard,
   weeklyLeaderboard,
+  modelWins,
   usage,
   userStats,
   relationships,
@@ -1315,6 +1410,7 @@ export {
   judgeContext,
   leaderboard,
   weeklyLeaderboard,
+  modelWins,
   usage,
   userStats,
   relationships,

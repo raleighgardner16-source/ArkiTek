@@ -13,6 +13,7 @@
  * - purchases: Individual purchase records
  * - judge_context: Judge conversation context (max 5 per user)
  * - model_conversation_context: Stored in usage_data.modelConversationContext (max 5 per model per user)
+ * - model_wins: Individual vote documents (one per user per prompt session)
  * - weekly_leaderboard: Weekly provider/model ranking snapshots
  * - password_resets: Temporary password reset tokens (auto-expire via TTL)
  * 
@@ -267,6 +268,27 @@ export const judgeContextSchema = {
 }
 
 /**
+ * MODEL_WINS COLLECTION
+ * 
+ * Individual vote documents — one per user per prompt session.
+ * Replaces the embedded modelWins map on usage_data to avoid unbounded
+ * document growth and to enable efficient aggregation pipelines.
+ * 
+ * Index: { userId: 1, promptSessionId: 1 } (unique — one win per session per user)
+ * Index: { userId: 1, timestamp: -1 } (for personal win queries)
+ * Index: { timestamp: -1 } (for weekly leaderboard aggregation)
+ */
+export const modelWinsSchema = {
+  _id: 'ObjectId',
+  userId: 'string',
+  promptSessionId: 'string',
+  provider: 'string',
+  model: 'string',
+  responseId: 'string',
+  timestamp: 'Date',
+}
+
+/**
  * WEEKLY_LEADERBOARD COLLECTION
  * 
  * Stores weekly snapshots of provider and model rankings.
@@ -437,6 +459,12 @@ export const indexes = {
   
   judge_context: [
     { key: { userId: 1 }, options: { unique: true } }
+  ],
+  
+  model_wins: [
+    { key: { userId: 1, promptSessionId: 1 }, options: { unique: true } },
+    { key: { userId: 1, timestamp: -1 } },
+    { key: { timestamp: -1 } },
   ],
   
   weekly_leaderboard: [

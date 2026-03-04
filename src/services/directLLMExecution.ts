@@ -12,6 +12,7 @@ interface DirectLLMParams {
   geminiThinkingLevel?: string
   userId: string | null
   signal: AbortSignal
+  images?: Array<{ mimeType: string; base64: string }>
 }
 
 export interface DirectLLMResult {
@@ -33,6 +34,7 @@ export async function executeDirectLLM({
   geminiThinkingLevel,
   userId,
   signal,
+  images,
 }: DirectLLMParams): Promise<DirectLLMResult> {
   let memoryContextData = null
   let memoryPrefix = ''
@@ -119,6 +121,7 @@ export async function executeDirectLLM({
         signal,
         rolePrompt,
         thinkingLevel,
+        images,
       )
 
       const responseText = llmResponse.text

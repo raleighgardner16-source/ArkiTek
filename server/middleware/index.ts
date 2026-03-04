@@ -40,5 +40,5 @@ export const setupMiddleware = (app: Application) => {
   app.use(`${API_PREFIX}/stripe/webhook`, express.raw({ type: 'application/json' }))
   app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }))
 
-  app.use(express.json({ limit: '2mb' }))
+  app.use(express.json({ limit: '20mb' }))
 }

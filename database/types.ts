@@ -162,7 +162,6 @@ export interface UsageDataDoc {
   categories: Record<string, number>
   categoryPrompts: Record<string, Array<PromptHistoryEntry | Record<string, unknown>>>
   ratings: Record<string, unknown>
-  modelWins: Record<string, { provider: string; model: string; responseId: string }>
   lastActiveAt: string | null
   streakDays: number
   judgeConversationContext: Array<Record<string, unknown>>
@@ -294,6 +293,20 @@ export interface JudgeContextDoc {
   _id: string
   userId: string
   context: JudgeContextItem[]
+}
+
+// ============================================================================
+// Model Wins (individual vote documents)
+// ============================================================================
+
+export interface ModelWinDoc {
+  _id?: ObjectId
+  userId: string
+  promptSessionId: string
+  provider: string
+  model: string
+  responseId: string
+  timestamp: Date
 }
 
 // ============================================================================

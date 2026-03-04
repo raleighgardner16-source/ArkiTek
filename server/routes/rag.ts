@@ -30,6 +30,7 @@ async function streamRagCouncilModel({
   rolePrompt,
   clientClosedRef,
   geminiThinkingLevel,
+  images,
 }: {
   modelId: string
   query: string
@@ -40,6 +41,7 @@ async function streamRagCouncilModel({
   rolePrompt: string | null
   clientClosedRef: { closed: boolean }
   geminiThinkingLevel?: string
+  images?: Array<{ mimeType: string; base64: string }>
 }) {
   const firstDashIndex = modelId.indexOf('-')
   if (firstDashIndex === -1) {
@@ -91,13 +93,25 @@ User Query: ${query}`
       throw new Error(`No API key configured for provider: ${providerKey}`)
     }
 
+    const hasImages = Array.isArray(images) && images.length > 0
+
     if (['openai', 'xai', 'meta', 'deepseek', 'mistral'].includes(providerKey)) {
       const modelsWithFixedTemperature = ['gpt-5-mini']
       const shouldUseDefaultTemperature = modelsWithFixedTemperature.includes(mappedModel) || modelsWithFixedTemperature.includes(model)
 
       const councilMessages: any[] = []
       if (rolePrompt) councilMessages.push({ role: 'system', content: rolePrompt })
-      councilMessages.push({ role: 'user', content: rolePrompt ? baseCouncilPrompt : councilPrompt })
+
+      const textContent = rolePrompt ? baseCouncilPrompt : councilPrompt
+      if (hasImages) {
+        const contentParts: any[] = [{ type: 'text', text: textContent }]
+        for (const img of images!) {
+          contentParts.push({ type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.base64}` } })
+        }
+        councilMessages.push({ role: 'user', content: contentParts })
+      } else {
+        councilMessages.push({ role: 'user', content: textContent })
+      }
 
       const streamResponse = await axios.post(
         `${PROVIDER_BASE_URLS[providerKey]}/chat/completions`,
@@ -114,6 +128,8 @@ User Query: ${query}`
             'Content-Type': 'application/json',
           },
           responseType: 'stream',
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
         }
       )
 
@@ -171,10 +187,22 @@ User Query: ${query}`
         fullResponse = cleanMistralResponse(fullResponse) || ''
       }
     } else if (providerKey === 'anthropic') {
+      const textContent = rolePrompt ? baseCouncilPrompt : councilPrompt
+      let anthropicUserContent: any = textContent
+      if (hasImages) {
+        anthropicUserContent = [
+          ...images!.map((img) => ({
+            type: 'image',
+            source: { type: 'base64', media_type: img.mimeType, data: img.base64 },
+          })),
+          { type: 'text', text: textContent },
+        ]
+      }
+
       const anthropicCouncilBody: Record<string, any> = {
         model: mappedModel,
         max_tokens: 4096,
-        messages: [{ role: 'user', content: rolePrompt ? baseCouncilPrompt : councilPrompt }],
+        messages: [{ role: 'user', content: anthropicUserContent }],
         stream: true,
       }
       if (rolePrompt) anthropicCouncilBody.system = rolePrompt
@@ -190,6 +218,8 @@ User Query: ${query}`
           },
           responseType: 'stream',
           timeout: 120000,
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
         }
       )
 
@@ -254,8 +284,16 @@ User Query: ${query}`
       const isPreviewModel = mappedModel.includes('-preview')
       const apiVersion = isPreviewModel ? 'v1beta' : 'v1'
       const baseUrl = `https://generativelanguage.googleapis.com/${apiVersion}`
+
+      const geminiParts: any[] = [{ text: rolePrompt ? baseCouncilPrompt : councilPrompt }]
+      if (hasImages) {
+        for (const img of images!) {
+          geminiParts.push({ inline_data: { mime_type: img.mimeType, data: img.base64 } })
+        }
+      }
+
       const geminiCouncilBody: Record<string, any> = {
-        contents: [{ parts: [{ text: rolePrompt ? baseCouncilPrompt : councilPrompt }] }],
+        contents: [{ parts: geminiParts }],
         generationConfig: { maxOutputTokens: 4096 },
       }
       if (rolePrompt) {
@@ -848,7 +886,7 @@ router.post('/stream', async (req: Request, res: Response) => {
 
   try {
     const userId = req.userId
-    const { query, selectedModels, needsContext: needsContextHint, rolePrompts, geminiThinkingLevel: ragGeminiThinkingLevel } = req.body || {}
+    const { query, selectedModels, needsContext: needsContextHint, rolePrompts, geminiThinkingLevel: ragGeminiThinkingLevel, images: ragImages } = req.body || {}
 
     if (userId) {
       const subscriptionCheck = await checkSubscriptionStatus(userId)
@@ -927,6 +965,7 @@ router.post('/stream', async (req: Request, res: Response) => {
         rolePrompt: rolePrompts?.[modelId] || null,
         clientClosedRef,
         geminiThinkingLevel: ragGeminiThinkingLevel,
+        images: Array.isArray(ragImages) && ragImages.length > 0 ? ragImages : undefined,
       }))
     )
 

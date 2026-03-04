@@ -1,7 +1,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Flame, Search, Lock, FileText, PauseCircle, MessageCircle, Swords, AlertTriangle } from 'lucide-react'
+import { Flame, Search, Lock, FileText, PauseCircle, MessageCircle, Swords, AlertTriangle, Mic, MicOff, ImagePlus, X } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getAllModels } from '../services/llmProviders'
 import { getModelShortLabel } from '../utils/modelNames'
@@ -155,6 +155,17 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [isCouncilColumnInputFocused, setIsCouncilColumnInputFocused] = useState(false)
   const [isSubmitPending, setIsSubmitPending] = useState(false)
 
+  // Voice input (speech-to-text)
+  const [isRecording, setIsRecording] = useState(false)
+  const recognitionRef = useRef<any>(null)
+
+  // Image attachments
+  const attachedImages = useStore((state) => state.attachedImages)
+  const addAttachedImage = useStore((state) => state.addAttachedImage)
+  const removeAttachedImage = useStore((state) => state.removeAttachedImage)
+  const clearAttachedImages = useStore((state) => state.clearAttachedImages)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+
   const handlePickFavorite = useCallback(async (responseId: string) => {
     if (isReopenedHistoryChat) return
     const isAlreadyFavorite = currentPromptFavorite === responseId
@@ -243,6 +254,105 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       console.error('Error recovering streak:', error)
     }
   }
+
+  // ── Voice input handlers ──────────────────────────────────────────
+  const toggleVoiceInput = useCallback(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      alert('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.')
+      return
+    }
+
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+
+    let finalTranscript = ''
+
+    recognition.onresult = (event: any) => {
+      let interim = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' '
+        } else {
+          interim = transcript
+        }
+      }
+      const currentText = useStore.getState().currentPrompt
+      const baseText = currentText.replace(/\s*\[.*?\]\s*$/, '')
+      if (interim) {
+        setCurrentPrompt(baseText + (baseText ? ' ' : '') + finalTranscript + interim)
+      } else {
+        setCurrentPrompt(baseText + (baseText ? ' ' : '') + finalTranscript)
+      }
+    }
+
+    recognition.onerror = (event: any) => {
+      console.error('[Voice] Recognition error:', event.error)
+      setIsRecording(false)
+    }
+
+    recognition.onend = () => {
+      setIsRecording(false)
+    }
+
+    recognitionRef.current = recognition
+    recognition.start()
+    setIsRecording(true)
+  }, [isRecording, setCurrentPrompt])
+
+  // ── Image upload handlers ────────────────────────────────────────
+  const handleImageSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+
+    const MAX_IMAGES = 4
+    const MAX_SIZE_MB = 4
+    const currentCount = useStore.getState().attachedImages.length
+
+    for (let i = 0; i < files.length; i++) {
+      if (currentCount + i >= MAX_IMAGES) {
+        alert(`Maximum ${MAX_IMAGES} images allowed per prompt.`)
+        break
+      }
+
+      const file = files[i]
+      if (!file.type.startsWith('image/')) continue
+      if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+        alert(`Image "${file.name}" exceeds ${MAX_SIZE_MB}MB limit.`)
+        continue
+      }
+
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const result = reader.result as string
+          resolve(result.split(',')[1])
+        }
+        reader.readAsDataURL(file)
+      })
+
+      const preview = URL.createObjectURL(file)
+
+      addAttachedImage({
+        id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        name: file.name,
+        mimeType: file.type,
+        base64,
+        preview,
+      })
+    }
+
+    if (imageInputRef.current) imageInputRef.current.value = ''
+  }, [addAttachedImage])
 
   const allModels = getAllModels()
 
@@ -351,7 +461,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
 
   const handleSubmit = async () => {
     if (isPromptLocked) return
-    if (!currentPrompt.trim()) return
+    if (!currentPrompt.trim() && attachedImages.length === 0) return
 
     const providersWithAutoSmart = Object.entries(autoSmartProviders).filter(([_, isEnabled]) => isEnabled)
     const hasSelectedModels = selectedModels.length > 0
@@ -369,6 +479,11 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     setShowCouncilPanel(false)
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
+    }
+    // Stop voice recording if active
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      setIsRecording(false)
     }
     
     if (providersWithAutoSmart.length > 0) {
@@ -1484,7 +1599,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
                     const hasAutoSmart = Object.values(autoSmartProviders).some(enabled => enabled)
-                    if (currentPrompt.trim()) {
+                    if (currentPrompt.trim() || attachedImages.length > 0) {
                       if (selectedModels.length > 0 || hasAutoSmart) {
                         setIsSubmitPending(true)
                         handleSubmit()
@@ -1496,6 +1611,127 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   }
                 }}
               />
+
+              {/* Attached Image Previews */}
+              {attachedImages.length > 0 && (
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: spacing.sm,
+                  padding: `0 ${spacing['2xl']} ${spacing.sm}`,
+                }}>
+                  {attachedImages.map((img) => (
+                    <div key={img.id} style={{
+                      position: 'relative',
+                      width: '64px',
+                      height: '64px',
+                      borderRadius: radius.md,
+                      overflow: 'hidden',
+                      border: `1px solid ${currentTheme.borderLight}`,
+                    }}>
+                      <img
+                        src={img.preview}
+                        alt={img.name}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                      <button
+                        onClick={() => removeAttachedImage(img.id)}
+                        style={{
+                          position: 'absolute',
+                          top: '-2px',
+                          right: '-2px',
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '50%',
+                          background: currentTheme.error,
+                          border: 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: 0,
+                        }}
+                      >
+                        <X size={12} color="#fff" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Voice & Image Action Bar */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: spacing.xs,
+                padding: `0 ${spacing.xl} ${spacing.xs}`,
+              }}>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  multiple
+                  onChange={handleImageSelect}
+                  style={{ display: 'none' }}
+                />
+                <button
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={isPromptLocked}
+                  title="Attach image"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: radius.md,
+                    border: `1px solid ${currentTheme.borderLight}`,
+                    background: 'transparent',
+                    cursor: isPromptLocked ? 'not-allowed' : 'pointer',
+                    color: currentTheme.textMuted,
+                    transition: transition.fast,
+                    opacity: isPromptLocked ? 0.4 : 1,
+                  }}
+                  onMouseEnter={(e) => { if (!isPromptLocked) (e.currentTarget.style.background = currentTheme.backgroundOverlayLight) }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  <ImagePlus size={16} />
+                </button>
+                <button
+                  onClick={toggleVoiceInput}
+                  disabled={isPromptLocked}
+                  title={isRecording ? 'Stop recording' : 'Voice input'}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: radius.md,
+                    border: `1px solid ${isRecording ? currentTheme.error : currentTheme.borderLight}`,
+                    background: isRecording ? (currentTheme.name === 'dark' ? 'rgba(231, 76, 60, 0.2)' : 'rgba(192, 57, 43, 0.1)') : 'transparent',
+                    cursor: isPromptLocked ? 'not-allowed' : 'pointer',
+                    color: isRecording ? currentTheme.error : currentTheme.textMuted,
+                    transition: transition.fast,
+                    opacity: isPromptLocked ? 0.4 : 1,
+                    animation: isRecording ? 'pulse-recording 1.5s ease-in-out infinite' : 'none',
+                  }}
+                  onMouseEnter={(e) => { if (!isPromptLocked && !isRecording) (e.currentTarget.style.background = currentTheme.backgroundOverlayLight) }}
+                  onMouseLeave={(e) => { if (!isRecording) e.currentTarget.style.background = 'transparent' }}
+                >
+                  {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
+                {isRecording && (
+                  <span style={{
+                    fontSize: fontSize.xs,
+                    color: currentTheme.error,
+                    fontWeight: fontWeight.medium,
+                    marginLeft: spacing.xs,
+                  }}>
+                    Listening...
+                  </span>
+                )}
+              </div>
 
               <ModelSelector
                 currentTheme={currentTheme}

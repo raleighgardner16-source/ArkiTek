@@ -274,7 +274,7 @@ async function verifyMigration(db: Db, usageData: Record<string, any>, usersData
   
   // Global stats
   console.log('\n📈 Database Statistics:')
-  const collections = ['users', 'prompts', 'purchases', 'judge_context', 'usage_data', 'user_stats']
+  const collections = ['users', 'prompts', 'purchases', 'judge_context', 'usage_data', 'user_stats', 'model_wins']
   for (const coll of collections) {
     const count = await db.collection<any>(coll).countDocuments()
     console.log(`  ${coll}: ${count} documents`)

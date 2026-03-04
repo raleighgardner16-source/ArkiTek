@@ -11,6 +11,7 @@ interface RAGPipelineParams {
   needsContext: boolean
   geminiThinkingLevel?: string
   signal: AbortSignal
+  images?: Array<{ mimeType: string; base64: string }>
 }
 
 export interface RAGPipelineResult {
@@ -33,6 +34,7 @@ export async function executeRAGPipeline({
   needsContext,
   geminiThinkingLevel,
   signal,
+  images,
 }: RAGPipelineParams): Promise<RAGPipelineResult | null> {
   const store = useStore.getState()
   store.setIsSearchingWeb(true)
@@ -127,6 +129,7 @@ export async function executeRAGPipeline({
         needsContext,
         rolePrompts: Object.keys(rolePromptsForRag).length > 0 ? rolePromptsForRag : undefined,
         geminiThinkingLevel,
+        ...(images && images.length > 0 ? { images } : {}),
       },
       {
         onToken: () => {},

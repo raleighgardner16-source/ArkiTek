@@ -105,6 +105,8 @@ profileRouter.get('/:userId', async (req: Request, res: Response) => {
       const levelInfo = getLevelFromXP(totalXP)
       const levelTitle = getLevelTitle(levelInfo.level)
 
+      const ratingsAgg = await db.modelWins.aggregateForUser(targetUserId)
+
       baseData.publicStats = {
         totalTokens: usage.totalTokens || 0,
         totalPrompts: usage.totalPrompts || 0,
@@ -113,7 +115,11 @@ profileRouter.get('/:userId', async (req: Request, res: Response) => {
         dailyUsage,
         providers: providerStats,
         models: modelStats,
-        modelWins: usage.modelWins || {},
+        ratingsStats: {
+          totalWins: ratingsAgg.totalWins,
+          providerLeaderboard: ratingsAgg.providerLeaderboard,
+          modelLeaderboard: ratingsAgg.modelLeaderboard,
+        },
         streakDays: usage.streakDays || 0,
         councilPrompts: usage.councilPrompts || 0,
         debatePrompts: usage.debatePrompts || 0,

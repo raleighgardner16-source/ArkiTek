@@ -188,6 +188,12 @@ export interface StoreState {
   theme: string
   setTheme: (theme: string) => void
   toggleTheme: () => void
+
+  // Attached images for multimodal prompts (transient, not persisted)
+  attachedImages: Array<{ id: string; name: string; mimeType: string; base64: string; preview: string }>
+  addAttachedImage: (image: { id: string; name: string; mimeType: string; base64: string; preview: string }) => void
+  removeAttachedImage: (id: string) => void
+  clearAttachedImages: () => void
 }
 
 export const useStore = create<StoreState>()(
@@ -492,6 +498,14 @@ export const useStore = create<StoreState>()(
       theme: 'dark',
       setTheme: (theme: string) => set({ theme }),
       toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
+
+      // Attached images (transient)
+      attachedImages: [],
+      addAttachedImage: (image) =>
+        set((state) => ({ attachedImages: [...state.attachedImages, image] })),
+      removeAttachedImage: (id) =>
+        set((state) => ({ attachedImages: state.attachedImages.filter((img) => img.id !== id) })),
+      clearAttachedImages: () => set({ attachedImages: [] }),
     }),
     {
       name: 'arktek-storage',

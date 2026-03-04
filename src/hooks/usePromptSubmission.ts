@@ -109,8 +109,12 @@ export function usePromptSubmission() {
     const store = useStore.getState()
     const latestSelectedModels = store.selectedModels
     const currentPrompt = store.currentPrompt
+    const images = store.attachedImages.map((img) => ({
+      mimeType: img.mimeType,
+      base64: img.base64,
+    }))
 
-    if (!currentPrompt.trim() || latestSelectedModels.length === 0) return
+    if ((!currentPrompt.trim() && images.length === 0) || latestSelectedModels.length === 0) return
     store.clearGenerateSummary()
 
     const savedPrompt = currentPrompt.trim()
@@ -198,6 +202,7 @@ export function usePromptSubmission() {
           needsContext,
           geminiThinkingLevel,
           signal: abortController.signal,
+          images,
         })
 
         if (ragResult) {
@@ -237,6 +242,7 @@ export function usePromptSubmission() {
           geminiThinkingLevel,
           userId: currentUser?.id || null,
           signal: abortController.signal,
+          images,
         })
 
         responses = directResult.responses
@@ -375,8 +381,9 @@ export function usePromptSubmission() {
         }
       }
 
-      // Clear the prompt input
+      // Clear the prompt input and attached images
       useStore.getState().setCurrentPrompt('')
+      useStore.getState().clearAttachedImages()
     } catch (error: any) {
       if (
         error.name === 'AbortError' ||

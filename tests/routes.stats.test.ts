@@ -218,8 +218,7 @@ describe('ratings routes', () => {
 
   describe('POST /', () => {
     it('saves a model win', async () => {
-      mockDb.usage.getOrDefault.mockResolvedValue({ modelWins: {} } as any)
-      mockDb.usage.update.mockResolvedValue(undefined as any)
+      mockDb.modelWins.upsert.mockResolvedValue(undefined as any)
 
       const res = await request(app).post('/').send({
         promptSessionId: 'session1',
