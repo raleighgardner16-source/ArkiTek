@@ -11,6 +11,47 @@ export function usePromptSubmission() {
 
   const shouldSubmit = useStore((state) => state.shouldSubmit)
 
+  // Build token-data entries for every response that has visible text.
+  // Uses the real `tokens` object when available (model finished before cancel),
+  // otherwise falls back to a rough client-side estimate (~1 token per 4 chars).
+  const collectResponseTokenData = (): any[] => {
+    const store = useStore.getState()
+    const promptText = store.lastSubmittedPrompt || store.currentPrompt || ''
+    const entries: any[] = []
+
+    store.responses.forEach((r: any) => {
+      if (r.error) return
+
+      if (r.tokens) {
+        entries.push({ modelName: r.modelName || r.actualModelName, tokens: r.tokens })
+        return
+      }
+
+      if (r.text && r.text.trim().length > 0) {
+        const name = r.modelName || r.actualModelName || ''
+        const firstDash = name.indexOf('-')
+        const provider = firstDash > 0 ? name.substring(0, firstDash) : 'unknown'
+        const model = firstDash > 0 ? name.substring(firstDash + 1) : name
+        const estimatedOutput = Math.ceil(r.text.length / 4)
+        const estimatedInput = Math.ceil(promptText.length / 4) + 200
+        entries.push({
+          modelName: name,
+          tokens: {
+            input: estimatedInput,
+            output: estimatedOutput,
+            total: estimatedInput + estimatedOutput,
+            reasoningTokens: 0,
+            provider,
+            model,
+            source: 'client_estimate',
+          },
+        })
+      }
+    })
+
+    return entries
+  }
+
   // ── Clear all responses, windows, and server-side context ──────────
   const clearAllWindows = () => {
     try {
@@ -46,13 +87,7 @@ export function usePromptSubmission() {
     if (hasVisibleContent) {
       store.setIsCancelledPrompt(true)
 
-      // Collect whatever tokens are already available and add a cancelled marker
-      const cancelledTokenData: any[] = []
-      store.responses.forEach((r: any) => {
-        if (r.tokens) {
-          cancelledTokenData.push({ modelName: r.modelName || r.actualModelName, tokens: r.tokens })
-        }
-      })
+      const cancelledTokenData = collectResponseTokenData()
       cancelledTokenData.push({
         modelName: 'Cancelled Prompt',
         isCancelledPrompt: true,
@@ -222,17 +257,14 @@ export function usePromptSubmission() {
       // If cancelled, collect whatever token data is available and stop
       if (abortController.signal.aborted) {
         console.log('[handlePromptSubmit] Request cancelled — collecting partial token data')
-        const cancelledTokenData: any[] = []
+        const cancelledTokenData = collectResponseTokenData()
         if (categoryDetectionTokens) {
-          cancelledTokenData.push({
+          cancelledTokenData.unshift({
             modelName: 'Category Detection (Refiner)',
             tokens: categoryDetectionTokens,
             isPipeline: true,
           })
         }
-        responses.forEach((r) => {
-          if (r.tokens) cancelledTokenData.push({ modelName: r.modelName, tokens: r.tokens })
-        })
         cancelledTokenData.push({
           modelName: 'Cancelled Prompt',
           isCancelledPrompt: true,
@@ -347,14 +379,7 @@ export function usePromptSubmission() {
         abortController.signal.aborted
       ) {
         console.log('[handlePromptSubmit] Request cancelled by user — collecting partial token data')
-        const store = useStore.getState()
-        const currentResponses = store.responses || []
-        const cancelledTokenData: any[] = []
-        currentResponses.forEach((r: any) => {
-          if (r.tokens) {
-            cancelledTokenData.push({ modelName: r.modelName || r.actualModelName, tokens: r.tokens })
-          }
-        })
+        const cancelledTokenData = collectResponseTokenData()
         cancelledTokenData.push({
           modelName: 'Cancelled Prompt',
           isCancelledPrompt: true,
@@ -362,7 +387,7 @@ export function usePromptSubmission() {
           isPipeline: false,
           tokens: null,
         })
-        store.setTokenData(cancelledTokenData)
+        useStore.getState().setTokenData(cancelledTokenData)
         return
       }
 

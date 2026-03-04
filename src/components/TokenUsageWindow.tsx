@@ -361,7 +361,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }: Props)
               </div>
               <div style={{ fontSize: fontSize.sm, color: '#999', lineHeight: '1.4' }}>
                 {inlineCountedItems.length > 0
-                  ? 'Prompt was cancelled. Tokens consumed by models that completed before cancellation are shown above and still count toward your usage.'
+                  ? 'Prompt was cancelled. Token counts above are estimated from partial responses and still count toward your usage.'
                   : 'Prompt was cancelled before any model responses completed. No tokens were consumed.'}
               </div>
             </div>
@@ -842,7 +842,7 @@ const TokenUsageWindow = ({ isOpen, onClose, tokenData, inline = false }: Props)
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#999', lineHeight: '1.4' }}>
                   {countedItems.length > 0
-                    ? 'Prompt was cancelled. Tokens consumed by models that completed before cancellation are shown above and still count toward your usage.'
+                    ? 'Prompt was cancelled. Token counts above are estimated from partial responses and still count toward your usage. Input token estimates do not include system instructions or source context added server-side.'
                     : 'Prompt was cancelled before any model responses completed. No tokens were consumed.'}
                 </div>
               </div>

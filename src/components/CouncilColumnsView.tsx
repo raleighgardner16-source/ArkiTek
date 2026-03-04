@@ -414,7 +414,7 @@ const CouncilColumnsView = ({
                     }}>
                       {response.text ? (
                         <MarkdownRenderer content={response.text} theme={currentTheme} fontSize={arr.length > 3 ? '0.8rem' : '0.85rem'} lineHeight="1.7" />
-                      ) : (
+                      ) : response.isStreaming ? (
                         <motion.div
                           style={sx(layout.flexRow, { gap: spacing.md, padding: `${spacing.md} 0` })}
                         >
@@ -433,6 +433,10 @@ const CouncilColumnsView = ({
                             Waiting for response...
                           </span>
                         </motion.div>
+                      ) : (
+                        <div style={{ padding: `${spacing.md} 0`, color: currentTheme.textMuted, fontStyle: 'italic', fontSize: fontSize.md }}>
+                          Response cancelled.
+                        </div>
                       )}
                     </div>
                     {(showCouncilReviewPhase || (canToggleResultViews && resultViewMode === 'council') || (!response.isStreaming && response.text)) && (

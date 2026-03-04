@@ -411,7 +411,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                 </div>
                 <div style={{ fontSize: fontSize.sm, color: '#999', lineHeight: '1.4' }}>
                   {costBreakdown.length > 0
-                    ? 'Prompt was cancelled. Any cost incurred by models that completed before cancellation is shown above and still counts toward your usage.'
+                    ? 'Prompt was cancelled. Cost estimates above are based on partial response tokens and still count toward your usage.'
                     : 'Prompt was cancelled before any model responses completed. No cost was incurred.'}
                 </div>
               </div>
@@ -783,7 +783,7 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                     </div>
                     <div style={{ fontSize: '0.78rem', color: '#999', lineHeight: '1.5' }}>
                       {costBreakdown.length > 0
-                        ? 'Prompt was cancelled. Any cost incurred by models that completed before cancellation is shown above and still counts toward your usage.'
+                        ? 'Prompt was cancelled. Cost estimates above are based on partial response tokens and still count toward your usage.'
                         : 'Prompt was cancelled before any model responses completed. No cost was incurred.'}
                     </div>
                   </div>
