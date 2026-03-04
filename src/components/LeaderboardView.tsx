@@ -90,6 +90,7 @@ const LeaderboardView = () => {
   const [providerRankings, setProviderRankings] = useState<ProviderRanking[]>([])
   const [modelRankings, setModelRankings] = useState<ModelRanking[]>([])
   const [totalVotes, setTotalVotes] = useState(0)
+  const [cumulativeWins, setCumulativeWins] = useState<{ providers: Record<string, number>; models: Record<string, number> }>({ providers: {}, models: {} })
   const [loadingVotes, setLoadingVotes] = useState(true)
 
   const userRankings = rankingsCache[activeType]?.rankings || []
@@ -164,6 +165,7 @@ const LeaderboardView = () => {
       setProviderRankings(res.data.providerRankings || [])
       setModelRankings(res.data.modelRankings || [])
       setTotalVotes(res.data.totalVotes || 0)
+      setCumulativeWins(res.data.cumulativeWins || { providers: {}, models: {} })
     } catch (err: any) {
       console.error('[Leaderboard] Provider rankings error:', err)
     } finally {
@@ -418,6 +420,7 @@ const LeaderboardView = () => {
           const providerColor = PROVIDER_COLORS[entry.provider] || currentTheme.accent
           const isFirst = entry.rank === 1 && entry.wins > 0
           const pct = totalVotes > 0 ? Math.round((entry.wins / totalVotes) * 100) : 0
+          const weeklyWinCount = cumulativeWins.providers[entry.provider] || 0
 
           return (
             <motion.div
@@ -472,6 +475,22 @@ const LeaderboardView = () => {
                 </span>
               </div>
 
+              {weeklyWinCount > 0 && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '3px',
+                  padding: `${spacing['2xs']} ${spacing.md}`,
+                  background: `${providerColor}15`,
+                  border: `1px solid ${providerColor}30`,
+                  borderRadius: radius.lg,
+                  flexShrink: 0,
+                }}>
+                  <Trophy size={10} color={providerColor} />
+                  <span style={{ color: providerColor, fontSize: fontSize.xs, fontWeight: fontWeight.semibold }}>
+                    {weeklyWinCount}
+                  </span>
+                </div>
+              )}
+
               <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: spacing.xs }}>
                 <span style={{
                   color: isFirst ? providerColor : currentTheme.text,
@@ -505,6 +524,7 @@ const LeaderboardView = () => {
           const providerColor = PROVIDER_COLORS[entry.provider] || currentTheme.accent
           const isFirst = entry.rank === 1 && entry.wins > 0
           const pct = totalVotes > 0 ? Math.round((entry.wins / totalVotes) * 100) : 0
+          const weeklyWinCount = cumulativeWins.models[entry.model] || 0
 
           return (
             <motion.div
@@ -564,6 +584,22 @@ const LeaderboardView = () => {
                   {entry.providerName}
                 </span>
               </div>
+
+              {weeklyWinCount > 0 && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '3px',
+                  padding: `${spacing['2xs']} ${spacing.md}`,
+                  background: `${providerColor}15`,
+                  border: `1px solid ${providerColor}30`,
+                  borderRadius: radius.lg,
+                  flexShrink: 0,
+                }}>
+                  <Trophy size={10} color={providerColor} />
+                  <span style={{ color: providerColor, fontSize: fontSize.xs, fontWeight: fontWeight.semibold }}>
+                    {weeklyWinCount}
+                  </span>
+                </div>
+              )}
 
               <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: spacing.xs }}>
                 <span style={{

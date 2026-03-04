@@ -38,7 +38,6 @@ const DB_NAME = process.env.DB_NAME || 'arktek'
 const ADMIN_DIR = path.join(__dirname, '..', 'ADMIN')
 const USAGE_FILE = path.join(ADMIN_DIR, 'usage.json')
 const USERS_FILE = path.join(ADMIN_DIR, 'users.json')
-const LEADERBOARD_FILE = path.join(ADMIN_DIR, 'leaderboard.json')
 const ADMINS_FILE = path.join(ADMIN_DIR, 'admins.json')
 const DELETED_USERS_FILE = path.join(ADMIN_DIR, 'deleted_users.json')
 
@@ -54,7 +53,6 @@ const stats = {
   usersFailed: 0,
   promptsMigrated: 0,
   purchaseRecords: 0,
-  leaderboardPosts: 0,
   adminsMigrated: false,
   metadataMigrated: false,
   errors: [] as Array<{ userId: string; error: string }>
@@ -355,55 +353,6 @@ async function migrate() {
       }
     }
     
-    // Migrate leaderboard posts
-    if (!SINGLE_USER) {
-      console.log('\n🏆 Migrating leaderboard posts...')
-      const leaderboardData = readJsonFile(LEADERBOARD_FILE)
-      
-      if (leaderboardData && leaderboardData.prompts && leaderboardData.prompts.length > 0) {
-        const posts = leaderboardData.prompts.map((post: any) => ({
-          _id: post.id,
-          userId: post.userId,
-          username: post.username || 'Anonymous',
-          promptText: post.promptText,
-          category: post.category || 'General Knowledge/Other',
-          createdAt: new Date(post.createdAt),
-          responses: post.responses || [],
-          summary: post.summary || null,
-          sources: post.sources || [],
-          likes: post.likes || [],
-          likeCount: post.likeCount || 0,
-          comments: (post.comments || []).map((c: any) => ({
-            id: c.id,
-            userId: c.userId,
-            username: c.username || 'Anonymous',
-            text: c.text,
-            createdAt: new Date(c.createdAt),
-            likes: c.likes || [],
-            likeCount: c.likeCount || 0,
-            replies: (c.replies || []).map((r: any) => ({
-              id: r.id,
-              userId: r.userId,
-              username: r.username || 'Anonymous',
-              text: r.text,
-              createdAt: new Date(r.createdAt)
-            }))
-          }))
-        }))
-        
-        if (!DRY_RUN && posts.length > 0) {
-          // Clear existing leaderboard posts
-          await db.collection<any>('leaderboard_posts').deleteMany({})
-          await db.collection<any>('leaderboard_posts').insertMany(posts)
-        }
-        
-        stats.leaderboardPosts = posts.length
-        console.log(`  ✓ ${posts.length} leaderboard posts migrated`)
-      } else {
-        console.log('  ⚠️  No leaderboard data found or empty')
-      }
-    }
-    
     // Migrate admins list
     if (!SINGLE_USER) {
       console.log('\n👑 Migrating admins list...')
@@ -480,7 +429,6 @@ async function migrate() {
     console.log(`  Users failed:        ${stats.usersFailed}`)
     console.log(`  Prompts migrated:    ${stats.promptsMigrated}`)
     console.log(`  Purchases:           ${stats.purchaseRecords}`)
-    console.log(`  Leaderboard posts:   ${stats.leaderboardPosts}`)
     console.log(`  Admins migrated:     ${stats.adminsMigrated ? '✓' : '✗'}`)
     console.log(`  Metadata migrated:   ${stats.metadataMigrated ? '✓' : '✗'}`)
     

@@ -87,17 +87,20 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [sharingPrompt, setSharingPrompt] = useState(false)
   const [shareSuccess, setShareSuccess] = useState(false)
 
-  const handleSharePrompt = async () => {
+  const handleSharePrompt = useCallback(async () => {
     if (sharingPrompt || responses.length === 0 || !lastSubmittedPrompt) return
     setSharingPrompt(true)
     try {
-      const shareResponses = responses.map((r: any) => ({
-        modelName: r.modelName,
-        actualModelName: r.actualModelName,
-        originalModelName: r.originalModelName,
-        text: r.text,
-        error: r.error,
-      }))
+      const shareResponses = responses
+        .filter((r: any) => r.text && !r.error)
+        .map((r: any) => ({
+          modelName: r.modelName,
+          actualModelName: r.actualModelName,
+          originalModelName: r.originalModelName,
+          text: r.text,
+          error: false,
+        }))
+      if (shareResponses.length === 0) return setSharingPrompt(false)
       const shareSummary = summary && !summary.error ? {
         text: summary.text || '',
         consensus: summary.consensus ?? null,
@@ -125,7 +128,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     } finally {
       setSharingPrompt(false)
     }
-  }
+  }, [sharingPrompt, responses, lastSubmittedPrompt, lastSubmittedCategory, summary])
 
   // Conversation handlers hook
   const conversation = useConversationHandlers({ isLoading, isGeneratingSummary })

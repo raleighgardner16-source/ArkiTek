@@ -297,44 +297,32 @@ export interface JudgeContextDoc {
 }
 
 // ============================================================================
-// Leaderboard Posts
+// Weekly Leaderboard
 // ============================================================================
 
-export interface PostReply {
-  id: string
-  userId: string
-  username: string
-  text: string
-  createdAt: Date
-  profileImage?: string | null
+export interface WeeklyProviderRanking {
+  provider: string
+  name: string
+  wins: number
+  rank: number
 }
 
-export interface PostComment {
-  id: string
-  userId: string
-  username: string
-  text: string
-  createdAt: Date
-  likes: string[]
-  likeCount: number
-  replies: PostReply[]
-  profileImage?: string | null
+export interface WeeklyModelRanking {
+  model: string
+  provider: string
+  providerName: string
+  wins: number
+  rank: number
 }
 
-export interface LeaderboardPostDoc {
+export interface WeeklyLeaderboardDoc {
   _id: string
-  userId: string
-  username: string
-  promptText: string
-  category: string
-  createdAt: Date
-  responses: PromptResponse[]
-  summary: PromptSummary | null
-  sources: PromptSource[]
-  likes: string[]
-  likeCount: number
-  comments: PostComment[]
-  visibility?: 'public' | 'followers'
+  weekStart: Date
+  weekEnd: Date
+  totalVotes: number
+  providerRankings: WeeklyProviderRanking[]
+  modelRankings: WeeklyModelRanking[]
+  finalized: boolean
 }
 
 // ============================================================================

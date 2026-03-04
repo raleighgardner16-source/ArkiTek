@@ -19,38 +19,6 @@ const subscriptionIntentLocks = new Set<string>()
 // LOCAL HELPERS
 // ============================================================================
 
-const purgeUserFromLeaderboard = async (userId: string) => {
-  try {
-    const dbInstance = await db.getDb()
-    const lbCollection = dbInstance.collection<any>('leaderboard_posts')
-    
-    const deleteResult = await lbCollection.deleteMany({ userId })
-    
-    await Promise.all([
-      lbCollection.updateMany(
-        { likes: userId },
-        { $pull: { likes: userId } as any, $inc: { likeCount: -1 } }
-      ),
-      lbCollection.updateMany(
-        { 'comments.userId': userId },
-        { $pull: { comments: { userId } } as any }
-      ),
-      lbCollection.updateMany(
-        { 'comments.likes': userId },
-        { $pull: { 'comments.$[].likes': userId } as any }
-      ),
-      lbCollection.updateMany(
-        { 'comments.replies.userId': userId },
-        { $pull: { 'comments.$[].replies': { userId } } as any }
-      ),
-    ])
-    
-    console.log(`[Leaderboard Purge] User ${userId}: removed ${deleteResult.deletedCount} posts, scrubbed interactions`)
-  } catch (error: any) {
-    console.error('[Leaderboard Purge] Error:', error.message)
-  }
-}
-
 const incrementDeletedUsers = async () => {
   try {
     await adminDb.metadata.incrementDeletedUsers()
@@ -1150,13 +1118,6 @@ router.post('/cancel-subscription-delete-account', requireAuth, async (req: Requ
       console.log(`[Stripe] Deleted user ${userId} and all data from MongoDB`)
     } catch (dbErr: any) {
       console.error(`[Stripe] MongoDB cleanup error for ${userId}:`, dbErr.message)
-    }
-
-    try {
-      await purgeUserFromLeaderboard(userId)
-      console.log(`[Stripe] User ${userId} purged from leaderboard cache and MongoDB`)
-    } catch (lbErr: any) {
-      console.error(`[Stripe] Leaderboard purge error for ${userId}:`, lbErr.message)
     }
 
     await incrementDeletedUsers()

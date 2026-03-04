@@ -19,38 +19,6 @@ const emailVerificationTokens = new Map()
 // LOCAL HELPERS
 // ============================================================================
 
-const purgeUserFromLeaderboard = async (userId: string) => {
-  try {
-    const dbInstance = await db.getDb()
-    const lbCollection = dbInstance.collection<any>('leaderboard_posts')
-    
-    const deleteResult = await lbCollection.deleteMany({ userId })
-    
-    await Promise.all([
-      lbCollection.updateMany(
-        { likes: userId },
-        { $pull: { likes: userId } as any, $inc: { likeCount: -1 } }
-      ),
-      lbCollection.updateMany(
-        { 'comments.userId': userId },
-        { $pull: { comments: { userId } } as any }
-      ),
-      lbCollection.updateMany(
-        { 'comments.likes': userId },
-        { $pull: { 'comments.$[].likes': userId } as any }
-      ),
-      lbCollection.updateMany(
-        { 'comments.replies.userId': userId },
-        { $pull: { 'comments.$[].replies': { userId } } as any }
-      ),
-    ])
-    
-    console.log(`[Leaderboard Purge] User ${userId}: removed ${deleteResult.deletedCount} posts, scrubbed interactions`)
-  } catch (error: any) {
-    console.error('[Leaderboard Purge] Error:', error.message)
-  }
-}
-
 const incrementDeletedUsers = async () => {
   try {
     await adminDb.metadata.incrementDeletedUsers()
@@ -967,10 +935,6 @@ router.delete('/account', requireAuth, async (req: Request, res: Response) => {
     // Delete user and ALL associated data from MongoDB (covers every collection)
     await db.users.delete(userId)
     console.log('[Account Deletion] User and all data deleted from MongoDB:', userId, userInfo)
-
-    // Purge all user traces from leaderboard (posts, likes, comments, replies)
-    await purgeUserFromLeaderboard(userId)
-    console.log('[Account Deletion] User purged from leaderboard cache and MongoDB')
 
     // Increment deleted users count
     await incrementDeletedUsers()

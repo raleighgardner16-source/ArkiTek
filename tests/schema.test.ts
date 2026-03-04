@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   usersSchema,
-  leaderboardPostsSchema,
+  weeklyLeaderboardSchema,
   metadataSchema,
   adminsSchema,
   expensesSchema,
@@ -32,10 +32,11 @@ describe('database schemas', () => {
     })
   })
 
-  describe('leaderboardPostsSchema', () => {
+  describe('weeklyLeaderboardSchema', () => {
     it('has required fields', () => {
-      expect(leaderboardPostsSchema).toHaveProperty('userId')
-      expect(leaderboardPostsSchema).toHaveProperty('promptText')
+      expect(weeklyLeaderboardSchema).toHaveProperty('weekStart')
+      expect(weeklyLeaderboardSchema).toHaveProperty('providerRankings')
+      expect(weeklyLeaderboardSchema).toHaveProperty('finalized')
     })
   })
 

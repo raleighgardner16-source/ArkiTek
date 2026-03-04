@@ -27,9 +27,7 @@ import type {
   PurchaseDoc,
   JudgeContextDoc,
   JudgeContextItem,
-  LeaderboardPostDoc,
-  PostComment,
-  PostReply,
+  WeeklyLeaderboardDoc,
   ConversationHistoryDoc,
   ConversationTurn,
   EmailVerificationDoc,
@@ -110,7 +108,7 @@ const col = {
   userStats: async (): Promise<Collection<UserStatsDoc>> => (await getDb()).collection<UserStatsDoc>('user_stats'),
   purchases: async (): Promise<Collection<PurchaseDoc>> => (await getDb()).collection<PurchaseDoc>('purchases'),
   judgeContext: async (): Promise<Collection<JudgeContextDoc>> => (await getDb()).collection<JudgeContextDoc>('judge_context'),
-  leaderboardPosts: async (): Promise<Collection<LeaderboardPostDoc>> => (await getDb()).collection<LeaderboardPostDoc>('leaderboard_posts'),
+  weeklyLeaderboard: async (): Promise<Collection<WeeklyLeaderboardDoc>> => (await getDb()).collection<WeeklyLeaderboardDoc>('weekly_leaderboard'),
   relationships: async (): Promise<Collection<RelationshipDoc>> => (await getDb()).collection<RelationshipDoc>('relationships'),
   subscriptionEvents: async (): Promise<Collection<SubscriptionEventDoc>> => (await getDb()).collection<SubscriptionEventDoc>('subscription_events'),
   conversationHistory: async (): Promise<Collection<ConversationHistoryDoc>> => (await getDb()).collection<ConversationHistoryDoc>('conversation_history'),
@@ -364,32 +362,11 @@ const users = {
       judgeCol.deleteOne({ _id: userId } satisfies Filter<JudgeContextDoc>),
       usageCol.deleteOne({ _id: userId } satisfies Filter<UsageDataDoc>),
       statsCol.deleteOne({ _id: userId } satisfies Filter<UserStatsDoc>),
-      db.collection('leaderboard_posts').deleteMany({ userId }),
       db.collection('conversation_history').deleteMany({ userId }),
       db.collection('daily_usage').deleteMany({ userId }),
       db.collection('email_verifications').deleteMany({ userId }),
       db.collection('relationships').deleteMany({ $or: [{ fromUserId: userId }, { toUserId: userId }] }),
       db.collection('subscription_events').deleteMany({ userId }),
-    ])
-
-    const lbCollection = db.collection<LeaderboardPostDoc>('leaderboard_posts')
-    await Promise.all([
-      lbCollection.updateMany(
-        { likes: userId } satisfies Filter<LeaderboardPostDoc>,
-        { $pull: { likes: userId }, $inc: { likeCount: -1 } } as UpdateFilter<LeaderboardPostDoc>,
-      ),
-      lbCollection.updateMany(
-        { 'comments.userId': userId } satisfies Filter<LeaderboardPostDoc>,
-        { $pull: { comments: { userId } } } as UpdateFilter<LeaderboardPostDoc>,
-      ),
-      lbCollection.updateMany(
-        { 'comments.likes': userId } satisfies Filter<LeaderboardPostDoc>,
-        { $pull: { 'comments.$[].likes': userId } } as UpdateFilter<LeaderboardPostDoc>,
-      ),
-      lbCollection.updateMany(
-        { 'comments.replies.userId': userId } satisfies Filter<LeaderboardPostDoc>,
-        { $pull: { 'comments.$[].replies': { userId } } } as UpdateFilter<LeaderboardPostDoc>,
-      ),
     ])
 
     log.info({ userId }, 'Deleted user and ALL associated data')
@@ -766,162 +743,74 @@ const leaderboard = {
 }
 
 // ============================================================================
-// LEADERBOARD POSTS OPERATIONS
+// WEEKLY LEADERBOARD OPERATIONS (weekly_leaderboard collection)
 // ============================================================================
 
-const leaderboardPosts = {
-  async submit(postData: Record<string, unknown> & { userId: string; username: string; promptText: string }): Promise<string> {
-    const c = await col.leaderboardPosts()
-
-    const postId = `prompt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-
-    const doc = {
-      _id: postId,
-      userId: postData.userId,
-      username: postData.username,
-      promptText: postData.promptText,
-      category: (postData.category as string) || 'General Knowledge/Other',
-      createdAt: new Date(),
-      responses: (postData.responses as LeaderboardPostDoc['responses']) || [],
-      summary: (postData.summary as LeaderboardPostDoc['summary']) ?? null,
-      sources: (postData.sources as LeaderboardPostDoc['sources']) || [],
-      likes: [] as string[],
-      likeCount: 0,
-      comments: [] as PostComment[],
-    } satisfies LeaderboardPostDoc
-
-    await c.insertOne(doc)
-    return postId
+const weeklyLeaderboard = {
+  async get(weekId: string): Promise<WithId<WeeklyLeaderboardDoc> | null> {
+    const c = await col.weeklyLeaderboard()
+    return c.findOne({ _id: weekId } satisfies Filter<WeeklyLeaderboardDoc>)
   },
 
-  async getRecent(limit = 15): Promise<Array<WithId<LeaderboardPostDoc>>> {
-    const c = await col.leaderboardPosts()
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
-    return c.find({ createdAt: { $gte: oneDayAgo } } satisfies Filter<LeaderboardPostDoc>).sort({ likeCount: -1, createdAt: -1 }).limit(limit).toArray()
+  async upsert(doc: WeeklyLeaderboardDoc): Promise<void> {
+    const c = await col.weeklyLeaderboard()
+    await c.replaceOne(
+      { _id: doc._id } satisfies Filter<WeeklyLeaderboardDoc>,
+      doc,
+      { upsert: true },
+    )
   },
 
-  async getTopAllTime(limit = 15): Promise<Array<WithId<LeaderboardPostDoc>>> {
-    const c = await col.leaderboardPosts()
-    return c.find({}).sort({ likeCount: -1 }).limit(limit).toArray()
-  },
-
-  async getByUser(userId: string): Promise<Array<WithId<LeaderboardPostDoc>>> {
-    const c = await col.leaderboardPosts()
-    return c.find({ userId }).sort({ createdAt: -1 }).toArray()
-  },
-
-  async getByCategory(category: string, limit = 15): Promise<Array<WithId<LeaderboardPostDoc>>> {
-    const c = await col.leaderboardPosts()
-    return c.find({ category }).sort({ likeCount: -1, createdAt: -1 }).limit(limit).toArray()
-  },
-
-  async toggleLike(postId: string, userId: string): Promise<{ liked: boolean; likeCount: number }> {
-    const c = await col.leaderboardPosts()
-
-    const post = await c.findOne({ _id: postId } satisfies Filter<LeaderboardPostDoc>)
-    if (!post) throw new Error('Post not found')
-
-    const alreadyLiked = post.likes.includes(userId)
-
-    if (alreadyLiked) {
-      await c.updateOne(
-        { _id: postId } satisfies Filter<LeaderboardPostDoc>,
-        { $pull: { likes: userId }, $inc: { likeCount: -1 } } as UpdateFilter<LeaderboardPostDoc>,
-      )
-      return { liked: false, likeCount: post.likeCount - 1 }
-    } else {
-      await c.updateOne(
-        { _id: postId } satisfies Filter<LeaderboardPostDoc>,
-        { $push: { likes: userId }, $inc: { likeCount: 1 } } as UpdateFilter<LeaderboardPostDoc>,
-      )
-      return { liked: true, likeCount: post.likeCount + 1 }
-    }
-  },
-
-  async delete(postId: string, userId: string): Promise<boolean> {
-    const c = await col.leaderboardPosts()
-    const result = await c.deleteOne({ _id: postId, userId } satisfies Filter<LeaderboardPostDoc>)
-    return result.deletedCount > 0
-  },
-
-  async addComment(postId: string, commentData: Partial<PostComment> & { userId: string; username: string; text: string }): Promise<string> {
-    const c = await col.leaderboardPosts()
-
-    const commentId = `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-
-    const comment: PostComment = {
-      id: commentId,
-      userId: commentData.userId,
-      username: commentData.username,
-      text: commentData.text,
-      createdAt: new Date(),
-      likes: [],
-      likeCount: 0,
-      replies: [],
-    }
-
+  async finalize(weekId: string): Promise<void> {
+    const c = await col.weeklyLeaderboard()
     await c.updateOne(
-      { _id: postId } satisfies Filter<LeaderboardPostDoc>,
-      { $push: { comments: comment } } as UpdateFilter<LeaderboardPostDoc>,
+      { _id: weekId } satisfies Filter<WeeklyLeaderboardDoc>,
+      { $set: { finalized: true } } satisfies UpdateFilter<WeeklyLeaderboardDoc>,
     )
-
-    return commentId
   },
 
-  async deleteComment(postId: string, commentId: string, userId: string): Promise<boolean> {
-    const c = await col.leaderboardPosts()
-    const result = await c.updateOne(
-      { _id: postId } satisfies Filter<LeaderboardPostDoc>,
-      { $pull: { comments: { id: commentId, userId } } } as UpdateFilter<LeaderboardPostDoc>,
-    )
-    return result.modifiedCount > 0
+  async getAllFinalized(): Promise<Array<WithId<WeeklyLeaderboardDoc>>> {
+    const c = await col.weeklyLeaderboard()
+    return c.find({ finalized: true } satisfies Filter<WeeklyLeaderboardDoc>)
+      .sort({ weekStart: -1 })
+      .toArray()
   },
 
-  async addReply(postId: string, commentId: string, replyData: Partial<PostReply> & { userId: string; username: string; text: string }): Promise<string> {
-    const c = await col.leaderboardPosts()
+  async countProviderFirstPlace(provider: string): Promise<number> {
+    const c = await col.weeklyLeaderboard()
+    return c.countDocuments({
+      finalized: true,
+      'providerRankings.0.provider': provider,
+    } as Filter<WeeklyLeaderboardDoc>)
+  },
 
-    const replyId = `reply-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  async countModelFirstPlace(model: string): Promise<number> {
+    const c = await col.weeklyLeaderboard()
+    return c.countDocuments({
+      finalized: true,
+      'modelRankings.0.model': model,
+    } as Filter<WeeklyLeaderboardDoc>)
+  },
 
-    const reply: PostReply = {
-      id: replyId,
-      userId: replyData.userId,
-      username: replyData.username,
-      text: replyData.text,
-      createdAt: new Date(),
+  async getCumulativeWins(): Promise<{ providers: Record<string, number>; models: Record<string, number> }> {
+    const finalized = await this.getAllFinalized()
+    const providers: Record<string, number> = {}
+    const models: Record<string, number> = {}
+    for (const week of finalized) {
+      if (week.providerRankings.length > 0) {
+        const winner = week.providerRankings[0]
+        if (winner.wins > 0) {
+          providers[winner.provider] = (providers[winner.provider] || 0) + 1
+        }
+      }
+      if (week.modelRankings.length > 0) {
+        const winner = week.modelRankings[0]
+        if (winner.wins > 0) {
+          models[winner.model] = (models[winner.model] || 0) + 1
+        }
+      }
     }
-
-    await c.updateOne(
-      { _id: postId, 'comments.id': commentId } satisfies Filter<LeaderboardPostDoc>,
-      { $push: { 'comments.$.replies': reply } } as UpdateFilter<LeaderboardPostDoc>,
-    )
-
-    return replyId
-  },
-
-  async toggleCommentLike(postId: string, commentId: string, userId: string): Promise<{ liked: boolean; likeCount: number }> {
-    const c = await col.leaderboardPosts()
-
-    const post = await c.findOne({ _id: postId } satisfies Filter<LeaderboardPostDoc>)
-    if (!post) throw new Error('Post not found')
-
-    const comment = post.comments.find((cm: PostComment) => cm.id === commentId)
-    if (!comment) throw new Error('Comment not found')
-
-    const alreadyLiked = comment.likes.includes(userId)
-
-    if (alreadyLiked) {
-      await c.updateOne(
-        { _id: postId, 'comments.id': commentId } satisfies Filter<LeaderboardPostDoc>,
-        { $pull: { 'comments.$.likes': userId }, $inc: { 'comments.$.likeCount': -1 } } as UpdateFilter<LeaderboardPostDoc>,
-      )
-      return { liked: false, likeCount: comment.likeCount - 1 }
-    } else {
-      await c.updateOne(
-        { _id: postId, 'comments.id': commentId } satisfies Filter<LeaderboardPostDoc>,
-        { $push: { 'comments.$.likes': userId }, $inc: { 'comments.$.likeCount': 1 } } as UpdateFilter<LeaderboardPostDoc>,
-      )
-      return { liked: true, likeCount: comment.likeCount + 1 }
-    }
+    return { providers, models }
   },
 }
 
@@ -1400,7 +1289,7 @@ export default {
   purchases,
   judgeContext,
   leaderboard,
-  leaderboardPosts,
+  weeklyLeaderboard,
   usage,
   userStats,
   relationships,
@@ -1425,7 +1314,7 @@ export {
   purchases,
   judgeContext,
   leaderboard,
-  leaderboardPosts,
+  weeklyLeaderboard,
   usage,
   userStats,
   relationships,

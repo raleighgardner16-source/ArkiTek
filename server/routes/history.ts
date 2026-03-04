@@ -204,15 +204,6 @@ router.get('/detail/:historyId', async (req: Request, res: Response) => {
       return sendError(res, 'History entry not found', 404)
     }
 
-    let postedToFeed = false
-    if (doc.userId && doc.originalPrompt) {
-      const userPosts = await db.leaderboardPosts.getByUser(doc.userId)
-      const normalizedPrompt = doc.originalPrompt.trim().toLowerCase()
-      postedToFeed = userPosts.some(
-        (p: any) => p.promptText && p.promptText.trim().toLowerCase() === normalizedPrompt
-      )
-    }
-
     sendSuccess(res, {
       conversation: {
         id: doc._id,
@@ -226,7 +217,6 @@ router.get('/detail/:historyId', async (req: Request, res: Response) => {
         sources: doc.sources || [],
         facts: doc.facts || [],
         conversationTurns: doc.conversationTurns || [],
-        postedToFeed,
       }
     })
   } catch (error: any) {

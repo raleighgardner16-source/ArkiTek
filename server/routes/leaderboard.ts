@@ -145,88 +145,152 @@ router.get('/my-ranks', async (req: Request, res: Response) => {
   }
 })
 
-// GET /leaderboard/provider-rankings
-// Aggregates all users' modelWins from the current week and ranks providers + models.
-router.get('/provider-rankings', async (req: Request, res: Response) => {
-  try {
-    const dbInstance = await db.getDb()
+// ============================================================================
+// WEEKLY LEADERBOARD HELPERS
+// ============================================================================
 
-    const allUsage = await dbInstance
-      .collection<any>('usage_data')
-      .find({})
-      .project({ modelWins: 1 })
-      .toArray()
+const PROVIDER_NAMES: Record<string, string> = {
+  openai: 'ChatGPT',
+  anthropic: 'Claude',
+  google: 'Gemini',
+  meta: 'Meta (Llama)',
+  deepseek: 'DeepSeek',
+  mistral: 'Mistral AI',
+  xai: 'Grok',
+}
 
-    // Current week boundary (Monday 00:00:00 UTC)
-    const now = new Date()
-    const dayOfWeek = now.getUTCDay()
-    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
-    const weekStart = new Date(Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate() - mondayOffset,
-      0, 0, 0, 0,
-    ))
-    const weekStartMs = weekStart.getTime()
+function getWeekBoundary(date: Date = new Date()) {
+  const dayOfWeek = date.getUTCDay()
+  const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+  const weekStart = new Date(Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() - mondayOffset,
+    0, 0, 0, 0,
+  ))
+  const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000)
+  const weekId = weekStart.toISOString().slice(0, 10)
+  return { weekStart, weekEnd, weekId }
+}
 
-    const providerWins: Record<string, number> = {}
-    const modelWins: Record<string, { provider: string; wins: number }> = {}
-    let totalVotes = 0
+async function computeWeeklyRankings(weekStartMs: number, weekEndMs: number) {
+  const dbInstance = await db.getDb()
+  const allUsage = await dbInstance
+    .collection<any>('usage_data')
+    .find({})
+    .project({ modelWins: 1 })
+    .toArray()
 
-    for (const usage of allUsage) {
-      const wins = usage.modelWins || {}
-      for (const [sessionId, win] of Object.entries(wins)) {
-        const ts = parseInt(sessionId, 10)
-        if (isNaN(ts) || ts < weekStartMs) continue
+  const providerWins: Record<string, number> = {}
+  const modelWinsMap: Record<string, { provider: string; wins: number }> = {}
+  let totalVotes = 0
 
-        const provider = (win as any).provider
-        const model = (win as any).model
-        if (!provider) continue
+  for (const usage of allUsage) {
+    const wins = usage.modelWins || {}
+    for (const [sessionId, win] of Object.entries(wins)) {
+      const ts = parseInt(sessionId, 10)
+      if (isNaN(ts) || ts < weekStartMs || ts >= weekEndMs) continue
 
-        providerWins[provider] = (providerWins[provider] || 0) + 1
-        totalVotes++
+      const provider = (win as any).provider
+      const model = (win as any).model
+      if (!provider) continue
 
-        if (model) {
-          if (!modelWins[model]) modelWins[model] = { provider, wins: 0 }
-          modelWins[model].wins++
-        }
+      providerWins[provider] = (providerWins[provider] || 0) + 1
+      totalVotes++
+
+      if (model) {
+        if (!modelWinsMap[model]) modelWinsMap[model] = { provider, wins: 0 }
+        modelWinsMap[model].wins++
       }
     }
+  }
 
-    const providerNames: Record<string, string> = {
-      openai: 'ChatGPT',
-      anthropic: 'Claude',
-      google: 'Gemini',
-      meta: 'Meta (Llama)',
-      deepseek: 'DeepSeek',
-      mistral: 'Mistral AI',
-      xai: 'Grok',
-    }
+  const providerRankings = Object.entries(providerWins)
+    .map(([key, wins]) => ({
+      provider: key,
+      name: PROVIDER_NAMES[key] || key,
+      wins,
+      rank: 0,
+    }))
+    .sort((a, b) => b.wins - a.wins)
+  providerRankings.forEach((entry, i) => { entry.rank = i + 1 })
 
-    const providerRankings = Object.entries(providerWins)
-      .map(([key, wins]) => ({
-        provider: key,
-        name: providerNames[key] || key,
-        wins,
-      }))
-      .sort((a, b) => b.wins - a.wins)
-      .map((entry, i) => ({ ...entry, rank: i + 1 }))
+  const modelRankings = Object.entries(modelWinsMap)
+    .map(([model, data]) => ({
+      model,
+      provider: data.provider,
+      providerName: PROVIDER_NAMES[data.provider] || data.provider,
+      wins: data.wins,
+      rank: 0,
+    }))
+    .sort((a, b) => b.wins - a.wins)
+  modelRankings.forEach((entry, i) => { entry.rank = i + 1 })
 
-    const modelRankings = Object.entries(modelWins)
-      .map(([model, data]) => ({
-        model,
-        provider: data.provider,
-        providerName: providerNames[data.provider] || data.provider,
-        wins: data.wins,
-      }))
-      .sort((a, b) => b.wins - a.wins)
-      .map((entry, i) => ({ ...entry, rank: i + 1 }))
+  return { providerRankings, modelRankings, totalVotes }
+}
+
+async function ensurePreviousWeeksFinalized(currentWeekId: string) {
+  const finalized = await db.weeklyLeaderboard.getAllFinalized()
+  const finalizedIds = new Set(finalized.map((w) => w._id))
+
+  const current = getWeekBoundary()
+  const oneWeekAgo = new Date(current.weekStart.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const prevWeek = getWeekBoundary(oneWeekAgo)
+
+  if (prevWeek.weekId === currentWeekId || finalizedIds.has(prevWeek.weekId)) return
+
+  const existing = await db.weeklyLeaderboard.get(prevWeek.weekId)
+  if (existing?.finalized) return
+
+  const { providerRankings, modelRankings, totalVotes } = await computeWeeklyRankings(
+    prevWeek.weekStart.getTime(),
+    prevWeek.weekEnd.getTime(),
+  )
+
+  await db.weeklyLeaderboard.upsert({
+    _id: prevWeek.weekId,
+    weekStart: prevWeek.weekStart,
+    weekEnd: prevWeek.weekEnd,
+    totalVotes,
+    providerRankings,
+    modelRankings,
+    finalized: true,
+  })
+
+  console.log(`[Leaderboard] Finalized week ${prevWeek.weekId} with ${totalVotes} votes`)
+}
+
+// GET /leaderboard/provider-rankings
+// Returns current week rankings (live-computed) + cumulative win counts from past weeks.
+router.get('/provider-rankings', async (req: Request, res: Response) => {
+  try {
+    const { weekStart, weekEnd, weekId } = getWeekBoundary()
+
+    await ensurePreviousWeeksFinalized(weekId)
+
+    const { providerRankings, modelRankings, totalVotes } = await computeWeeklyRankings(
+      weekStart.getTime(),
+      weekEnd.getTime(),
+    )
+
+    await db.weeklyLeaderboard.upsert({
+      _id: weekId,
+      weekStart,
+      weekEnd,
+      totalVotes,
+      providerRankings,
+      modelRankings,
+      finalized: false,
+    })
+
+    const cumulativeWins = await db.weeklyLeaderboard.getCumulativeWins()
 
     sendSuccess(res, {
       providerRankings,
       modelRankings,
       totalVotes,
       weekStart: weekStart.toISOString(),
+      cumulativeWins,
     })
   } catch (error: any) {
     console.error('[Leaderboard] Error fetching provider rankings:', error)

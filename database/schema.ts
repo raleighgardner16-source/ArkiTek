@@ -13,7 +13,7 @@
  * - purchases: Individual purchase records
  * - judge_context: Judge conversation context (max 5 per user)
  * - model_conversation_context: Stored in usage_data.modelConversationContext (max 5 per model per user)
- * - leaderboard_posts: Public posts for voting/leaderboard
+ * - weekly_leaderboard: Weekly provider/model ranking snapshots
  * - password_resets: Temporary password reset tokens (auto-expire via TTL)
  * 
  * ═══════════════════════════════════════════════════════════
@@ -267,69 +267,34 @@ export const judgeContextSchema = {
 }
 
 /**
- * LEADERBOARD_POSTS COLLECTION
+ * WEEKLY_LEADERBOARD COLLECTION
  * 
- * Public prompt posts for the leaderboard/voting feature.
- * One document per submitted post.
+ * Stores weekly snapshots of provider and model rankings.
+ * One document per week, keyed by the Monday ISO date (e.g. "2026-03-02").
+ * Current week is computed live; past weeks are finalized and immutable.
  * 
- * Index: { createdAt: -1 } (for recent posts)
- * Index: { userId: 1 } (for user's posts)
- * Index: { likeCount: -1 } (for top liked)
- * Index: { category: 1, likeCount: -1 } (for category filtering)
+ * Index: { weekStart: -1 } (for recent weeks)
+ * Index: { finalized: 1 } (for querying past winners)
  */
-export const leaderboardPostsSchema = {
-  _id: 'string',              // Generated ID (prompt-timestamp-random)
-  
-  userId: 'string',           // Foreign key to users._id
-  username: 'string',         // Display name
-  promptText: 'string',       // The prompt text
-  category: 'string',         // Category of the prompt
-  
-  createdAt: 'Date',
-  
-  // Responses from LLMs (same structure as prompts)
-  responses: [{
-    modelName: 'string',
-    text: 'string',
-    tokens: 'object'
+export const weeklyLeaderboardSchema = {
+  _id: 'string',                // Monday ISO date (e.g. "2026-03-02")
+  weekStart: 'Date',
+  weekEnd: 'Date',
+  totalVotes: 'number',
+  providerRankings: [{
+    provider: 'string',
+    name: 'string',
+    wins: 'number',
+    rank: 'number',
   }],
-  
-  // Judge summary
-  summary: {
-    text: 'string',
-    consensus: 'number',
-    agreements: ['string'],
-    disagreements: ['string']
-  },
-  
-  // Sources (no facts exposed to users)
-  sources: [{
-    title: 'string',
-    link: 'string',
-    snippet: 'string'
+  modelRankings: [{
+    model: 'string',
+    provider: 'string',
+    providerName: 'string',
+    wins: 'number',
+    rank: 'number',
   }],
-  
-  // Voting
-  likes: ['string'],          // Array of userIds who liked
-  likeCount: 'number',        // Denormalized for sorting
-  
-  // Comments
-  comments: [{
-    id: 'string',
-    userId: 'string',
-    username: 'string',
-    text: 'string',
-    createdAt: 'Date',
-    likes: ['string'],
-    likeCount: 'number',
-    replies: [{
-      id: 'string',
-      userId: 'string',
-      username: 'string',
-      text: 'string',
-      createdAt: 'Date'
-    }]
-  }]
+  finalized: 'boolean',
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -474,12 +439,9 @@ export const indexes = {
     { key: { userId: 1 }, options: { unique: true } }
   ],
   
-  leaderboard_posts: [
-    { key: { createdAt: -1 } },                    // Today's posts / recent
-    { key: { userId: 1, createdAt: -1 } },         // User's profile posts
-    { key: { likeCount: -1, createdAt: -1 } },     // All-time favorites
-    { key: { category: 1, likeCount: -1 } },       // Category filtering
-    { key: { category: 1, createdAt: -1 } }        // Category + recent
+  weekly_leaderboard: [
+    { key: { weekStart: -1 } },
+    { key: { finalized: 1 } },
   ],
   
   users: [
