@@ -28,6 +28,7 @@ import leaderboardRouter from './server/routes/leaderboard.js'
 import profileRouter from './server/routes/profile.js'
 import adminRouter, { pricingRouter } from './server/routes/admin.js'
 import stripeRouter from './server/routes/stripe.js'
+import shareRouter from './server/routes/share.js'
 
 const log = createLogger('server')
 const memLog = createLogger('memory')
@@ -184,6 +185,9 @@ v1.post('/conversation/track-follow-up', requireAuth, async (req: Request, res: 
 v1.use('/auth', authLimiter, authRouter)
 v1.use('/pricing', pricingRouter)
 v1.use('/stripe', stripeRouter)
+
+// Mixed routes (some public, some require auth per-handler)
+v1.use('/share', shareRouter)
 
 // Protected routes (JWT required)
 v1.use('/stats', requireAuth, statsRouter)

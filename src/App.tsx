@@ -23,6 +23,9 @@ import LeaderboardView from './components/LeaderboardView'
 import LandingPage from './components/LandingPage'
 import TermsOfService from './components/TermsOfService'
 import PrivacyPolicy from './components/PrivacyPolicy'
+import BadgeNotification from './components/BadgeNotification'
+import { useBadgeNotifications } from './hooks/useBadgeNotifications'
+import SharedPromptView from './components/SharedPromptView'
 
 function App() {
   // Track store hydration from localStorage — prevents flash of wrong page on load
@@ -52,6 +55,7 @@ function App() {
   // ── Hooks for prompt submission & summary generation ──────────────
   const { isLoading, handleCancelPrompt: cancelSubmission, clearAllWindows } = usePromptSubmission()
   const { isGeneratingSummary, cancelSummary } = useSummaryGeneration({ isLoading })
+  const { visible: badgeNotification, dismiss: dismissBadge } = useBadgeNotifications()
 
   const handleCancelPrompt = () => {
     cancelSubmission()
@@ -278,6 +282,12 @@ function App() {
             100% { transform: rotate(360deg); }
           }
         `}</style>
+
+        <BadgeNotification
+          badge={badgeNotification}
+          onDismiss={dismissBadge}
+          currentTheme={currentTheme}
+        />
       </div>
     )
   }
@@ -294,6 +304,7 @@ function App() {
       <Route path="/terms-of-service" element={<Navigate to="/terms" replace />} />
       <Route path="/privacy" element={<SectionErrorBoundary sectionName="Privacy Policy"><PrivacyPolicy onNavigate={navigatePublic} /></SectionErrorBoundary>} />
       <Route path="/privacy-policy" element={<Navigate to="/privacy" replace />} />
+      <Route path="/share/:token" element={<SectionErrorBoundary sectionName="Shared Content"><SharedPromptView /></SectionErrorBoundary>} />
       <Route path="/verify-email" element={<SectionErrorBoundary sectionName="Email verification"><AuthView initialView="signin" onNavigate={navigatePublic} /></SectionErrorBoundary>} />
       <Route path="/reset-password" element={<SectionErrorBoundary sectionName="Password reset"><AuthView initialView="signin" onNavigate={navigatePublic} /></SectionErrorBoundary>} />
       <Route path="/admin" element={currentUser ? renderAuthenticatedApp() : <Navigate to="/signin" replace />} />

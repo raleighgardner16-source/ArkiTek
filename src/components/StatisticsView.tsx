@@ -78,6 +78,47 @@ const StatisticsView = () => {
     }
   }, [viewingProfile?.userId])
 
+  const publicStats = publicProfile?.publicStats || {}
+  const viewedUserStats = isViewingOther ? {
+    totalTokens: publicStats.totalTokens || 0,
+    totalPrompts: publicStats.totalPrompts || 0,
+    monthlyTokens: publicStats.monthlyTokens || 0,
+    monthlyPrompts: publicStats.monthlyPrompts || 0,
+    dailyUsage: publicStats.dailyUsage || [],
+    providers: publicStats.providers || {},
+    models: publicStats.models || {},
+    streakDays: publicStats.streakDays || 0,
+    councilPrompts: publicStats.councilPrompts || 0,
+    debatePrompts: publicStats.debatePrompts || 0,
+    usagePercentUsed: 0,
+    usagePercentRemaining: 0,
+    purchasedCreditsPercent: 0,
+    totalAvailableBalance: 0,
+    effectiveAllocation: 0,
+    remainingFreeAllocation: 0,
+  } : null
+
+  const viewedRatingsStats = isViewingOther ? (() => {
+    const wins = Object.values(publicStats.modelWins || {}) as Array<{ provider: string; model: string; responseId: string }>
+    const totalWins = wins.length
+    const providerWins: Record<string, number> = {}
+    const modelWins: Record<string, number> = {}
+    wins.forEach((win) => {
+      if (!win || !win.provider) return
+      providerWins[win.provider] = (providerWins[win.provider] || 0) + 1
+      const modelKey = `${win.provider}-${win.model}`
+      modelWins[modelKey] = (modelWins[modelKey] || 0) + 1
+    })
+    return {
+      totalRatings: totalWins,
+      totalWins,
+      providerLeaderboard: Object.entries(providerWins).sort((a, b) => b[1] - a[1]),
+      modelLeaderboard: Object.entries(modelWins).sort((a, b) => b[1] - a[1]),
+      topProvider: Object.entries(providerWins).sort((a, b) => b[1] - a[1])[0] || null,
+      topModel: Object.entries(modelWins).sort((a, b) => b[1] - a[1])[0] || null,
+    }
+  })() : null
+
   useEffect(() => {
     setHasLoadedLeaderboard(false)
     setLeaderboardStats(null)
@@ -419,7 +460,7 @@ const StatisticsView = () => {
           ownProfileData={ownProfileData}
           viewingProfile={viewingProfile}
           currentUser={currentUser}
-          stats={stats}
+          stats={isViewingOther ? publicStats : stats}
           currentTheme={currentTheme}
           formatAccountAge={formatAccountAge}
           clearViewingProfile={clearViewingProfile}
@@ -497,8 +538,7 @@ const StatisticsView = () => {
           </div>
         )}
 
-        {/* Tab Buttons — evenly distributed (hidden when viewing another user's profile) */}
-        {!isViewingOther && (
+        {/* Tab Buttons — evenly distributed */}
         <div
           style={{
             display: 'flex',
@@ -573,7 +613,6 @@ const StatisticsView = () => {
             Wins & Models
           </button>
         </div>
-        )}
 
         {/* Tab Content */}
         <AnimatePresence mode="wait" initial={false}>
@@ -590,7 +629,20 @@ const StatisticsView = () => {
               </div>
             </div>
           )}
-          {activeTab === 'tokens' && !(loading && !stats) && (
+          {activeTab === 'tokens' && isViewingOther && loadingPublicProfile && (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: spacing['5xl'], minHeight: '300px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.lg }}>
+                <div style={{
+                  width: '36px', height: '36px', border: `3px solid ${currentTheme.borderLight}`,
+                  borderTop: `3px solid ${currentTheme.accent}`, borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite',
+                }} />
+                <span style={{ color: currentTheme.textMuted, fontSize: fontSize.base }}>Loading profile data...</span>
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
+            </div>
+          )}
+          {activeTab === 'tokens' && !isViewingOther && !(loading && !stats) && (
             <TokenUsageTab
               userStats={userStats}
               userPlan={userPlan}
@@ -603,10 +655,27 @@ const StatisticsView = () => {
               setShowBuyUsageModal={setShowBuyUsageModal}
               formatNumber={formatNumber}
               formatTokens={formatTokens}
+              isViewingOther={false}
+            />
+          )}
+          {activeTab === 'tokens' && isViewingOther && !loadingPublicProfile && viewedUserStats && (
+            <TokenUsageTab
+              userStats={viewedUserStats}
+              userPlan={'hidden'}
+              theme={theme}
+              currentTheme={currentTheme}
+              s={s}
+              hoveredDay={hoveredDay}
+              setHoveredDay={setHoveredDay}
+              showBuyUsageModal={false}
+              setShowBuyUsageModal={() => {}}
+              formatNumber={formatNumber}
+              formatTokens={formatTokens}
+              isViewingOther={true}
             />
           )}
 
-          {activeTab === 'ratings' && (
+          {activeTab === 'ratings' && !isViewingOther && (
             <RatingsTab
               ratingsStats={ratingsStats}
               userStats={userStats}
@@ -622,15 +691,31 @@ const StatisticsView = () => {
               formatTokens={formatTokens}
             />
           )}
+          {activeTab === 'ratings' && isViewingOther && viewedUserStats && (
+            <RatingsTab
+              ratingsStats={viewedRatingsStats || { totalRatings: 0, totalWins: 0, providerLeaderboard: [], modelLeaderboard: [], topProvider: null, topModel: null }}
+              userStats={viewedUserStats}
+              currentTheme={currentTheme}
+              theme={theme}
+              s={s}
+              expandedProviders={expandedProviders}
+              setExpandedProviders={setExpandedProviders}
+              expandedModels={expandedModels}
+              setExpandedModels={setExpandedModels}
+              LLM_PROVIDERS={LLM_PROVIDERS}
+              formatNumber={formatNumber}
+              formatTokens={formatTokens}
+            />
+          )}
 
-          {activeTab === 'badges' && !isViewingOther && (
+          {activeTab === 'badges' && (
             <BadgesTab
-              isFreePlan={isFreePlan}
-              isViewingOther={isViewingOther}
-              userStats={userStats}
+              isFreePlan={isViewingOther ? false : isFreePlan}
+              isViewingOther={!!isViewingOther}
+              userStats={isViewingOther ? (viewedUserStats || userStats) : userStats}
               publicProfile={publicProfile}
               leaderboardStats={leaderboardStats}
-              ratingsStats={ratingsStats}
+              ratingsStats={isViewingOther ? (viewedRatingsStats || ratingsStats) : ratingsStats}
               currentUser={currentUser}
               currentTheme={currentTheme}
               theme={theme}
@@ -641,7 +726,7 @@ const StatisticsView = () => {
               setHoveredBadge={setHoveredBadge}
               showBadgeScrollHint={showBadgeScrollHint}
               badgeCategoriesRef={badgeCategoriesRef}
-              dailyChallengeData={dailyChallengeData}
+              dailyChallengeData={isViewingOther ? null : dailyChallengeData}
               claimingChallenge={claimingChallenge}
               challengeClaimedAnim={challengeClaimedAnim}
               claimDailyChallenge={claimDailyChallenge}

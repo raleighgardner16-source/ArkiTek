@@ -37,6 +37,7 @@ import type {
   NotificationDoc,
   ConversationDoc,
   MessageDoc,
+  ShareDoc,
 } from './types.js'
 
 const log = createLogger('db')
@@ -117,6 +118,7 @@ const col = {
   passwordResets: async (): Promise<Collection<PasswordResetDoc>> => (await getDb()).collection<PasswordResetDoc>('password_resets'),
   notifications: async (): Promise<Collection<NotificationDoc>> => (await getDb()).collection<NotificationDoc>('notifications'),
   conversations: async (): Promise<Collection<ConversationDoc>> => (await getDb()).collection<ConversationDoc>('conversations'),
+  shares: async (): Promise<Collection<ShareDoc>> => (await getDb()).collection<ShareDoc>('shares'),
   messages: async (): Promise<Collection<MessageDoc>> => (await getDb()).collection<MessageDoc>('messages'),
 }
 
@@ -1356,6 +1358,34 @@ const messages = {
 }
 
 // ============================================================================
+// SHARE OPERATIONS (shares collection)
+// ============================================================================
+
+const shares = {
+  async create(doc: ShareDoc): Promise<string> {
+    const c = await col.shares()
+    await c.insertOne(doc as any)
+    return doc._id
+  },
+
+  async getByToken(token: string): Promise<WithId<ShareDoc> | null> {
+    const c = await col.shares()
+    return c.findOne({ _id: token } as any) as any
+  },
+
+  async deleteByToken(token: string, userId: string): Promise<boolean> {
+    const c = await col.shares()
+    const result = await c.deleteOne({ _id: token, userId } as any)
+    return result.deletedCount > 0
+  },
+
+  async getByUser(userId: string): Promise<Array<WithId<ShareDoc>>> {
+    const c = await col.shares()
+    return c.find({ userId }).sort({ createdAt: -1 }).limit(100).toArray() as any
+  },
+}
+
+// ============================================================================
 // EXPORT
 // ============================================================================
 
@@ -1375,6 +1405,7 @@ export default {
   userStats,
   relationships,
   subscriptionEvents,
+  shares,
 
   // New typed repos
   conversationHistory,
@@ -1399,6 +1430,7 @@ export {
   userStats,
   relationships,
   subscriptionEvents,
+  shares,
   conversationHistory,
   emailVerifications,
   passwordResets,

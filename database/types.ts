@@ -487,6 +487,21 @@ export interface ExpenseDoc {
 }
 
 // ============================================================================
+// Shared Prompts
+// ============================================================================
+
+export interface ShareDoc {
+  _id: string
+  userId: string
+  prompt: string
+  category: string
+  responses: PromptResponse[]
+  summary: PromptSummary | null
+  createdAt: Date
+  expiresAt?: Date | null
+}
+
+// ============================================================================
 // Helper types for method signatures
 // ============================================================================
 

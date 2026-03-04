@@ -16,6 +16,7 @@ interface TokenUsageTabProps {
   setShowBuyUsageModal: (show: boolean) => void
   formatNumber: (num: number) => string
   formatTokens: (num: number) => string
+  isViewingOther?: boolean
 }
 
 const TokenUsageTab = ({
@@ -30,6 +31,7 @@ const TokenUsageTab = ({
   setShowBuyUsageModal,
   formatNumber,
   formatTokens,
+  isViewingOther = false,
 }: TokenUsageTabProps) => {
   return (
     <motion.div
@@ -61,121 +63,127 @@ const TokenUsageTab = ({
                 <h2 style={{ fontSize: fontSize['4xl'], color: currentTheme.text, margin: `0 0 ${spacing.xs} 0` }}>
                   Monthly Usage
                 </h2>
-                <p style={{ fontSize: fontSize.base, color: (userStats.usagePercentUsed || 0) > 0 ? '#f0a050' : currentTheme.textMuted, margin: `0 0 ${spacing.xs} 0`, fontStyle: 'italic' }}>
-                  {(userStats.usagePercentUsed || 0).toFixed(1)}% of allocation used
-                </p>
-                {(userStats.usagePercentUsed || 0) > 100 && (
-                  <p style={{ fontSize: fontSize.base, color: currentTheme.error, margin: `0 0 ${spacing.xs} 0`, fontStyle: 'italic' }}>
-                    Over allocation
-                  </p>
-                )}
-                {(userStats.purchasedCreditsPercent || 0) > 0 && (
-                  <p style={{ fontSize: fontSize.base, color: '#00cc66', margin: 0, fontStyle: 'italic' }}>
-                    Includes {(userStats.purchasedCreditsPercent || 0).toFixed(1)}% from purchased credits
-                  </p>
+                {!isViewingOther && (
+                  <>
+                    <p style={{ fontSize: fontSize.base, color: (userStats.usagePercentUsed || 0) > 0 ? '#f0a050' : currentTheme.textMuted, margin: `0 0 ${spacing.xs} 0`, fontStyle: 'italic' }}>
+                      {(userStats.usagePercentUsed || 0).toFixed(1)}% of allocation used
+                    </p>
+                    {(userStats.usagePercentUsed || 0) > 100 && (
+                      <p style={{ fontSize: fontSize.base, color: currentTheme.error, margin: `0 0 ${spacing.xs} 0`, fontStyle: 'italic' }}>
+                        Over allocation
+                      </p>
+                    )}
+                    {(userStats.purchasedCreditsPercent || 0) > 0 && (
+                      <p style={{ fontSize: fontSize.base, color: '#00cc66', margin: 0, fontStyle: 'italic' }}>
+                        Includes {(userStats.purchasedCreditsPercent || 0).toFixed(1)}% from purchased credits
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: spacing.md }}>
-              <p
-                key={`usage-balance-${theme}`}
-                style={{
-                  fontSize: '3rem',
-                  fontWeight: fontWeight.bold,
-                  background: currentTheme.accentGradient,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  margin: 0,
-                  whiteSpace: 'nowrap',
-                  display: 'flex',
-                  alignItems: 'baseline',
-                  gap: spacing.md,
-                }}
-              >
-                {Math.max(0, userStats.usagePercentRemaining ?? 100).toFixed(1)}%
-                <span style={{ fontSize: fontSize['4xl'], fontWeight: fontWeight.medium }}>remaining</span>
-              </p>
-              
-              {userPlan !== 'free_trial' && (
-                <button
-                  onClick={() => setShowBuyUsageModal(true)}
+            {!isViewingOther && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: spacing.md }}>
+                <p
+                  key={`usage-balance-${theme}`}
                   style={{
+                    fontSize: '3rem',
+                    fontWeight: fontWeight.bold,
+                    background: currentTheme.accentGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    margin: 0,
+                    whiteSpace: 'nowrap',
                     display: 'flex',
-                    alignItems: 'center',
+                    alignItems: 'baseline',
                     gap: spacing.md,
-                    padding: `10px ${spacing.xl}`,
-                    borderRadius: radius.md,
-                    border: `1px solid ${currentTheme.accent}`,
-                    background: currentTheme.buttonBackground,
-                    color: currentTheme.accent,
-                    fontSize: fontSize.base,
-                    fontWeight: fontWeight.medium,
-                    cursor: 'pointer',
-                    transition: transition.normal,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = currentTheme.buttonBackgroundHover
-                    e.currentTarget.style.borderColor = currentTheme.accentSecondary
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = currentTheme.buttonBackground
-                    e.currentTarget.style.borderColor = currentTheme.accent
                   }}
                 >
-                  <ShoppingCart size={16} />
-                  Buy More Usage
-                </button>
-              )}
-              {userPlan === 'free_trial' && (userStats.totalAvailableBalance ?? userStats.remainingFreeAllocation ?? 0) <= 0 && (
-                <div style={{
-                  padding: `10px ${spacing.xl}`,
-                  borderRadius: radius.md,
-                  background: 'rgba(255, 170, 0, 0.1)',
-                  border: '1px solid rgba(255, 170, 0, 0.3)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: spacing.sm,
-                }}>
-                  <span style={{ color: currentTheme.warning, fontSize: fontSize.md, fontWeight: fontWeight.semibold, textAlign: 'center' }}>
-                    Usage limit reached — upgrade to Pro or Premium
-                  </span>
-                </div>
-              )}
-              
-              {/* Extra Purchased Credits Balance */}
-              {(userStats.purchasedCreditsPercent || 0) > 0 && (
-                <div
-                  style={{
-                    background: 'rgba(0, 200, 100, 0.15)',
-                    border: '1px solid rgba(0, 200, 100, 0.3)',
-                    borderRadius: radius.md,
-                    padding: `${spacing.md} ${spacing.lg}`,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'flex-end',
-                  }}
-                >
-                  <p style={{ fontSize: fontSize.xs, color: currentTheme.textSecondary, margin: `0 0 ${spacing['2xs']} 0` }}>
-                    Extra Purchased Credits
-                  </p>
-                  <p
-                    key={`purchased-credits-${theme}`}
+                  {Math.max(0, userStats.usagePercentRemaining ?? 100).toFixed(1)}%
+                  <span style={{ fontSize: fontSize['4xl'], fontWeight: fontWeight.medium }}>remaining</span>
+                </p>
+                
+                {userPlan !== 'free_trial' && (
+                  <button
+                    onClick={() => setShowBuyUsageModal(true)}
                     style={{
-                      fontSize: fontSize['4xl'],
-                      fontWeight: fontWeight.bold,
-                      background: 'linear-gradient(90deg, #00cc66, #00aa88)',
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      margin: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: spacing.md,
+                      padding: `10px ${spacing.xl}`,
+                      borderRadius: radius.md,
+                      border: `1px solid ${currentTheme.accent}`,
+                      background: currentTheme.buttonBackground,
+                      color: currentTheme.accent,
+                      fontSize: fontSize.base,
+                      fontWeight: fontWeight.medium,
+                      cursor: 'pointer',
+                      transition: transition.normal,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = currentTheme.buttonBackgroundHover
+                      e.currentTarget.style.borderColor = currentTheme.accentSecondary
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = currentTheme.buttonBackground
+                      e.currentTarget.style.borderColor = currentTheme.accent
                     }}
                   >
-                    {(userStats.purchasedCreditsPercent || 0).toFixed(1)}%
-                  </p>
-                </div>
-              )}
-              
-            </div>
+                    <ShoppingCart size={16} />
+                    Buy More Usage
+                  </button>
+                )}
+                {userPlan === 'free_trial' && (userStats.totalAvailableBalance ?? userStats.remainingFreeAllocation ?? 0) <= 0 && (
+                  <div style={{
+                    padding: `10px ${spacing.xl}`,
+                    borderRadius: radius.md,
+                    background: 'rgba(255, 170, 0, 0.1)',
+                    border: '1px solid rgba(255, 170, 0, 0.3)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: spacing.sm,
+                  }}>
+                    <span style={{ color: currentTheme.warning, fontSize: fontSize.md, fontWeight: fontWeight.semibold, textAlign: 'center' }}>
+                      Usage limit reached — upgrade to Pro or Premium
+                    </span>
+                  </div>
+                )}
+                
+                {/* Extra Purchased Credits Balance */}
+                {(userStats.purchasedCreditsPercent || 0) > 0 && (
+                  <div
+                    style={{
+                      background: 'rgba(0, 200, 100, 0.15)',
+                      border: '1px solid rgba(0, 200, 100, 0.3)',
+                      borderRadius: radius.md,
+                      padding: `${spacing.md} ${spacing.lg}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-end',
+                    }}
+                  >
+                    <p style={{ fontSize: fontSize.xs, color: currentTheme.textSecondary, margin: `0 0 ${spacing['2xs']} 0` }}>
+                      Extra Purchased Credits
+                    </p>
+                    <p
+                      key={`purchased-credits-${theme}`}
+                      style={{
+                        fontSize: fontSize['4xl'],
+                        fontWeight: fontWeight.bold,
+                        background: 'linear-gradient(90deg, #00cc66, #00aa88)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        margin: 0,
+                      }}
+                    >
+                      {(userStats.purchasedCreditsPercent || 0).toFixed(1)}%
+                    </p>
+                  </div>
+                )}
+                
+              </div>
+            )}
           </div>
 
           {/* Main Content: Counters and Bar Graph */}
@@ -236,12 +244,15 @@ const TokenUsageTab = ({
               <p style={{ fontSize: fontSize.lg, color: currentTheme.textSecondary, marginBottom: spacing.xs, textAlign: 'center' }}>
                 Daily Usage Percentage (This Month)
               </p>
-              <p style={{ fontSize: fontSize.xs, color: currentTheme.textMuted, marginBottom: '10px', textAlign: 'center', minHeight: '1em', visibility: (userStats.usagePercentUsed || 0) > 0 ? 'visible' : 'hidden' }}>
-                {(userStats.usagePercentUsed || 0).toFixed(1)}% used this month
-                {(userStats.purchasedCreditsPercent || 0) > 0 && (
-                  <span style={{ color: '#00cc66' }}> (includes purchased credits)</span>
-                )}
-              </p>
+              {!isViewingOther && (
+                <p style={{ fontSize: fontSize.xs, color: currentTheme.textMuted, marginBottom: '10px', textAlign: 'center', minHeight: '1em', visibility: (userStats.usagePercentUsed || 0) > 0 ? 'visible' : 'hidden' }}>
+                  {(userStats.usagePercentUsed || 0).toFixed(1)}% used this month
+                  {(userStats.purchasedCreditsPercent || 0) > 0 && (
+                    <span style={{ color: '#00cc66' }}> (includes purchased credits)</span>
+                  )}
+                </p>
+              )}
+              {isViewingOther && <div style={{ marginBottom: '10px', minHeight: '1em' }} />}
               <div style={{ display: 'flex', gap: spacing.md, height: '220px' }}>
                 {/* Y-axis labels (percentage scale) */}
                 <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', paddingRight: '8px', minWidth: '40px' }}>

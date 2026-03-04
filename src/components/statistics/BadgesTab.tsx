@@ -51,7 +51,7 @@ const BadgesTab = ({
   challengeClaimedAnim,
   claimDailyChallenge,
 }: BadgesTabProps) => {
-  const providers = isViewingOther ? {} : (userStats.providers || {})
+  const providers = userStats.providers || {}
   const earnedBadgesList = isFreePlan ? [] : (isViewingOther ? (publicProfile?.earnedBadges || []) : (userStats.earnedBadges || []))
   const persistedBadges = new Set(earnedBadgesList)
   const secretStats = userStats.secretStats || {}
@@ -69,22 +69,22 @@ const BadgesTab = ({
     provider_google_prompts: 0,
     provider_xai_prompts: 0,
     lateNightPrompts: 0,
-    earlyMorningPrompts: 0,
-    savedConversations: 0,
+    longPrompts: 0,
+    revisitedOldConversations: 0,
     starredConversations: 0,
     maxPromptsInDay: 0,
-    uniqueProvidersUsed: 0,
+    factsWindowOpened: 0,
     longestConversation: 0,
     totalFavorites: 0,
     uniqueCategories: 0,
-    maxSingleModelUses: 0,
+    multiTurnConversations: 0,
     weekendDaysUsed: 0,
     comebackAfterBreak: 0,
     uniqueModelsUsed: 0,
-    totalRegenerations: 0,
+    totalShares: 0,
   } : {
     totalTokens: userStats.totalTokens || 0,
-    totalPrompts: isViewingOther ? (publicProfile?.leaderboard?.totalPosts || 0) : (userStats.totalPrompts || 0),
+    totalPrompts: isViewingOther ? (userStats.totalPrompts || publicProfile?.leaderboard?.totalPosts || 0) : (userStats.totalPrompts || 0),
     streakDays: userStats.streakDays || 0,
     totalLikes: isViewingOther ? (publicProfile?.leaderboard?.totalLikes || 0) : (leaderboardStats?.totalLikes || 0),
     totalRatings: ratingsStats?.totalRatings || 0,
@@ -96,19 +96,19 @@ const BadgesTab = ({
     provider_google_prompts: providers.google?.totalPrompts || 0,
     provider_xai_prompts: providers.xai?.totalPrompts || 0,
     lateNightPrompts: secretStats.lateNightPrompts || 0,
-    earlyMorningPrompts: secretStats.earlyMorningPrompts || 0,
-    savedConversations: secretStats.savedConversations || 0,
+    longPrompts: secretStats.longPrompts || 0,
+    revisitedOldConversations: secretStats.revisitedOldConversations || 0,
     starredConversations: secretStats.starredConversations || 0,
     maxPromptsInDay: secretStats.maxPromptsInDay || 0,
-    uniqueProvidersUsed: secretStats.uniqueProvidersUsed || 0,
+    factsWindowOpened: secretStats.factsWindowOpened || 0,
     longestConversation: secretStats.longestConversation || 0,
     totalFavorites: secretStats.totalFavorites || 0,
     uniqueCategories: secretStats.uniqueCategories || 0,
-    maxSingleModelUses: secretStats.maxSingleModelUses || 0,
+    multiTurnConversations: secretStats.multiTurnConversations || 0,
     weekendDaysUsed: secretStats.weekendDaysUsed || 0,
     comebackAfterBreak: secretStats.comebackAfterBreak || 0,
     uniqueModelsUsed: secretStats.uniqueModelsUsed || 0,
-    totalRegenerations: secretStats.totalRegenerations || 0,
+    totalShares: secretStats.totalShares || 0,
   }
 
   const newlyEarned: any[] = []
@@ -187,8 +187,8 @@ const BadgesTab = ({
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
     >
-      {/* Daily Challenge Card */}
-      <div style={{
+      {/* Daily Challenge Card — only for own profile */}
+      {!isViewingOther && <div style={{
         background: isFreePlan ? 'rgba(255,255,255,0.02)' : 'linear-gradient(135deg, rgba(255, 170, 0, 0.08), rgba(255, 100, 0, 0.05))',
         border: `1px solid ${isFreePlan ? 'rgba(255,255,255,0.06)' : 'rgba(255, 170, 0, 0.25)'}`,
         borderRadius: radius['2xl'],
@@ -351,7 +351,7 @@ const BadgesTab = ({
             Loading challenge...
           </div>
         )}
-      </div>
+      </div>}
 
       <div>
 
@@ -496,7 +496,7 @@ const BadgesTab = ({
         )}
       </div>
 
-      {isFreePlan && (
+      {isFreePlan && !isViewingOther && (
         <div style={{
           textAlign: 'center',
           padding: spacing['3xl'],
@@ -566,28 +566,33 @@ const BadgesTab = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: spacing.xl }}>
                   {/* Mini badge preview - show earned badges */}
                   <div style={{ display: 'flex', gap: spacing.xs }}>
-                    {category.badges.slice(0, 5).map((badge, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          width: '28px',
-                          height: '28px',
-                          borderRadius: radius.circle,
-                          background: badge.earned
-                            ? `radial-gradient(circle, ${badge.color}40, ${badge.color}15)`
-                            : currentTheme.backgroundTertiary,
-                          border: `2px solid ${badge.earned ? badge.color : currentTheme.borderLight}`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '0.75rem',
-                          opacity: badge.earned ? 1 : 0.3,
-                          transition: transition.slow,
-                        }}
-                      >
-                        {(category.secret && !badge.earned) ? '?' : badge.emoji}
-                      </div>
-                    ))}
+                    {category.badges.slice(0, 5).map((badge, i) => {
+                      const isSecretEarnedByOther = isViewingOther && category.secret && badge.earned
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: radius.circle,
+                            background: badge.earned
+                              ? isSecretEarnedByOther
+                                ? `radial-gradient(circle, ${currentTheme.accent}40, ${currentTheme.accent}15)`
+                                : `radial-gradient(circle, ${badge.color}40, ${badge.color}15)`
+                              : currentTheme.backgroundTertiary,
+                            border: `2px solid ${badge.earned ? (isSecretEarnedByOther ? currentTheme.accent : badge.color) : currentTheme.borderLight}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.75rem',
+                            opacity: badge.earned ? 1 : 0.3,
+                            transition: transition.slow,
+                          }}
+                        >
+                          {isSecretEarnedByOther ? <Lock size={12} color={currentTheme.accent} /> : (category.secret && !badge.earned) ? '?' : badge.emoji}
+                        </div>
+                      )
+                    })}
                     {category.badges.length > 5 && (
                       <span style={{ color: currentTheme.textMuted, fontSize: '0.75rem', alignSelf: 'center', marginLeft: spacing.xs }}>
                         +{category.badges.length - 5}
@@ -623,7 +628,7 @@ const BadgesTab = ({
                       borderTop: `1px solid ${currentTheme.borderLight}`,
                       paddingTop: '20px',
                     }}>
-                      {isFreePlan && (
+                      {isFreePlan && !isViewingOther && (
                         <p style={{
                           color: '#ffaa00',
                           fontSize: fontSize.base,
@@ -643,82 +648,88 @@ const BadgesTab = ({
                           margin: `0 0 ${spacing.xl} 0`,
                           fontStyle: 'italic',
                         }}>
-                          These badges are earned through hidden actions. Keep exploring to discover them!
+                          {isViewingOther
+                            ? 'These badges are hidden. You can see which ones they earned, but not what they are.'
+                            : 'These badges are earned through hidden actions. Keep exploring to discover them!'}
                         </p>
                       ) : (
                         <>
-                          {/* Total stat display */}
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: `${spacing.lg} ${spacing.xl}`,
-                            marginBottom: spacing.xl,
-                            background: currentTheme.backgroundSecondary,
-                            borderRadius: radius.lg,
-                            border: `1px solid ${currentTheme.borderLight}`,
-                          }}>
-                            <span style={sx(s.gradientText, { fontSize: '1.4rem', fontWeight: fontWeight.bold, marginRight: spacing.md })}>
-                              {formatBadgeNumber(category.currentValue)}
-                            </span>
-                            <span style={{ color: currentTheme.textSecondary, fontSize: fontSize.lg }}>
-                              {category.unit || category.statKey} total
-                            </span>
-                          </div>
-
-                          {/* Next badge progress bar */}
-                          <div style={{
-                            marginBottom: spacing['2xl'],
-                          }}>
+                          {/* Total stat display — own profile only */}
+                          {!isViewingOther && (
                             <div style={{
                               display: 'flex',
                               alignItems: 'center',
-                              justifyContent: 'space-between',
-                              marginBottom: spacing.sm,
+                              justifyContent: 'center',
+                              padding: `${spacing.lg} ${spacing.xl}`,
+                              marginBottom: spacing.xl,
+                              background: currentTheme.backgroundSecondary,
+                              borderRadius: radius.lg,
+                              border: `1px solid ${currentTheme.borderLight}`,
                             }}>
-                              <span style={{ color: currentTheme.textMuted, fontSize: fontSize.md }}>
-                                {category.nextBadge
-                                  ? `Next: ${category.nextBadge.name} (${category.nextBadge.desc})`
-                                  : 'All badges earned!'
-                                }
+                              <span style={sx(s.gradientText, { fontSize: '1.4rem', fontWeight: fontWeight.bold, marginRight: spacing.md })}>
+                                {formatBadgeNumber(category.currentValue)}
                               </span>
-                              <span style={{ color: currentTheme.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.semibold }}>
-                                {category.nextBadge
-                                  ? `${formatBadgeNumber(category.currentValue)} / ${formatBadgeNumber(category.nextBadge.threshold)}`
-                                  : `${category.earnedCount}/${category.totalCount}`
-                                }
+                              <span style={{ color: currentTheme.textSecondary, fontSize: fontSize.lg }}>
+                                {category.unit || category.statKey} total
                               </span>
                             </div>
+                          )}
+
+                          {/* Next badge progress bar — own profile only */}
+                          {!isViewingOther && (
                             <div style={{
-                              width: '100%',
-                              height: '8px',
-                              background: currentTheme.backgroundTertiary,
-                              borderRadius: radius.xs,
-                              overflow: 'hidden',
+                              marginBottom: spacing['2xl'],
                             }}>
                               <div style={{
-                                width: `${category.nextBadge ? (category.nextBadgeProgress * 100) : 100}%`,
-                                height: '100%',
-                                background: category.nextBadge
-                                  ? `${category.nextBadge.color}CC`
-                                  : currentTheme.accentGradient,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                marginBottom: spacing.sm,
+                              }}>
+                                <span style={{ color: currentTheme.textMuted, fontSize: fontSize.md }}>
+                                  {category.nextBadge
+                                    ? `Next: ${category.nextBadge.name} (${category.nextBadge.desc})`
+                                    : 'All badges earned!'
+                                  }
+                                </span>
+                                <span style={{ color: currentTheme.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.semibold }}>
+                                  {category.nextBadge
+                                    ? `${formatBadgeNumber(category.currentValue)} / ${formatBadgeNumber(category.nextBadge.threshold)}`
+                                    : `${category.earnedCount}/${category.totalCount}`
+                                  }
+                                </span>
+                              </div>
+                              <div style={{
+                                width: '100%',
+                                height: '8px',
+                                background: currentTheme.backgroundTertiary,
                                 borderRadius: radius.xs,
-                                transition: 'width 0.5s ease',
-                              }} />
+                                overflow: 'hidden',
+                              }}>
+                                <div style={{
+                                  width: `${category.nextBadge ? (category.nextBadgeProgress * 100) : 100}%`,
+                                  height: '100%',
+                                  background: category.nextBadge
+                                    ? `${category.nextBadge.color}CC`
+                                    : currentTheme.accentGradient,
+                                  borderRadius: radius.xs,
+                                  transition: 'width 0.5s ease',
+                                }} />
+                              </div>
+                              <div style={{
+                                display: 'flex',
+                                justifyContent: 'flex-end',
+                                marginTop: spacing.xs,
+                              }}>
+                                <span style={{ color: currentTheme.textSecondary, fontSize: '0.75rem' }}>
+                                  {category.nextBadge
+                                    ? `${Math.round(category.nextBadgeProgress * 100)}%`
+                                    : '100%'
+                                  }
+                                </span>
+                              </div>
                             </div>
-                            <div style={{
-                              display: 'flex',
-                              justifyContent: 'flex-end',
-                              marginTop: spacing.xs,
-                            }}>
-                              <span style={{ color: currentTheme.textSecondary, fontSize: '0.75rem' }}>
-                                {category.nextBadge
-                                  ? `${Math.round(category.nextBadgeProgress * 100)}%`
-                                  : '100%'
-                                }
-                              </span>
-                            </div>
-                          </div>
+                          )}
                         </>
                       )}
 
@@ -733,6 +744,7 @@ const BadgesTab = ({
                         {category.badges.map((badge, index) => {
                           const isHovered = hoveredBadge === `${category.id}-${index}`
                           const isSecret = category.secret && !badge.earned
+                          const isSecretEarnedByOther = isViewingOther && category.secret && badge.earned
 
                           return (
                             <div
@@ -746,13 +758,15 @@ const BadgesTab = ({
                                 padding: '20px 12px',
                                 borderRadius: radius.xl,
                                 background: badge.earned
-                                  ? `radial-gradient(ellipse at center, ${badge.color}12, transparent 70%)`
+                                  ? isSecretEarnedByOther
+                                    ? `radial-gradient(ellipse at center, ${currentTheme.accent}12, transparent 70%)`
+                                    : `radial-gradient(ellipse at center, ${badge.color}12, transparent 70%)`
                                   : currentTheme.backgroundSecondary,
-                                border: `1px solid ${badge.earned ? `${badge.color}50` : currentTheme.borderLight}`,
+                                border: `1px solid ${badge.earned ? (isSecretEarnedByOther ? `${currentTheme.accent}50` : `${badge.color}50`) : currentTheme.borderLight}`,
                                 transition: transition.slow,
                                 transform: isHovered ? 'translateY(-4px)' : 'translateY(0)',
                                 boxShadow: badge.earned && isHovered
-                                  ? `0 8px 24px ${badge.color}30`
+                                  ? `0 8px 24px ${isSecretEarnedByOther ? currentTheme.accent : badge.color}30`
                                   : isHovered
                                     ? `0 4px 16px ${currentTheme.shadow}`
                                     : 'none',
@@ -766,22 +780,26 @@ const BadgesTab = ({
                                 height: '56px',
                                 borderRadius: radius.circle,
                                 background: badge.earned
-                                  ? `radial-gradient(circle, ${badge.color}35, ${badge.color}10)`
+                                  ? isSecretEarnedByOther
+                                    ? `radial-gradient(circle, ${currentTheme.accent}35, ${currentTheme.accent}10)`
+                                    : `radial-gradient(circle, ${badge.color}35, ${badge.color}10)`
                                   : currentTheme.backgroundTertiary,
-                                border: `3px solid ${badge.earned ? badge.color : currentTheme.borderLight}`,
+                                border: `3px solid ${badge.earned ? (isSecretEarnedByOther ? currentTheme.accent : badge.color) : currentTheme.borderLight}`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                fontSize: isSecret ? fontSize['3xl'] : fontSize['6xl'],
+                                fontSize: (isSecret || isSecretEarnedByOther) ? fontSize['3xl'] : fontSize['6xl'],
                                 marginBottom: '10px',
                                 opacity: badge.earned ? 1 : 0.35,
                                 transition: transition.slow,
                                 boxShadow: badge.earned
-                                  ? `0 0 20px ${badge.color}25, inset 0 0 15px ${badge.color}10`
+                                  ? `0 0 20px ${isSecretEarnedByOther ? currentTheme.accent : badge.color}25, inset 0 0 15px ${isSecretEarnedByOther ? currentTheme.accent : badge.color}10`
                                   : 'none',
                                 position: 'relative',
                               }}>
-                                {badge.earned ? badge.emoji : (
+                                {isSecretEarnedByOther ? (
+                                  <Lock size={22} color={currentTheme.accent} />
+                                ) : badge.earned ? badge.emoji : (
                                   isSecret
                                     ? <span style={{ color: currentTheme.textMuted, fontWeight: fontWeight.bold }}>?</span>
                                     : <Lock size={18} color={currentTheme.textMuted} style={{ opacity: 0.5 }} />
@@ -792,12 +810,12 @@ const BadgesTab = ({
                               <p style={{
                                 fontSize: fontSize.md,
                                 fontWeight: badge.earned ? '600' : '400',
-                                color: badge.earned ? badge.color : currentTheme.textMuted,
+                                color: isSecretEarnedByOther ? currentTheme.accent : (badge.earned ? badge.color : currentTheme.textMuted),
                                 margin: `0 0 ${spacing.xs} 0`,
                                 textAlign: 'center',
                                 lineHeight: '1.2',
                               }}>
-                                {isSecret ? '???' : badge.name}
+                                {isSecretEarnedByOther ? 'Secret Badge' : (isSecret ? '???' : badge.name)}
                               </p>
 
                               {/* Badge Requirement */}
@@ -806,12 +824,13 @@ const BadgesTab = ({
                                 color: currentTheme.textMuted,
                                 margin: 0,
                                 textAlign: 'center',
+                                fontStyle: isSecretEarnedByOther ? 'italic' : 'normal',
                               }}>
-                                {isSecret ? 'Keep exploring...' : badge.desc}
+                                {isSecretEarnedByOther ? 'Earned — hidden' : (isSecret ? 'Keep exploring...' : badge.desc)}
                               </p>
 
-                              {/* Progress for unearned (hidden for secret badges) */}
-                              {!badge.earned && !category.secret && (
+                              {/* Progress for unearned (hidden for secret badges and when viewing others) */}
+                              {!badge.earned && !category.secret && !isViewingOther && (
                                 <div style={{
                                   width: '100%',
                                   marginTop: spacing.md,
@@ -851,14 +870,14 @@ const BadgesTab = ({
                                   width: '20px',
                                   height: '20px',
                                   borderRadius: radius.circle,
-                                  background: badge.color,
+                                  background: isSecretEarnedByOther ? currentTheme.accent : badge.color,
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   fontSize: fontSize['2xs'],
                                   color: '#000',
                                   fontWeight: fontWeight.bold,
-                                  boxShadow: `0 2px 8px ${badge.color}50`,
+                                  boxShadow: `0 2px 8px ${isSecretEarnedByOther ? currentTheme.accent : badge.color}50`,
                                 }}>
                                   ✓
                                 </div>
