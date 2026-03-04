@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trophy, ChevronDown, ChevronUp, ChevronRight, Maximize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe, Coins, Bug, DollarSign, Share2, Check } from 'lucide-react'
+import { Trophy, ChevronDown, ChevronUp, ChevronRight, Maximize2, X, Trash2, Move, Send, Info, FileText, RotateCcw, Search, Globe, Coins, Bug, DollarSign } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx, createStyles } from '../utils/styles'
@@ -76,54 +76,9 @@ const ResponseComparison = () => {
   const [showPipelineModal, setShowPipelineModal] = useState(false)
   const tokenData = useStore((state) => state.tokenData)
   const lastSubmittedPrompt = useStore((state) => state.lastSubmittedPrompt || '')
-  const lastSubmittedCategory = useStore((state) => state.lastSubmittedCategory || '')
   const geminiDetectionResponse = useStore((state) => state.geminiDetectionResponse)
   const queryCount = useStore((state) => state.queryCount || 0)
   const showPipelineDebugWindow = useStore((state) => state.showPipelineDebugWindow)
-  const summary = useStore((state: any) => state.summary)
-  const [sharingPrompt, setSharingPrompt] = useState(false)
-  const [shareSuccess, setShareSuccess] = useState(false)
-
-  const handleSharePrompt = async () => {
-    if (sharingPrompt || responses.length === 0 || !lastSubmittedPrompt) return
-    setSharingPrompt(true)
-    try {
-      const shareResponses = responses.map(r => ({
-        modelName: r.modelName,
-        actualModelName: r.actualModelName,
-        originalModelName: r.originalModelName,
-        text: r.text,
-        error: r.error,
-      }))
-      const shareSummary = summary && !summary.error ? {
-        text: summary.text || '',
-        consensus: summary.consensus ?? null,
-        summary: summary.summary || '',
-        agreements: summary.agreements || [],
-        disagreements: summary.disagreements || [],
-        differences: summary.differences || [],
-        singleModel: summary.singleModel || false,
-        modelName: summary.modelName || null,
-      } : null
-      const res = await api.post('/share', {
-        prompt: lastSubmittedPrompt,
-        category: lastSubmittedCategory,
-        responses: shareResponses,
-        summary: shareSummary,
-      })
-      if (res.data?.data?.shareToken) {
-        const shareUrl = `${window.location.origin}/share/${res.data.data.shareToken}`
-        await navigator.clipboard.writeText(shareUrl)
-        setShareSuccess(true)
-        setTimeout(() => setShareSuccess(false), 3000)
-      }
-    } catch (err) {
-      console.error('[Share] Error sharing prompt:', err)
-    } finally {
-      setSharingPrompt(false)
-    }
-  }
-
   // Auto-scroll conversation containers when new messages are added
   React.useEffect(() => {
     Object.entries(conversationHistories).forEach(([responseId, history]) => {
@@ -2552,55 +2507,6 @@ const ResponseComparison = () => {
           </motion.div>
         )}
 
-        {/* Share Prompt Button */}
-        {responses.length > 0 && lastSubmittedPrompt && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
-            style={{
-              width: '100%',
-              minWidth: cardWidth,
-              maxWidth: cardWidth,
-              background: shareSuccess
-                ? (theme === 'light' ? 'rgba(0, 200, 100, 0.08)' : 'rgba(0, 200, 100, 0.06)')
-                : (theme === 'light' ? '#ffffff' : '#0d1520'),
-              border: `1px solid ${shareSuccess ? 'rgba(0, 200, 100, 0.3)' : (theme === 'light' ? 'rgba(0, 150, 200, 0.3)' : 'rgba(93, 173, 226, 0.4)')}`,
-              borderRadius: radius.lg,
-              padding: '0',
-              boxShadow: theme === 'light'
-                ? '0 3px 12px rgba(0, 0, 0, 0.1)'
-                : '0 3px 16px rgba(0, 0, 0, 0.4), 0 0 10px rgba(93, 173, 226, 0.1)',
-              cursor: sharingPrompt ? 'wait' : 'pointer',
-              pointerEvents: 'auto',
-              position: 'relative',
-              zIndex: 1000,
-              transition: transition.normal,
-              opacity: sharingPrompt ? 0.7 : 1,
-            }}
-            onClick={handleSharePrompt}
-          >
-            <div
-              style={sx(layout.spaceBetween, { padding: `${spacing.lg} ${spacing.xl}` })}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
-                {shareSuccess ? <Check size={16} color="#00cc66" /> : <Share2 size={16} color={currentTheme.accent} />}
-                <h3
-                  style={sx(s.gradientText, {
-                    fontSize: fontSize.lg,
-                    margin: 0,
-                    fontWeight: fontWeight.semibold,
-                    ...(shareSuccess ? { background: 'none', WebkitBackgroundClip: 'unset', WebkitTextFillColor: '#00cc66' } : {}),
-                  })}
-                >
-                  {sharingPrompt ? 'Creating link...' : shareSuccess ? 'Link copied!' : 'Share Prompt'}
-                </h3>
-              </div>
-              <ChevronRight size={16} color={shareSuccess ? '#00cc66' : currentTheme.accent} style={{ marginRight: spacing['2xl'] }} />
-            </div>
-          </motion.div>
-        )}
       </div>
     </motion.div>
       )}

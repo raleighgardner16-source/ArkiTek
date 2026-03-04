@@ -1,6 +1,6 @@
 import type React from 'react'
 import { motion } from 'framer-motion'
-import { Coins, DollarSign, Sparkles } from 'lucide-react'
+import { Coins, DollarSign, Sparkles, Share2, Check } from 'lucide-react'
 import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx, createStyles } from '../utils/styles'
 
 interface Props {
@@ -15,6 +15,10 @@ interface Props {
   setShowTopCostBreakdown: (v: boolean) => void
   triggerGenerateSummary: () => void
   isCancelledPrompt?: boolean
+  onShare?: () => void
+  sharingPrompt?: boolean
+  shareSuccess?: boolean
+  canShare?: boolean
 }
 
 const TopActionBar = ({
@@ -29,6 +33,10 @@ const TopActionBar = ({
   setShowTopCostBreakdown,
   triggerGenerateSummary,
   isCancelledPrompt = false,
+  onShare,
+  sharingPrompt = false,
+  shareSuccess = false,
+  canShare = false,
 }: Props) => {
   const s = createStyles(currentTheme)
 
@@ -131,6 +139,27 @@ const TopActionBar = ({
               Generate Summary
             </motion.button>
 
+            {canShare && (
+              <>
+                <div style={divider} />
+                <motion.button
+                  onClick={onShare}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  style={{
+                    ...pillButton,
+                    opacity: sharingPrompt ? 0.6 : 1,
+                    cursor: sharingPrompt ? 'wait' : 'pointer',
+                    color: shareSuccess ? '#00cc66' : currentTheme.accent,
+                  }}
+                  title="Share this prompt and responses"
+                >
+                  {shareSuccess ? <Check size={13} /> : <Share2 size={13} />}
+                  {sharingPrompt ? 'Sharing...' : shareSuccess ? 'Link Copied!' : 'Share'}
+                </motion.button>
+              </>
+            )}
+
             <div style={divider} />
 
             <motion.button
@@ -208,6 +237,27 @@ const TopActionBar = ({
               </motion.button>
             )}
 
+            {canShare && (
+              <>
+                <div style={divider} />
+                <motion.button
+                  onClick={onShare}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  style={{
+                    ...pillButton,
+                    opacity: sharingPrompt ? 0.6 : 1,
+                    cursor: sharingPrompt ? 'wait' : 'pointer',
+                    color: shareSuccess ? '#00cc66' : currentTheme.accent,
+                  }}
+                  title="Share this prompt and responses"
+                >
+                  {shareSuccess ? <Check size={13} /> : <Share2 size={13} />}
+                  {sharingPrompt ? 'Sharing...' : shareSuccess ? 'Link Copied!' : 'Share'}
+                </motion.button>
+              </>
+            )}
+
           </div>
         </motion.div>
       )}
@@ -241,6 +291,27 @@ const TopActionBar = ({
               <DollarSign size={13} />
               Prompt Cost Breakdown
             </motion.button>
+
+            {canShare && (
+              <>
+                <div style={divider} />
+                <motion.button
+                  onClick={onShare}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  style={{
+                    ...pillButton,
+                    opacity: sharingPrompt ? 0.6 : 1,
+                    cursor: sharingPrompt ? 'wait' : 'pointer',
+                    color: shareSuccess ? '#00cc66' : currentTheme.accent,
+                  }}
+                  title="Share this prompt and responses"
+                >
+                  {shareSuccess ? <Check size={13} /> : <Share2 size={13} />}
+                  {sharingPrompt ? 'Sharing...' : shareSuccess ? 'Link Copied!' : 'Share'}
+                </motion.button>
+              </>
+            )}
           </div>
         </motion.div>
       )}

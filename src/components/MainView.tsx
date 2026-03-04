@@ -84,6 +84,48 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const currentPromptSessionId = useStore((state) => state.currentPromptSessionId)
   const isReopenedHistoryChat = useStore((state) => state.isReopenedHistoryChat)
   const isCancelledPrompt = useStore((state) => state.isCancelledPrompt)
+  const [sharingPrompt, setSharingPrompt] = useState(false)
+  const [shareSuccess, setShareSuccess] = useState(false)
+
+  const handleSharePrompt = async () => {
+    if (sharingPrompt || responses.length === 0 || !lastSubmittedPrompt) return
+    setSharingPrompt(true)
+    try {
+      const shareResponses = responses.map((r: any) => ({
+        modelName: r.modelName,
+        actualModelName: r.actualModelName,
+        originalModelName: r.originalModelName,
+        text: r.text,
+        error: r.error,
+      }))
+      const shareSummary = summary && !summary.error ? {
+        text: summary.text || '',
+        consensus: summary.consensus ?? null,
+        summary: summary.summary || '',
+        agreements: summary.agreements || [],
+        disagreements: summary.disagreements || [],
+        differences: summary.differences || [],
+        singleModel: summary.singleModel || false,
+        modelName: summary.modelName || null,
+      } : null
+      const res = await api.post('/share', {
+        prompt: lastSubmittedPrompt,
+        category: lastSubmittedCategory,
+        responses: shareResponses,
+        summary: shareSummary,
+      })
+      if (res.data?.data?.shareToken) {
+        const shareUrl = `${window.location.origin}/share/${res.data.data.shareToken}`
+        await navigator.clipboard.writeText(shareUrl)
+        setShareSuccess(true)
+        setTimeout(() => setShareSuccess(false), 3000)
+      }
+    } catch (err) {
+      console.error('[Share] Error sharing prompt:', err)
+    } finally {
+      setSharingPrompt(false)
+    }
+  }
 
   // Conversation handlers hook
   const conversation = useConversationHandlers({ isLoading, isGeneratingSummary })
@@ -644,6 +686,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           setShowTopCostBreakdown={setShowTopCostBreakdown}
           triggerGenerateSummary={triggerGenerateSummary}
           isCancelledPrompt={isCancelledPrompt}
+          onShare={handleSharePrompt}
+          sharingPrompt={sharingPrompt}
+          shareSuccess={shareSuccess}
+          canShare={responses.length > 0 && !!lastSubmittedPrompt}
         />
 
         {/* ===== SCROLLABLE CHAT AREA ===== */}
