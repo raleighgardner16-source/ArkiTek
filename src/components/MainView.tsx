@@ -768,6 +768,21 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   animate={{ opacity: 1, y: 0 }}
                   style={{ maxWidth: '800px', width: '100%', padding: `0 ${spacing['2xl']} 36px` }}
                 >
+                  {isSearchingWeb && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      style={sx(layout.flexRow, { gap: spacing.sm, justifyContent: 'center', marginBottom: spacing.xl })}
+                    >
+                      <Search size={14} color={currentTheme.accent} />
+                      <span style={{ color: currentTheme.accent, fontSize: fontSize.base, fontWeight: fontWeight.medium }}>Searching the web</span>
+                      <motion.span
+                        animate={{ opacity: [1, 0.3, 1] }}
+                        transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                        style={{ color: currentTheme.accent, fontSize: fontSize.base }}
+                      >...</motion.span>
+                    </motion.div>
+                  )}
                   {/* User prompt bubble */}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: spacing['3xl'] }}>
                     <div style={{
