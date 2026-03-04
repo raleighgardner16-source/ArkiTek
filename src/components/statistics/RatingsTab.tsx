@@ -207,9 +207,39 @@ const RatingsTab = ({
               .sort((a, b) => b[1].totalTokens - a[1].totalTokens)
               .map(([provider, data]) => {
                 const isProviderExpanded = expandedProviders[provider]
-                const providerModels = Object.entries((userStats.models || {}) as Record<string, any>)
+                // Merge current LLM_PROVIDERS models with historical tracked models
+                const trackedModels = Object.entries((userStats.models || {}) as Record<string, any>)
                   .filter(([modelKey]) => modelKey.startsWith(`${provider}-`))
-                  .sort((a, b) => b[1].totalTokens - a[1].totalTokens)
+                const currentProviderDefs = (LLM_PROVIDERS[provider]?.models || []) as Array<{ id: string } | string>
+                const mergedModels: [string, any][] = []
+                const seenKeys = new Set<string>()
+
+                currentProviderDefs.forEach((m: any) => {
+                  const modelId = typeof m === 'string' ? m : m.id
+                  const modelKey = `${provider}-${modelId}`
+                  const tracked = trackedModels.find(([key]) => key === modelKey)
+                  if (tracked) {
+                    mergedModels.push(tracked)
+                  } else {
+                    mergedModels.push([modelKey, {
+                      provider,
+                      model: modelId,
+                      totalInputTokens: 0,
+                      totalOutputTokens: 0,
+                      totalTokens: 0,
+                      totalPrompts: 0,
+                    }])
+                  }
+                  seenKeys.add(modelKey)
+                })
+
+                trackedModels.forEach(([modelKey, modelData]) => {
+                  if (!seenKeys.has(modelKey)) {
+                    mergedModels.push([modelKey, modelData])
+                  }
+                })
+
+                const providerModels = mergedModels.sort((a, b) => (b[1].totalTokens || 0) - (a[1].totalTokens || 0))
 
                 return (
                   <div
@@ -251,8 +281,8 @@ const RatingsTab = ({
                         ) : (
                           <ChevronRight size={20} color={currentTheme.accent} />
                         )}
-                        <h3 key={`provider-name-${provider}-${theme}`} style={{ fontSize: fontSize['3xl'], color: currentTheme.accent, margin: 0, textTransform: 'capitalize' }}>
-                          {provider}
+                        <h3 key={`provider-name-${provider}-${theme}`} style={{ fontSize: fontSize['3xl'], color: currentTheme.accent, margin: 0 }}>
+                          {LLM_PROVIDERS[provider]?.name || provider.charAt(0).toUpperCase() + provider.slice(1)}
                         </h3>
                         <span key={`provider-models-count-${provider}-${theme}`} style={{ color: currentTheme.textMuted, fontSize: fontSize.base, marginLeft: spacing.md }}>
                           ({providerModels.length} {providerModels.length === 1 ? 'model' : 'models'})

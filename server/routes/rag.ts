@@ -27,6 +27,7 @@ async function streamRagCouncilModel({
   userId,
   sendSSE,
   rolePrompt,
+  clientClosedRef,
 }: {
   modelId: string
   query: string
@@ -35,6 +36,7 @@ async function streamRagCouncilModel({
   userId: string | undefined
   sendSSE: (type: string, data: any) => void
   rolePrompt: string | null
+  clientClosedRef: { closed: boolean }
 }) {
   const firstDashIndex = modelId.indexOf('-')
   if (firstDashIndex === -1) {
@@ -73,17 +75,18 @@ User Query: ${query}`
     original_model_name: model,
   })
 
+  let fullResponse = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  const reasoningTokens = 0
+  let tokenSource = 'none'
+  let upstreamStream: any = null
+
   try {
     const apiKey = API_KEYS[providerKey]
     if (!apiKey || apiKey.trim() === '') {
       throw new Error(`No API key configured for provider: ${providerKey}`)
     }
-
-    let fullResponse = ''
-    let inputTokens = 0
-    let outputTokens = 0
-    const reasoningTokens = 0
-    let tokenSource = 'none'
 
     if (['openai', 'xai', 'meta', 'deepseek', 'mistral'].includes(providerKey)) {
       const modelsWithFixedTemperature = ['gpt-5-mini']
@@ -111,6 +114,8 @@ User Query: ${query}`
         }
       )
 
+      upstreamStream = streamResponse.data
+
       await new Promise<void>((resolve, reject) => {
         let buffer = ''
         const processLine = (line: string) => {
@@ -137,6 +142,10 @@ User Query: ${query}`
         }
 
         streamResponse.data.on('data', (chunk: any) => {
+          if (clientClosedRef.closed) {
+            try { streamResponse.data.destroy() } catch (_) {}
+            return
+          }
           buffer += chunk.toString()
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
@@ -149,7 +158,10 @@ User Query: ${query}`
           }
           resolve()
         })
-        streamResponse.data.on('error', reject)
+        streamResponse.data.on('error', (err: any) => {
+          if (clientClosedRef.closed) return resolve()
+          reject(err)
+        })
       })
 
       if (providerKey === 'mistral') {
@@ -177,6 +189,8 @@ User Query: ${query}`
           timeout: 120000,
         }
       )
+
+      upstreamStream = streamResponse.data
 
       await new Promise<void>((resolve, reject) => {
         let buffer = ''
@@ -211,6 +225,10 @@ User Query: ${query}`
           } catch (_) { /* skip */ }
         }
         streamResponse.data.on('data', (chunk: any) => {
+          if (clientClosedRef.closed) {
+            try { streamResponse.data.destroy() } catch (_) {}
+            return
+          }
           buffer += chunk.toString()
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
@@ -224,7 +242,10 @@ User Query: ${query}`
           if (streamError && !fullResponse) reject(new Error(streamError))
           else resolve()
         })
-        streamResponse.data.on('error', reject)
+        streamResponse.data.on('error', (err: any) => {
+          if (clientClosedRef.closed) return resolve()
+          reject(err)
+        })
       })
     } else if (providerKey === 'google') {
       const isPreviewModel = mappedModel.includes('-preview')
@@ -242,6 +263,8 @@ User Query: ${query}`
         geminiCouncilBody,
         { responseType: 'stream' }
       )
+
+      upstreamStream = streamResponse.data
 
       await new Promise<void>((resolve, reject) => {
         let buffer = ''
@@ -268,6 +291,10 @@ User Query: ${query}`
           } catch (_) { /* skip */ }
         }
         streamResponse.data.on('data', (chunk: any) => {
+          if (clientClosedRef.closed) {
+            try { streamResponse.data.destroy() } catch (_) {}
+            return
+          }
           buffer += chunk.toString()
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
@@ -280,10 +307,36 @@ User Query: ${query}`
           }
           resolve()
         })
-        streamResponse.data.on('error', reject)
+        streamResponse.data.on('error', (err: any) => {
+          if (clientClosedRef.closed) return resolve()
+          reject(err)
+        })
       })
     } else {
       throw new Error(`Unsupported provider: ${providerKey}`)
+    }
+
+    if (clientClosedRef.closed) {
+      if (inputTokens === 0) {
+        try { inputTokens = await countTokens(councilPrompt, providerKey, mappedModel) } catch (_) {}
+      }
+      if (outputTokens === 0 && fullResponse) {
+        try { outputTokens = await countTokens(fullResponse, providerKey, mappedModel) } catch (_) {}
+      }
+      tokenSource = (inputTokens > 0 || outputTokens > 0) ? 'estimated' : 'none'
+      if (userId) {
+        trackUsage(userId, providerKey, model, inputTokens, outputTokens)
+      }
+      console.log(`[RAG Stream] Client disconnected for ${modelId} — tracked ${inputTokens} input, ${outputTokens} output tokens`)
+      return {
+        model_name: modelId,
+        actual_model_name: mappedModel,
+        original_model_name: model,
+        response: fullResponse,
+        prompt: councilPrompt,
+        error: 'Client disconnected',
+        tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens, reasoningTokens, provider: providerKey, model, source: tokenSource },
+      }
     }
 
     if (inputTokens === 0 && outputTokens === 0) {
@@ -329,6 +382,28 @@ User Query: ${query}`
     })
     return result
   } catch (error: any) {
+    if (clientClosedRef.closed) {
+      if (inputTokens === 0) {
+        try { inputTokens = await countTokens(councilPrompt, providerKey, mappedModel) } catch (_) {}
+      }
+      if (outputTokens === 0 && fullResponse) {
+        try { outputTokens = await countTokens(fullResponse, providerKey, mappedModel) } catch (_) {}
+      }
+      if (userId) {
+        trackUsage(userId, providerKey, model, inputTokens, outputTokens)
+      }
+      console.log(`[RAG Stream] Client disconnected (caught) for ${modelId} — tracked ${inputTokens} input, ${outputTokens} output tokens`)
+      return {
+        model_name: modelId,
+        actual_model_name: mappedModel,
+        original_model_name: model,
+        response: fullResponse,
+        prompt: councilPrompt,
+        error: 'Client disconnected',
+        tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens, reasoningTokens, provider: providerKey, model, source: 'estimated' },
+      }
+    }
+
     console.error(`[RAG Stream] Error calling ${modelId}:`, error.message)
     const errorResult = {
       model_name: modelId,
@@ -731,13 +806,23 @@ router.post('/stream', async (req: Request, res: Response) => {
   res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders()
 
+  const clientClosedRef = { closed: false }
+
+  res.on('close', () => {
+    if (!res.writableFinished) {
+      clientClosedRef.closed = true
+    }
+  })
+
   const sendSSE = (type: string, data: any) => {
+    if (clientClosedRef.closed) return
     try {
       res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
     } catch (_) { /* stream may already be closed */ }
   }
 
   const heartbeat = setInterval(() => {
+    if (clientClosedRef.closed) { clearInterval(heartbeat); return }
     try { res.write(': heartbeat\n\n') } catch (_) { clearInterval(heartbeat) }
   }, 15000)
 
@@ -816,8 +901,15 @@ router.post('/stream', async (req: Request, res: Response) => {
         userId,
         sendSSE,
         rolePrompt: rolePrompts?.[modelId] || null,
+        clientClosedRef,
       }))
     )
+
+    if (clientClosedRef.closed) {
+      console.log('[RAG Stream] Client disconnected — usage already tracked per-model above')
+      clearInterval(heartbeat)
+      return
+    }
 
     if (userId) {
       for (const cr of councilResponses) {
@@ -829,7 +921,6 @@ router.post('/stream', async (req: Request, res: Response) => {
       }
     }
 
-    // Strip prompt from council_responses to reduce done event payload size
     const lightCouncilResponses = councilResponses.map(cr => ({
       model_name: cr.model_name,
       actual_model_name: cr.actual_model_name,
@@ -859,9 +950,13 @@ router.post('/stream', async (req: Request, res: Response) => {
     clearInterval(heartbeat)
     res.end()
   } catch (error: any) {
+    clearInterval(heartbeat)
+    if (clientClosedRef.closed) {
+      console.log('[RAG Stream] Client disconnected (caught) — usage already tracked per-model')
+      return
+    }
     console.error('[RAG Stream] Error:', error)
     sendSSE('error', { message: error.message || 'Unknown error in RAG stream pipeline' })
-    clearInterval(heartbeat)
     res.end()
   }
 })

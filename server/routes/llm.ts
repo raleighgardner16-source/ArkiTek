@@ -463,6 +463,10 @@ router.post('/stream', async (req: Request, res: Response) => {
 
   const userId = req.userId
   const { provider, model, prompt, isSummary, rolePrompt } = req.body || {}
+  const mappedModel = MODEL_MAPPINGS[model] || model
+  let fullResponse = ''
+  let inputTokens = 0
+  let outputTokens = 0
 
   try {
     if (!provider || !model || !prompt) {
@@ -487,12 +491,6 @@ router.post('/stream', async (req: Request, res: Response) => {
       return res.end()
     }
 
-    const mappedModel = MODEL_MAPPINGS[model] || model
-
-    let fullResponse = ''
-    let inputTokens = 0
-    let outputTokens = 0
-
     if (['openai', 'xai', 'meta', 'deepseek', 'mistral'].includes(provider)) {
       const modelsWithFixedTemperature = ['gpt-5-mini']
       const shouldUseDefaultTemperature = modelsWithFixedTemperature.includes(mappedModel) || modelsWithFixedTemperature.includes(model)
@@ -515,6 +513,8 @@ router.post('/stream', async (req: Request, res: Response) => {
           responseType: 'stream'
         }
       )
+
+      upstreamStream = streamResponse.data
 
       await new Promise<void>((resolve, reject) => {
         streamResponse.data.on('data', (chunk: any) => {
@@ -566,6 +566,8 @@ router.post('/stream', async (req: Request, res: Response) => {
           timeout: 120000
         }
       )
+
+      upstreamStream = streamResponse.data
 
       await new Promise<void>((resolve, reject) => {
         let buffer = ''
@@ -641,6 +643,8 @@ router.post('/stream', async (req: Request, res: Response) => {
         { responseType: 'stream' }
       )
 
+      upstreamStream = streamResponse.data
+
       await new Promise<void>((resolve, reject) => {
         let buffer = ''
         const processGoogleLine = (line: string) => {
@@ -687,6 +691,26 @@ router.post('/stream', async (req: Request, res: Response) => {
       return res.end()
     }
 
+    if (clientClosed) {
+      let tokenSource = 'estimated'
+      if (inputTokens === 0) {
+        try { inputTokens = await countTokens(prompt, provider, mappedModel) } catch (_) {}
+      } else {
+        tokenSource = 'api_response'
+      }
+      if (outputTokens === 0 && fullResponse) {
+        try { outputTokens = await countTokens(fullResponse, provider, mappedModel) } catch (_) {}
+      } else if (outputTokens > 0) {
+        tokenSource = 'api_response'
+      }
+      if (userId) {
+        trackUsage(userId, provider, model, inputTokens, outputTokens)
+      }
+      log.info({ provider, model, inputTokens, outputTokens, tokenSource, responseLength: fullResponse.length }, 'Client disconnected — tracked partial usage')
+      clearInterval(heartbeat)
+      return
+    }
+
     let tokenSource = 'api_response'
     if (inputTokens === 0 && outputTokens === 0) {
       tokenSource = 'estimated'
@@ -721,6 +745,23 @@ router.post('/stream', async (req: Request, res: Response) => {
 
   } catch (error: any) {
     clearInterval(heartbeat)
+
+    if (clientClosed) {
+      let tokenSource = 'estimated'
+      if (inputTokens > 0 || outputTokens > 0) tokenSource = 'api_response'
+      if (inputTokens === 0) {
+        try { inputTokens = await countTokens(prompt, provider, mappedModel) } catch (_) {}
+      }
+      if (outputTokens === 0 && fullResponse) {
+        try { outputTokens = await countTokens(fullResponse, provider, mappedModel) } catch (_) {}
+      }
+      if (userId) {
+        trackUsage(userId, provider, model, inputTokens, outputTokens)
+      }
+      log.info({ provider, model, inputTokens, outputTokens, tokenSource, responseLength: fullResponse.length }, 'Client disconnected (caught) — tracked partial usage')
+      return
+    }
+
     log.error({ err: error, provider, model }, 'LLM stream error')
     try {
       const status = error.response?.status
@@ -750,13 +791,34 @@ summaryRouter.post('/stream', async (req: Request, res: Response) => {
   res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders()
 
+  let clientClosed = false
+  let upstreamStream: any = null
+
+  res.on('close', () => {
+    if (!res.writableFinished) {
+      clientClosed = true
+      if (upstreamStream) {
+        try { upstreamStream.destroy() } catch (_) {}
+      }
+    }
+  })
+
   const sendSSE = (type: string, data: any) => {
-    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+    if (clientClosed) return
+    try {
+      res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+    } catch (_) {}
   }
 
+  const userId = req.userId
+  const { prompt } = req.body
+  const judgeModel = 'gemini-3-flash'
+  const judgeModelApi = 'gemini-3-flash-preview'
+  let fullResponse = ''
+  let inputTokens = 0
+  let outputTokens = 0
+
   try {
-    const userId = req.userId
-    const { prompt } = req.body
     if (!prompt) {
       sendSSE('error', { message: 'Missing prompt' })
       return res.end()
@@ -768,12 +830,6 @@ summaryRouter.post('/stream', async (req: Request, res: Response) => {
       return res.end()
     }
 
-    const judgeModel = 'gemini-3-flash'
-    const judgeModelApi = 'gemini-3-flash-preview'
-    let fullResponse = ''
-    let inputTokens = 0
-    let outputTokens = 0
-
     const streamResponse = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/${judgeModelApi}:streamGenerateContent?key=${apiKey}&alt=sse`,
       {
@@ -781,6 +837,8 @@ summaryRouter.post('/stream', async (req: Request, res: Response) => {
       },
       { responseType: 'stream' }
     )
+
+    upstreamStream = streamResponse.data
 
     await new Promise<void>((resolve, reject) => {
       let buffer = ''
@@ -822,6 +880,20 @@ summaryRouter.post('/stream', async (req: Request, res: Response) => {
       streamResponse.data.on('error', reject)
     })
 
+    if (clientClosed) {
+      if (inputTokens === 0) {
+        try { inputTokens = await countTokens(prompt, 'google', judgeModel) } catch (_) {}
+      }
+      if (outputTokens === 0 && fullResponse) {
+        try { outputTokens = await countTokens(fullResponse, 'google', judgeModel) } catch (_) {}
+      }
+      if (userId) {
+        trackUsage(userId, 'judge', 'summary-model', inputTokens, outputTokens, false)
+      }
+      log.info({ inputTokens, outputTokens, responseLength: fullResponse.length }, 'Summary client disconnected — tracked partial usage')
+      return
+    }
+
     let tokenSource = 'api_response'
     if (inputTokens === 0 && outputTokens === 0) {
       tokenSource = 'estimated'
@@ -850,9 +922,24 @@ summaryRouter.post('/stream', async (req: Request, res: Response) => {
 
     res.end()
   } catch (error: any) {
+    if (clientClosed) {
+      if (inputTokens === 0) {
+        try { inputTokens = await countTokens(prompt, 'google', judgeModel) } catch (_) {}
+      }
+      if (outputTokens === 0 && fullResponse) {
+        try { outputTokens = await countTokens(fullResponse, 'google', judgeModel) } catch (_) {}
+      }
+      if (userId) {
+        trackUsage(userId, 'judge', 'summary-model', inputTokens, outputTokens, false)
+      }
+      log.info({ inputTokens, outputTokens, responseLength: fullResponse.length }, 'Summary client disconnected (caught) — tracked partial usage')
+      return
+    }
     log.error({ err: error }, 'Summary stream error')
-    sendSSE('error', { message: error.message })
-    res.end()
+    try {
+      sendSSE('error', { message: error.message })
+      res.end()
+    } catch (_) {}
   }
 })
 

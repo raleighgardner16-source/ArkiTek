@@ -1,4 +1,4 @@
-import { Zap, MessageSquare, Flame, Trophy, Shield, Swords, Cpu } from 'lucide-react'
+import { Zap, MessageSquare, Flame, Trophy, Shield, Swords, Cpu, HelpCircle } from 'lucide-react'
 
 export const BADGE_CATEGORIES = [
   {
@@ -197,6 +197,31 @@ export const BADGE_CATEGORIES = [
       { name: 'Grok Master', threshold: 10000, emoji: '👑', color: '#0E5175', desc: '10K prompts' },
       { name: 'Grok Legend', threshold: 25000, emoji: '🌟', color: '#0B415C', desc: '25K prompts' },
     ]
+  },
+  {
+    id: 'secrets',
+    name: 'Secret Badges',
+    icon: HelpCircle,
+    description: 'Hidden achievements waiting to be discovered',
+    statKey: 'secret',
+    secret: true,
+    unit: '',
+    badges: [
+      { name: 'Night Owl', secretStatKey: 'lateNightPrompts', threshold: 5, emoji: '🦉', color: '#4A148C', desc: 'Send 5 prompts between midnight and 5am' },
+      { name: 'Early Bird', secretStatKey: 'earlyMorningPrompts', threshold: 5, emoji: '🐦', color: '#FF6F00', desc: 'Send 5 prompts before 6am' },
+      { name: 'Bookworm', secretStatKey: 'savedConversations', threshold: 50, emoji: '📚', color: '#5D4037', desc: 'Save 50 conversations' },
+      { name: 'Star Collector', secretStatKey: 'starredConversations', threshold: 25, emoji: '⭐', color: '#F9A825', desc: 'Star 25 conversations' },
+      { name: 'Speed Demon', secretStatKey: 'maxPromptsInDay', threshold: 50, emoji: '💨', color: '#D50000', desc: 'Send 50 prompts in a single day' },
+      { name: 'World Traveler', secretStatKey: 'uniqueProvidersUsed', threshold: 4, emoji: '🌍', color: '#00695C', desc: 'Use all 4 AI providers' },
+      { name: 'Marathon Runner', secretStatKey: 'longestConversation', threshold: 30, emoji: '🏃', color: '#1565C0', desc: 'Have a conversation with 30+ messages' },
+      { name: 'Treasure Hunter', secretStatKey: 'totalFavorites', threshold: 100, emoji: '💎', color: '#6A1B9A', desc: 'Favorite 100 responses' },
+      { name: 'Polyglot', secretStatKey: 'uniqueCategories', threshold: 10, emoji: '🗣️', color: '#00838F', desc: 'Use 10 different prompt categories' },
+      { name: 'Loyal Companion', secretStatKey: 'maxSingleModelUses', threshold: 500, emoji: '🤝', color: '#AD1457', desc: 'Use the same model 500 times' },
+      { name: 'Weekend Warrior', secretStatKey: 'weekendDaysUsed', threshold: 20, emoji: '🎉', color: '#E65100', desc: 'Send prompts on 20 different weekends' },
+      { name: 'Comeback Kid', secretStatKey: 'comebackAfterBreak', threshold: 1, emoji: '🔄', color: '#2E7D32', desc: 'Return after 7+ days of inactivity' },
+      { name: 'Model Mixer', secretStatKey: 'uniqueModelsUsed', threshold: 10, emoji: '🎰', color: '#C62828', desc: 'Use 10 different AI models' },
+      { name: 'Perfectionist', secretStatKey: 'totalRegenerations', threshold: 25, emoji: '🔁', color: '#283593', desc: 'Regenerate responses 25 times' },
+    ],
   },
 ]
 

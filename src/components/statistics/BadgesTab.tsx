@@ -54,6 +54,7 @@ const BadgesTab = ({
   const providers = isViewingOther ? {} : (userStats.providers || {})
   const earnedBadgesList = isFreePlan ? [] : (isViewingOther ? (publicProfile?.earnedBadges || []) : (userStats.earnedBadges || []))
   const persistedBadges = new Set(earnedBadgesList)
+  const secretStats = userStats.secretStats || {}
   const badgeStats = isFreePlan ? {
     totalTokens: 0,
     totalPrompts: 0,
@@ -67,6 +68,20 @@ const BadgesTab = ({
     provider_anthropic_prompts: 0,
     provider_google_prompts: 0,
     provider_xai_prompts: 0,
+    lateNightPrompts: 0,
+    earlyMorningPrompts: 0,
+    savedConversations: 0,
+    starredConversations: 0,
+    maxPromptsInDay: 0,
+    uniqueProvidersUsed: 0,
+    longestConversation: 0,
+    totalFavorites: 0,
+    uniqueCategories: 0,
+    maxSingleModelUses: 0,
+    weekendDaysUsed: 0,
+    comebackAfterBreak: 0,
+    uniqueModelsUsed: 0,
+    totalRegenerations: 0,
   } : {
     totalTokens: userStats.totalTokens || 0,
     totalPrompts: isViewingOther ? (publicProfile?.leaderboard?.totalPosts || 0) : (userStats.totalPrompts || 0),
@@ -80,6 +95,20 @@ const BadgesTab = ({
     provider_anthropic_prompts: providers.anthropic?.totalPrompts || 0,
     provider_google_prompts: providers.google?.totalPrompts || 0,
     provider_xai_prompts: providers.xai?.totalPrompts || 0,
+    lateNightPrompts: secretStats.lateNightPrompts || 0,
+    earlyMorningPrompts: secretStats.earlyMorningPrompts || 0,
+    savedConversations: secretStats.savedConversations || 0,
+    starredConversations: secretStats.starredConversations || 0,
+    maxPromptsInDay: secretStats.maxPromptsInDay || 0,
+    uniqueProvidersUsed: secretStats.uniqueProvidersUsed || 0,
+    longestConversation: secretStats.longestConversation || 0,
+    totalFavorites: secretStats.totalFavorites || 0,
+    uniqueCategories: secretStats.uniqueCategories || 0,
+    maxSingleModelUses: secretStats.maxSingleModelUses || 0,
+    weekendDaysUsed: secretStats.weekendDaysUsed || 0,
+    comebackAfterBreak: secretStats.comebackAfterBreak || 0,
+    uniqueModelsUsed: secretStats.uniqueModelsUsed || 0,
+    totalRegenerations: secretStats.totalRegenerations || 0,
   }
 
   const newlyEarned: any[] = []

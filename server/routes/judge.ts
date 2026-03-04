@@ -239,14 +239,35 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
   res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders()
 
+  let clientClosed = false
+  let upstreamStream: any = null
+
+  res.on('close', () => {
+    if (!res.writableFinished) {
+      clientClosed = true
+      if (upstreamStream) {
+        try { upstreamStream.destroy() } catch (_) {}
+      }
+    }
+  })
+
   const sendSSE = (type: string, data: any) => {
-    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+    if (clientClosed) return
+    try {
+      res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+    } catch (_) {}
   }
 
-  try {
-    const userId = req.userId!
-    const { userMessage, conversationContext, originalSummaryText } = req.body
+  const userId = req.userId!
+  const { userMessage, conversationContext, originalSummaryText } = req.body
+  const judgeModel = 'gemini-3-flash'
+  const judgeModelApi = 'gemini-3-flash-preview'
+  let fullResponse = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  let judgePrompt = ''
 
+  try {
     if (!userMessage) {
       sendSSE('error', { message: 'userMessage is required' })
       return res.end()
@@ -296,7 +317,6 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
       contextString += `Your previous summary response that the user wants to continue discussing:\n${originalSummaryText.substring(0, 3000)}${originalSummaryText.length > 3000 ? '...' : ''}\n\n`
     }
 
-    let judgePrompt = ''
     let rawSourcesData: any = null
     let searchResults: any[] = []
 
@@ -337,9 +357,6 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
       return res.end()
     }
 
-    const judgeModel = 'gemini-3-flash'
-    const judgeModelApi = 'gemini-3-flash-preview'
-
     sendSSE('status', { message: 'Generating response...' })
 
     const systemPrefix = 'You are a helpful conversational AI assistant. Respond directly and naturally to the user\'s follow-up questions. Do NOT format your response as a council summary — no CONSENSUS, SUMMARY, AGREEMENTS, or CONTRADICTIONS sections. Just answer conversationally as a single assistant. Use the conversation context provided to maintain continuity.\n\n'
@@ -352,9 +369,7 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
       { responseType: 'stream' }
     )
 
-    let fullResponse = ''
-    let inputTokens = 0
-    let outputTokens = 0
+    upstreamStream = streamResponse.data
 
     await new Promise<void>((resolve, reject) => {
       let buffer = ''
@@ -377,6 +392,10 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
         }
       }
       streamResponse.data.on('data', (chunk: Buffer) => {
+        if (clientClosed) {
+          try { streamResponse.data.destroy() } catch (_) {}
+          return
+        }
         buffer += chunk.toString()
         const lines = buffer.split('\n')
         buffer = lines.pop() || ''
@@ -393,8 +412,23 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
         }
         resolve()
       })
-      streamResponse.data.on('error', reject)
+      streamResponse.data.on('error', (err: any) => {
+        if (clientClosed) return resolve()
+        reject(err)
+      })
     })
+
+    if (clientClosed) {
+      if (inputTokens === 0) {
+        try { inputTokens = await countTokens(judgePrompt, 'google', judgeModel) } catch (_) {}
+      }
+      if (outputTokens === 0 && fullResponse) {
+        try { outputTokens = await countTokens(fullResponse, 'google', judgeModel) } catch (_) {}
+      }
+      trackUsage(userId, 'judge', 'summary-model', inputTokens, outputTokens, false)
+      console.log(`[Judge Stream] Client disconnected — tracked ${inputTokens} input, ${outputTokens} output tokens`)
+      return
+    }
 
     if (inputTokens === 0 && outputTokens === 0) {
       try {
@@ -437,9 +471,22 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
     res.end()
 
   } catch (error: any) {
+    if (clientClosed) {
+      if (inputTokens === 0) {
+        try { inputTokens = await countTokens(judgePrompt, 'google', judgeModel) } catch (_) {}
+      }
+      if (outputTokens === 0 && fullResponse) {
+        try { outputTokens = await countTokens(fullResponse, 'google', judgeModel) } catch (_) {}
+      }
+      trackUsage(userId, 'judge', 'summary-model', inputTokens, outputTokens, false)
+      console.log(`[Judge Stream] Client disconnected (caught) — tracked ${inputTokens} input, ${outputTokens} output tokens`)
+      return
+    }
     console.error('[Judge Conversation Stream] Error:', error.message)
-    sendSSE('error', { message: `Failed to get judge response: ${  error.message}` })
-    res.end()
+    try {
+      sendSSE('error', { message: `Failed to get judge response: ${  error.message}` })
+      res.end()
+    } catch (_) {}
   }
 })
 

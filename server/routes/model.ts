@@ -71,18 +71,42 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
   res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders()
 
+  let clientClosed = false
+  let upstreamStream: any = null
+
+  res.on('close', () => {
+    if (!res.writableFinished) {
+      clientClosed = true
+      if (upstreamStream) {
+        try { upstreamStream.destroy() } catch (_) {}
+      }
+    }
+  })
+
   const sendSSE = (type: string, data: any) => {
-    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+    if (clientClosed) return
+    try {
+      res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+    } catch (_) {}
   }
 
   const heartbeat = setInterval(() => {
+    if (clientClosed) { clearInterval(heartbeat); return }
     try { res.write(': heartbeat\n\n') } catch (e) { clearInterval(heartbeat) }
   }, 15000)
 
-  try {
-    const userId = req.userId!
-    const { modelName, userMessage, originalResponse, responseId, isCouncilFollowUp } = req.body
+  const userId = req.userId!
+  const { modelName, userMessage, originalResponse, responseId, isCouncilFollowUp } = req.body || {}
+  const parts = (modelName || '').split('-')
+  const provider = parts[0] || ''
+  const model = parts.slice(1).join('-')
+  const mappedModel = MODEL_MAPPINGS[model] || model
+  let fullResponse = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  let prompt = ''
 
+  try {
     if (!modelName || !userMessage) {
       sendSSE('error', { message: 'modelName and userMessage are required' })
       clearInterval(heartbeat)
@@ -97,10 +121,6 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
     }
 
     log.debug({ modelName }, 'Model conversation stream: processing message')
-
-    const parts = modelName.split('-')
-    const provider = parts[0]
-    const model = parts.slice(1).join('-')
 
     sendSSE('status', { message: 'Analyzing query...' })
     const { category, needsSearch, needsContext } = await detectCategoryForJudge(userMessage, userId)
@@ -174,17 +194,11 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
 
     conversationMessages.push({ role: 'user', content: userMessage })
 
-    const prompt = `${systemMessage  }\n\n${  conversationMessages.map(m => `${m.role}: ${m.content}`).join('\n')}`
+    prompt = `${systemMessage  }\n\n${  conversationMessages.map(m => `${m.role}: ${m.content}`).join('\n')}`
 
     log.debug({ messageCount: conversationMessages.length, contextCount: contextSummaries.length }, 'Built conversation messages')
 
-    const mappedModel = MODEL_MAPPINGS[model] || model
-
     sendSSE('status', { message: 'Generating response...' })
-
-    let fullResponse = ''
-    let inputTokens = 0
-    let outputTokens = 0
 
     if (['openai', 'xai', 'meta', 'deepseek', 'mistral'].includes(provider)) {
       const apiKey = API_KEYS[provider]
@@ -210,8 +224,14 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
         }
       )
 
+      upstreamStream = streamResponse.data
+
       await new Promise<void>((resolve, reject) => {
         streamResponse.data.on('data', (chunk: Buffer) => {
+          if (clientClosed) {
+            try { streamResponse.data.destroy() } catch (_) {}
+            return
+          }
           const lines = chunk.toString().split('\n').filter((l: string) => l.trim().startsWith('data:'))
           for (const line of lines) {
             const jsonStr = line.replace(/^data:\s*/, '').trim()
@@ -231,7 +251,10 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
           }
         })
         streamResponse.data.on('end', resolve)
-        streamResponse.data.on('error', reject)
+        streamResponse.data.on('error', (err: Error) => {
+          if (clientClosed) return resolve()
+          reject(err)
+        })
       })
 
     } else if (provider === 'anthropic') {
@@ -259,6 +282,8 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
           timeout: 120000
         }
       )
+
+      upstreamStream = streamResponse.data
 
       await new Promise<void>((resolve, reject) => {
         let buffer = ''
@@ -290,6 +315,10 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
           }
         }
         streamResponse.data.on('data', (chunk: Buffer) => {
+          if (clientClosed) {
+            try { streamResponse.data.destroy() } catch (_) {}
+            return
+          }
           buffer += chunk.toString()
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
@@ -311,6 +340,7 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
           }
         })
         streamResponse.data.on('error', (err: Error) => {
+          if (clientClosed) return resolve()
           log.error({ err }, 'Anthropic stream connection error')
           reject(err)
         })
@@ -331,6 +361,8 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
         },
         { responseType: 'stream' }
       )
+
+      upstreamStream = streamResponse.data
 
       await new Promise<void>((resolve, reject) => {
         let buffer = ''
@@ -353,6 +385,10 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
           }
         }
         streamResponse.data.on('data', (chunk: Buffer) => {
+          if (clientClosed) {
+            try { streamResponse.data.destroy() } catch (_) {}
+            return
+          }
           buffer += chunk.toString()
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
@@ -369,13 +405,29 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
           }
           resolve()
         })
-        streamResponse.data.on('error', reject)
+        streamResponse.data.on('error', (err: Error) => {
+          if (clientClosed) return resolve()
+          reject(err)
+        })
       })
 
     } else {
       sendSSE('error', { message: `Unsupported provider: ${provider}` })
       clearInterval(heartbeat)
       return res.end()
+    }
+
+    if (clientClosed) {
+      if (inputTokens === 0) {
+        try { inputTokens = await countTokens(prompt, provider, mappedModel) } catch (_) {}
+      }
+      if (outputTokens === 0 && fullResponse) {
+        try { outputTokens = await countTokens(fullResponse, provider, mappedModel) } catch (_) {}
+      }
+      trackUsage(userId, provider, model, inputTokens, outputTokens)
+      log.info({ provider, model, inputTokens, outputTokens, responseLength: fullResponse.length }, 'Model conversation: client disconnected — tracked partial usage')
+      clearInterval(heartbeat)
+      return
     }
 
     if (inputTokens === 0 && outputTokens === 0) {
@@ -411,9 +463,24 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
 
   } catch (error: any) {
     clearInterval(heartbeat)
+
+    if (clientClosed) {
+      if (inputTokens === 0) {
+        try { inputTokens = await countTokens(prompt, provider, mappedModel) } catch (_) {}
+      }
+      if (outputTokens === 0 && fullResponse) {
+        try { outputTokens = await countTokens(fullResponse, provider, mappedModel) } catch (_) {}
+      }
+      trackUsage(userId, provider, model, inputTokens, outputTokens)
+      log.info({ provider, model, inputTokens, outputTokens }, 'Model conversation: client disconnected (caught) — tracked partial usage')
+      return
+    }
+
     log.error({ err: error, status: error.response?.status, statusText: error.response?.statusText, data: error.response?.data }, 'Model conversation stream API error')
-    sendSSE('error', { message: `Failed to get model response: ${  error.response?.data?.error?.message || error.message}` })
-    res.end()
+    try {
+      sendSSE('error', { message: `Failed to get model response: ${  error.response?.data?.error?.message || error.message}` })
+      res.end()
+    } catch (_) {}
   }
 })
 
