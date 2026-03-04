@@ -50,9 +50,15 @@ const SharedPromptView = () => {
     fetch(`${API_URL}${API_PREFIX}/share/${token}`)
       .then(res => res.json())
       .then(json => {
-        if (json.success && json.data) {
-          setData(json.data)
-          if (!json.data.summary) setActiveView('responses')
+        if (json.success && json.prompt && json.responses) {
+          setData({
+            prompt: json.prompt,
+            category: json.category,
+            responses: json.responses,
+            summary: json.summary || null,
+            createdAt: json.createdAt,
+          })
+          if (!json.summary) setActiveView('responses')
         } else {
           setError(json.error || 'Share not found')
         }
