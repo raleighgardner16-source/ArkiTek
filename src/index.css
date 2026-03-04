@@ -63,6 +63,35 @@ body {
 
 @keyframes pulse-recording {
   0%, 100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(231, 76, 60, 0); }
+  50% { box-shadow: 0 0 0 8px rgba(231, 76, 60, 0); }
+}
+
+@keyframes pulse-recording-text {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Voice & Image action buttons — pronounced hover states */
+.media-action-btn {
+  position: relative;
+}
+
+.media-action-btn:hover {
+  transform: scale(1.15);
+  border-color: rgba(93, 173, 226, 0.6) !important;
+  background: rgba(93, 173, 226, 0.15) !important;
+  color: #5dade2 !important;
+  box-shadow: 0 0 12px rgba(93, 173, 226, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.media-action-btn:active {
+  transform: scale(0.95);
+}
+
+.media-action-btn.recording:hover {
+  border-color: rgba(231, 76, 60, 0.8) !important;
+  background: rgba(231, 76, 60, 0.3) !important;
+  color: #e74c3c !important;
+  box-shadow: 0 0 14px rgba(231, 76, 60, 0.35), 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 

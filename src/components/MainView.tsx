@@ -1476,12 +1476,14 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 </div>
               )}
 
-              {/* Mode Toggle: General / Debate */}
+              {/* Mode Toggle + Voice/Image Actions Row */}
               {responses.length === 0 && !isPromptLocked && (
                 <div style={sx(layout.flexRow, {
-                  gap: spacing.xs,
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
                   padding: `${spacing.md} ${spacing.xl} 0 ${spacing.xl}`,
                 })}>
+                  {/* Left: General / Debate toggle */}
                   <div style={sx(layout.flexRow, {
                     background: currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
                     borderRadius: radius.lg,
@@ -1522,6 +1524,72 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                         {mode.label}
                       </button>
                     ))}
+                  </div>
+
+                  {/* Right: Image & Voice buttons */}
+                  <div style={sx(layout.flexRow, { gap: spacing.sm, alignItems: 'center' })}>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/gif,image/webp"
+                      multiple
+                      onChange={handleImageSelect}
+                      style={{ display: 'none' }}
+                    />
+                    {isRecording && (
+                      <span style={{
+                        fontSize: fontSize.xs,
+                        color: currentTheme.error,
+                        fontWeight: fontWeight.semibold,
+                        letterSpacing: '0.3px',
+                        animation: 'pulse-recording-text 1.5s ease-in-out infinite',
+                      }}>
+                        Listening...
+                      </span>
+                    )}
+                    <button
+                      onClick={() => imageInputRef.current?.click()}
+                      title="Attach image"
+                      className="media-action-btn"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: radius.lg,
+                        border: `1.5px solid ${currentTheme.borderLight}`,
+                        background: currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.02)',
+                        cursor: 'pointer',
+                        color: currentTheme.textMuted,
+                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                      }}
+                    >
+                      <ImagePlus size={16} />
+                    </button>
+                    <button
+                      onClick={toggleVoiceInput}
+                      title={isRecording ? 'Stop recording' : 'Voice input'}
+                      className={`media-action-btn ${isRecording ? 'recording' : ''}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: radius.lg,
+                        border: `1.5px solid ${isRecording ? currentTheme.error : currentTheme.borderLight}`,
+                        background: isRecording
+                          ? (currentTheme.name === 'dark' ? 'rgba(231, 76, 60, 0.25)' : 'rgba(192, 57, 43, 0.15)')
+                          : (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.02)'),
+                        cursor: 'pointer',
+                        color: isRecording ? currentTheme.error : currentTheme.textMuted,
+                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                        animation: isRecording ? 'pulse-recording 1.5s ease-in-out infinite' : 'none',
+                      }}
+                    >
+                      {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
+                    </button>
                   </div>
                 </div>
               )}
@@ -1658,80 +1726,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   ))}
                 </div>
               )}
-
-              {/* Voice & Image Action Bar */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: spacing.xs,
-                padding: `0 ${spacing.xl} ${spacing.xs}`,
-              }}>
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/gif,image/webp"
-                  multiple
-                  onChange={handleImageSelect}
-                  style={{ display: 'none' }}
-                />
-                <button
-                  onClick={() => imageInputRef.current?.click()}
-                  disabled={isPromptLocked}
-                  title="Attach image"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: radius.md,
-                    border: `1px solid ${currentTheme.borderLight}`,
-                    background: 'transparent',
-                    cursor: isPromptLocked ? 'not-allowed' : 'pointer',
-                    color: currentTheme.textMuted,
-                    transition: transition.fast,
-                    opacity: isPromptLocked ? 0.4 : 1,
-                  }}
-                  onMouseEnter={(e) => { if (!isPromptLocked) (e.currentTarget.style.background = currentTheme.backgroundOverlayLight) }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                >
-                  <ImagePlus size={16} />
-                </button>
-                <button
-                  onClick={toggleVoiceInput}
-                  disabled={isPromptLocked}
-                  title={isRecording ? 'Stop recording' : 'Voice input'}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: radius.md,
-                    border: `1px solid ${isRecording ? currentTheme.error : currentTheme.borderLight}`,
-                    background: isRecording ? (currentTheme.name === 'dark' ? 'rgba(231, 76, 60, 0.2)' : 'rgba(192, 57, 43, 0.1)') : 'transparent',
-                    cursor: isPromptLocked ? 'not-allowed' : 'pointer',
-                    color: isRecording ? currentTheme.error : currentTheme.textMuted,
-                    transition: transition.fast,
-                    opacity: isPromptLocked ? 0.4 : 1,
-                    animation: isRecording ? 'pulse-recording 1.5s ease-in-out infinite' : 'none',
-                  }}
-                  onMouseEnter={(e) => { if (!isPromptLocked && !isRecording) (e.currentTarget.style.background = currentTheme.backgroundOverlayLight) }}
-                  onMouseLeave={(e) => { if (!isRecording) e.currentTarget.style.background = 'transparent' }}
-                >
-                  {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
-                </button>
-                {isRecording && (
-                  <span style={{
-                    fontSize: fontSize.xs,
-                    color: currentTheme.error,
-                    fontWeight: fontWeight.medium,
-                    marginLeft: spacing.xs,
-                  }}>
-                    Listening...
-                  </span>
-                )}
-              </div>
 
               <ModelSelector
                 currentTheme={currentTheme}

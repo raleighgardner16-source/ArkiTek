@@ -542,21 +542,6 @@ const SummaryWindow = () => {
             <X size={20} />
           </button>
 
-          <div style={{ marginBottom: spacing['3xl'], paddingRight: spacing['5xl'] }}>
-            <div style={sx(layout.flexRow, { gap: spacing.lg })}>
-              <FileText size={28} color={currentTheme.accent} />
-              <h2
-                key={`summary-title-maximized-${theme}`}
-                style={sx(s.gradientText, {
-                  fontSize: '1.8rem',
-                  margin: 0,
-                })}
-              >
-                {summary.singleModel ? 'Model Response' : 'Response Summary'}
-              </h2>
-            </div>
-          </div>
-
           <div
             style={{
               padding: spacing['2xl'],
@@ -622,20 +607,6 @@ const SummaryWindow = () => {
               border: `1px solid ${currentTheme.borderLight}`,
               maxWidth: '85%',
             }}>
-              <div style={sx(layout.flexRow, {
-                gap: spacing.md,
-                marginBottom: '10px',
-              })}>
-                <span style={{
-                  fontSize: fontSize.md,
-                  fontWeight: fontWeight.semibold,
-                  color: currentTheme.accent,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}>
-                  {summary.singleModel ? (summary.modelName || 'Model') : 'Summary'}
-                </span>
-              </div>
               {summary.singleModel
                 ? (
                   <p
@@ -979,16 +950,6 @@ const SummaryWindow = () => {
       >
         <div style={sx(layout.flexRow, { gap: spacing.lg })}>
           <Move size={20} color={currentTheme.accent} style={{ opacity: 0.6 }} />
-          <FileText size={28} color={currentTheme.accent} />
-          <h2
-            key={`summary-conv-title-${theme}`}
-            style={sx(s.gradientText, {
-              fontSize: '1.8rem',
-              margin: 0,
-            })}
-          >
-            {summary.singleModel ? 'Model Response' : 'Response Summary'}
-          </h2>
         </div>
         <div style={sx(layout.flexRow, { gap: spacing.md })}>
           <button
@@ -1086,20 +1047,6 @@ const SummaryWindow = () => {
           border: `1px solid ${currentTheme.borderLight}`,
           maxWidth: '90%',
         }}>
-          <div style={sx(layout.flexRow, {
-            gap: spacing.sm,
-            marginBottom: spacing.md,
-          })}>
-            <span style={{
-              fontSize: '0.75rem',
-              fontWeight: fontWeight.semibold,
-              color: currentTheme.accent,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}>
-              {summary.singleModel ? (summary.modelName || 'Model') : 'Summary'}
-            </span>
-          </div>
           {summary.singleModel
             ? (
               <p
