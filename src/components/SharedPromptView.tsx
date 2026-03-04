@@ -346,12 +346,12 @@ const SharedPromptView = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
+            className="shared-column-scroll"
             style={{
-              display: 'flex',
               flex: 1,
               minHeight: 0,
-              height: 'calc(100vh - 260px)',
-              overflow: 'hidden',
+              overflowY: 'auto',
+              overflowX: 'hidden',
             }}
           >
             {/* Maximized overlay */}
@@ -408,12 +408,12 @@ const SharedPromptView = () => {
             <div style={{
               display: 'flex',
               width: '100%',
-              height: '100%',
-              overflow: 'hidden',
+              minHeight: '100%',
               maxWidth: data.responses.length <= 2 ? '900px' : data.responses.length === 3 ? '1100px' : '100%',
               margin: '0 auto',
+              padding: `0 ${spacing['3xl']}`,
             }}>
-              {data.responses.map((response, index, arr) => {
+              {data.responses.map((response, index) => {
                 const id = `response-${index}`
                 const providerColor = getProviderColor(response.modelName)
                 return (
@@ -426,15 +426,12 @@ const SharedPromptView = () => {
                         alignSelf: 'stretch',
                       }} />
                     )}
-                    <div className="shared-column-scroll" style={{
+                    <div style={{
                       flex: 1,
                       minWidth: 0,
-                      height: '100%',
                       display: 'flex',
                       flexDirection: 'column',
-                      overflowY: 'auto',
-                      overflowX: 'hidden',
-                      padding: `0 ${spacing.xl} ${spacing['4xl']}`,
+                      padding: `0 ${spacing.xl}`,
                     }}>
                       {/* Column header */}
                       <div style={{
@@ -472,11 +469,13 @@ const SharedPromptView = () => {
                       </div>
 
                       {/* Column content */}
-                      {response.error ? (
-                        <p style={{ color: '#ff6b6b', fontStyle: 'italic' }}>This response encountered an error.</p>
-                      ) : (
-                        <MarkdownRenderer content={typeof response.text === 'string' ? response.text : ''} theme={currentTheme} />
-                      )}
+                      <div style={{ paddingBottom: spacing['4xl'] }}>
+                        {response.error ? (
+                          <p style={{ color: '#ff6b6b', fontStyle: 'italic' }}>This response encountered an error.</p>
+                        ) : (
+                          <MarkdownRenderer content={typeof response.text === 'string' ? response.text : ''} theme={currentTheme} />
+                        )}
+                      </div>
                     </div>
                   </React.Fragment>
                 )

@@ -40,6 +40,14 @@ export async function executeRAGPipeline({
   const responseIds: Record<string, string> = {}
   const ragResponsesByModel: Record<string, any> = {}
   let latestRagSearchSources: any[] = []
+  let searchPhaseDone = false
+
+  const clearSearchIndicator = () => {
+    if (!searchPhaseDone) {
+      searchPhaseDone = true
+      useStore.getState().setIsSearchingWeb(false)
+    }
+  }
 
   const normalizeCouncilResponse = (councilResponse: any) => {
     const actualModel = councilResponse.actual_model_name || councilResponse.model_name
@@ -127,6 +135,7 @@ export async function executeRAGPipeline({
           if (!event || !event.type) return
 
           if (event.type === 'search_results') {
+            clearSearchIndicator()
             if (Array.isArray(event.search_results) && event.search_results.length > 0) {
               latestRagSearchSources = [...event.search_results]
               useStore.getState().setSearchSources(event.search_results)
@@ -135,6 +144,7 @@ export async function executeRAGPipeline({
           }
 
           if (event.type === 'model_token') {
+            clearSearchIndicator()
             const responseId = responseIds[event.model_name]
             if (!responseId || !event.content) return
             useStore.getState().updateResponse(responseId, {
@@ -230,7 +240,7 @@ export async function executeRAGPipeline({
       }
     })
 
-    useStore.getState().setIsSearchingWeb(false)
+    clearSearchIndicator()
     return { responses, ragData }
   } catch (ragError: any) {
     // Abort → re-throw so the orchestrator handles it
@@ -248,13 +258,13 @@ export async function executeRAGPipeline({
       /subscription required/i.test(ragError.message)
     ) {
       useStore.getState().clearResponses()
-      useStore.getState().setIsSearchingWeb(false)
+      clearSearchIndicator()
       throw ragError
     }
 
     // Other failures: clear partial state and signal the caller to fall back
     useStore.getState().clearResponses()
-    useStore.getState().setIsSearchingWeb(false)
+    clearSearchIndicator()
     return null
   }
 }
