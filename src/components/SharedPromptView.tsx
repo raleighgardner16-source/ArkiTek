@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronDown, ChevronUp, Maximize2, Minimize2, FileText, MessageSquare, AlertCircle } from 'lucide-react'
+import { Maximize2, Minimize2, FileText, MessageSquare, AlertCircle } from 'lucide-react'
 import MarkdownRenderer from './MarkdownRenderer'
 import { getTheme } from '../utils/theme'
 import { spacing, fontSize, fontWeight, radius, transition } from '../utils/styles'
@@ -42,7 +42,6 @@ const SharedPromptView = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<'responses' | 'summary'>('responses')
-  const [minimizedCards, setMinimizedCards] = useState<Record<string, boolean>>({})
   const [maximizedCard, setMaximizedCard] = useState<string | null>(null)
 
   useEffect(() => {
@@ -66,10 +65,6 @@ const SharedPromptView = () => {
       .catch(() => setError('Failed to load shared content'))
       .finally(() => setLoading(false))
   }, [token])
-
-  const toggleMinimize = (id: string) => {
-    setMinimizedCards(prev => ({ ...prev, [id]: !prev[id] }))
-  }
 
   const toggleMaximize = (id: string) => {
     setMaximizedCard(prev => prev === id ? null : id)
@@ -234,16 +229,25 @@ const SharedPromptView = () => {
   return (
     <div style={{
       width: '100vw',
-      minHeight: '100vh',
+      height: '100vh',
       background: currentTheme.background,
       color: currentTheme.text,
-      overflowY: 'auto',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
     }}>
+      <style>{`
+        .shared-column-scroll::-webkit-scrollbar { width: 6px; }
+        .shared-column-scroll::-webkit-scrollbar-track { background: transparent; }
+        .shared-column-scroll::-webkit-scrollbar-thumb { background: rgba(93, 173, 226, 0.35); border-radius: 6px; }
+        .shared-column-scroll::-webkit-scrollbar-thumb:hover { background: rgba(93, 173, 226, 0.55); }
+      `}</style>
       {/* Header */}
       <div style={{
         padding: `${spacing['2xl']} ${spacing['4xl']}`,
         borderBottom: `1px solid ${currentTheme.borderLight}`,
         background: currentTheme.backgroundOverlay,
+        flexShrink: 0,
       }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.lg }}>
@@ -288,6 +292,7 @@ const SharedPromptView = () => {
           margin: '0 auto',
           padding: `${spacing.xl} ${spacing['4xl']} 0`,
           gap: spacing.md,
+          flexShrink: 0,
         }}>
           <button
             onClick={() => setActiveView('responses')}
@@ -333,59 +338,120 @@ const SharedPromptView = () => {
       )}
 
       {/* Content */}
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: spacing['4xl'] }}>
-        <AnimatePresence mode="wait">
-          {activeView === 'responses' ? (
-            <motion.div
-              key="responses"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              style={{ display: 'flex', flexDirection: 'column', gap: spacing.xl }}
-            >
-              {data.responses.map((response, index) => {
-                const id = `response-${index}`
-                const isMinimized = minimizedCards[id]
-                const isMaximized = maximizedCard === id
-                const providerColor = getProviderColor(response.modelName)
-
-                if (isMaximized) {
-                  return (
-                    <motion.div
-                      key={id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      style={{
-                        position: 'fixed',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        zIndex: 1000,
-                        background: currentTheme.background,
-                        overflowY: 'auto',
-                        padding: spacing['4xl'],
-                      }}
+      <AnimatePresence mode="wait">
+        {activeView === 'responses' ? (
+          <motion.div
+            key="responses"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              display: 'flex',
+              flex: 1,
+              minHeight: 0,
+              height: 'calc(100vh - 260px)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Maximized overlay */}
+            {maximizedCard && (() => {
+              const idx = parseInt(maximizedCard.replace('response-', ''))
+              const response = data.responses[idx]
+              if (!response) return null
+              const providerColor = getProviderColor(response.modelName)
+              return (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 1000,
+                    background: currentTheme.background,
+                    overflowY: 'auto',
+                    padding: spacing['4xl'],
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: spacing['2xl'],
+                    padding: `${spacing.lg} ${spacing.xl}`,
+                    background: currentTheme.backgroundOverlay,
+                    borderRadius: radius.xl,
+                    border: `1px solid ${providerColor}40`,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
+                      <div style={{ width: '10px', height: '10px', borderRadius: radius.circle, background: providerColor }} />
+                      <span style={{ color: providerColor, fontSize: fontSize.xl, fontWeight: fontWeight.semibold }}>
+                        {formatModelName(response.modelName)}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => toggleMaximize(maximizedCard)}
+                      style={{ background: 'none', border: 'none', color: currentTheme.textMuted, cursor: 'pointer', padding: spacing.sm }}
                     >
+                      <Minimize2 size={20} />
+                    </button>
+                  </div>
+                  <MarkdownRenderer content={typeof response.text === 'string' ? response.text : ''} theme={currentTheme} />
+                </motion.div>
+              )
+            })()}
+
+            {/* Side-by-side columns */}
+            <div style={{
+              display: 'flex',
+              width: '100%',
+              height: '100%',
+              overflow: 'hidden',
+              maxWidth: data.responses.length <= 2 ? '900px' : data.responses.length === 3 ? '1100px' : '100%',
+              margin: '0 auto',
+            }}>
+              {data.responses.map((response, index, arr) => {
+                const id = `response-${index}`
+                const providerColor = getProviderColor(response.modelName)
+                return (
+                  <React.Fragment key={id}>
+                    {index > 0 && (
                       <div style={{
+                        width: '1px',
+                        background: 'rgba(255, 255, 255, 0.12)',
+                        flexShrink: 0,
+                        alignSelf: 'stretch',
+                      }} />
+                    )}
+                    <div className="shared-column-scroll" style={{
+                      flex: 1,
+                      minWidth: 0,
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      overflowY: 'auto',
+                      overflowX: 'hidden',
+                      padding: `0 ${spacing.xl} ${spacing['4xl']}`,
+                    }}>
+                      {/* Column header */}
+                      <div style={{
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 10,
+                        background: currentTheme.background,
+                        padding: `${spacing.lg} 0`,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        marginBottom: spacing['2xl'],
-                        padding: `${spacing.lg} ${spacing.xl}`,
-                        background: currentTheme.backgroundOverlay,
-                        borderRadius: radius.xl,
-                        border: `1px solid ${providerColor}40`,
+                        borderBottom: `1px solid ${currentTheme.borderLight}`,
+                        marginBottom: spacing.lg,
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
-                          <div style={{
-                            width: '10px',
-                            height: '10px',
-                            borderRadius: radius.circle,
-                            background: providerColor,
-                          }} />
-                          <span style={{ color: providerColor, fontSize: fontSize.xl, fontWeight: fontWeight.semibold }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+                          <div style={{ width: '8px', height: '8px', borderRadius: radius.circle, background: providerColor }} />
+                          <span style={{ color: providerColor, fontSize: fontSize.md, fontWeight: fontWeight.semibold }}>
                             {formatModelName(response.modelName)}
                           </span>
                         </div>
@@ -396,120 +462,54 @@ const SharedPromptView = () => {
                             border: 'none',
                             color: currentTheme.textMuted,
                             cursor: 'pointer',
-                            padding: spacing.sm,
-                          }}
-                        >
-                          <Minimize2 size={20} />
-                        </button>
-                      </div>
-                      <MarkdownRenderer content={typeof response.text === 'string' ? response.text : ''} theme={currentTheme} />
-                    </motion.div>
-                  )
-                }
-
-                return (
-                  <div
-                    key={id}
-                    style={{
-                      background: currentTheme.backgroundOverlay,
-                      border: `1px solid ${currentTheme.borderLight}`,
-                      borderRadius: radius['2xl'],
-                      overflow: 'hidden',
-                      transition: 'border-color 0.2s ease',
-                    }}
-                  >
-                    {/* Card Header */}
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: `${spacing.lg} ${spacing.xl}`,
-                        borderBottom: isMinimized ? 'none' : `1px solid ${currentTheme.borderLight}`,
-                        cursor: 'pointer',
-                      }}
-                      onClick={() => toggleMinimize(id)}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
-                        <div style={{
-                          width: '10px',
-                          height: '10px',
-                          borderRadius: radius.circle,
-                          background: providerColor,
-                        }} />
-                        <span style={{ color: providerColor, fontSize: fontSize.lg, fontWeight: fontWeight.semibold }}>
-                          {formatModelName(response.modelName)}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); toggleMaximize(id) }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: currentTheme.textMuted,
-                            cursor: 'pointer',
                             padding: spacing.xs,
                             display: 'flex',
                             alignItems: 'center',
                           }}
                         >
-                          <Maximize2 size={16} />
+                          <Maximize2 size={14} />
                         </button>
-                        {isMinimized ? <ChevronDown size={18} color={currentTheme.textMuted} /> : <ChevronUp size={18} color={currentTheme.textMuted} />}
                       </div>
-                    </div>
 
-                    {/* Card Body */}
-                    <AnimatePresence>
-                      {!isMinimized && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                          style={{ overflow: 'hidden' }}
-                        >
-                          <div style={{ padding: spacing.xl }}>
-                            {response.error ? (
-                              <p style={{ color: '#ff6b6b', fontStyle: 'italic' }}>This response encountered an error.</p>
-                            ) : (
-                              <MarkdownRenderer content={typeof response.text === 'string' ? response.text : ''} theme={currentTheme} />
-                            )}
-                          </div>
-                        </motion.div>
+                      {/* Column content */}
+                      {response.error ? (
+                        <p style={{ color: '#ff6b6b', fontStyle: 'italic' }}>This response encountered an error.</p>
+                      ) : (
+                        <MarkdownRenderer content={typeof response.text === 'string' ? response.text : ''} theme={currentTheme} />
                       )}
-                    </AnimatePresence>
-                  </div>
+                    </div>
+                  </React.Fragment>
                 )
               })}
-            </motion.div>
-          ) : (
-            <motion.div
-              key="summary"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-            >
-              <div style={{
-                background: currentTheme.backgroundOverlay,
-                border: `1px solid ${currentTheme.borderLight}`,
-                borderRadius: radius['2xl'],
-                padding: spacing['3xl'],
-              }}>
-                {data.summary && renderSummaryContent(data.summary)}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="summary"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            style={{ maxWidth: '1200px', margin: '0 auto', padding: spacing['4xl'] }}
+          >
+            <div style={{
+              background: currentTheme.backgroundOverlay,
+              border: `1px solid ${currentTheme.borderLight}`,
+              borderRadius: radius['2xl'],
+              padding: spacing['3xl'],
+            }}>
+              {data.summary && renderSummaryContent(data.summary)}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Footer */}
       <div style={{
         textAlign: 'center',
-        padding: `${spacing['3xl']} ${spacing['4xl']}`,
+        padding: `${spacing.lg} ${spacing['4xl']}`,
         borderTop: `1px solid ${currentTheme.borderLight}`,
+        flexShrink: 0,
       }}>
         <p style={{ color: currentTheme.textMuted, fontSize: fontSize.md, margin: 0 }}>
           Shared via{' '}
