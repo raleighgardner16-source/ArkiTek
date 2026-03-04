@@ -411,93 +411,84 @@ const SharedPromptView = () => {
             {/* Left gutter — scrolls all columns */}
             <div
               onWheel={handleGutterWheel}
-              style={{ width: '25px', minWidth: '25px', flexShrink: 0, cursor: 'default' }}
+              style={{ width: '20px', minWidth: '20px', flexShrink: 0 }}
             />
 
-            {/* Side-by-side columns */}
-            <div style={{
-              display: 'flex',
-              flex: 1,
-              minWidth: 0,
-              height: '100%',
-              overflow: 'hidden',
-            }}>
-              {data.responses.map((response, index) => {
-                const id = `response-${index}`
-                const providerColor = getProviderColor(response.modelName)
-                return (
-                  <React.Fragment key={id}>
-                    {index > 0 && (
-                      <div style={{
-                        width: '1px',
-                        background: 'rgba(255, 255, 255, 0.12)',
-                        flexShrink: 0,
-                        alignSelf: 'stretch',
-                      }} />
-                    )}
-                    <div
-                      className="shared-column-scroll"
-                      data-shared-col
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        height: '100%',
-                        overflowY: 'auto',
-                        overflowX: 'hidden',
-                        padding: `0 ${spacing.xl} ${spacing['4xl']}`,
-                      }}
-                    >
-                      {/* Column header */}
-                      <div style={{
-                        position: 'sticky',
-                        top: 0,
-                        zIndex: 10,
-                        background: currentTheme.background,
-                        padding: `${spacing.lg} 0`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        borderBottom: `1px solid ${currentTheme.borderLight}`,
-                        marginBottom: spacing.lg,
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
-                          <div style={{ width: '8px', height: '8px', borderRadius: radius.circle, background: providerColor }} />
-                          <span style={{ color: providerColor, fontSize: fontSize.md, fontWeight: fontWeight.semibold }}>
-                            {formatModelName(response.modelName)}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => toggleMaximize(id)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: currentTheme.textMuted,
-                            cursor: 'pointer',
-                            padding: spacing.xs,
-                            display: 'flex',
-                            alignItems: 'center',
-                          }}
-                        >
-                          <Maximize2 size={14} />
-                        </button>
+            {data.responses.map((response, index) => {
+              const id = `response-${index}`
+              const providerColor = getProviderColor(response.modelName)
+              return (
+                <React.Fragment key={id}>
+                  {index > 0 && (
+                    <div style={{
+                      width: '1px',
+                      background: 'rgba(255, 255, 255, 0.12)',
+                      flexShrink: 0,
+                      alignSelf: 'stretch',
+                    }} />
+                  )}
+                  <div
+                    className="shared-column-scroll"
+                    data-shared-col
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      height: '100%',
+                      overflowY: 'auto',
+                      overflowX: 'hidden',
+                      padding: `0 ${spacing.xl} ${spacing['4xl']}`,
+                    }}
+                  >
+                    {/* Column header */}
+                    <div style={{
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 10,
+                      background: currentTheme.background,
+                      padding: `${spacing.lg} 0`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderBottom: `1px solid ${currentTheme.borderLight}`,
+                      marginBottom: spacing.lg,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: radius.circle, background: providerColor }} />
+                        <span style={{ color: providerColor, fontSize: fontSize.md, fontWeight: fontWeight.semibold }}>
+                          {formatModelName(response.modelName)}
+                        </span>
                       </div>
-
-                      {/* Column content */}
-                      {response.error ? (
-                        <p style={{ color: '#ff6b6b', fontStyle: 'italic' }}>This response encountered an error.</p>
-                      ) : (
-                        <MarkdownRenderer content={typeof response.text === 'string' ? response.text : ''} theme={currentTheme} />
-                      )}
+                      <button
+                        onClick={() => toggleMaximize(id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: currentTheme.textMuted,
+                          cursor: 'pointer',
+                          padding: spacing.xs,
+                          display: 'flex',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Maximize2 size={14} />
+                      </button>
                     </div>
-                  </React.Fragment>
-                )
-              })}
-            </div>
+
+                    {/* Column content */}
+                    {response.error ? (
+                      <p style={{ color: '#ff6b6b', fontStyle: 'italic' }}>This response encountered an error.</p>
+                    ) : (
+                      <MarkdownRenderer content={typeof response.text === 'string' ? response.text : ''} theme={currentTheme} />
+                    )}
+                  </div>
+                </React.Fragment>
+              )
+            })}
 
             {/* Right gutter — scrolls all columns */}
             <div
               onWheel={handleGutterWheel}
-              style={{ width: '25px', minWidth: '25px', flexShrink: 0, cursor: 'default' }}
+              style={{ width: '20px', minWidth: '20px', flexShrink: 0 }}
             />
           </motion.div>
         ) : (
