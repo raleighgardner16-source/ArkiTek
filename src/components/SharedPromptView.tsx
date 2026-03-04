@@ -71,9 +71,6 @@ const SharedPromptView = () => {
   }
 
   const handleContainerWheel = useCallback((e: React.WheelEvent) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/923f17af-518e-4f09-b71e-dba96827f84e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6e54cd'},body:JSON.stringify({sessionId:'6e54cd',location:'SharedPromptView.tsx:handleContainerWheel',message:'wheel event fired',data:{targetTag:(e.target as HTMLElement).tagName,insideCol:!!(e.target as HTMLElement).closest('[data-shared-col]'),colCount:document.querySelectorAll('[data-shared-col]').length,deltaY:e.deltaY},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
     const target = e.target as HTMLElement
     if (target.closest('[data-shared-col]')) return
     const columns = document.querySelectorAll('[data-shared-col]')
@@ -383,8 +380,8 @@ const SharedPromptView = () => {
             style={{
               flex: 1,
               minHeight: 0,
-              paddingLeft: 20,
-              paddingRight: 20,
+              paddingLeft: 125,
+              paddingRight: 125,
             }}
           >
             <div style={{
