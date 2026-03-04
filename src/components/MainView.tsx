@@ -158,6 +158,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   // Voice input (speech-to-text)
   const [isRecording, setIsRecording] = useState(false)
   const recognitionRef = useRef<any>(null)
+  const preRecordingTextRef = useRef('')
 
   // Image attachments
   const attachedImages = useStore((state) => state.attachedImages)
@@ -165,6 +166,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const removeAttachedImage = useStore((state) => state.removeAttachedImage)
   const clearAttachedImages = useStore((state) => state.clearAttachedImages)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const [isDraggingOver, setIsDraggingOver] = useState(false)
 
   const handlePickFavorite = useCallback(async (responseId: string) => {
     if (isReopenedHistoryChat) return
@@ -269,30 +271,30 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
       return
     }
 
+    // Snapshot whatever text is already in the prompt before we start
+    preRecordingTextRef.current = useStore.getState().currentPrompt
+
     const recognition = new SpeechRecognition()
     recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = 'en-US'
 
-    let finalTranscript = ''
-
     recognition.onresult = (event: any) => {
-      let interim = ''
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript
+      // Rebuild the FULL transcript from ALL results every time.
+      // This avoids duplication — the API gives cumulative results.
+      let finalParts = ''
+      let interimPart = ''
+      for (let i = 0; i < event.results.length; i++) {
         if (event.results[i].isFinal) {
-          finalTranscript += transcript + ' '
+          finalParts += event.results[i][0].transcript
         } else {
-          interim = transcript
+          interimPart = event.results[i][0].transcript
         }
       }
-      const currentText = useStore.getState().currentPrompt
-      const baseText = currentText.replace(/\s*\[.*?\]\s*$/, '')
-      if (interim) {
-        setCurrentPrompt(baseText + (baseText ? ' ' : '') + finalTranscript + interim)
-      } else {
-        setCurrentPrompt(baseText + (baseText ? ' ' : '') + finalTranscript)
-      }
+      const base = preRecordingTextRef.current
+      const separator = base && !base.endsWith(' ') ? ' ' : ''
+      const spoken = (finalParts + interimPart).trim()
+      setCurrentPrompt(base + separator + spoken)
     }
 
     recognition.onerror = (event: any) => {
@@ -352,6 +354,53 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     }
 
     if (imageInputRef.current) imageInputRef.current.value = ''
+  }, [addAttachedImage])
+
+  // ── Drag-and-drop image handler ──────────────────────────────────
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDraggingOver(false)
+
+    const files = e.dataTransfer.files
+    if (!files || files.length === 0) return
+
+    const MAX_IMAGES = 4
+    const MAX_SIZE_MB = 4
+    const currentCount = useStore.getState().attachedImages.length
+
+    for (let i = 0; i < files.length; i++) {
+      if (currentCount + i >= MAX_IMAGES) {
+        alert(`Maximum ${MAX_IMAGES} images allowed per prompt.`)
+        break
+      }
+
+      const file = files[i]
+      if (!file.type.startsWith('image/')) continue
+      if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+        alert(`Image "${file.name}" exceeds ${MAX_SIZE_MB}MB limit.`)
+        continue
+      }
+
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const result = reader.result as string
+          resolve(result.split(',')[1])
+        }
+        reader.readAsDataURL(file)
+      })
+
+      const preview = URL.createObjectURL(file)
+
+      addAttachedImage({
+        id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        name: file.name,
+        mimeType: file.type,
+        base64,
+        preview,
+      })
+    }
   }, [addAttachedImage])
 
   const allModels = getAllModels()
@@ -479,6 +528,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     setShowCouncilPanel(false)
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.overflowY = 'hidden'
     }
     // Stop voice recording if active
     if (isRecording) {
@@ -739,6 +789,19 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           }
           .main-prompt-input::placeholder {
             color: ${currentTheme.textMuted};
+          }
+          .main-prompt-input::-webkit-scrollbar {
+            width: 6px;
+          }
+          .main-prompt-input::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .main-prompt-input::-webkit-scrollbar-thumb {
+            background: rgba(128, 128, 128, 0.3);
+            border-radius: 3px;
+          }
+          .main-prompt-input::-webkit-scrollbar-thumb:hover {
+            background: rgba(128, 128, 128, 0.5);
           }
         `}
       </style>
@@ -1479,11 +1542,10 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
               {/* Mode Toggle + Voice/Image Actions Row */}
               {responses.length === 0 && !isPromptLocked && (
                 <div style={sx(layout.flexRow, {
-                  justifyContent: 'space-between',
+                  gap: spacing.sm,
                   alignItems: 'center',
                   padding: `${spacing.md} ${spacing.xl} 0 ${spacing.xl}`,
                 })}>
-                  {/* Left: General / Debate toggle */}
                   <div style={sx(layout.flexRow, {
                     background: currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
                     borderRadius: radius.lg,
@@ -1526,71 +1588,69 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                     ))}
                   </div>
 
-                  {/* Right: Image & Voice buttons */}
-                  <div style={sx(layout.flexRow, { gap: spacing.sm, alignItems: 'center' })}>
-                    <input
-                      ref={imageInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/gif,image/webp"
-                      multiple
-                      onChange={handleImageSelect}
-                      style={{ display: 'none' }}
-                    />
-                    {isRecording && (
-                      <span style={{
-                        fontSize: fontSize.xs,
-                        color: currentTheme.error,
-                        fontWeight: fontWeight.semibold,
-                        letterSpacing: '0.3px',
-                        animation: 'pulse-recording-text 1.5s ease-in-out infinite',
-                      }}>
-                        Listening...
-                      </span>
-                    )}
-                    <button
-                      onClick={() => imageInputRef.current?.click()}
-                      title="Attach image"
-                      className="media-action-btn"
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '34px',
-                        height: '34px',
-                        borderRadius: radius.lg,
-                        border: `1.5px solid ${currentTheme.borderLight}`,
-                        background: currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.02)',
-                        cursor: 'pointer',
-                        color: currentTheme.textMuted,
-                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                      }}
-                    >
-                      <ImagePlus size={16} />
-                    </button>
-                    <button
-                      onClick={toggleVoiceInput}
-                      title={isRecording ? 'Stop recording' : 'Voice input'}
-                      className={`media-action-btn ${isRecording ? 'recording' : ''}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '34px',
-                        height: '34px',
-                        borderRadius: radius.lg,
-                        border: `1.5px solid ${isRecording ? currentTheme.error : currentTheme.borderLight}`,
-                        background: isRecording
-                          ? (currentTheme.name === 'dark' ? 'rgba(231, 76, 60, 0.25)' : 'rgba(192, 57, 43, 0.15)')
-                          : (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.02)'),
-                        cursor: 'pointer',
-                        color: isRecording ? currentTheme.error : currentTheme.textMuted,
-                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                        animation: isRecording ? 'pulse-recording 1.5s ease-in-out infinite' : 'none',
-                      }}
-                    >
-                      {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
-                    </button>
-                  </div>
+                  {/* Image & Voice buttons — directly adjacent to toggle */}
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    multiple
+                    onChange={handleImageSelect}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    onClick={() => imageInputRef.current?.click()}
+                    title="Attach image"
+                    className="media-action-btn"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: radius.lg,
+                      border: `1.5px solid ${currentTheme.borderLight}`,
+                      background: currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.02)',
+                      cursor: 'pointer',
+                      color: currentTheme.textMuted,
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                    }}
+                  >
+                    <ImagePlus size={16} />
+                  </button>
+                  <button
+                    onClick={toggleVoiceInput}
+                    title={isRecording ? 'Stop recording' : 'Voice input'}
+                    className={`media-action-btn ${isRecording ? 'recording' : ''}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: radius.lg,
+                      border: `1.5px solid ${isRecording ? currentTheme.error : currentTheme.borderLight}`,
+                      background: isRecording
+                        ? (currentTheme.name === 'dark' ? 'rgba(231, 76, 60, 0.25)' : 'rgba(192, 57, 43, 0.15)')
+                        : (currentTheme.name === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.02)'),
+                      cursor: 'pointer',
+                      color: isRecording ? currentTheme.error : currentTheme.textMuted,
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                      animation: isRecording ? 'pulse-recording 1.5s ease-in-out infinite' : 'none',
+                    }}
+                  >
+                    {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
+                  </button>
+                  {isRecording && (
+                    <span style={{
+                      fontSize: fontSize.xs,
+                      color: currentTheme.error,
+                      fontWeight: fontWeight.semibold,
+                      letterSpacing: '0.3px',
+                      animation: 'pulse-recording-text 1.5s ease-in-out infinite',
+                    }}>
+                      Listening...
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -1632,100 +1692,153 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 )}
               </AnimatePresence>
 
-              {/* Textarea */}
-              <textarea
-                ref={textareaRef}
-                className="main-prompt-input"
-                value={currentPrompt}
-                onChange={(e) => {
-                  if (!isPromptLocked) {
-                    setCurrentPrompt(e.target.value)
-                    const textarea = e.target
-                    textarea.style.height = 'auto'
-                    textarea.style.height = `${Math.min(textarea.scrollHeight, 200)  }px`
-                  }
+              {/* Drop zone: Images above, textarea below */}
+              <div
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDraggingOver(true) }}
+                onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDraggingOver(true) }}
+                onDragLeave={(e) => {
+                  e.preventDefault(); e.stopPropagation()
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDraggingOver(false)
                 }}
-                disabled={isPromptLocked}
-                placeholder={isPromptLocked ? (subscriptionPaused ? "Account paused..." : "Resubscribe to send prompts...") : promptMode === 'debate' ? "Enter a statement here and get responses with varying views..." : "Enter a prompt here to get a response from the council of LLMs or individual models..."}
+                onDrop={handleDrop}
                 style={{
-                  width: '100%',
-                  minHeight: '70px',
-                  maxHeight: '200px',
-                  padding: `${spacing.xl} ${spacing['2xl']} ${spacing.md} ${spacing['2xl']}`,
-                  background: 'transparent',
-                  border: 'none',
+                  position: 'relative',
                   borderRadius: `${radius['3xl']} ${radius['3xl']} 0 0`,
-                  color: currentTheme.text,
-                  fontSize: fontSize['2xl'],
-                  fontFamily: 'inherit',
-                  resize: 'none',
-                  lineHeight: '1.5',
-                  overflow: 'hidden',
-                  outline: 'none',
+                  outline: isDraggingOver ? `2px dashed ${currentTheme.accent}` : 'none',
+                  outlineOffset: '-2px',
+                  background: isDraggingOver
+                    ? (currentTheme.name === 'dark' ? 'rgba(93, 173, 226, 0.08)' : 'rgba(93, 173, 226, 0.05)')
+                    : 'transparent',
+                  transition: 'background 0.2s, outline 0.2s',
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    const hasAutoSmart = Object.values(autoSmartProviders).some(enabled => enabled)
-                    if (currentPrompt.trim() || attachedImages.length > 0) {
-                      if (selectedModels.length > 0 || hasAutoSmart) {
-                        setIsSubmitPending(true)
-                        handleSubmit()
+              >
+                {/* Drag overlay hint */}
+                {isDraggingOver && (
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10,
+                    borderRadius: `${radius['3xl']} ${radius['3xl']} 0 0`,
+                    background: currentTheme.name === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)',
+                    pointerEvents: 'none',
+                  }}>
+                    <span style={{
+                      fontSize: fontSize.lg,
+                      fontWeight: fontWeight.semibold,
+                      color: currentTheme.accent,
+                    }}>
+                      Drop images here
+                    </span>
+                  </div>
+                )}
+
+                {/* Attached Image Previews — above text */}
+                {attachedImages.length > 0 && (
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: spacing.sm,
+                    padding: `${spacing.lg} ${spacing['2xl']} 0 ${spacing['2xl']}`,
+                  }}>
+                    {attachedImages.map((img) => (
+                      <div key={img.id} style={{
+                        position: 'relative',
+                        width: '72px',
+                        height: '72px',
+                        borderRadius: radius.lg,
+                        overflow: 'hidden',
+                        border: `1.5px solid ${currentTheme.borderLight}`,
+                        flexShrink: 0,
+                      }}>
+                        <img
+                          src={img.preview}
+                          alt={img.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        />
+                        <button
+                          onClick={() => removeAttachedImage(img.id)}
+                          style={{
+                            position: 'absolute',
+                            top: '2px',
+                            right: '2px',
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            background: 'rgba(0,0,0,0.6)',
+                            border: '1.5px solid rgba(255,255,255,0.3)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: 0,
+                            backdropFilter: 'blur(4px)',
+                          }}
+                        >
+                          <X size={11} color="#fff" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Textarea */}
+                <textarea
+                  ref={textareaRef}
+                  className="main-prompt-input"
+                  value={currentPrompt}
+                  onChange={(e) => {
+                    if (!isPromptLocked) {
+                      setCurrentPrompt(e.target.value)
+                      const textarea = e.target
+                      textarea.style.height = 'auto'
+                      const fiveLineMax = 144
+                      if (textarea.scrollHeight > fiveLineMax) {
+                        textarea.style.height = `${fiveLineMax}px`
+                        textarea.style.overflowY = 'auto'
                       } else {
-                        setShowNoModelNotification(true)
-                        setTimeout(() => setShowNoModelNotification(false), 4000)
+                        textarea.style.height = `${textarea.scrollHeight}px`
+                        textarea.style.overflowY = 'hidden'
                       }
                     }
-                  }
-                }}
-              />
-
-              {/* Attached Image Previews */}
-              {attachedImages.length > 0 && (
-                <div style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: spacing.sm,
-                  padding: `0 ${spacing['2xl']} ${spacing.sm}`,
-                }}>
-                  {attachedImages.map((img) => (
-                    <div key={img.id} style={{
-                      position: 'relative',
-                      width: '64px',
-                      height: '64px',
-                      borderRadius: radius.md,
-                      overflow: 'hidden',
-                      border: `1px solid ${currentTheme.borderLight}`,
-                    }}>
-                      <img
-                        src={img.preview}
-                        alt={img.name}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                      <button
-                        onClick={() => removeAttachedImage(img.id)}
-                        style={{
-                          position: 'absolute',
-                          top: '-2px',
-                          right: '-2px',
-                          width: '20px',
-                          height: '20px',
-                          borderRadius: '50%',
-                          background: currentTheme.error,
-                          border: 'none',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: 0,
-                        }}
-                      >
-                        <X size={12} color="#fff" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+                  }}
+                  disabled={isPromptLocked}
+                  placeholder={isPromptLocked ? (subscriptionPaused ? "Account paused..." : "Resubscribe to send prompts...") : promptMode === 'debate' ? "Enter a statement here and get responses with varying views..." : "Enter a prompt here to get a response from the council of LLMs or individual models..."}
+                  style={{
+                    width: '100%',
+                    minHeight: attachedImages.length > 0 ? '50px' : '70px',
+                    maxHeight: '144px',
+                    padding: `${attachedImages.length > 0 ? spacing.sm : spacing.xl} ${spacing['2xl']} ${spacing.md} ${spacing['2xl']}`,
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: attachedImages.length > 0 ? '0' : `${radius['3xl']} ${radius['3xl']} 0 0`,
+                    color: currentTheme.text,
+                    fontSize: fontSize['2xl'],
+                    fontFamily: 'inherit',
+                    resize: 'none',
+                    lineHeight: '1.5',
+                    overflowY: 'hidden',
+                    outline: 'none',
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      const hasAutoSmart = Object.values(autoSmartProviders).some(enabled => enabled)
+                      if (currentPrompt.trim() || attachedImages.length > 0) {
+                        if (selectedModels.length > 0 || hasAutoSmart) {
+                          setIsSubmitPending(true)
+                          handleSubmit()
+                        } else {
+                          setShowNoModelNotification(true)
+                          setTimeout(() => setShowNoModelNotification(false), 4000)
+                        }
+                      }
+                    }
+                  }}
+                />
+              </div>
 
               <ModelSelector
                 currentTheme={currentTheme}
