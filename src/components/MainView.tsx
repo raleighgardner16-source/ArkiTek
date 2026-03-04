@@ -1124,19 +1124,6 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                 {/* Response - Free flowing text, NO container/border */}
                 {inlineResponseText && (
                   <div ref={responseAreaRef} style={{ padding: `${spacing.xs} 0 0 ${spacing.xs}` }}>
-                    {inlineResponseLabel && (
-                      <div style={sx(layout.flexRow, { gap: spacing.md, alignItems: 'center', marginBottom: '14px' })}>
-                        <FileText size={16} color={currentTheme.accent} />
-                        <span style={{ fontSize: '0.75rem', fontWeight: fontWeight.bold, color: currentTheme.accent, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                          {getProviderDisplayName(inlineResponseLabel)}
-                          {getModelShortLabel(inlineResponseLabel) && (
-                            <span style={{ color: currentTheme.textMuted, fontWeight: fontWeight.normal, textTransform: 'none', letterSpacing: 'normal' }}>
-                              {' '}({getModelShortLabel(inlineResponseLabel)})
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    )}
                     <div>
                       <MarkdownRenderer content={inlineResponseText} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
                     </div>
