@@ -4,13 +4,13 @@
 export const XP_VALUES = {
   PROMPT: 10,
   FOLLOW_UP: 15,
-  RATING: 20,
+  FAVORITE: 20,
   DAILY_CHALLENGE: 50,
-  COUNCIL_BONUS: 15,
+  GENERAL_BONUS: 15,
   DEBATE_BONUS: 20,
   FIRST_PROMPT_OF_DAY: 25,
-  DISCOVER_MODEL: 100,
-  DISCOVER_CATEGORY: 75,
+  DISCOVER_MODEL: 15,
+  DISCOVER_CATEGORY: 20,
 } as const
 
 export const STREAK_MULTIPLIERS: { minDays: number; multiplier: number }[] = [

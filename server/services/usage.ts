@@ -280,7 +280,7 @@ const trackPrompt = async (userId: string, promptText: string, category: string,
       .map((r: any) => r.actualModelName || r.modelName || '')
       .filter(Boolean)
     await grantPromptXP(userId, {
-      isCouncil: responseCount >= 3,
+      isGeneral: responseCount >= 3,
       isDebate: promptData?.promptMode === 'debate',
       today,
       category: cat,

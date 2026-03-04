@@ -65,13 +65,13 @@ const ProfileHeader = ({
   const xpActions = [
     { action: 'Send a prompt', xp: 10 },
     { action: 'Send a follow-up', xp: 15 },
-    { action: 'Rate a response', xp: 20 },
+    { action: 'Favorite a response', xp: 20 },
     { action: 'First prompt of the day', xp: 25 },
     { action: 'Complete a daily challenge', xp: 50 },
-    { action: 'Use Council mode', xp: 15 },
+    { action: 'Use General mode', xp: 15 },
     { action: 'Use Debate mode', xp: 20 },
-    { action: 'Discover a new category', xp: 75 },
-    { action: 'Discover a new model', xp: 100 },
+    { action: 'Discover a new category', xp: 20 },
+    { action: 'Discover a new model', xp: 15 },
   ]
 
   return (
@@ -198,10 +198,10 @@ const ProfileHeader = ({
                         left: 0,
                         zIndex: 100,
                         minWidth: '300px',
-                        background: currentTheme.cardBg || currentTheme.buttonBackground,
+                        background: currentTheme.background,
                         border: `1px solid ${currentTheme.borderLight}`,
                         borderRadius: radius.xl,
-                        boxShadow: `0 8px 32px rgba(0,0,0,0.25)`,
+                        boxShadow: `0 8px 32px rgba(0,0,0,0.35)`,
                         padding: spacing['2xl'],
                       }}
                     >

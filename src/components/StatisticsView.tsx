@@ -484,10 +484,10 @@ const StatisticsView = () => {
                       {item.label}
                     </div>
                     <div style={{ color: currentTheme.text, fontSize: fontSize['3xl'], fontWeight: fontWeight.bold }}>
-                      {item.rank ? `#${item.rank}` : '—'}
-                      <span style={{ color: currentTheme.textMuted, fontSize: fontSize.base, fontWeight: fontWeight.normal, marginLeft: spacing.xs }}>
-                        / {myRanks.totalParticipants}
-                      </span>
+                      {item.rank ? `Rank #${item.rank}` : 'Unranked'}
+                    </div>
+                    <div style={{ color: currentTheme.textMuted, fontSize: fontSize.xs, marginTop: '2px' }}>
+                      {item.rank ? `out of ${myRanks.totalParticipants} users` : 'Not enough data'}
                     </div>
                   </div>
                 </div>

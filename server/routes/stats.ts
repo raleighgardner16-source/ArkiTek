@@ -4,7 +4,7 @@ import { DAILY_CHALLENGE_REWARD, DAILY_CHALLENGES } from '../config/index.js'
 import { getMonthForUser, getTodayForUser, getDateKeyForUser, getDayDiffFromDateKeys, getUserLocalDate, getTodaysChallenge } from '../helpers/date.js'
 import { getPlanAllocation, getPricingData, calculateModelCost, calculateSerperQueryCost } from '../helpers/pricing.js'
 import { getUserTimezone, trackPrompt } from '../services/usage.js'
-import { grantRatingXP, grantDailyChallengeXP } from '../services/xp.js'
+import { grantFavoriteXP, grantDailyChallengeXP } from '../services/xp.js'
 import { getLevelFromXP, getLevelTitle, getStreakSaveXPCost } from '../config/xp.js'
 import { createLogger } from '../config/logger.js'
 import { sendSuccess, sendError } from '../types/api.js'
@@ -950,7 +950,7 @@ ratingsRouter.post('/', async (req: Request, res: Response) => {
     // Grant XP for picking a favorite (only when setting, not clearing)
     if (responseId && provider && model) {
       try {
-        await grantRatingXP(userId)
+        await grantFavoriteXP(userId)
       } catch (xpErr: any) {
         log.warn({ err: xpErr, userId }, 'Failed to grant rating XP')
       }

@@ -16,7 +16,7 @@ function applyMultiplier(baseXP: number, streakDays: number): number {
 export async function grantPromptXP(
   userId: string,
   options: {
-    isCouncil: boolean
+    isGeneral: boolean
     isDebate: boolean
     today: string
     category: string
@@ -24,14 +24,14 @@ export async function grantPromptXP(
     streakDays: number
   }
 ) {
-  const { isCouncil, isDebate, today, category, modelsUsed, streakDays } = options
+  const { isGeneral, isDebate, today, category, modelsUsed, streakDays } = options
 
   const userUsage: any = await db.usage.getOrDefault(userId)
   const xp = userUsage.xp || { totalXP: 0, lastDailyBonusDate: null, discoveredModels: [], discoveredCategories: [] }
 
   let earned = XP_VALUES.PROMPT
 
-  if (isCouncil) earned += XP_VALUES.COUNCIL_BONUS
+  if (isGeneral) earned += XP_VALUES.GENERAL_BONUS
   if (isDebate) earned += XP_VALUES.DEBATE_BONUS
 
   if (xp.lastDailyBonusDate !== today) {
@@ -79,18 +79,18 @@ export async function grantFollowUpXP(userId: string) {
 }
 
 /**
- * Grant XP for picking a favorite model response.
+ * Grant XP for favoriting a model response.
  */
-export async function grantRatingXP(userId: string) {
+export async function grantFavoriteXP(userId: string) {
   const userUsage: any = await db.usage.getOrDefault(userId)
   const xp = userUsage.xp || { totalXP: 0, lastDailyBonusDate: null, discoveredModels: [], discoveredCategories: [] }
   const streakDays = userUsage.streakDays || 0
 
-  const finalXP = applyMultiplier(XP_VALUES.RATING, streakDays)
+  const finalXP = applyMultiplier(XP_VALUES.FAVORITE, streakDays)
   xp.totalXP = (xp.totalXP || 0) + finalXP
 
   await db.usage.update(userId, { 'xp.totalXP': xp.totalXP })
-  log.debug({ userId, finalXP, totalXP: xp.totalXP }, 'Rating XP granted')
+  log.debug({ userId, finalXP, totalXP: xp.totalXP }, 'Favorite XP granted')
 }
 
 /**
