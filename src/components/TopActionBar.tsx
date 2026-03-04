@@ -14,6 +14,7 @@ interface Props {
   setShowSingleTokenUsage: (v: boolean) => void
   setShowTopCostBreakdown: (v: boolean) => void
   triggerGenerateSummary: () => void
+  isCancelledPrompt?: boolean
 }
 
 const TopActionBar = ({
@@ -27,6 +28,7 @@ const TopActionBar = ({
   setShowSingleTokenUsage,
   setShowTopCostBreakdown,
   triggerGenerateSummary,
+  isCancelledPrompt = false,
 }: Props) => {
   const s = createStyles(currentTheme)
 
@@ -206,6 +208,39 @@ const TopActionBar = ({
               </motion.button>
             )}
 
+          </div>
+        </motion.div>
+      )}
+      {isCancelledPrompt && !canGenerateSummary && !canToggleResultViews && !canShowCouncilSideBySideButton && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={sx(layout.center, barContainer)}
+        >
+          <div style={pillBar}>
+            <motion.button
+              onClick={() => setShowSingleTokenUsage(true)}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              style={pillButton}
+              title="Open prompt token usage"
+            >
+              <Coins size={13} />
+              Prompt Token Usage
+            </motion.button>
+
+            <div style={divider} />
+
+            <motion.button
+              onClick={() => setShowTopCostBreakdown(true)}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              style={pillButton}
+              title="Open prompt cost breakdown"
+            >
+              <DollarSign size={13} />
+              Prompt Cost Breakdown
+            </motion.button>
           </div>
         </motion.div>
       )}

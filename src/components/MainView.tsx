@@ -82,6 +82,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const setCurrentPromptFavorite = useStore((state) => state.setCurrentPromptFavorite)
   const currentPromptSessionId = useStore((state) => state.currentPromptSessionId)
   const isReopenedHistoryChat = useStore((state) => state.isReopenedHistoryChat)
+  const isCancelledPrompt = useStore((state) => state.isCancelledPrompt)
 
   // Conversation handlers hook
   const conversation = useConversationHandlers({ isLoading, isGeneratingSummary })
@@ -548,7 +549,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const showSummaryStreamingPhase = hasSummaryTokens && (isGeneratingSummary || (summary && summary.isStreaming))
   const showProcessingView = showCouncilLoading || showCouncilColumns || showSingleModelStreamingPhase || showSummaryStreamingPhase
   const canGenerateSummary = !isLoading && !isGeneratingSummary && !summary && responses.filter(r => !r.error && r.text).length >= 2
-  const topBarVisible = canGenerateSummary || canToggleResultViews || canShowCouncilSideBySideButton
+  const topBarVisible = canGenerateSummary || canToggleResultViews || canShowCouncilSideBySideButton || isCancelledPrompt
   const normalViewTopPadding = topBarVisible ? '140px' : '100px'
   const processingTopPadding = topBarVisible ? 150 : 80
   const {
@@ -641,6 +642,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           setShowSingleTokenUsage={setShowSingleTokenUsage}
           setShowTopCostBreakdown={setShowTopCostBreakdown}
           triggerGenerateSummary={triggerGenerateSummary}
+          isCancelledPrompt={isCancelledPrompt}
         />
 
         {/* ===== SCROLLABLE CHAT AREA ===== */}

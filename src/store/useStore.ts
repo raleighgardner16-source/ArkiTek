@@ -268,10 +268,19 @@ export const useStore = create<StoreState>()(
           councilColumnConvoHistory: {},
           currentPromptFavorite: null,
           currentPromptSessionId: Date.now().toString(),
+          isCancelledPrompt: false,
         })
         // Note: lastSubmittedPrompt is NOT cleared here - it's managed by handlePromptSubmit
         // It will be set before clearResponses is called, so it persists for the voting button
       },
+      isCancelledPrompt: false,
+      setIsCancelledPrompt: (cancelled: boolean) => set({ isCancelledPrompt: cancelled }),
+      stopAllStreaming: () =>
+        set((state) => ({
+          responses: state.responses.map((res: any) =>
+            res.isStreaming ? { ...res, isStreaming: false } : res
+          ),
+        })),
 
       // Favorite model pick (per prompt session)
       currentPromptFavorite: null,

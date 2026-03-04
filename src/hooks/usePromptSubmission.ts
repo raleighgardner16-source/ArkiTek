@@ -28,7 +28,7 @@ export function usePromptSubmission() {
     }
   }
 
-  // ── Abort the current submission and reset UI ─────────────────────
+  // ── Abort the current submission and keep partial results ────────
   const handleCancelPrompt = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
@@ -38,12 +38,19 @@ export function usePromptSubmission() {
     const store = useStore.getState()
     setIsLoading(false)
     store.setIsSearchingWeb(false)
-    store.clearResponses()
-    store.setSummary(null)
-    store.setCurrentPrompt('')
-    store.setLastSubmittedPrompt('')
-    store.setLastSubmittedCategory('')
+    store.stopAllStreaming()
     store.clearGenerateSummary()
+
+    // Only preserve on screen if at least one model produced text
+    const hasVisibleContent = store.responses.some((r: any) => r.text && r.text.trim().length > 0)
+    if (hasVisibleContent) {
+      store.setIsCancelledPrompt(true)
+    } else {
+      store.clearResponses()
+      store.setCurrentPrompt('')
+      store.setLastSubmittedPrompt('')
+      store.setLastSubmittedCategory('')
+    }
   }
 
   // ── Main prompt submission orchestrator ────────────────────────────
@@ -196,9 +203,23 @@ export function usePromptSubmission() {
 
       setIsLoading(false)
 
-      // Bail out if the user cancelled while models were streaming
+      // If cancelled, collect whatever token data is available and stop
       if (abortController.signal.aborted) {
-        console.log('[handlePromptSubmit] Request cancelled — skipping stats and history save')
+        console.log('[handlePromptSubmit] Request cancelled — collecting partial token data')
+        const cancelledTokenData: any[] = []
+        if (categoryDetectionTokens) {
+          cancelledTokenData.push({
+            modelName: 'Category Detection (Refiner)',
+            tokens: categoryDetectionTokens,
+            isPipeline: true,
+          })
+        }
+        responses.forEach((r) => {
+          if (r.tokens) cancelledTokenData.push({ modelName: r.modelName, tokens: r.tokens })
+        })
+        if (cancelledTokenData.length > 0) {
+          useStore.getState().setTokenData(cancelledTokenData)
+        }
         return
       }
 
@@ -304,7 +325,18 @@ export function usePromptSubmission() {
         error.code === 'ERR_CANCELED' ||
         abortController.signal.aborted
       ) {
-        console.log('[handlePromptSubmit] Request cancelled by user')
+        console.log('[handlePromptSubmit] Request cancelled by user — collecting partial token data')
+        const store = useStore.getState()
+        const currentResponses = store.responses || []
+        const cancelledTokenData: any[] = []
+        currentResponses.forEach((r: any) => {
+          if (r.tokens) {
+            cancelledTokenData.push({ modelName: r.modelName || r.actualModelName, tokens: r.tokens })
+          }
+        })
+        if (cancelledTokenData.length > 0) {
+          store.setTokenData(cancelledTokenData)
+        }
         return
       }
 
