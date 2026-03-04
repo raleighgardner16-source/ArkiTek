@@ -53,6 +53,7 @@ const AdminView = () => {
     mongoDbCost: '',
     vercelCost: '',
     domainCost: '',
+    googleWorkspaceCost: '',
   })
   const [expenseMonth, setExpenseMonth] = useState(() => {
     const now = new Date()
@@ -165,6 +166,7 @@ const AdminView = () => {
           mongoDbCost: data.mongoDbCost ? String(data.mongoDbCost) : '',
           vercelCost: data.vercelCost ? String(data.vercelCost) : '',
           domainCost: data.domainCost ? String(data.domainCost) : '',
+          googleWorkspaceCost: data.googleWorkspaceCost ? String(data.googleWorkspaceCost) : '',
         })
       }
       setExpensesLoaded(true)

@@ -481,6 +481,7 @@ export interface ExpenseDoc {
   mongoDbCost: number
   vercelCost: number
   domainCost: number
+  googleWorkspaceCost?: number
   metaCost?: number
   deepseekCost?: number
   mistralCost?: number

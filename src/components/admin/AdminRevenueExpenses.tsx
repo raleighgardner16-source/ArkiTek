@@ -808,6 +808,7 @@ const AdminRevenueExpenses = ({
                 { key: 'mongoDbCost', label: 'MongoDB Database' },
                 { key: 'vercelCost', label: 'Vercel Hosting' },
                 { key: 'domainCost', label: 'Domain Name' },
+                { key: 'googleWorkspaceCost', label: 'Google Workspace' },
               ].map(({ key, label }) => (
                 <div key={key} style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: radius.xl, padding: spacing['3xl'] }}>
                   <h3 style={{ fontSize: '1.15rem', color: '#ffffff', marginBottom: spacing.xl, display: 'flex', alignItems: 'center', gap: spacing.lg }}>
@@ -912,6 +913,7 @@ const AdminRevenueExpenses = ({
                   { key: 'mongoDbCost', label: 'MongoDB Database' },
                   { key: 'vercelCost', label: 'Vercel Hosting' },
                   { key: 'domainCost', label: 'Domain Name' },
+                  { key: 'googleWorkspaceCost', label: 'Google Workspace' },
                 ]
                 return (
                   <>

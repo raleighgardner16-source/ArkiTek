@@ -339,7 +339,7 @@ const NavigationBar = () => {
               Please contact us if you have any issues or questions or want to tell us your experience so far! Feel free to give us any feedback on how we can make ArkiTek better!
             </p>
             <a
-              href="mailto:support@arkitek.site"
+              href="mailto:support@arkitekai.com"
               style={sx(layout.flexRow, {
                 gap: spacing.md,
                 color: currentTheme.accent,
@@ -355,7 +355,7 @@ const NavigationBar = () => {
               onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
             >
               <Mail size={16} />
-              support@arkitek.site
+              support@arkitekai.com
             </a>
           </motion.div>
         )}

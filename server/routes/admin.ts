@@ -537,7 +537,7 @@ router.get('/expenses/aggregate', requireAdmin, async (req: Request, res: Respon
     const expenseFields = [
       'stripeFees', 'openaiCost', 'anthropicCost', 'googleCost',
       'xaiCost', 'serperCost', 'resendCost',
-      'mongoDbCost', 'vercelCost', 'domainCost',
+      'mongoDbCost', 'vercelCost', 'domainCost', 'googleWorkspaceCost',
     ]
 
     const aggregated: Record<string, number> = {}

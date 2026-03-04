@@ -200,6 +200,7 @@ const expenses = {
       mongoDbCost: parseFloat(String(expenseData.mongoDbCost)) || 0,
       vercelCost: parseFloat(String(expenseData.vercelCost)) || 0,
       domainCost: parseFloat(String(expenseData.domainCost)) || 0,
+      googleWorkspaceCost: parseFloat(String(expenseData.googleWorkspaceCost)) || 0,
       lastUpdated: new Date(),
     }
 
