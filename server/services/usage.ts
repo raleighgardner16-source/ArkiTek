@@ -118,6 +118,15 @@ const trackPrompt = async (userId: string, promptText: string, category: string,
     userUsage.categories[cat] = 0
   }
   userUsage.categories[cat] += 1
+
+  // Track organic (refiner-assigned) category counts separately — not affected by manual moves
+  if (!userUsage.organicCategories) {
+    userUsage.organicCategories = {}
+  }
+  if (!userUsage.organicCategories[cat]) {
+    userUsage.organicCategories[cat] = 0
+  }
+  userUsage.organicCategories[cat] += 1
   
   // Track recent prompts per category (keep only last 8)
   if (promptText) {
@@ -236,6 +245,7 @@ const trackPrompt = async (userId: string, promptText: string, category: string,
     lastActiveAt: userUsage.lastActiveAt,
     pendingStreakBreak: userUsage.pendingStreakBreak || null,
     [`categories.${cat}`]: userUsage.categories[cat],
+    [`organicCategories.${cat}`]: userUsage.organicCategories[cat],
   }
   if (promptText) {
     setFields.promptHistory = userUsage.promptHistory

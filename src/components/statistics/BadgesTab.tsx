@@ -64,6 +64,7 @@ const BadgesTab = ({
     totalComments: 0,
     councilPrompts: 0,
     debatePrompts: 0,
+    minOrganicCategoryCount: 0,
     provider_openai_prompts: 0,
     provider_anthropic_prompts: 0,
     provider_google_prompts: 0,
@@ -91,6 +92,7 @@ const BadgesTab = ({
     totalComments: isViewingOther ? (publicProfile?.leaderboard?.totalComments || 0) : (leaderboardStats?.totalComments || 0),
     councilPrompts: userStats.councilPrompts || 0,
     debatePrompts: userStats.debatePrompts || 0,
+    minOrganicCategoryCount: userStats.minOrganicCategoryCount || 0,
     provider_openai_prompts: providers.openai?.totalPrompts || 0,
     provider_anthropic_prompts: providers.anthropic?.totalPrompts || 0,
     provider_google_prompts: providers.google?.totalPrompts || 0,
@@ -674,6 +676,75 @@ const BadgesTab = ({
                               </span>
                             </div>
                           )}
+
+                          {/* Per-category organic breakdown — only for category-mastery */}
+                          {!isViewingOther && category.id === 'category-mastery' && (() => {
+                            const organicCats = userStats.organicCategories || {}
+                            const allCats = [
+                              'Science', 'Tech', 'Business', 'Health', 'Politics/Law',
+                              'History/Geography', 'Philosophy/Religion', 'Arts/Culture',
+                              'Lifestyle/Self-Improvement', 'General Knowledge/Other',
+                            ]
+                            const nextThreshold = category.nextBadge?.threshold || 0
+                            return (
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(2, 1fr)',
+                                gap: spacing.sm,
+                                marginBottom: spacing.xl,
+                              }}>
+                                {allCats.map(cat => {
+                                  const count = organicCats[cat] || 0
+                                  const progress = nextThreshold > 0 ? Math.min(1, count / nextThreshold) : (count > 0 ? 1 : 0)
+                                  const isWeakest = count === category.currentValue && nextThreshold > 0 && count < nextThreshold
+                                  return (
+                                    <div key={cat} style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: spacing.sm,
+                                      padding: `${spacing.sm} ${spacing.md}`,
+                                      borderRadius: radius.md,
+                                      background: isWeakest ? 'rgba(255, 170, 0, 0.06)' : currentTheme.backgroundSecondary,
+                                      border: `1px solid ${isWeakest ? 'rgba(255, 170, 0, 0.2)' : currentTheme.borderLight}`,
+                                    }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                                          <span style={{
+                                            fontSize: fontSize.xs,
+                                            color: isWeakest ? currentTheme.warning : currentTheme.textSecondary,
+                                            fontWeight: isWeakest ? fontWeight.semibold : fontWeight.medium,
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                          }}>
+                                            {cat}
+                                          </span>
+                                          <span style={{ fontSize: fontSize.xs, color: currentTheme.textMuted, flexShrink: 0, marginLeft: spacing.xs }}>
+                                            {count}{nextThreshold > 0 ? `/${nextThreshold}` : ''}
+                                          </span>
+                                        </div>
+                                        <div style={{
+                                          width: '100%',
+                                          height: '3px',
+                                          background: currentTheme.backgroundTertiary,
+                                          borderRadius: '2px',
+                                          overflow: 'hidden',
+                                        }}>
+                                          <div style={{
+                                            width: `${progress * 100}%`,
+                                            height: '100%',
+                                            background: count >= nextThreshold && nextThreshold > 0 ? '#00cc66' : (isWeakest ? currentTheme.warning : currentTheme.accent),
+                                            borderRadius: '2px',
+                                            transition: 'width 0.5s ease',
+                                          }} />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )
+                          })()}
 
                           {/* Next badge progress bar — own profile only */}
                           {!isViewingOther && (

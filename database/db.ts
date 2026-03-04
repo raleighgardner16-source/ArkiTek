@@ -480,6 +480,7 @@ const DEFAULT_USAGE: Omit<UsageDataDoc, '_id'> = {
   models: {},
   promptHistory: [],
   categories: {},
+  organicCategories: {},
   categoryPrompts: {},
   ratings: {},
   lastActiveAt: null,

@@ -42,6 +42,7 @@ function computeEarnedBadgeIds(stats: any): string[] {
     totalComments: 0,
     councilPrompts: stats.councilPrompts || 0,
     debatePrompts: stats.debatePrompts || 0,
+    minOrganicCategoryCount: stats.minOrganicCategoryCount || 0,
     provider_openai_prompts: providers.openai?.totalPrompts || 0,
     provider_anthropic_prompts: providers.anthropic?.totalPrompts || 0,
     provider_google_prompts: providers.google?.totalPrompts || 0,
@@ -83,8 +84,10 @@ function computeEarnedBadgeIds(stats: any): string[] {
 }
 
 function getBadgeDetails(badgeId: string): BadgeNotificationData | null {
-  const [catId, indexStr] = badgeId.split('-')
-  const index = parseInt(indexStr, 10)
+  const lastDash = badgeId.lastIndexOf('-')
+  if (lastDash === -1) return null
+  const catId = badgeId.substring(0, lastDash)
+  const index = parseInt(badgeId.substring(lastDash + 1), 10)
   const category = BADGE_CATEGORIES.find(c => c.id === catId)
   if (!category || !category.badges[index]) return null
   const badge = category.badges[index] as any

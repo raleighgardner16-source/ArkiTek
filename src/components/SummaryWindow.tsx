@@ -291,21 +291,34 @@ const SummaryWindow = () => {
     setDragOffset({ x: offsetX, y: offsetY })
   }
 
+  const getConsensusColor = (score: number): string => {
+    if (score >= 80) return '#22c55e'
+    if (score >= 60) return '#3b82f6'
+    if (score >= 40) return '#eab308'
+    if (score >= 20) return '#f97316'
+    return '#ef4444'
+  }
+
   const renderStructuredSummaryText = (text: string, size: string, lineHeight: number) => {
     const content = (text || '').toString()
     if (!content.trim()) return null
 
     const headerPattern = /^(CONSENSUS|SUMMARY|AGREEMENTS|CONTRADICTIONS|DIFFERENCES)\b:?/i
+    const consensusPattern = /^CONSENSUS[:\s-]*(\d+)\s*%?/i
     const lines = content.split('\n')
 
     return lines.map((line, index) => {
       const normalizedLine = line.replace(/^\s*#{1,6}\s*/, '')
       const isHeader = headerPattern.test(normalizedLine.trim())
+      const consensusMatch = normalizedLine.trim().match(consensusPattern)
+      const consensusScore = consensusMatch ? parseInt(consensusMatch[1], 10) : null
+      const consensusColor = consensusScore !== null ? getConsensusColor(consensusScore) : null
+
       return (
         <div
           key={`summary-line-${index}`}
           style={{
-            color: currentTheme.textSecondary,
+            color: consensusColor || currentTheme.textSecondary,
             fontSize: isHeader ? '1.05rem' : size,
             lineHeight,
             fontWeight: isHeader ? fontWeight.bold : fontWeight.normal,

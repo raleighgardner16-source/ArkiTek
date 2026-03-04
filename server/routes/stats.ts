@@ -276,6 +276,18 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
     }
   }
 
+  // Compute category mastery stat: minimum organic prompt count across all 10 categories
+  const ALL_CATEGORIES = [
+    'Science', 'Tech', 'Business', 'Health', 'Politics/Law',
+    'History/Geography', 'Philosophy/Religion', 'Arts/Culture',
+    'Lifestyle/Self-Improvement', 'General Knowledge/Other',
+  ]
+  const organicCats = userUsage.organicCategories || {}
+  const minOrganicCategoryCount = ALL_CATEGORIES.reduce(
+    (min: number, cat: string) => Math.min(min, organicCats[cat] || 0),
+    Infinity,
+  )
+
   sendSuccess(res, {
     totalTokens,
     totalInputTokens: userUsage.totalInputTokens || 0,
@@ -305,6 +317,8 @@ statsRouter.get('/:userId', async (req: Request, res: Response) => {
     providers: providerStats,
     models: modelStats,
     categories: userUsage.categories || {},
+    organicCategories: organicCats,
+    minOrganicCategoryCount: minOrganicCategoryCount === Infinity ? 0 : minOrganicCategoryCount,
     ratings: userUsage.ratings || {},
     streakDays: userUsage.streakDays || 0,
     councilPrompts: userUsage.councilPrompts || 0,

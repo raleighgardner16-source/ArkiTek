@@ -1,4 +1,4 @@
-import { Zap, MessageSquare, Flame, Trophy, Shield, Swords, Cpu, HelpCircle } from 'lucide-react'
+import { Zap, MessageSquare, Flame, Trophy, Shield, Swords, Cpu, HelpCircle, Compass } from 'lucide-react'
 
 export const BADGE_CATEGORIES = [
   {
@@ -196,6 +196,26 @@ export const BADGE_CATEGORIES = [
       { name: 'Grok Expert', threshold: 5000, emoji: '🏆', color: '#11618E', desc: '5K prompts' },
       { name: 'Grok Master', threshold: 10000, emoji: '👑', color: '#0E5175', desc: '10K prompts' },
       { name: 'Grok Legend', threshold: 25000, emoji: '🌟', color: '#0B415C', desc: '25K prompts' },
+    ]
+  },
+  {
+    id: 'category-mastery',
+    name: 'Knowledge Spectrum',
+    icon: Compass,
+    description: 'Have prompts in every category — only counts prompts auto-classified by the AI',
+    statKey: 'minOrganicCategoryCount',
+    unit: 'min per category',
+    badges: [
+      { name: 'First in All', threshold: 1, emoji: '🌐', color: '#00ACC1', desc: '1 prompt in every category' },
+      { name: 'Well Rounded', threshold: 3, emoji: '🎯', color: '#0097A7', desc: '3 per category' },
+      { name: 'Balanced Mind', threshold: 5, emoji: '⚖️', color: '#00838F', desc: '5 per category' },
+      { name: 'Category Regular', threshold: 10, emoji: '📚', color: '#006064', desc: '10 per category' },
+      { name: 'Knowledge Seeker', threshold: 25, emoji: '🔬', color: '#4527A0', desc: '25 per category' },
+      { name: 'Discipline Master', threshold: 50, emoji: '🎓', color: '#311B92', desc: '50 per category' },
+      { name: 'Renaissance Mind', threshold: 100, emoji: '🏛️', color: '#1A237E', desc: '100 per category' },
+      { name: 'Polymath', threshold: 250, emoji: '🧬', color: '#0D47A1', desc: '250 per category' },
+      { name: 'Universal Scholar', threshold: 500, emoji: '🌌', color: '#01579B', desc: '500 per category' },
+      { name: 'Omnidisciplinary', threshold: 1000, emoji: '👁️', color: '#004D40', desc: '1K per category' },
     ]
   },
   {

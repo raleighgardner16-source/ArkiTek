@@ -168,6 +168,7 @@ export interface UsageDataDoc {
   modelConversationContext?: Record<string, Array<Record<string, unknown>>>
   purchasedCredits: { total: number; remaining: number }
   dailyChallengesClaimed: Record<string, unknown>
+  organicCategories?: Record<string, number>
   councilPrompts?: number
   debatePrompts?: number
   xp?: {
