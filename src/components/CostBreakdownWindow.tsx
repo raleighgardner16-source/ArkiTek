@@ -63,8 +63,9 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
     return (numQueries / 1000) * pricePer1k
   }
 
-  // Separate judge items, cancelled summary/prompt, from regular council items
+  // Separate judge items, pipeline (refiner) items, cancelled summary/prompt, from regular council items
   const judgeTokenData = tokenData.filter(item => item.isJudge)
+  const pipelineTokenData = tokenData.filter(item => item.isPipeline)
   const cancelledSummaryItems = tokenData.filter(item => item.isCancelledSummary)
   const cancelledPromptItems = tokenData.filter(item => item.isCancelledPrompt)
   const councilTokenData = tokenData.filter(item => !item.isJudge && !item.isPipeline && !item.isCancelledSummary && !item.isCancelledPrompt)
@@ -97,6 +98,30 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
     }
   }).filter(item => item !== null)
 
+  // Process pipeline (refiner) model costs
+  const pipelineCostBreakdown = pipelineTokenData.map((item: any) => {
+    if (!item.tokens) return null
+    const provider = item.tokens.provider || 'google'
+    const model = item.tokens.model || 'unknown'
+    const inputTokens = item.tokens.input || 0
+    const outputTokens = item.tokens.output || 0
+    const costs = calculateModelCost(provider, model, inputTokens, outputTokens)
+    return {
+      modelName: item.modelName || 'Refiner Model',
+      provider,
+      model,
+      inputTokens,
+      outputTokens,
+      reasoningTokens: 0,
+      totalTokens: inputTokens + outputTokens,
+      inputPrice: costs.inputPrice,
+      outputPrice: costs.outputPrice,
+      inputCost: costs.inputCost,
+      outputCost: costs.outputCost,
+      totalCost: costs.totalCost,
+    }
+  }).filter(item => item !== null)
+
   // Process judge model costs separately
   const judgeCostBreakdown = judgeTokenData.map((item: any) => {
     if (!item.tokens) return null
@@ -121,16 +146,21 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
     }
   }).filter(item => item !== null)
 
-  // Calculate totals (council + judge)
+  // Calculate totals (council + judge + pipeline/refiner)
+  const pipelineTotalCost = pipelineCostBreakdown.reduce((sum, item) => sum + item.totalCost, 0)
+  const pipelineTotalInputTokens = pipelineCostBreakdown.reduce((sum, item) => sum + item.inputTokens, 0)
+  const pipelineTotalOutputTokens = pipelineCostBreakdown.reduce((sum, item) => sum + item.outputTokens, 0)
+  const pipelineTotalTokens = pipelineTotalInputTokens + pipelineTotalOutputTokens
+
   const judgeTotalCost = judgeCostBreakdown.reduce((sum, item) => sum + item.totalCost, 0)
   const judgeTotalInputTokens = judgeCostBreakdown.reduce((sum, item) => sum + item.inputTokens, 0)
   const judgeTotalOutputTokens = judgeCostBreakdown.reduce((sum, item) => sum + item.outputTokens, 0)
   const judgeTotalTokens = judgeTotalInputTokens + judgeTotalOutputTokens
 
-  const totalInputTokens = costBreakdown.reduce((sum, item) => sum + item.inputTokens, 0) + judgeTotalInputTokens
-  const totalOutputTokens = costBreakdown.reduce((sum, item) => sum + item.outputTokens, 0) + judgeTotalOutputTokens
+  const totalInputTokens = costBreakdown.reduce((sum, item) => sum + item.inputTokens, 0) + judgeTotalInputTokens + pipelineTotalInputTokens
+  const totalOutputTokens = costBreakdown.reduce((sum, item) => sum + item.outputTokens, 0) + judgeTotalOutputTokens + pipelineTotalOutputTokens
   const totalTokens = totalInputTokens + totalOutputTokens
-  const totalModelCost = costBreakdown.reduce((sum, item) => sum + item.totalCost, 0) + judgeTotalCost
+  const totalModelCost = costBreakdown.reduce((sum, item) => sum + item.totalCost, 0) + judgeTotalCost + pipelineTotalCost
   const queryCost = calculateQueryCost(queryCount)
   const totalCost = totalModelCost + queryCost
 
@@ -314,6 +344,73 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                     <div style={sx(layout.spaceBetween, { marginBottom: spacing.md })}>
                       <span style={{ color: '#ffffff', fontWeight: fontWeight.semibold, fontSize: fontSize.lg }}>Judge Model</span>
                       <span style={{ color: '#a855f7', fontWeight: fontWeight.bold }}>
+                        ${item.totalCost.toFixed(4)}
+                      </span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.lg, fontSize: fontSize.base }}>
+                      <div>
+                        <div style={{ color: '#aaaaaa', marginBottom: spacing.xs }}>Input Tokens</div>
+                        <div style={{ color: '#ffffff' }}>
+                          {item.inputTokens.toLocaleString()} tokens
+                        </div>
+                        <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: spacing['2xs'] }}>
+                          @ ${item.inputPrice.toFixed(2)}/1M = ${item.inputCost.toFixed(4)}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: '#aaaaaa', marginBottom: spacing.xs }}>Output Tokens</div>
+                        <div style={{ color: '#ffffff' }}>
+                          {item.outputTokens.toLocaleString()} tokens
+                        </div>
+                        <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: spacing['2xs'] }}>
+                          @ ${item.outputPrice.toFixed(2)}/1M = ${item.outputCost.toFixed(4)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Refiner Model */}
+            {pipelineCostBreakdown.length > 0 && pipelineTotalTokens > 0 && (
+              <div
+                style={{
+                  background: 'rgba(34, 197, 94, 0.05)',
+                  border: '1px solid rgba(34, 197, 94, 0.2)',
+                  borderRadius: radius.xl,
+                  padding: spacing.xl,
+                  marginBottom: spacing.lg,
+                }}
+              >
+                <h4 style={{ color: '#22c55e', fontSize: fontSize['2xl'], margin: `0 0 ${spacing.lg} 0`, fontWeight: fontWeight.semibold }}>
+                  Refiner Model
+                </h4>
+                <div
+                  style={sx(layout.spaceBetween, {
+                    marginBottom: spacing.lg,
+                    paddingBottom: '10px',
+                    borderBottom: '1px solid rgba(34, 197, 94, 0.2)',
+                  })}
+                >
+                  <span style={{ color: '#ffffff', fontWeight: fontWeight.semibold, fontSize: fontSize.lg }}>Refiner Total</span>
+                  <span style={{ color: '#22c55e', fontWeight: fontWeight.bold, fontSize: fontSize['2xl'] }}>
+                    ${pipelineTotalCost.toFixed(4)}
+                  </span>
+                </div>
+                {pipelineCostBreakdown.map((item, index) => (
+                  <div
+                    key={`pipeline-${index}`}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      borderRadius: radius.md,
+                      padding: '14px',
+                      marginBottom: '10px',
+                    }}
+                  >
+                    <div style={sx(layout.spaceBetween, { marginBottom: spacing.md })}>
+                      <span style={{ color: '#ffffff', fontWeight: fontWeight.semibold, fontSize: fontSize.lg }}>{item.modelName}</span>
+                      <span style={{ color: '#22c55e', fontWeight: fontWeight.bold }}>
                         ${item.totalCost.toFixed(4)}
                       </span>
                     </div>
@@ -686,6 +783,79 @@ const CostBreakdownWindow = ({ isOpen, onClose, tokenData, queryCount = 0, inlin
                         <div style={sx(layout.spaceBetween, { marginBottom: spacing.md })}>
                           <span style={{ color: '#ffffff', fontWeight: fontWeight.semibold }}>Judge Model</span>
                           <span style={{ color: '#a855f7', fontWeight: fontWeight.bold }}>
+                            ${item.totalCost.toFixed(4)}
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.lg, fontSize: fontSize.base }}>
+                          <div>
+                            <div style={{ color: '#aaaaaa', marginBottom: spacing.xs }}>Input Tokens</div>
+                            <div style={{ color: '#ffffff' }}>
+                              {item.inputTokens.toLocaleString()} tokens
+                            </div>
+                            <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: spacing['2xs'] }}>
+                              @ ${item.inputPrice.toFixed(2)}/1M = ${item.inputCost.toFixed(4)}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ color: '#aaaaaa', marginBottom: spacing.xs }}>Output Tokens</div>
+                            <div style={{ color: '#ffffff' }}>
+                              {item.outputTokens.toLocaleString()} tokens
+                            </div>
+                            <div style={{ color: '#888888', fontSize: '0.75rem', marginTop: spacing['2xs'] }}>
+                              @ ${item.outputPrice.toFixed(2)}/1M = ${item.outputCost.toFixed(4)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Refiner Model */}
+                {pipelineCostBreakdown.length > 0 && pipelineTotalTokens > 0 && (
+                  <div
+                    style={{
+                      background: 'rgba(34, 197, 94, 0.05)',
+                      border: '1px solid rgba(34, 197, 94, 0.2)',
+                      borderRadius: radius.xl,
+                      padding: spacing['2xl'],
+                      marginBottom: spacing.xl,
+                    }}
+                  >
+                    <h3
+                      style={{
+                        color: '#22c55e',
+                        fontSize: fontSize['4xl'],
+                        margin: `0 0 ${spacing.xl} 0`,
+                      }}
+                    >
+                      Refiner Model
+                    </h3>
+                    <div
+                      style={sx(layout.spaceBetween, {
+                        marginBottom: spacing.lg,
+                        paddingBottom: spacing.lg,
+                        borderBottom: '1px solid rgba(34, 197, 94, 0.2)',
+                      })}
+                    >
+                      <span style={{ color: '#ffffff', fontWeight: fontWeight.semibold }}>Refiner Total</span>
+                      <span style={{ color: '#22c55e', fontWeight: fontWeight.bold, fontSize: fontSize['3xl'] }}>
+                        ${pipelineTotalCost.toFixed(4)}
+                      </span>
+                    </div>
+                    {pipelineCostBreakdown.map((item, index) => (
+                      <div
+                        key={`pipeline-${index}`}
+                        style={{
+                          background: 'rgba(0, 0, 0, 0.3)',
+                          borderRadius: radius.md,
+                          padding: spacing.xl,
+                          marginBottom: spacing.lg,
+                        }}
+                      >
+                        <div style={sx(layout.spaceBetween, { marginBottom: spacing.md })}>
+                          <span style={{ color: '#ffffff', fontWeight: fontWeight.semibold }}>{item.modelName}</span>
+                          <span style={{ color: '#22c55e', fontWeight: fontWeight.bold }}>
                             ${item.totalCost.toFixed(4)}
                           </span>
                         </div>

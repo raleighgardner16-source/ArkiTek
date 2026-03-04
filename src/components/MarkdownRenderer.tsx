@@ -18,6 +18,26 @@ interface Props {
  * to match the app's theme. Used for model responses, conversation
  * history, and saved conversations.
  */
+const getConsensusColor = (score: number): string => {
+  if (score >= 80) return '#22c55e'
+  if (score >= 60) return '#3b82f6'
+  if (score >= 40) return '#eab308'
+  if (score >= 20) return '#f97316'
+  return '#ef4444'
+}
+
+const extractConsensusScore = (children: React.ReactNode): number | null => {
+  const text = typeof children === 'string'
+    ? children
+    : Array.isArray(children)
+      ? children.map(c => (typeof c === 'string' ? c : '')).join('')
+      : ''
+  const match = text.match(/^CONSENSUS[:\s-]*(\d+)\s*%?/i)
+  if (!match) return null
+  const score = parseInt(match[1], 10)
+  return Number.isNaN(score) ? null : Math.max(0, Math.min(100, score))
+}
+
 const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1.7' }: Props) => {
   if (!content) return null
   const sanitizeSourceLabels = (input: string) => {
@@ -68,16 +88,20 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
               borderBottom: `1px solid ${theme.borderLight}`,
             }}>{children}</h1>
           ),
-          h2: ({ children }) => (
-            <h2 style={{
-              fontSize: '1.2em',
-              fontWeight: fontWeight.bold,
-              color: theme.text,
-              margin: `18px 0 ${spacing.md} 0`,
-              paddingBottom: spacing.xs,
-              borderBottom: `1px solid ${theme.borderLight}`,
-            }}>{children}</h2>
-          ),
+          h2: ({ children }) => {
+            const consensusScore = extractConsensusScore(children)
+            const consensusColor = consensusScore !== null ? getConsensusColor(consensusScore) : null
+            return (
+              <h2 style={{
+                fontSize: '1.2em',
+                fontWeight: fontWeight.bold,
+                color: consensusColor || theme.text,
+                margin: `18px 0 ${spacing.md} 0`,
+                paddingBottom: spacing.xs,
+                borderBottom: `1px solid ${consensusColor ? `${consensusColor}40` : theme.borderLight}`,
+              }}>{children}</h2>
+            )
+          },
           h3: ({ children }) => (
             <h3 style={{
               fontSize: '1.05em',
