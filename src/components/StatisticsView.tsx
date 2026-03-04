@@ -50,6 +50,8 @@ const StatisticsView = () => {
   const [editIsPrivate, setEditIsPrivate] = useState(false)
   const [editShowOnLeaderboard, setEditShowOnLeaderboard] = useState(true)
   const [myRanks, setMyRanks] = useState<{ tokens: number | null; prompts: number | null; streak: number | null; totalParticipants: number } | null>(null)
+  const [hasLoadedLeaderboard, setHasLoadedLeaderboard] = useState(false)
+  const [leaderboardStats, setLeaderboardStats] = useState<any>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [mountReady, setMountReady] = useState(false)
   useEffect(() => { const id = requestAnimationFrame(() => setMountReady(true)); return () => cancelAnimationFrame(id) }, [])
@@ -691,7 +693,7 @@ const StatisticsView = () => {
               isViewingOther={!!isViewingOther}
               userStats={isViewingOther ? (viewedUserStats || userStats) : userStats}
               publicProfile={publicProfile}
-              leaderboardStats={null}
+              leaderboardStats={leaderboardStats}
               ratingsStats={isViewingOther ? (viewedRatingsStats || ratingsStats) : ratingsStats}
               currentUser={currentUser}
               currentTheme={currentTheme}
