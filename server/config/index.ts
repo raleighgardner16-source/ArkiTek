@@ -70,6 +70,8 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
   mistral: 'https://api.mistral.ai/v1',
 }
 
+const ANTHROPIC_DEFAULT_SYSTEM_PROMPT = `Be direct and concise. Match your response length to the complexity of the question — give thorough answers for complex topics but keep simple answers brief. Avoid unnecessary preamble, filler, and restating the question. Use markdown formatting only when it genuinely aids readability.`
+
 const DAILY_CHALLENGE_REWARD = 0.10
 
 export interface DailyChallenge {
@@ -110,6 +112,7 @@ export {
   API_PREFIX,
   PROJECT_ROOT,
   disposableDomains,
+  ANTHROPIC_DEFAULT_SYSTEM_PROMPT,
   DAILY_CHALLENGE_REWARD,
   DAILY_CHALLENGES,
   JWT_SECRET,

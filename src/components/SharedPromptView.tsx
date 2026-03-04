@@ -32,6 +32,7 @@ interface SharedData {
   responses: SharedResponse[]
   summary: SharedSummary | null
   createdAt: string
+  expiresAt: string | null
 }
 
 const SharedPromptView = () => {
@@ -56,13 +57,14 @@ const SharedPromptView = () => {
             responses: json.responses,
             summary: json.summary || null,
             createdAt: json.createdAt,
+            expiresAt: json.expiresAt || null,
           })
           if (!json.summary) setActiveView('responses')
         } else {
           setError(json.error || 'Share not found')
         }
       })
-      .catch(() => setError('Failed to load shared content'))
+        .catch(() => setError('This share link has expired or could not be loaded'))
       .finally(() => setLoading(false))
   }, [token])
 
@@ -291,12 +293,24 @@ const SharedPromptView = () => {
             }}>
               ArkiTek
             </h1>
-            <span style={{
-              color: currentTheme.textMuted,
-              fontSize: fontSize.md,
-            }}>
-              Shared on {new Date(data.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+              <span style={{
+                color: currentTheme.textMuted,
+                fontSize: fontSize.md,
+              }}>
+                Shared on {new Date(data.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </span>
+              {data.expiresAt && (
+                <span style={{
+                  color: new Date(data.expiresAt).getTime() - Date.now() < 24 * 60 * 60 * 1000
+                    ? '#ff6b6b'
+                    : currentTheme.textMuted,
+                  fontSize: fontSize.sm,
+                }}>
+                  Expires {new Date(data.expiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+              )}
+            </div>
           </div>
           <div style={{
             padding: spacing.xl,

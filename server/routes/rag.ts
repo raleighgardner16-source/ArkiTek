@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import axios from 'axios'
-import { API_KEYS, MODEL_MAPPINGS, PROVIDER_BASE_URLS } from '../config/index.js'
+import { API_KEYS, MODEL_MAPPINGS, PROVIDER_BASE_URLS, ANTHROPIC_DEFAULT_SYSTEM_PROMPT } from '../config/index.js'
 import { countTokens, extractTokensFromResponse } from '../helpers/tokenCounters.js'
 import { trackUsage, getUserTimezone, getCurrentDateStringForUser } from '../services/usage.js'
 import { checkSubscriptionStatus } from '../services/subscription.js'
@@ -202,10 +202,10 @@ User Query: ${query}`
       const anthropicCouncilBody: Record<string, any> = {
         model: mappedModel,
         max_tokens: 4096,
+        system: rolePrompt || ANTHROPIC_DEFAULT_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: anthropicUserContent }],
         stream: true,
       }
-      if (rolePrompt) anthropicCouncilBody.system = rolePrompt
 
       const streamResponse = await axios.post(
         'https://api.anthropic.com/v1/messages',
@@ -740,6 +740,7 @@ User Query: ${query}`
             {
               model: mappedModel,
               max_tokens: 4096,
+              system: ANTHROPIC_DEFAULT_SYSTEM_PROMPT,
               messages: [{ role: 'user', content: councilPrompt }],
             },
             {

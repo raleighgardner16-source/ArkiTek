@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import axios from 'axios'
-import { API_KEYS, MODEL_MAPPINGS, PROVIDER_BASE_URLS } from '../config/index.js'
+import { API_KEYS, MODEL_MAPPINGS, PROVIDER_BASE_URLS, ANTHROPIC_DEFAULT_SYSTEM_PROMPT } from '../config/index.js'
 import { countTokens, extractTokensFromResponse } from '../helpers/tokenCounters.js'
 import { trackUsage, trackConversationPrompt, getCurrentDateStringForUser } from '../services/usage.js'
 import { checkSubscriptionStatusAsync } from '../services/subscription.js'
@@ -273,6 +273,7 @@ router.post('/conversation/stream', async (req: Request, res: Response) => {
         {
           model: mappedModel,
           max_tokens: 4096,
+          system: ANTHROPIC_DEFAULT_SYSTEM_PROMPT,
           messages: [{ role: 'user', content: prompt }],
           stream: true
         },
@@ -630,6 +631,7 @@ router.post('/conversation', async (req: Request, res: Response) => {
         {
           model: mappedModel,
           max_tokens: 4096,
+          system: ANTHROPIC_DEFAULT_SYSTEM_PROMPT,
           messages: [{ role: 'user', content: prompt }],
         },
         { 

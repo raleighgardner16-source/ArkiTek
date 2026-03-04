@@ -15,6 +15,7 @@
  * - model_conversation_context: Stored in usage_data.modelConversationContext (max 5 per model per user)
  * - model_wins: Individual vote documents (one per user per prompt session)
  * - weekly_leaderboard: Weekly provider/model ranking snapshots
+ * - shares: Shared prompt links with 7-day TTL (auto-expire via TTL)
  * - password_resets: Temporary password reset tokens (auto-expire via TTL)
  * 
  * ═══════════════════════════════════════════════════════════
@@ -319,6 +320,32 @@ export const weeklyLeaderboardSchema = {
   finalized: 'boolean',
 }
 
+/**
+ * SHARES COLLECTION
+ * 
+ * Stores shared prompt links. Each document represents a shareable snapshot
+ * of a prompt and its responses. Links expire after 7 days via MongoDB TTL.
+ * 
+ * Index: { expiresAt: 1 } (TTL, auto-delete expired shares after 7 days)
+ * Index: { userId: 1, createdAt: -1 } (for user's share history)
+ */
+export const sharesSchema = {
+  _id: 'string',              // 32-char hex token (crypto.randomBytes(16))
+  userId: 'string',           // Foreign key to users._id
+  prompt: 'string',           // Original prompt text (max 10000 chars)
+  category: 'string',         // Prompt category (max 100 chars)
+  responses: [{                // Snapshot of model responses
+    modelName: 'string',
+    actualModelName: 'string',
+    originalModelName: 'string',
+    text: 'string',
+    error: 'boolean',
+  }],
+  summary: 'object | null',   // Judge summary snapshot (nullable)
+  createdAt: 'Date',
+  expiresAt: 'Date',          // 7 days after creation — TTL auto-deletes
+}
+
 // ═══════════════════════════════════════════════════════════
 // ADMIN DATABASE SCHEMAS (stored in separate "ADMIN" database)
 // ═══════════════════════════════════════════════════════════
@@ -514,6 +541,11 @@ export const indexes = {
   subscription_events: [
     { key: { userId: 1, createdAt: -1 } },
     { key: { createdAt: 1 } },
+  ],
+  
+  shares: [
+    { key: { expiresAt: 1 }, options: { expireAfterSeconds: 0 } },
+    { key: { userId: 1, createdAt: -1 } },
   ],
 }
 

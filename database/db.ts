@@ -74,6 +74,11 @@ async function connect(): Promise<Db> {
     await client.connect()
     database = client.db(DB_NAME)
 
+    database.collection('shares').createIndex(
+      { expiresAt: 1 },
+      { expireAfterSeconds: 0 }
+    ).catch(err => log.warn({ err }, 'Failed to ensure shares TTL index'))
+
     const sanitizedUri = MONGODB_URI.replace(/:([^:@]+)@/, ':****@')
     log.info({ dbName: DB_NAME, uri: sanitizedUri }, 'Connected to MongoDB')
     return database

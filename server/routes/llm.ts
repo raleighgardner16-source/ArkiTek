@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import axios from 'axios'
-import { API_KEYS, MODEL_MAPPINGS, PROVIDER_BASE_URLS } from '../config/index.js'
+import { API_KEYS, MODEL_MAPPINGS, PROVIDER_BASE_URLS, ANTHROPIC_DEFAULT_SYSTEM_PROMPT } from '../config/index.js'
 import { countTokens, extractTokensFromResponse } from '../helpers/tokenCounters.js'
 import { trackUsage } from '../services/usage.js'
 import { checkSubscriptionStatusAsync } from '../services/subscription.js'
@@ -273,6 +273,7 @@ router.post('/', async (req: Request, res: Response) => {
           {
             model: mappedModel,
             max_tokens: 1024,
+            system: ANTHROPIC_DEFAULT_SYSTEM_PROMPT,
             messages: [{ role: 'user', content: anthropicContent }],
           },
           {
@@ -621,10 +622,10 @@ router.post('/stream', async (req: Request, res: Response) => {
       const anthropicBody: Record<string, any> = {
         model: mappedModel,
         max_tokens: 4096,
+        system: rolePrompt || ANTHROPIC_DEFAULT_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: anthropicUserContent }],
         stream: true
       }
-      if (rolePrompt) anthropicBody.system = rolePrompt
 
       const streamResponse = await axios.post(
         'https://api.anthropic.com/v1/messages',

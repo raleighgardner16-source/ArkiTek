@@ -38,6 +38,9 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
 
     const token = crypto.randomBytes(16).toString('hex')
 
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+
     const doc: ShareDoc = {
       _id: token,
       userId,
@@ -45,7 +48,8 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
       category: String(category || 'General').slice(0, 100),
       responses: safeResponses,
       summary: safeSummary,
-      createdAt: new Date(),
+      createdAt: now,
+      expiresAt,
     }
 
     await db.shares.create(doc)
@@ -66,7 +70,11 @@ router.get('/:token', async (req: Request, res: Response) => {
 
     const share = await db.shares.getByToken(token)
     if (!share) {
-      return sendError(res, 'Share not found or has been removed', 404)
+      return sendError(res, 'Share not found or has expired', 404)
+    }
+
+    if (share.expiresAt && new Date(share.expiresAt) < new Date()) {
+      return sendError(res, 'This share link has expired', 410)
     }
 
     sendSuccess(res, {
@@ -75,6 +83,7 @@ router.get('/:token', async (req: Request, res: Response) => {
       responses: share.responses,
       summary: share.summary,
       createdAt: share.createdAt,
+      expiresAt: share.expiresAt || null,
     })
   } catch (error: any) {
     console.error('[Share] Error fetching share:', error)
