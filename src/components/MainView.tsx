@@ -278,23 +278,18 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = 'en-US'
+    recognition.maxAlternatives = 1
 
     recognition.onresult = (event: any) => {
-      // Rebuild the FULL transcript from ALL results every time.
-      // This avoids duplication — the API gives cumulative results.
-      let finalParts = ''
-      let interimPart = ''
+      // Concatenate every result in order (final + interim) so the
+      // user sees the full sentence building up word-by-word live.
+      let fullTranscript = ''
       for (let i = 0; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          finalParts += event.results[i][0].transcript
-        } else {
-          interimPart = event.results[i][0].transcript
-        }
+        fullTranscript += event.results[i][0].transcript
       }
       const base = preRecordingTextRef.current
       const separator = base && !base.endsWith(' ') ? ' ' : ''
-      const spoken = (finalParts + interimPart).trim()
-      setCurrentPrompt(base + separator + spoken)
+      setCurrentPrompt(base + separator + fullTranscript)
     }
 
     recognition.onerror = (event: any) => {
