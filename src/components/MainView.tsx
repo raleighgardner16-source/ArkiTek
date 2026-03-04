@@ -791,7 +791,30 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
                   </div>
                   {/* Streaming response */}
                   <div>
-                    <MarkdownRenderer content={primaryResponse?.text || ''} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
+                    {!primaryResponse?.text && primaryResponse?.isStreaming ? (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        style={sx(layout.flexRow, { gap: spacing.md, alignItems: 'center', padding: `${spacing.lg} 0` })}
+                      >
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                          style={{
+                            width: '16px',
+                            height: '16px',
+                            border: `2px solid ${currentTheme.borderLight}`,
+                            borderTop: `2px solid ${currentTheme.accent}`,
+                            borderRadius: radius.circle,
+                          }}
+                        />
+                        <span style={{ color: currentTheme.textSecondary, fontSize: fontSize.base, fontWeight: fontWeight.medium }}>
+                          Waiting for response...
+                        </span>
+                      </motion.div>
+                    ) : (
+                      <MarkdownRenderer content={primaryResponse?.text || ''} theme={currentTheme} fontSize="1rem" lineHeight="1.85" />
+                    )}
                   </div>
                 </motion.div>
               )}
