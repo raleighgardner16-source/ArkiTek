@@ -28,7 +28,7 @@ const StatisticsView = () => {
   const [loading, setLoading] = useState(true)
   const [expandedProviders, setExpandedProviders] = useState<Record<string, any>>({})
   const [expandedModels, setExpandedModels] = useState<Record<string, any>>({})
-  const [activeTab, setActiveTab] = useState('tokens')
+  const [activeTab, setActiveTab] = useState('badges')
   const [ratingsData, setRatingsData] = useState<any>(null)
   const [hoveredDay, setHoveredDay] = useState<string | null>(null)
   const [leaderboardStats, setLeaderboardStats] = useState<any>(null)

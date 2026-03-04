@@ -87,11 +87,16 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
   const [sharingPrompt, setSharingPrompt] = useState(false)
   const [shareSuccess, setShareSuccess] = useState(false)
 
-  const handleSharePrompt = useCallback(async () => {
-    if (sharingPrompt || responses.length === 0 || !lastSubmittedPrompt) return
+  const handleSharePrompt = async () => {
+    const currentResponses = useStore.getState().responses || []
+    const currentPrompt = useStore.getState().lastSubmittedPrompt || ''
+    const currentCategory = useStore.getState().lastSubmittedCategory || ''
+    const currentSummary = useStore.getState().summary
+
+    if (sharingPrompt || currentResponses.length === 0 || !currentPrompt) return
     setSharingPrompt(true)
     try {
-      const shareResponses = responses
+      const shareResponses = currentResponses
         .filter((r: any) => r.text && !r.error)
         .map((r: any) => ({
           modelName: r.modelName,
@@ -100,26 +105,40 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
           text: r.text,
           error: false,
         }))
-      if (shareResponses.length === 0) return setSharingPrompt(false)
-      const shareSummary = summary && !summary.error ? {
-        text: summary.text || '',
-        consensus: summary.consensus ?? null,
-        summary: summary.summary || '',
-        agreements: summary.agreements || [],
-        disagreements: summary.disagreements || [],
-        differences: summary.differences || [],
-        singleModel: summary.singleModel || false,
-        modelName: summary.modelName || null,
+      if (shareResponses.length === 0) { setSharingPrompt(false); return }
+      const shareSummary = currentSummary && !currentSummary.error ? {
+        text: currentSummary.text || '',
+        consensus: currentSummary.consensus ?? null,
+        summary: currentSummary.summary || '',
+        agreements: currentSummary.agreements || [],
+        disagreements: currentSummary.disagreements || [],
+        differences: currentSummary.differences || [],
+        singleModel: currentSummary.singleModel || false,
+        modelName: currentSummary.modelName || null,
       } : null
       const res = await api.post('/share', {
-        prompt: lastSubmittedPrompt,
-        category: lastSubmittedCategory,
+        prompt: currentPrompt,
+        category: currentCategory,
         responses: shareResponses,
         summary: shareSummary,
       })
       if (res.data?.data?.shareToken) {
         const shareUrl = `${window.location.origin}/share/${res.data.data.shareToken}`
-        await navigator.clipboard.writeText(shareUrl)
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: 'ArkiTek Council Response',
+              text: currentPrompt.length > 100 ? currentPrompt.slice(0, 100) + '...' : currentPrompt,
+              url: shareUrl,
+            })
+          } catch (shareErr: any) {
+            if (shareErr.name !== 'AbortError') {
+              await navigator.clipboard.writeText(shareUrl)
+            }
+          }
+        } else {
+          await navigator.clipboard.writeText(shareUrl)
+        }
         setShareSuccess(true)
         setTimeout(() => setShareSuccess(false), 3000)
       }
@@ -128,7 +147,7 @@ const MainView = ({ onClearAll, subscriptionRestricted = false, subscriptionPaus
     } finally {
       setSharingPrompt(false)
     }
-  }, [sharingPrompt, responses, lastSubmittedPrompt, lastSubmittedCategory, summary])
+  }
 
   // Conversation handlers hook
   const conversation = useConversationHandlers({ isLoading, isGeneratingSummary })

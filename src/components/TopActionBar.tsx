@@ -15,7 +15,7 @@ interface Props {
   setShowTopCostBreakdown: (v: boolean) => void
   triggerGenerateSummary: () => void
   isCancelledPrompt?: boolean
-  onShare?: () => void
+  onShare?: () => Promise<void> | void
   sharingPrompt?: boolean
   shareSuccess?: boolean
   canShare?: boolean
@@ -143,7 +143,7 @@ const TopActionBar = ({
               <>
                 <div style={divider} />
                 <motion.button
-                  onClick={onShare}
+                  onClick={() => onShare?.()}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   style={{
@@ -241,7 +241,7 @@ const TopActionBar = ({
               <>
                 <div style={divider} />
                 <motion.button
-                  onClick={onShare}
+                  onClick={() => onShare?.()}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   style={{
@@ -296,7 +296,7 @@ const TopActionBar = ({
               <>
                 <div style={divider} />
                 <motion.button
-                  onClick={onShare}
+                  onClick={() => onShare?.()}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   style={{
