@@ -341,17 +341,12 @@ const BadgesTab = ({
           }} />
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: spacing.xl, marginBottom: isFreePlan ? spacing.sm : spacing.xl }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: spacing.xl, marginBottom: spacing.xl }}>
           <Award size={36} color={currentTheme.accent} />
           <h2 style={sx(s.gradientText, { fontSize: '1.8rem', margin: 0 })}>
             Achievement Badges
           </h2>
         </div>
-        {isFreePlan && (
-          <p style={{ color: currentTheme.textMuted, fontSize: fontSize.md, margin: `0 0 ${spacing.xl} 0`, textAlign: 'center' }}>
-            Upgrade to Pro or Premium to earn badges and complete daily challenges.
-          </p>
-        )}
 
         {/* Ultimate 100th Badge - "The Architect" */}
         <div style={{
@@ -462,6 +457,25 @@ const BadgesTab = ({
         )}
       </div>
 
+      {isFreePlan && (
+        <div style={{
+          textAlign: 'center',
+          padding: spacing['3xl'],
+          marginBottom: spacing['3xl'],
+          background: 'linear-gradient(135deg, rgba(255, 170, 0, 0.08), rgba(255, 100, 0, 0.04))',
+          border: '1px solid rgba(255, 170, 0, 0.25)',
+          borderRadius: radius['2xl'],
+        }}>
+          <Lock size={32} color="#ffaa00" style={{ marginBottom: spacing.lg }} />
+          <h3 style={{ fontSize: fontSize['4xl'], fontWeight: fontWeight.bold, color: '#ffaa00', margin: `0 0 ${spacing.md} 0` }}>
+            Upgrade to Start Earning
+          </h3>
+          <p style={{ color: currentTheme.textSecondary, fontSize: fontSize.xl, margin: 0, lineHeight: 1.6, maxWidth: '500px', marginLeft: 'auto', marginRight: 'auto' }}>
+            Free trial users can browse all badges below, but you need a Pro or Premium plan to earn badges and complete daily challenges.
+          </p>
+        </div>
+      )}
+
       {/* Badge Categories */}
       <div ref={badgeCategoriesRef} style={{ display: 'flex', flexDirection: 'column', gap: spacing['3xl'] }}>
         {badgeProgress.map((category) => {
@@ -570,6 +584,17 @@ const BadgesTab = ({
                       borderTop: `1px solid ${currentTheme.borderLight}`,
                       paddingTop: '20px',
                     }}>
+                      {isFreePlan && (
+                        <p style={{
+                          color: '#ffaa00',
+                          fontSize: fontSize.base,
+                          fontWeight: fontWeight.medium,
+                          textAlign: 'center',
+                          margin: `0 0 ${spacing.lg} 0`,
+                        }}>
+                          (Upgrade to a paid plan to earn these badges)
+                        </p>
+                      )}
                       {/* Total stat display */}
                       <div style={{
                         display: 'flex',

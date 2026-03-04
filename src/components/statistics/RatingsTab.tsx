@@ -368,21 +368,6 @@ const RatingsTab = ({
                                                   {formatTokens((modelData.totalInputTokens || 0) + (modelData.totalOutputTokens || 0))}
                                                 </span>
                                               </div>
-                                              <div key={`model-pricing-row-${modelKey}-${theme}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span key={`model-pricing-label-${modelKey}-${theme}`} style={{ color: currentTheme.textSecondary, fontSize: fontSize.base }}>Pricing:</span>
-                                                <span
-                                                  key={`model-pricing-value-${modelKey}-${theme}`}
-                                                  style={{
-                                                    color: modelData.pricing ? '#FFD700' : currentTheme.textMuted,
-                                                    fontSize: fontSize.lg,
-                                                    fontWeight: modelData.pricing ? 'bold' : 'normal',
-                                                  }}
-                                                >
-                                                  {modelData.pricing !== null && modelData.pricing !== undefined
-                                                    ? `$${modelData.pricing}`
-                                                    : 'TBD'}
-                                                </span>
-                                              </div>
                                             </div>
                                           </div>
                                         </motion.div>

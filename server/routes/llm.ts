@@ -437,11 +437,27 @@ router.post('/stream', async (req: Request, res: Response) => {
   res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders()
 
+  let clientClosed = false
+  let upstreamStream: any = null
+
+  res.on('close', () => {
+    if (!res.writableFinished) {
+      clientClosed = true
+      if (upstreamStream) {
+        try { upstreamStream.destroy() } catch (_) {}
+      }
+    }
+  })
+
   const sendSSE = (type: string, data: any) => {
-    res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+    if (clientClosed) return
+    try {
+      res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`)
+    } catch (_) {}
   }
 
   const heartbeat = setInterval(() => {
+    if (clientClosed) { clearInterval(heartbeat); return }
     try { res.write(': heartbeat\n\n') } catch (e) { clearInterval(heartbeat) }
   }, 15000)
 

@@ -577,7 +577,20 @@ const StatisticsView = () => {
 
         {/* Tab Content */}
         <AnimatePresence mode="wait" initial={false}>
-          {activeTab === 'tokens' && (
+          {activeTab === 'tokens' && !isViewingOther && loading && !stats && (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: spacing['5xl'], minHeight: '300px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.lg }}>
+                <div style={{
+                  width: '36px', height: '36px', border: `3px solid ${currentTheme.borderLight}`,
+                  borderTop: `3px solid ${currentTheme.accent}`, borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite',
+                }} />
+                <span style={{ color: currentTheme.textMuted, fontSize: fontSize.base }}>Loading usage data...</span>
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
+            </div>
+          )}
+          {activeTab === 'tokens' && !(loading && !stats) && (
             <TokenUsageTab
               userStats={userStats}
               userPlan={userPlan}
