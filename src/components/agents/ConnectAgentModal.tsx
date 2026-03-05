@@ -5,6 +5,7 @@ import { useStore } from '../../store/useStore'
 import { getTheme } from '../../utils/theme'
 import { spacing, fontSize, fontWeight, radius, transition } from '../../utils/styles'
 import api from '../../utils/api'
+import { testGatewayConnection } from '../../utils/gatewayTest'
 
 const ConnectAgentModal = () => {
   const theme = useStore((state) => state.theme || 'dark')
@@ -37,21 +38,18 @@ const ConnectAgentModal = () => {
     setTestInfo(null)
 
     try {
-      const res = await api.post('/agents/new/test', {
-        gatewayUrl: gatewayUrl.trim(),
-        gatewayToken: gatewayToken.trim(),
-      })
+      const info = await testGatewayConnection(gatewayUrl.trim(), gatewayToken.trim())
 
-      if (res.data?.data?.gateway?.connected) {
+      if (info.connected) {
         setTestStatus('success')
-        setTestInfo(res.data.data.gateway)
+        setTestInfo(info)
       } else {
         setTestStatus('error')
         setTestError('Gateway did not confirm connection')
       }
     } catch (err: any) {
       setTestStatus('error')
-      setTestError(err.response?.data?.message || err.message || 'Connection failed')
+      setTestError(err.message || 'Connection failed')
     }
   }
 
