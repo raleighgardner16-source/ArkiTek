@@ -236,7 +236,7 @@ export class OpenClawClient {
           id: 'gateway-client',
           version: '1.0.0',
           platform: 'web',
-          mode: 'operator',
+          mode: 'backend',
         },
         role: 'operator',
         scopes: ['operator.read', 'operator.write'],
