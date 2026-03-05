@@ -125,11 +125,11 @@ const AgentsView = () => {
             }}>
               You'll need an OpenClaw agent running on your device or server.
               If it's on a cloud server, just ask your agent for its gateway URL and token.
-              If it's on your computer, use{' '}
-              <a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" target="_blank" rel="noopener noreferrer" style={{ color: currentTheme.accent, textDecoration: 'none' }}>
+              If it's on your computer, set up a free{' '}
+              <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener noreferrer" style={{ color: currentTheme.accent, textDecoration: 'none' }}>
                 Cloudflare Tunnel
               </a>{' '}
-              (free, one command) to make it accessible.
+              for a permanent, always-on connection.
             </p>
             <div style={{
               borderTop: `1px solid ${currentTheme.border}`,

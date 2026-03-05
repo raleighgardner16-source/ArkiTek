@@ -384,6 +384,22 @@ const ConnectAgentModal = () => {
             <span style={stepNumberStyle}>1</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
+                Create a free Cloudflare account
+              </div>
+              <p style={{ margin: 0 }}>
+                Go to{' '}
+                <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener noreferrer" style={linkStyle}>
+                  dash.cloudflare.com/sign-up
+                </a>{' '}
+                and create a free account. This gives you a permanent URL that never changes.
+              </p>
+            </div>
+          </div>
+
+          <div style={stepRowStyle}>
+            <span style={stepNumberStyle}>2</span>
+            <div>
+              <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
                 Install Cloudflare Tunnel
               </div>
               <p style={{ margin: `0 0 ${spacing.xs}` }}>
@@ -404,7 +420,39 @@ const ConnectAgentModal = () => {
           </div>
 
           <div style={stepRowStyle}>
-            <span style={stepNumberStyle}>2</span>
+            <span style={stepNumberStyle}>3</span>
+            <div>
+              <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
+                Log in to Cloudflare from your terminal
+              </div>
+              <p style={{ margin: `0 0 ${spacing.xs}` }}>
+                This links your machine to your Cloudflare account (one-time step):
+              </p>
+              <code style={codeBlockStyle}>cloudflared login</code>
+              <p style={{ margin: `${spacing.sm} 0 0`, fontSize: '11px' }}>
+                A browser window will open — select your Cloudflare account and authorize.
+              </p>
+            </div>
+          </div>
+
+          <div style={stepRowStyle}>
+            <span style={stepNumberStyle}>4</span>
+            <div>
+              <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
+                Create a named tunnel
+              </div>
+              <p style={{ margin: `0 0 ${spacing.xs}` }}>
+                Pick any name you like (e.g. "my-agent"):
+              </p>
+              <code style={codeBlockStyle}>cloudflared tunnel create my-agent</code>
+              <p style={{ margin: `${spacing.sm} 0 0`, fontSize: '11px' }}>
+                This creates a permanent tunnel with a fixed ID. Write down the tunnel UUID it prints.
+              </p>
+            </div>
+          </div>
+
+          <div style={stepRowStyle}>
+            <span style={stepNumberStyle}>5</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
                 Make sure your OpenClaw agent is running
@@ -417,38 +465,34 @@ const ConnectAgentModal = () => {
           </div>
 
           <div style={stepRowStyle}>
-            <span style={stepNumberStyle}>3</span>
+            <span style={stepNumberStyle}>6</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
                 Start the tunnel
               </div>
-              <p style={{ margin: `0 0 ${spacing.xs}` }}>
-                Run this command in Terminal:
+              <code style={codeBlockStyle}>cloudflared tunnel run --url http://localhost:18789 my-agent</code>
+              <p style={{ margin: `${spacing.sm} 0 0` }}>
+                Your permanent URL will be:{' '}
+                <code style={inlineCodeStyle}>https://TUNNEL_UUID.cfargotunnel.com</code>
               </p>
-              <code style={codeBlockStyle}>cloudflared tunnel --url http://localhost:18789</code>
             </div>
           </div>
 
           <div style={stepRowStyle}>
-            <span style={stepNumberStyle}>4</span>
+            <span style={stepNumberStyle}>7</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
-                Copy your public URL
+                (Recommended) Install as a service
               </div>
-              <p style={{ margin: 0 }}>
-                After a few seconds, you'll see a message like:
+              <p style={{ margin: `0 0 ${spacing.xs}` }}>
+                So the tunnel auto-starts on boot and survives reboots:
               </p>
-              <code style={codeBlockStyle}>
-                Your quick Tunnel has been created!{'\n'}https://random-words-here.trycloudflare.com
-              </code>
-              <p style={{ margin: `${spacing.sm} 0 0` }}>
-                Copy that <code style={inlineCodeStyle}>https://...trycloudflare.com</code> URL. This is your <strong style={{ color: currentTheme.text }}>Gateway URL</strong>.
-              </p>
+              <code style={codeBlockStyle}>sudo cloudflared service install</code>
             </div>
           </div>
 
           <div style={stepRowStyle}>
-            <span style={stepNumberStyle}>5</span>
+            <span style={stepNumberStyle}>8</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
                 Get your gateway token
@@ -470,14 +514,30 @@ const ConnectAgentModal = () => {
             <span style={stepNumberStyle}>1</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
-                Download Cloudflare Tunnel
+                Create a free Cloudflare account
+              </div>
+              <p style={{ margin: 0 }}>
+                Go to{' '}
+                <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener noreferrer" style={linkStyle}>
+                  dash.cloudflare.com/sign-up
+                </a>{' '}
+                and create a free account. This gives you a permanent URL that never changes.
+              </p>
+            </div>
+          </div>
+
+          <div style={stepRowStyle}>
+            <span style={stepNumberStyle}>2</span>
+            <div>
+              <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
+                Install Cloudflare Tunnel
               </div>
               <p style={{ margin: 0 }}>
                 Download the Windows installer from the{' '}
                 <a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" target="_blank" rel="noopener noreferrer" style={linkStyle}>
                   Cloudflare Tunnel downloads page
-                </a>.
-                Run the installer after downloading.
+                </a>{' '}
+                and run it.
               </p>
               <p style={{ margin: `${spacing.sm} 0 0` }}>
                 Or install via <strong style={{ color: currentTheme.text }}>winget</strong>:
@@ -487,7 +547,39 @@ const ConnectAgentModal = () => {
           </div>
 
           <div style={stepRowStyle}>
-            <span style={stepNumberStyle}>2</span>
+            <span style={stepNumberStyle}>3</span>
+            <div>
+              <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
+                Log in to Cloudflare from your terminal
+              </div>
+              <p style={{ margin: `0 0 ${spacing.xs}` }}>
+                Open <strong style={{ color: currentTheme.text }}>PowerShell</strong> and run:
+              </p>
+              <code style={codeBlockStyle}>cloudflared login</code>
+              <p style={{ margin: `${spacing.sm} 0 0`, fontSize: '11px' }}>
+                A browser window will open — select your Cloudflare account and authorize.
+              </p>
+            </div>
+          </div>
+
+          <div style={stepRowStyle}>
+            <span style={stepNumberStyle}>4</span>
+            <div>
+              <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
+                Create a named tunnel
+              </div>
+              <p style={{ margin: `0 0 ${spacing.xs}` }}>
+                Pick any name you like (e.g. "my-agent"):
+              </p>
+              <code style={codeBlockStyle}>cloudflared tunnel create my-agent</code>
+              <p style={{ margin: `${spacing.sm} 0 0`, fontSize: '11px' }}>
+                This creates a permanent tunnel with a fixed ID. Write down the tunnel UUID it prints.
+              </p>
+            </div>
+          </div>
+
+          <div style={stepRowStyle}>
+            <span style={stepNumberStyle}>5</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
                 Make sure your OpenClaw agent is running
@@ -500,38 +592,34 @@ const ConnectAgentModal = () => {
           </div>
 
           <div style={stepRowStyle}>
-            <span style={stepNumberStyle}>3</span>
+            <span style={stepNumberStyle}>6</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
                 Start the tunnel
               </div>
-              <p style={{ margin: `0 0 ${spacing.xs}` }}>
-                Open <strong style={{ color: currentTheme.text }}>PowerShell</strong> or <strong style={{ color: currentTheme.text }}>Command Prompt</strong> and run:
+              <code style={codeBlockStyle}>cloudflared tunnel run --url http://localhost:18789 my-agent</code>
+              <p style={{ margin: `${spacing.sm} 0 0` }}>
+                Your permanent URL will be:{' '}
+                <code style={inlineCodeStyle}>https://TUNNEL_UUID.cfargotunnel.com</code>
               </p>
-              <code style={codeBlockStyle}>cloudflared tunnel --url http://localhost:18789</code>
             </div>
           </div>
 
           <div style={stepRowStyle}>
-            <span style={stepNumberStyle}>4</span>
+            <span style={stepNumberStyle}>7</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
-                Copy your public URL
+                (Recommended) Install as a Windows service
               </div>
-              <p style={{ margin: 0 }}>
-                After a few seconds, you'll see:
+              <p style={{ margin: `0 0 ${spacing.xs}` }}>
+                So the tunnel auto-starts on boot (run PowerShell as Administrator):
               </p>
-              <code style={codeBlockStyle}>
-                Your quick Tunnel has been created!{'\n'}https://random-words-here.trycloudflare.com
-              </code>
-              <p style={{ margin: `${spacing.sm} 0 0` }}>
-                Copy that <code style={inlineCodeStyle}>https://...trycloudflare.com</code> URL. This is your <strong style={{ color: currentTheme.text }}>Gateway URL</strong>.
-              </p>
+              <code style={codeBlockStyle}>cloudflared service install</code>
             </div>
           </div>
 
           <div style={stepRowStyle}>
-            <span style={stepNumberStyle}>5</span>
+            <span style={stepNumberStyle}>8</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
                 Get your gateway token
@@ -551,6 +639,22 @@ const ConnectAgentModal = () => {
         <>
           <div style={stepRowStyle}>
             <span style={stepNumberStyle}>1</span>
+            <div>
+              <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
+                Create a free Cloudflare account
+              </div>
+              <p style={{ margin: 0 }}>
+                Go to{' '}
+                <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener noreferrer" style={linkStyle}>
+                  dash.cloudflare.com/sign-up
+                </a>{' '}
+                and create a free account. This gives you a permanent URL that never changes.
+              </p>
+            </div>
+          </div>
+
+          <div style={stepRowStyle}>
+            <span style={stepNumberStyle}>2</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
                 Install Cloudflare Tunnel
@@ -578,7 +682,36 @@ const ConnectAgentModal = () => {
           </div>
 
           <div style={stepRowStyle}>
-            <span style={stepNumberStyle}>2</span>
+            <span style={stepNumberStyle}>3</span>
+            <div>
+              <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
+                Log in to Cloudflare from your terminal
+              </div>
+              <code style={codeBlockStyle}>cloudflared login</code>
+              <p style={{ margin: `${spacing.sm} 0 0`, fontSize: '11px' }}>
+                A browser window will open — select your Cloudflare account and authorize.
+              </p>
+            </div>
+          </div>
+
+          <div style={stepRowStyle}>
+            <span style={stepNumberStyle}>4</span>
+            <div>
+              <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
+                Create a named tunnel
+              </div>
+              <p style={{ margin: `0 0 ${spacing.xs}` }}>
+                Pick any name you like (e.g. "my-agent"):
+              </p>
+              <code style={codeBlockStyle}>cloudflared tunnel create my-agent</code>
+              <p style={{ margin: `${spacing.sm} 0 0`, fontSize: '11px' }}>
+                This creates a permanent tunnel with a fixed ID. Write down the tunnel UUID it prints.
+              </p>
+            </div>
+          </div>
+
+          <div style={stepRowStyle}>
+            <span style={stepNumberStyle}>5</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
                 Make sure your OpenClaw agent is running
@@ -591,35 +724,34 @@ const ConnectAgentModal = () => {
           </div>
 
           <div style={stepRowStyle}>
-            <span style={stepNumberStyle}>3</span>
+            <span style={stepNumberStyle}>6</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
                 Start the tunnel
               </div>
-              <code style={codeBlockStyle}>cloudflared tunnel --url http://localhost:18789</code>
+              <code style={codeBlockStyle}>cloudflared tunnel run --url http://localhost:18789 my-agent</code>
+              <p style={{ margin: `${spacing.sm} 0 0` }}>
+                Your permanent URL will be:{' '}
+                <code style={inlineCodeStyle}>https://TUNNEL_UUID.cfargotunnel.com</code>
+              </p>
             </div>
           </div>
 
           <div style={stepRowStyle}>
-            <span style={stepNumberStyle}>4</span>
+            <span style={stepNumberStyle}>7</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
-                Copy your public URL
+                (Recommended) Install as a system service
               </div>
-              <p style={{ margin: 0 }}>
-                After a few seconds, you'll see:
+              <p style={{ margin: `0 0 ${spacing.xs}` }}>
+                So the tunnel auto-starts on boot and survives reboots:
               </p>
-              <code style={codeBlockStyle}>
-                Your quick Tunnel has been created!{'\n'}https://random-words-here.trycloudflare.com
-              </code>
-              <p style={{ margin: `${spacing.sm} 0 0` }}>
-                Copy that <code style={inlineCodeStyle}>https://...trycloudflare.com</code> URL. This is your <strong style={{ color: currentTheme.text }}>Gateway URL</strong>.
-              </p>
+              <code style={codeBlockStyle}>sudo cloudflared service install</code>
             </div>
           </div>
 
           <div style={stepRowStyle}>
-            <span style={stepNumberStyle}>5</span>
+            <span style={stepNumberStyle}>8</span>
             <div>
               <div style={{ color: currentTheme.text, fontWeight: fontWeight.medium, marginBottom: spacing.xs }}>
                 Get your gateway token
@@ -674,12 +806,12 @@ const ConnectAgentModal = () => {
               borderRadius: radius.md, border: '1px solid rgba(99,102,241,0.15)',
               fontSize: fontSize.xs, color: currentTheme.textMuted, lineHeight: 1.6,
             }}>
-              <strong style={{ color: currentTheme.text }}>Tip:</strong> Keep the terminal window open — the tunnel stays active as long as the command is running.
-              For a permanent setup, you can{' '}
+              <strong style={{ color: currentTheme.text }}>Tip:</strong> Installing as a service (step 7) means your tunnel
+              starts automatically when your computer boots — you never have to think about it again. Your URL is permanent and will
+              never change.{' '}
               <a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/" target="_blank" rel="noopener noreferrer" style={linkStyle}>
-                create a named tunnel
-              </a>{' '}
-              that survives reboots. No Cloudflare account needed for the quick tunnel above.
+                Learn more about Cloudflare Tunnel
+              </a>
             </div>
 
             <motion.button
@@ -721,7 +853,7 @@ const ConnectAgentModal = () => {
           type="text" value={gatewayUrl}
           onChange={e => { setGatewayUrl(e.target.value); setTestStatus('idle') }}
           onFocus={() => setFocusedInput('gatewayUrl')} onBlur={() => setFocusedInput(null)}
-          placeholder={hostingType === 'server' ? 'https://your-server.com:18789' : 'https://random-words.trycloudflare.com'}
+          placeholder={hostingType === 'server' ? 'https://your-server.com:18789' : 'https://your-tunnel-id.cfargotunnel.com'}
           style={getInputStyle('gatewayUrl')}
         />
       </div>
