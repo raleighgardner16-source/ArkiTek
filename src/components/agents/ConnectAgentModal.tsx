@@ -25,6 +25,7 @@ const ConnectAgentModal = () => {
   const [showSetupGuide, setShowSetupGuide] = useState(false)
   const [billingStep, setBillingStep] = useState(false)
   const [billingInProgress, setBillingInProgress] = useState(false)
+  const [focusedInput, setFocusedInput] = useState<string | null>(null)
 
   const requiresPayment = agentLimits ? !agentLimits.canAddFree : false
   const canTest = gatewayUrl.trim().length > 0 && gatewayToken.trim().length > 0
@@ -106,15 +107,16 @@ const ConnectAgentModal = () => {
     }
   }
 
-  const inputStyle: React.CSSProperties = {
+  const getInputStyle = (field: string): React.CSSProperties => ({
     width: '100%', padding: `${spacing.sm} ${spacing.md}`,
-    background: currentTheme.backgroundElevated,
-    border: `1px solid ${currentTheme.border}`,
+    background: currentTheme.backgroundTertiary,
+    border: `1px solid ${focusedInput === field ? currentTheme.borderActive : currentTheme.border}`,
     borderRadius: radius.md, color: currentTheme.text,
     fontSize: fontSize.sm, outline: 'none',
     transition: transition.default,
     boxSizing: 'border-box',
-  }
+    caretColor: currentTheme.accent,
+  })
 
   const labelStyle: React.CSSProperties = {
     display: 'block', marginBottom: spacing.xs,
@@ -184,9 +186,11 @@ const ConnectAgentModal = () => {
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
+              onFocus={() => setFocusedInput('name')}
+              onBlur={() => setFocusedInput(null)}
               placeholder="e.g. My Research Assistant"
               maxLength={100}
-              style={inputStyle}
+              style={getInputStyle('name')}
             />
           </div>
 
@@ -197,8 +201,10 @@ const ConnectAgentModal = () => {
               type="text"
               value={gatewayUrl}
               onChange={e => { setGatewayUrl(e.target.value); setTestStatus('idle') }}
+              onFocus={() => setFocusedInput('gatewayUrl')}
+              onBlur={() => setFocusedInput(null)}
               placeholder="wss://my-macmini.tail12345.ts.net"
-              style={inputStyle}
+              style={getInputStyle('gatewayUrl')}
             />
           </div>
 
@@ -209,8 +215,10 @@ const ConnectAgentModal = () => {
               type="password"
               value={gatewayToken}
               onChange={e => { setGatewayToken(e.target.value); setTestStatus('idle') }}
+              onFocus={() => setFocusedInput('gatewayToken')}
+              onBlur={() => setFocusedInput(null)}
               placeholder="Your gateway auth token"
-              style={inputStyle}
+              style={getInputStyle('gatewayToken')}
             />
           </div>
 
