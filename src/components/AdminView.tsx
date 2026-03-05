@@ -44,7 +44,6 @@ const AdminView = () => {
   const [userFilter, setUserFilter] = useState('all')
   const expenseDefaults: Record<string, number> = {
     googleWorkspaceCost: 27.00,
-    artlistCost: 21.48,
   }
   const [expenses, setExpenses] = useState<Record<string, string>>({
     stripeFees: '',
@@ -52,16 +51,12 @@ const AdminView = () => {
     anthropicCost: '',
     googleCost: '',
     xaiCost: '',
-    metaCost: '',
-    deepseekCost: '',
-    mistralCost: '',
     serperCost: '',
     resendCost: '',
     mongoDbCost: '',
     vercelCost: '',
     domainCost: '',
     googleWorkspaceCost: '',
-    artlistCost: '',
   })
   const [syncingExpenses, setSyncingExpenses] = useState(false)
   const [lastSyncData, setLastSyncData] = useState<any>(null)
@@ -147,17 +142,13 @@ const AdminView = () => {
     loadPeriodData(timePeriod, newRef)
   }
 
-  const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'xaiCost', 'metaCost', 'deepseekCost', 'mistralCost']
+  const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'xaiCost']
     .reduce((sum, key) => sum + (parseFloat(expenses[key]) || 0), 0)
 
   const grandTotal = Object.values(expenses)
     .reduce((sum, val) => sum + (parseFloat(val) || 0), 0)
 
   const effectiveGrandTotal = timePeriod === 'month' ? grandTotal : (aggregatedExpenses?.grandTotal || 0)
-
-  const dailyFavoritesRewardPerDay = 25
-  const dailyFavoritesDaysMultiplier: Record<string, number> = { day: 1, week: 7, month: 30, quarter: 90, year: 365, all: 365 }
-  const dailyFavoritesHypothetical = dailyFavoritesRewardPerDay * (dailyFavoritesDaysMultiplier[timePeriod] || 30)
 
   const loadExpenses = async (month: string) => {
     try {
@@ -173,16 +164,12 @@ const AdminView = () => {
           anthropicCost: data.anthropicCost ? String(data.anthropicCost) : '',
           googleCost: data.googleCost ? String(data.googleCost) : '',
           xaiCost: data.xaiCost ? String(data.xaiCost) : '',
-          metaCost: data.metaCost ? String(data.metaCost) : '',
-          deepseekCost: data.deepseekCost ? String(data.deepseekCost) : '',
-          mistralCost: data.mistralCost ? String(data.mistralCost) : '',
           serperCost: data.serperCost ? String(data.serperCost) : '',
           resendCost: data.resendCost ? String(data.resendCost) : '',
           mongoDbCost: data.mongoDbCost ? String(data.mongoDbCost) : '',
           vercelCost: data.vercelCost ? String(data.vercelCost) : '',
           domainCost: data.domainCost ? String(data.domainCost) : '',
           googleWorkspaceCost: withDefaults('googleWorkspaceCost'),
-          artlistCost: withDefaults('artlistCost'),
         })
       }
       setExpensesLoaded(true)
@@ -265,9 +252,6 @@ const AdminView = () => {
           anthropicCost: data.anthropicCost ? String(data.anthropicCost) : '',
           googleCost: data.googleCost ? String(data.googleCost) : '',
           xaiCost: data.xaiCost ? String(data.xaiCost) : '',
-          metaCost: data.metaCost ? String(data.metaCost) : '',
-          deepseekCost: data.deepseekCost ? String(data.deepseekCost) : '',
-          mistralCost: data.mistralCost ? String(data.mistralCost) : '',
           serperCost: data.serperCost ? String(data.serperCost) : '',
         }))
         setLastSyncData(response.data.synced)
@@ -593,7 +577,6 @@ const AdminView = () => {
                 totalApiCost={totalApiCost}
                 grandTotal={grandTotal}
                 effectiveGrandTotal={effectiveGrandTotal}
-                dailyFavoritesHypothetical={dailyFavoritesHypothetical}
                 loadPeriodData={loadPeriodData}
                 shiftPeriod={shiftPeriod}
                 getPeriodLabel={getPeriodLabel}

@@ -1,5 +1,5 @@
-import React from 'react'
-import { TrendingUp, Receipt, Users, User, CreditCard, DollarSign, ChevronDown, ChevronRight, ChevronLeft, BarChart3, Package, Trophy, RefreshCw, Zap, Search } from 'lucide-react'
+import React, { useState } from 'react'
+import { TrendingUp, Receipt, Users, User, CreditCard, DollarSign, ChevronDown, ChevronRight, ChevronLeft, BarChart3, Package, Gift, RefreshCw, Zap, Search } from 'lucide-react'
 import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx } from '../../utils/styles'
 
 interface AdminRevenueExpensesProps {
@@ -21,7 +21,6 @@ interface AdminRevenueExpensesProps {
   totalApiCost: number
   grandTotal: number
   effectiveGrandTotal: number
-  dailyFavoritesHypothetical: number
   loadPeriodData: (period?: string, dateVal?: string) => void
   shiftPeriod: (direction: string) => void
   getPeriodLabel: () => string
@@ -62,7 +61,6 @@ const AdminRevenueExpenses = ({
   totalApiCost,
   grandTotal,
   effectiveGrandTotal,
-  dailyFavoritesHypothetical,
   loadPeriodData,
   shiftPeriod,
   getPeriodLabel,
@@ -83,6 +81,17 @@ const AdminRevenueExpenses = ({
   syncingExpenses,
   lastSyncData,
 }: AdminRevenueExpensesProps) => {
+  const [rewardPerPaidUser, setRewardPerPaidUser] = useState('1.00')
+  const [rewardPerFreeUser, setRewardPerFreeUser] = useState('0.25')
+
+  const paidUsers = revenueData?.activeSubscriptions ?? 0
+  const freeUsers = revenueData?.activeFreeTrials ?? 0
+  const paidRewardCost = paidUsers * (parseFloat(rewardPerPaidUser) || 0)
+  const freeRewardCost = freeUsers * (parseFloat(rewardPerFreeUser) || 0)
+  const dailyRewardTotal = paidRewardCost + freeRewardCost
+  const daysMultiplier: Record<string, number> = { day: 1, week: 7, month: 30, quarter: 90, year: 365, all: 365 }
+  const projectedRewardCost = dailyRewardTotal * (daysMultiplier[timePeriod] || 30)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
 
@@ -804,9 +813,6 @@ const AdminRevenueExpenses = ({
                     { key: 'anthropicCost', label: 'Anthropic (Claude)' },
                     { key: 'googleCost', label: 'Google (Gemini)' },
                     { key: 'xaiCost', label: 'xAI (Grok)' },
-                    { key: 'mistralCost', label: 'Mistral AI' },
-                    { key: 'metaCost', label: 'Meta (Llama)' },
-                    { key: 'deepseekCost', label: 'DeepSeek' },
                   ].map(({ key, label }) => {
                     const val = parseFloat(expenses[key]) || 0
                     return (
@@ -880,7 +886,6 @@ const AdminRevenueExpenses = ({
                 { key: 'vercelCost', label: 'Vercel Hosting', defaultVal: null },
                 { key: 'domainCost', label: 'Domain Name', defaultVal: null },
                 { key: 'googleWorkspaceCost', label: 'Google Workspace', defaultVal: 27.00 },
-                { key: 'artlistCost', label: 'Artlist Subscription', defaultVal: 21.48 },
               ].map(({ key, label, defaultVal }) => (
                 <div key={key} style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: radius.xl, padding: spacing['3xl'] }}>
                   <h3 style={{ fontSize: '1.15rem', color: '#ffffff', marginBottom: spacing.xl, display: 'flex', alignItems: 'center', gap: spacing.lg }}>
@@ -920,31 +925,59 @@ const AdminRevenueExpenses = ({
                 </div>
               )}
 
-              <div style={{ background: 'rgba(168, 85, 247, 0.06)', border: '1px solid rgba(168, 85, 247, 0.20)', borderRadius: radius.xl, padding: spacing['3xl'], position: 'relative', opacity: 0.7 }}>
-                <div style={{ position: 'absolute', top: spacing.lg, right: spacing.xl, background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: radius.sm, padding: '3px 10px' }}>
-                  <span style={{ color: '#a855f7', fontSize: fontSize.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Not Yet Enabled</span>
-                </div>
+              {/* Daily Rewards Projection */}
+              <div style={{ background: 'rgba(168, 85, 247, 0.06)', border: '1px solid rgba(168, 85, 247, 0.20)', borderRadius: radius.xl, padding: spacing['3xl'] }}>
                 <h3 style={{ fontSize: '1.15rem', color: '#a855f7', marginBottom: spacing.xl, display: 'flex', alignItems: 'center', gap: spacing.lg }}>
-                  <Trophy size={20} color="#a855f7" />
-                  Daily Favorites Rewards
-                  <span style={{ fontSize: fontSize.sm, color: '#7c3aed', fontWeight: fontWeight.medium }}>(hypothetical)</span>
+                  <Gift size={20} color="#a855f7" />
+                  Daily Rewards
+                  <span style={{ fontSize: fontSize.sm, color: '#7c3aed', fontWeight: fontWeight.medium }}>(projected cost)</span>
                 </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.04)', borderRadius: radius.lg }}>
-                    <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>
-                      Top 5 users × $5.00/day free usage
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
+                      <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>Paid users ({paidUsers})</span>
+                      <span style={{ color: '#666666', fontSize: fontSize.lg }}>×</span>
+                      <span style={{ color: '#999999', fontSize: fontSize.lg }}>$</span>
+                      <input type="text" value={rewardPerPaidUser} onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setRewardPerPaidUser(e.target.value) }} placeholder="1.00"
+                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(168, 85, 247, 0.25)', borderRadius: radius.md, padding: '6px 10px', color: '#ffffff', fontSize: fontSize.xl, width: '70px', outline: 'none', textAlign: 'center' }}
+                        onFocus={(e) => e.target.style.borderColor = 'rgba(168, 85, 247, 0.6)'} onBlur={(e) => e.target.style.borderColor = 'rgba(168, 85, 247, 0.25)'} />
+                      <span style={{ color: '#666666', fontSize: fontSize.lg }}>/day each</span>
+                    </div>
                     <span style={{ color: '#cccccc', fontSize: fontSize['2xl'], fontWeight: fontWeight.semibold, fontFamily: 'monospace' }}>
-                      $25.00/day
+                      ${paidRewardCost.toFixed(2)}/day
                     </span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.06)', borderRadius: radius.lg }}>
-                    <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>
-                      Projected for this {timePeriod === 'month' ? 'month (~30 days)' : 'period'}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.04)', borderRadius: radius.lg }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
+                      <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>Free plan users ({freeUsers})</span>
+                      <span style={{ color: '#666666', fontSize: fontSize.lg }}>×</span>
+                      <span style={{ color: '#999999', fontSize: fontSize.lg }}>$</span>
+                      <input type="text" value={rewardPerFreeUser} onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setRewardPerFreeUser(e.target.value) }} placeholder="0.25"
+                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(168, 85, 247, 0.25)', borderRadius: radius.md, padding: '6px 10px', color: '#ffffff', fontSize: fontSize.xl, width: '70px', outline: 'none', textAlign: 'center' }}
+                        onFocus={(e) => e.target.style.borderColor = 'rgba(168, 85, 247, 0.6)'} onBlur={(e) => e.target.style.borderColor = 'rgba(168, 85, 247, 0.25)'} />
+                      <span style={{ color: '#666666', fontSize: fontSize.lg }}>/day each</span>
+                    </div>
+                    <span style={{ color: '#cccccc', fontSize: fontSize['2xl'], fontWeight: fontWeight.semibold, fontFamily: 'monospace' }}>
+                      ${freeRewardCost.toFixed(2)}/day
                     </span>
-                    <span style={{ color: '#a855f7', fontSize: fontSize['4xl'], fontWeight: fontWeight.bold, fontFamily: 'monospace' }}>
-                      ${dailyFavoritesHypothetical.toFixed(2)}
-                    </span>
+                  </div>
+                  <div style={{ borderTop: '1px solid rgba(168, 85, 247, 0.15)', paddingTop: spacing.lg, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.06)', borderRadius: radius.lg }}>
+                      <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>
+                        Total daily cost ({paidUsers + freeUsers} users)
+                      </span>
+                      <span style={{ color: '#ffffff', fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, fontFamily: 'monospace' }}>
+                        ${dailyRewardTotal.toFixed(2)}/day
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.08)', borderRadius: radius.lg }}>
+                      <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>
+                        Projected for this {timePeriod === 'month' ? 'month (~30 days)' : 'period'}
+                      </span>
+                      <span style={{ color: '#a855f7', fontSize: fontSize['4xl'], fontWeight: fontWeight.bold, fontFamily: 'monospace' }}>
+                        ${projectedRewardCost.toFixed(2)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -983,9 +1016,6 @@ const AdminRevenueExpenses = ({
                   { key: 'anthropicCost', label: 'Anthropic (Claude)' },
                   { key: 'googleCost', label: 'Google (Gemini)' },
                   { key: 'xaiCost', label: 'xAI (Grok)' },
-                  { key: 'mistralCost', label: 'Mistral AI' },
-                  { key: 'metaCost', label: 'Meta (Llama)' },
-                  { key: 'deepseekCost', label: 'DeepSeek' },
                 ]
                 const otherServices = [
                   { key: 'serperCost', label: 'Serper API' },
@@ -994,7 +1024,6 @@ const AdminRevenueExpenses = ({
                   { key: 'vercelCost', label: 'Vercel Hosting' },
                   { key: 'domainCost', label: 'Domain Name' },
                   { key: 'googleWorkspaceCost', label: 'Google Workspace' },
-                  { key: 'artlistCost', label: 'Artlist Subscription' },
                 ]
                 return (
                   <>
@@ -1060,31 +1089,59 @@ const AdminRevenueExpenses = ({
                       </div>
                     )}
 
-                    <div style={{ background: 'rgba(168, 85, 247, 0.06)', border: '1px solid rgba(168, 85, 247, 0.20)', borderRadius: radius.xl, padding: spacing['3xl'], position: 'relative', opacity: 0.7 }}>
-                      <div style={{ position: 'absolute', top: spacing.lg, right: spacing.xl, background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: radius.sm, padding: '3px 10px' }}>
-                        <span style={{ color: '#a855f7', fontSize: fontSize.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Not Yet Enabled</span>
-                      </div>
+                    {/* Daily Rewards Projection */}
+                    <div style={{ background: 'rgba(168, 85, 247, 0.06)', border: '1px solid rgba(168, 85, 247, 0.20)', borderRadius: radius.xl, padding: spacing['3xl'] }}>
                       <h3 style={{ fontSize: '1.15rem', color: '#a855f7', marginBottom: spacing.xl, display: 'flex', alignItems: 'center', gap: spacing.lg }}>
-                        <Trophy size={20} color="#a855f7" />
-                        Daily Favorites Rewards
-                        <span style={{ fontSize: fontSize.sm, color: '#7c3aed', fontWeight: fontWeight.medium }}>(hypothetical)</span>
+                        <Gift size={20} color="#a855f7" />
+                        Daily Rewards
+                        <span style={{ fontSize: fontSize.sm, color: '#7c3aed', fontWeight: fontWeight.medium }}>(projected cost)</span>
                       </h3>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.04)', borderRadius: radius.lg }}>
-                          <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>
-                            Top 5 users × $5.00/day free usage
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
+                            <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>Paid users ({paidUsers})</span>
+                            <span style={{ color: '#666666', fontSize: fontSize.lg }}>×</span>
+                            <span style={{ color: '#999999', fontSize: fontSize.lg }}>$</span>
+                            <input type="text" value={rewardPerPaidUser} onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setRewardPerPaidUser(e.target.value) }} placeholder="1.00"
+                              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(168, 85, 247, 0.25)', borderRadius: radius.md, padding: '6px 10px', color: '#ffffff', fontSize: fontSize.xl, width: '70px', outline: 'none', textAlign: 'center' }}
+                              onFocus={(e) => e.target.style.borderColor = 'rgba(168, 85, 247, 0.6)'} onBlur={(e) => e.target.style.borderColor = 'rgba(168, 85, 247, 0.25)'} />
+                            <span style={{ color: '#666666', fontSize: fontSize.lg }}>/day each</span>
+                          </div>
                           <span style={{ color: '#cccccc', fontSize: fontSize['2xl'], fontWeight: fontWeight.semibold, fontFamily: 'monospace' }}>
-                            $25.00/day
+                            ${paidRewardCost.toFixed(2)}/day
                           </span>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.06)', borderRadius: radius.lg }}>
-                          <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>
-                            Projected for this {timePeriod === 'day' ? 'day' : timePeriod === 'week' ? 'week (~7 days)' : timePeriod === 'quarter' ? 'quarter (~90 days)' : timePeriod === 'year' ? 'year (~365 days)' : 'period'}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.04)', borderRadius: radius.lg }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
+                            <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>Free plan users ({freeUsers})</span>
+                            <span style={{ color: '#666666', fontSize: fontSize.lg }}>×</span>
+                            <span style={{ color: '#999999', fontSize: fontSize.lg }}>$</span>
+                            <input type="text" value={rewardPerFreeUser} onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setRewardPerFreeUser(e.target.value) }} placeholder="0.25"
+                              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(168, 85, 247, 0.25)', borderRadius: radius.md, padding: '6px 10px', color: '#ffffff', fontSize: fontSize.xl, width: '70px', outline: 'none', textAlign: 'center' }}
+                              onFocus={(e) => e.target.style.borderColor = 'rgba(168, 85, 247, 0.6)'} onBlur={(e) => e.target.style.borderColor = 'rgba(168, 85, 247, 0.25)'} />
+                            <span style={{ color: '#666666', fontSize: fontSize.lg }}>/day each</span>
+                          </div>
+                          <span style={{ color: '#cccccc', fontSize: fontSize['2xl'], fontWeight: fontWeight.semibold, fontFamily: 'monospace' }}>
+                            ${freeRewardCost.toFixed(2)}/day
                           </span>
-                          <span style={{ color: '#a855f7', fontSize: fontSize['4xl'], fontWeight: fontWeight.bold, fontFamily: 'monospace' }}>
-                            ${dailyFavoritesHypothetical.toFixed(2)}
-                          </span>
+                        </div>
+                        <div style={{ borderTop: '1px solid rgba(168, 85, 247, 0.15)', paddingTop: spacing.lg, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.06)', borderRadius: radius.lg }}>
+                            <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>
+                              Total daily cost ({paidUsers + freeUsers} users)
+                            </span>
+                            <span style={{ color: '#ffffff', fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, fontFamily: 'monospace' }}>
+                              ${dailyRewardTotal.toFixed(2)}/day
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(168, 85, 247, 0.08)', borderRadius: radius.lg }}>
+                            <span style={{ color: '#cccccc', fontSize: fontSize.xl }}>
+                              Projected for this {timePeriod === 'day' ? 'day' : timePeriod === 'week' ? 'week (~7 days)' : timePeriod === 'quarter' ? 'quarter (~90 days)' : timePeriod === 'year' ? 'year (~365 days)' : 'period'}
+                            </span>
+                            <span style={{ color: '#a855f7', fontSize: fontSize['4xl'], fontWeight: fontWeight.bold, fontFamily: 'monospace' }}>
+                              ${projectedRewardCost.toFixed(2)}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>

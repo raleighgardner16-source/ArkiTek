@@ -656,7 +656,7 @@ router.get('/expenses/aggregate', requireAdmin, async (req: Request, res: Respon
       }
     }
 
-    const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'xaiCost', 'metaCost', 'deepseekCost', 'mistralCost']
+    const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'xaiCost']
       .reduce((sum, key) => sum + aggregated[key], 0)
     const grandTotal = Object.values(aggregated).reduce((sum, val) => sum + val, 0)
 
