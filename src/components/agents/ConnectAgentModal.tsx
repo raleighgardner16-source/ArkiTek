@@ -294,7 +294,7 @@ const ConnectAgentModal = () => {
               }}
             >
               {showSetupGuide ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              How to expose your OpenClaw gateway
+              How to get your gateway URL & token
             </button>
 
             {showSetupGuide && (
@@ -303,25 +303,44 @@ const ConnectAgentModal = () => {
                 borderRadius: radius.md, border: `1px solid ${currentTheme.border}`,
                 fontSize: fontSize.xs, color: currentTheme.textMuted, lineHeight: 1.7,
               }}>
-                <p style={{ margin: `0 0 ${spacing.sm}`, fontWeight: fontWeight.medium, color: currentTheme.text }}>
-                  Option 1: Tailscale Funnel (recommended)
-                </p>
-                <p style={{ margin: `0 0 ${spacing.xs}` }}>
-                  1. Install Tailscale on the machine running OpenClaw
-                </p>
-                <p style={{ margin: `0 0 ${spacing.xs}` }}>
-                  2. Set <code style={{ background: currentTheme.backgroundElevated, padding: '1px 4px', borderRadius: 3 }}>
-                  tailscale.mode: "funnel"</code> in your OpenClaw gateway config
+                <p style={{ margin: `0 0 ${spacing.sm}`, fontWeight: fontWeight.semibold, color: currentTheme.text }}>
+                  Agent on a cloud server or VPS?
                 </p>
                 <p style={{ margin: `0 0 ${spacing.sm}` }}>
-                  3. Your gateway URL will look like: <code style={{ background: currentTheme.backgroundElevated, padding: '1px 4px', borderRadius: 3 }}>
-                  https://your-machine.tail12345.ts.net</code>
+                  Your agent already has a public URL. Just ask your agent in Telegram or WhatsApp:
+                  {' '}<code style={{ background: currentTheme.backgroundElevated, padding: '1px 4px', borderRadius: 3 }}>
+                  What's my gateway URL and token?</code>{' '}
+                  Then paste them above.
                 </p>
-                <p style={{ margin: `0 0 ${spacing.sm}`, fontWeight: fontWeight.medium, color: currentTheme.text }}>
-                  Option 2: Any reverse proxy
+
+                <div style={{ borderTop: `1px solid ${currentTheme.border}`, margin: `${spacing.sm} 0`, opacity: 0.5 }} />
+
+                <p style={{ margin: `0 0 ${spacing.sm}`, fontWeight: fontWeight.semibold, color: currentTheme.text }}>
+                  Agent running on your own computer?
+                </p>
+                <p style={{ margin: `0 0 ${spacing.xs}` }}>
+                  1. Download{' '}
+                  <a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" target="_blank" rel="noopener noreferrer" style={{ color: currentTheme.accent, textDecoration: 'none' }}>
+                    Cloudflare Tunnel (cloudflared)
+                  </a>
+                </p>
+                <p style={{ margin: `0 0 ${spacing.xs}` }}>
+                  2. Run this command in your terminal:
+                </p>
+                <code style={{
+                  display: 'block', background: currentTheme.backgroundElevated,
+                  padding: `${spacing.sm} ${spacing.md}`, borderRadius: radius.sm,
+                  margin: `${spacing.xs} 0 ${spacing.sm}`, fontSize: '11px',
+                  fontFamily: 'monospace', wordBreak: 'break-all',
+                }}>
+                  cloudflared tunnel --url http://localhost:18789
+                </code>
+                <p style={{ margin: `0 0 ${spacing.xs}` }}>
+                  3. Copy the URL it prints (looks like <code style={{ background: currentTheme.backgroundElevated, padding: '1px 4px', borderRadius: 3 }}>
+                  https://random-words.trycloudflare.com</code>)
                 </p>
                 <p style={{ margin: 0 }}>
-                  Expose port 18789 using ngrok, Cloudflare Tunnel, or any reverse proxy that supports WebSocket.
+                  4. Paste that URL above. No account needed, free forever, secure by default.
                 </p>
               </div>
             )}

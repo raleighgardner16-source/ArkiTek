@@ -123,8 +123,13 @@ const AgentsView = () => {
               color: currentTheme.textMuted, fontSize: fontSize.xs,
               lineHeight: 1.6, margin: `0 0 ${spacing.sm}`, textAlign: 'center',
             }}>
-              You'll need an OpenClaw agent running on your device or server with the
-              gateway exposed via Tailscale Funnel or a reverse proxy.
+              You'll need an OpenClaw agent running on your device or server.
+              If it's on a cloud server, just ask your agent for its gateway URL and token.
+              If it's on your computer, use{' '}
+              <a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" target="_blank" rel="noopener noreferrer" style={{ color: currentTheme.accent, textDecoration: 'none' }}>
+                Cloudflare Tunnel
+              </a>{' '}
+              (free, one command) to make it accessible.
             </p>
             <div style={{
               borderTop: `1px solid ${currentTheme.border}`,
@@ -135,9 +140,9 @@ const AgentsView = () => {
               {agentLimits ? (
                 agentLimits.included > 0
                   ? <>{agentLimits.included} agent{agentLimits.included > 1 ? 's' : ''} included with your plan. Extra agents ${agentLimits.extraAgentPrice.toFixed(2)}/mo each.</>
-                  : <>Agents are ${agentLimits.extraAgentPrice.toFixed(2)}/mo each. Upgrade to Pro for 1 included agent or Premium for 3.</>
+                  : <>Agents are ${agentLimits.extraAgentPrice.toFixed(2)}/mo each. Upgrade to Pro for 3 included agents or Premium for 10.</>
               ) : (
-                <>Pro includes 1 agent, Premium includes 3. Extra agents $4.95/mo each.</>
+                <>Pro includes 3 agents, Premium includes 10. Extra agents $2.95/mo each.</>
               )}
             </div>
           </div>
