@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { MessageSquare, Settings, User, LogOut, Trophy, Sun, Moon, History, MessageSquarePlus, ChevronLeft, ChevronRight, ShoppingBag, Info, Mail, X } from 'lucide-react'
+import { MessageSquare, Settings, User, LogOut, Trophy, Sun, Moon, History, MessageSquarePlus, ChevronLeft, ChevronRight, ShoppingBag, Info, Mail, X, Bot } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { getTheme } from '../utils/theme'
 import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx, createStyles } from '../utils/styles'
@@ -82,6 +82,11 @@ const NavigationBar = () => {
       id: 'home',
       icon: isOnChat ? MessageSquarePlus : MessageSquare,
       label: isOnChat ? 'New Chat' : 'Chat',
+    },
+    {
+      id: 'agents',
+      icon: Bot,
+      label: 'Agents',
     },
     {
       id: 'leaderboard',

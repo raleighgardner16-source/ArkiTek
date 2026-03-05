@@ -526,6 +526,103 @@ router.get('/revenue', requireAdmin, async (req: Request, res: Response) => {
   }
 })
 
+// POST /api/admin/expenses/sync — recalculate API + Serper costs from usage data
+router.post('/expenses/sync', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { month } = req.body
+    const monthKey = month || (() => {
+      const now = new Date()
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    })()
+
+    const allUsage = await db.usage.getAll()
+    const pricing = getPricingData()
+
+    // Build flat pricing map keyed by "provider-model" with per-million denominator
+    const flatPricing: Record<string, { input: number; output: number; per: number }> = {}
+    for (const [providerKey, providerData] of Object.entries(pricing)) {
+      if (providerKey === 'serper') continue
+      const models = (providerData as any).models
+      if (!models) continue
+      for (const [modelName, mp] of Object.entries(models)) {
+        const m = mp as any
+        if (m.input == null && m.output == null) continue
+        flatPricing[`${providerKey}-${modelName}`] = {
+          input: m.input || 0,
+          output: m.output || 0,
+          per: 1_000_000,
+        }
+      }
+    }
+
+    const knownProviders = ['openai', 'anthropic', 'google', 'xai', 'meta', 'deepseek', 'mistral']
+    const providerCosts: Record<string, number> = {}
+    for (const p of knownProviders) providerCosts[p] = 0
+    let totalSerperQueries = 0
+
+    for (const usageDoc of allUsage as any[]) {
+      const monthDays = usageDoc.dailyUsage?.[monthKey]
+      if (!monthDays) continue
+
+      for (const dayData of Object.values(monthDays) as any[]) {
+        if (dayData.models) {
+          for (const [modelKey, modelData] of Object.entries(dayData.models) as [string, any][]) {
+            const provider = knownProviders.find(p => modelKey.startsWith(`${p}-`)) || modelKey.split('-')[0]
+            const cost = calculateModelCost(modelKey, modelData.inputTokens || 0, modelData.outputTokens || 0, flatPricing as any)
+            if (providerCosts[provider] !== undefined) {
+              providerCosts[provider] += cost
+            }
+          }
+        }
+        totalSerperQueries += dayData.queries || 0
+      }
+    }
+
+    const serperCost = calculateSerperQueryCost(totalSerperQueries)
+
+    // Preserve manually-entered fields
+    const existing = await adminDb.expenses.get(monthKey)
+
+    const syncedExpenses = {
+      openaiCost: providerCosts.openai,
+      anthropicCost: providerCosts.anthropic,
+      googleCost: providerCosts.google,
+      xaiCost: providerCosts.xai,
+      metaCost: providerCosts.meta,
+      deepseekCost: providerCosts.deepseek,
+      mistralCost: providerCosts.mistral,
+      serperCost,
+      stripeFees: existing?.stripeFees ?? 0,
+      resendCost: existing?.resendCost ?? 0,
+      mongoDbCost: existing?.mongoDbCost ?? 0,
+      vercelCost: existing?.vercelCost ?? 0,
+      domainCost: existing?.domainCost ?? 0,
+      googleWorkspaceCost: existing?.googleWorkspaceCost ?? 0,
+      artlistCost: existing?.artlistCost ?? 0,
+    }
+
+    const saved = await adminDb.expenses.save(monthKey, syncedExpenses)
+
+    sendSuccess(res, {
+      expenses: saved,
+      synced: {
+        openaiCost: providerCosts.openai,
+        anthropicCost: providerCosts.anthropic,
+        googleCost: providerCosts.google,
+        xaiCost: providerCosts.xai,
+        metaCost: providerCosts.meta,
+        deepseekCost: providerCosts.deepseek,
+        mistralCost: providerCosts.mistral,
+        serperCost,
+        totalSerperQueries,
+      },
+    })
+  } catch (error: any) {
+    console.error('[Admin] Error syncing expenses:', error)
+    sendError(res, 'Failed to sync expenses')
+  }
+})
+
 // GET /api/admin/expenses/aggregate
 router.get('/expenses/aggregate', requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -536,8 +633,9 @@ router.get('/expenses/aggregate', requireAdmin, async (req: Request, res: Respon
     const relevantMonths: string[] = []
     const expenseFields = [
       'stripeFees', 'openaiCost', 'anthropicCost', 'googleCost',
-      'xaiCost', 'serperCost', 'resendCost',
-      'mongoDbCost', 'vercelCost', 'domainCost', 'googleWorkspaceCost',
+      'xaiCost', 'metaCost', 'deepseekCost', 'mistralCost',
+      'serperCost', 'resendCost',
+      'mongoDbCost', 'vercelCost', 'domainCost', 'googleWorkspaceCost', 'artlistCost',
     ]
 
     const aggregated: Record<string, number> = {}
@@ -558,7 +656,7 @@ router.get('/expenses/aggregate', requireAdmin, async (req: Request, res: Respon
       }
     }
 
-    const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'xaiCost']
+    const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'xaiCost', 'metaCost', 'deepseekCost', 'mistralCost']
       .reduce((sum, key) => sum + aggregated[key], 0)
     const grandTotal = Object.values(aggregated).reduce((sum, val) => sum + val, 0)
 

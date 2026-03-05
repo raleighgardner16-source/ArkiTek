@@ -1,5 +1,5 @@
 import React from 'react'
-import { TrendingUp, Receipt, Users, User, CreditCard, DollarSign, ChevronDown, ChevronRight, ChevronLeft, BarChart3, Package, Trophy } from 'lucide-react'
+import { TrendingUp, Receipt, Users, User, CreditCard, DollarSign, ChevronDown, ChevronRight, ChevronLeft, BarChart3, Package, Trophy, RefreshCw, Zap, Search } from 'lucide-react'
 import { spacing, fontSize, fontWeight, radius, zIndex, transition, layout, sx } from '../../utils/styles'
 
 interface AdminRevenueExpensesProps {
@@ -38,6 +38,9 @@ interface AdminRevenueExpensesProps {
   setRevenueListOpen: (fn: any) => void
   revenueListVisible: Record<string, number>
   setRevenueListVisible: (fn: any) => void
+  syncExpenses: () => void
+  syncingExpenses: boolean
+  lastSyncData: any
 }
 
 const AdminRevenueExpenses = ({
@@ -76,6 +79,9 @@ const AdminRevenueExpenses = ({
   setRevenueListOpen,
   revenueListVisible,
   setRevenueListVisible,
+  syncExpenses,
+  syncingExpenses,
+  lastSyncData,
 }: AdminRevenueExpensesProps) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
@@ -760,28 +766,56 @@ const AdminRevenueExpenses = ({
           {/* MONTH VIEW: Editable expense inputs */}
           {timePeriod === 'month' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
+
+              {/* Auto-Synced API Costs */}
               <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: radius.xl, padding: spacing['3xl'] }}>
-                <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: spacing['2xl'], display: 'flex', alignItems: 'center', gap: spacing.lg }}>
-                  <BarChart3 size={20} color="#5dade2" />
-                  API Costs Per Provider
-                </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing['2xl'] }}>
+                  <h3 style={{ fontSize: '1.15rem', color: '#5dade2', margin: 0, display: 'flex', alignItems: 'center', gap: spacing.lg }}>
+                    <BarChart3 size={20} color="#5dade2" />
+                    API Costs Per Provider
+                    <span style={{ fontSize: fontSize.xs, color: '#48c9b0', background: 'rgba(72, 201, 176, 0.15)', border: '1px solid rgba(72, 201, 176, 0.3)', borderRadius: radius.sm, padding: '2px 8px', fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Zap size={10} /> Auto-Synced
+                    </span>
+                  </h3>
+                  <button
+                    onClick={syncExpenses}
+                    disabled={syncingExpenses}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: spacing.md,
+                      padding: `${spacing.md} ${spacing.xl}`,
+                      background: syncingExpenses ? 'rgba(93, 173, 226, 0.05)' : 'rgba(93, 173, 226, 0.12)',
+                      border: '1px solid rgba(93, 173, 226, 0.3)',
+                      borderRadius: radius.lg,
+                      color: syncingExpenses ? '#6b7280' : '#5dade2',
+                      fontSize: fontSize.lg,
+                      fontWeight: fontWeight.medium,
+                      cursor: syncingExpenses ? 'not-allowed' : 'pointer',
+                      transition: transition.normal,
+                    }}
+                  >
+                    <RefreshCw size={14} style={syncingExpenses ? { animation: 'spin 1s linear infinite' } : {}} />
+                    {syncingExpenses ? 'Syncing...' : 'Sync from Usage Data'}
+                  </button>
+                </div>
+                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: spacing.xl }}>
                   {[
                     { key: 'openaiCost', label: 'OpenAI (ChatGPT)' },
                     { key: 'anthropicCost', label: 'Anthropic (Claude)' },
                     { key: 'googleCost', label: 'Google (Gemini)' },
                     { key: 'xaiCost', label: 'xAI (Grok)' },
-                  ].map(({ key, label }) => (
-                    <div key={key} style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: radius.xl, padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-                      <label style={{ color: '#ffffff', fontSize: fontSize.xl, fontWeight: fontWeight.medium }}>{label}</label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
-                        <span style={{ color: '#aaaaaa', fontSize: fontSize['2xl'] }}>$</span>
-                        <input type="text" value={expenses[key]} onChange={(e) => handleExpenseChange(key, e.target.value)} placeholder="0.00"
-                          style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(93, 173, 226, 0.25)', borderRadius: radius.md, padding: '10px 14px', color: '#ffffff', fontSize: fontSize['2xl'], width: '100%', outline: 'none', transition: 'border-color 0.2s ease' }}
-                          onFocus={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.6)'} onBlur={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.25)'} />
+                    { key: 'mistralCost', label: 'Mistral AI' },
+                    { key: 'metaCost', label: 'Meta (Llama)' },
+                    { key: 'deepseekCost', label: 'DeepSeek' },
+                  ].map(({ key, label }) => {
+                    const val = parseFloat(expenses[key]) || 0
+                    return (
+                      <div key={key} style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(72, 201, 176, 0.12)', borderRadius: radius.xl, padding: spacing.xl, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#ffffff', fontSize: fontSize.xl, fontWeight: fontWeight.medium }}>{label}</span>
+                        <span style={{ color: val > 0 ? '#ffffff' : '#555555', fontSize: '1.05rem', fontWeight: fontWeight.semibold, fontFamily: 'monospace' }}>${val.toFixed(2)}</span>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
                 <div style={{ marginTop: spacing['2xl'], paddingTop: spacing['2xl'], borderTop: '1px solid rgba(93, 173, 226, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: '#5dade2', fontSize: '1.15rem', fontWeight: fontWeight.semibold }}>Total API Cost</span>
@@ -789,6 +823,30 @@ const AdminRevenueExpenses = ({
                 </div>
               </div>
 
+              {/* Auto-Synced Serper API */}
+              <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(72, 201, 176, 0.12)', borderRadius: radius.xl, padding: spacing['3xl'] }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ fontSize: '1.15rem', color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: spacing.lg }}>
+                    <Search size={20} color="#48c9b0" />
+                    Serper API
+                    <span style={{ fontSize: fontSize.xs, color: '#48c9b0', background: 'rgba(72, 201, 176, 0.15)', border: '1px solid rgba(72, 201, 176, 0.3)', borderRadius: radius.sm, padding: '2px 8px', fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Zap size={10} /> Auto-Synced
+                    </span>
+                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: spacing.xl }}>
+                    {lastSyncData?.totalSerperQueries != null && (
+                      <span style={{ color: '#6b7280', fontSize: fontSize.lg }}>
+                        {lastSyncData.totalSerperQueries.toLocaleString()} queries
+                      </span>
+                    )}
+                    <span style={{ color: '#ffffff', fontSize: fontSize['4xl'], fontWeight: fontWeight.bold, fontFamily: 'monospace' }}>
+                      ${(parseFloat(expenses.serperCost) || 0).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Manual: Stripe Fees */}
               <div style={{ background: 'rgba(93, 173, 226, 0.06)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: radius.xl, padding: spacing['3xl'] }}>
                 <h3 style={{ fontSize: '1.15rem', color: '#5dade2', marginBottom: spacing.xl, display: 'flex', alignItems: 'center', gap: spacing.lg }}>
                   <CreditCard size={20} color="#5dade2" />
@@ -802,22 +860,41 @@ const AdminRevenueExpenses = ({
                 </div>
               </div>
 
+              {/* Manual: Resend Email */}
+              <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: radius.xl, padding: spacing['3xl'] }}>
+                <h3 style={{ fontSize: '1.15rem', color: '#ffffff', marginBottom: spacing.xl, display: 'flex', alignItems: 'center', gap: spacing.lg }}>
+                  <Package size={20} color="#ffffff" />
+                  Resend Email
+                </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: spacing.lg }}>
+                  <span style={{ color: '#cccccc', fontSize: fontSize['3xl'] }}>$</span>
+                  <input type="text" value={expenses.resendCost} onChange={(e) => handleExpenseChange('resendCost', e.target.value)} placeholder="0.00"
+                    style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(93, 173, 226, 0.25)', borderRadius: radius.lg, padding: `${spacing.lg} ${spacing.xl}`, color: '#ffffff', fontSize: fontSize['3xl'], width: '200px', outline: 'none', transition: 'border-color 0.2s ease' }}
+                    onFocus={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.6)'} onBlur={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.25)'} />
+                </div>
+              </div>
+
+              {/* Manual: Other services */}
               {[
-                { key: 'serperCost', label: 'Serper API' },
-                { key: 'resendCost', label: 'Resend Email' },
-                { key: 'mongoDbCost', label: 'MongoDB Database' },
-                { key: 'vercelCost', label: 'Vercel Hosting' },
-                { key: 'domainCost', label: 'Domain Name' },
-                { key: 'googleWorkspaceCost', label: 'Google Workspace' },
-              ].map(({ key, label }) => (
+                { key: 'mongoDbCost', label: 'MongoDB Database', defaultVal: null },
+                { key: 'vercelCost', label: 'Vercel Hosting', defaultVal: null },
+                { key: 'domainCost', label: 'Domain Name', defaultVal: null },
+                { key: 'googleWorkspaceCost', label: 'Google Workspace', defaultVal: 27.00 },
+                { key: 'artlistCost', label: 'Artlist Subscription', defaultVal: 21.48 },
+              ].map(({ key, label, defaultVal }) => (
                 <div key={key} style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(93, 173, 226, 0.15)', borderRadius: radius.xl, padding: spacing['3xl'] }}>
                   <h3 style={{ fontSize: '1.15rem', color: '#ffffff', marginBottom: spacing.xl, display: 'flex', alignItems: 'center', gap: spacing.lg }}>
                     <Package size={20} color="#ffffff" />
                     {label}
+                    {defaultVal != null && (
+                      <span style={{ fontSize: fontSize.xs, color: '#6b7280', fontWeight: fontWeight.normal }}>
+                        (default: ${defaultVal.toFixed(2)}/mo)
+                      </span>
+                    )}
                   </h3>
                   <div style={{ display: 'flex', alignItems: 'center', gap: spacing.lg }}>
                     <span style={{ color: '#cccccc', fontSize: fontSize['3xl'] }}>$</span>
-                    <input type="text" value={expenses[key]} onChange={(e) => handleExpenseChange(key, e.target.value)} placeholder="0.00"
+                    <input type="text" value={expenses[key]} onChange={(e) => handleExpenseChange(key, e.target.value)} placeholder={defaultVal != null ? defaultVal.toFixed(2) : '0.00'}
                       style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(93, 173, 226, 0.25)', borderRadius: radius.lg, padding: `${spacing.lg} ${spacing.xl}`, color: '#ffffff', fontSize: fontSize['3xl'], width: '200px', outline: 'none', transition: 'border-color 0.2s ease' }}
                       onFocus={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.6)'} onBlur={(e) => e.target.style.borderColor = 'rgba(93, 173, 226, 0.25)'} />
                   </div>
@@ -906,6 +983,9 @@ const AdminRevenueExpenses = ({
                   { key: 'anthropicCost', label: 'Anthropic (Claude)' },
                   { key: 'googleCost', label: 'Google (Gemini)' },
                   { key: 'xaiCost', label: 'xAI (Grok)' },
+                  { key: 'mistralCost', label: 'Mistral AI' },
+                  { key: 'metaCost', label: 'Meta (Llama)' },
+                  { key: 'deepseekCost', label: 'DeepSeek' },
                 ]
                 const otherServices = [
                   { key: 'serperCost', label: 'Serper API' },
@@ -914,6 +994,7 @@ const AdminRevenueExpenses = ({
                   { key: 'vercelCost', label: 'Vercel Hosting' },
                   { key: 'domainCost', label: 'Domain Name' },
                   { key: 'googleWorkspaceCost', label: 'Google Workspace' },
+                  { key: 'artlistCost', label: 'Artlist Subscription' },
                 ]
                 return (
                   <>

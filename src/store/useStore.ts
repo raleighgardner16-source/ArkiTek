@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { destroyAllClients as destroyAllAgentClients } from '../services/agentClientCache'
 
 interface Stats {
   totalPrompts: number
@@ -194,6 +195,56 @@ export interface StoreState {
   addAttachedImage: (image: { id: string; name: string; mimeType: string; base64: string; preview: string }) => void
   removeAttachedImage: (id: string) => void
   clearAttachedImages: () => void
+
+  // OpenClaw Agents
+  agents: Array<{
+    _id: string
+    userId: string
+    name: string
+    gatewayUrl: string
+    status: 'active' | 'offline' | 'error'
+    currentModel: string | null
+    currentProvider: string | null
+    createdAt: string
+    updatedAt: string
+    lastConnectedAt: string | null
+  }>
+  setAgents: (agents: StoreState['agents']) => void
+  addAgent: (agent: StoreState['agents'][number]) => void
+  removeAgent: (agentId: string) => void
+  updateAgent: (agentId: string, updates: Partial<StoreState['agents'][number]>) => void
+  activeAgentId: string | null
+  setActiveAgentId: (id: string | null) => void
+  agentMessages: Record<string, Array<{
+    id: string
+    role: 'user' | 'assistant' | 'tool' | 'system'
+    content: string
+    toolName?: string
+    toolInput?: string
+    toolOutput?: string
+    isStreaming?: boolean
+    timestamp: string
+  }>>
+  addAgentMessage: (agentId: string, msg: StoreState['agentMessages'][string][number]) => void
+  appendToLastAgentMessage: (agentId: string, token: string) => void
+  finishAgentStreaming: (agentId: string) => void
+  clearAgentMessages: (agentId: string) => void
+  agentConnectionStatus: Record<string, string>
+  setAgentConnectionStatus: (agentId: string, status: string) => void
+  showConnectAgentModal: boolean
+  setShowConnectAgentModal: (show: boolean) => void
+  agentSettingsOpen: boolean
+  setAgentSettingsOpen: (open: boolean) => void
+  agentLimits: {
+    included: number
+    max: number
+    extraAgentPrice: number
+    currentCount: number
+    paidExtras: number
+    extrasCost: number
+    canAddFree: boolean
+  } | null
+  setAgentLimits: (limits: StoreState['agentLimits']) => void
 }
 
 export const useStore = create<StoreState>()(
@@ -426,7 +477,22 @@ export const useStore = create<StoreState>()(
       // Current user
       currentUser: null,
       setCurrentUser: (user: any) => set({ currentUser: user }),
-      clearCurrentUser: () => set({ currentUser: null, authToken: null, selectedModels: [], autoSmartProviders: {} }),
+      clearCurrentUser: () => {
+        destroyAllAgentClients()
+        set({
+          currentUser: null,
+          authToken: null,
+          selectedModels: [],
+          autoSmartProviders: {},
+          agents: [],
+          activeAgentId: null,
+          agentMessages: {},
+          agentConnectionStatus: {},
+          agentLimits: null,
+          showConnectAgentModal: false,
+          agentSettingsOpen: false,
+        })
+      },
 
       // Stats refresh trigger
       statsRefreshTrigger: 0,
@@ -506,6 +572,52 @@ export const useStore = create<StoreState>()(
       removeAttachedImage: (id) =>
         set((state) => ({ attachedImages: state.attachedImages.filter((img) => img.id !== id) })),
       clearAttachedImages: () => set({ attachedImages: [] }),
+
+      // OpenClaw Agents
+      agents: [],
+      setAgents: (agents) => set({ agents }),
+      addAgent: (agent) => set((state) => ({ agents: [agent, ...state.agents] })),
+      removeAgent: (agentId) => set((state) => ({
+        agents: state.agents.filter(a => a._id !== agentId),
+        activeAgentId: state.activeAgentId === agentId ? null : state.activeAgentId,
+      })),
+      updateAgent: (agentId, updates) => set((state) => ({
+        agents: state.agents.map(a => a._id === agentId ? { ...a, ...updates } : a),
+      })),
+      activeAgentId: null,
+      setActiveAgentId: (id) => set({ activeAgentId: id }),
+      agentMessages: {},
+      addAgentMessage: (agentId, msg) => set((state) => ({
+        agentMessages: {
+          ...state.agentMessages,
+          [agentId]: [...(state.agentMessages[agentId] || []), msg],
+        },
+      })),
+      appendToLastAgentMessage: (agentId, token) => set((state) => {
+        const msgs = state.agentMessages[agentId] || []
+        if (msgs.length === 0) return state
+        const last = { ...msgs[msgs.length - 1], content: msgs[msgs.length - 1].content + token }
+        return { agentMessages: { ...state.agentMessages, [agentId]: [...msgs.slice(0, -1), last] } }
+      }),
+      finishAgentStreaming: (agentId) => set((state) => {
+        const msgs = state.agentMessages[agentId] || []
+        if (msgs.length === 0) return state
+        const last = { ...msgs[msgs.length - 1], isStreaming: false }
+        return { agentMessages: { ...state.agentMessages, [agentId]: [...msgs.slice(0, -1), last] } }
+      }),
+      clearAgentMessages: (agentId) => set((state) => ({
+        agentMessages: { ...state.agentMessages, [agentId]: [] },
+      })),
+      agentConnectionStatus: {},
+      setAgentConnectionStatus: (agentId, status) => set((state) => ({
+        agentConnectionStatus: { ...state.agentConnectionStatus, [agentId]: status },
+      })),
+      showConnectAgentModal: false,
+      setShowConnectAgentModal: (show) => set({ showConnectAgentModal: show }),
+      agentSettingsOpen: false,
+      setAgentSettingsOpen: (open) => set({ agentSettingsOpen: open }),
+      agentLimits: null,
+      setAgentLimits: (limits) => set({ agentLimits: limits }),
     }),
     {
       name: 'arktek-storage',
@@ -523,6 +635,8 @@ export const useStore = create<StoreState>()(
         promptMode: state.promptMode,
         modelRoles: state.modelRoles,
         isNavExpanded: state.isNavExpanded,
+        agents: state.agents,
+        activeAgentId: state.activeAgentId,
       }),
     }
   )

@@ -26,6 +26,7 @@ import PrivacyPolicy from './components/PrivacyPolicy'
 import BadgeNotification from './components/BadgeNotification'
 import { useBadgeNotifications } from './hooks/useBadgeNotifications'
 import SharedPromptView from './components/SharedPromptView'
+import AgentsView from './components/agents/AgentsView'
 
 function App() {
   // Track store hydration from localStorage — prevents flash of wrong page on load
@@ -221,6 +222,11 @@ function App() {
                   onCancelPrompt={handleCancelPrompt}
                   onCancelSummary={cancelSummary}
                 />
+              </SectionErrorBoundary>
+            )}
+            {activeTab === 'agents' && (
+              <SectionErrorBoundary sectionName="Agents">
+                <AgentsView />
               </SectionErrorBoundary>
             )}
             {activeTab === 'leaderboard' && (

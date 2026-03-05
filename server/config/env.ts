@@ -42,6 +42,7 @@ const env = cleanEnv(process.env, {
   STRIPE_PUBLISHABLE_KEY: str({ default: '', desc: 'Stripe publishable key' }),
   STRIPE_PRICE_ID: str({ default: '', desc: 'Stripe price ID for standard plan' }),
   STRIPE_PREMIUM_PRICE_ID: str({ default: '', desc: 'Stripe price ID for premium plan' }),
+  STRIPE_EXTRA_AGENT_PRICE_ID: str({ default: '', desc: 'Stripe price ID for $4.95/mo extra agent add-on' }),
   STRIPE_WEBHOOK_SECRET: str({ default: '', desc: 'Stripe webhook signing secret' }),
 
   // Email

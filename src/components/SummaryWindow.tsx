@@ -299,6 +299,20 @@ const SummaryWindow = () => {
     return '#ef4444'
   }
 
+  const sectionHeaderColors: Record<string, string> = {
+    agreements: '#00cc66',
+    contradictions: '#ff6b6b',
+    differences: '#88aaff',
+  }
+
+  const getSectionHeaderColor = (headerText: string): string | null => {
+    const lower = headerText.trim().toLowerCase()
+    for (const [key, color] of Object.entries(sectionHeaderColors)) {
+      if (lower.startsWith(key)) return color
+    }
+    return null
+  }
+
   const renderStructuredSummaryText = (text: string, size: string, lineHeight: number) => {
     const content = (text || '').toString()
     if (!content.trim()) return null
@@ -313,12 +327,14 @@ const SummaryWindow = () => {
       const consensusMatch = normalizedLine.trim().match(consensusPattern)
       const consensusScore = consensusMatch ? parseInt(consensusMatch[1], 10) : null
       const consensusColor = consensusScore !== null ? getConsensusColor(consensusScore) : null
+      const sectionColor = isHeader && !consensusColor ? getSectionHeaderColor(normalizedLine) : null
+      const headerColor = consensusColor || sectionColor || null
 
       return (
         <div
           key={`summary-line-${index}`}
           style={{
-            color: consensusColor || currentTheme.textSecondary,
+            color: headerColor || currentTheme.textSecondary,
             fontSize: isHeader ? '1.05rem' : size,
             lineHeight,
             fontWeight: isHeader ? fontWeight.bold : fontWeight.normal,
@@ -326,6 +342,7 @@ const SummaryWindow = () => {
             margin: isHeader ? `${spacing.md} 0 ${spacing['2xs']} 0` : '0',
             minHeight: line.trim() === '' ? `${lineHeight}em` : 'auto',
             whiteSpace: 'pre-wrap',
+            ...(isHeader && headerColor ? { borderBottom: `1px solid ${headerColor}40`, paddingBottom: spacing.xs } : {}),
           }}
         >
           {isHeader ? normalizedLine : line}

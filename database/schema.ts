@@ -54,6 +54,7 @@ export const usersSchema = {
   username: 'string',         // display username (unique, used for login)
   stripeCustomerId: 'string', // Stripe customer ID (optional)
   stripeSubscriptionId: 'string', // Stripe subscription ID
+  stripeAgentSubItemId: 'string', // Stripe subscription item ID for extra agent add-ons (nullable)
   subscriptionStatus: 'string', // 'active', 'canceled', 'paused', 'past_due', 'inactive', 'trialing', 'pending_verification'
   subscriptionRenewalDate: 'Date', // When user will be auto-charged next (null if not active)
   subscriptionStartedDate: 'Date', // When user first subscribed (never changes once set)
@@ -346,6 +347,28 @@ export const sharesSchema = {
   expiresAt: 'Date',          // 7 days after creation — TTL auto-deletes
 }
 
+/**
+ * AGENTS COLLECTION
+ * 
+ * Stores OpenClaw agent connection configs for users.
+ * Each document represents a self-hosted agent the user has connected.
+ * 
+ * Index: { userId: 1, createdAt: -1 } (for listing user's agents)
+ */
+export const agentsSchema = {
+  _id: 'string',              // UUID
+  userId: 'string',           // Foreign key to users._id
+  name: 'string',             // User-chosen agent name
+  gatewayUrl: 'string',       // WebSocket URL to the user's OpenClaw gateway
+  gatewayToken: 'string',     // Encrypted gateway auth token
+  status: 'string',           // 'active' | 'offline' | 'error'
+  currentModel: 'string',     // Display reference for current model (nullable)
+  currentProvider: 'string',  // Display reference for current provider (nullable)
+  createdAt: 'Date',
+  updatedAt: 'Date',
+  lastConnectedAt: 'Date',    // Last successful WebSocket connection (nullable)
+}
+
 // ═══════════════════════════════════════════════════════════
 // ADMIN DATABASE SCHEMAS (stored in separate "ADMIN" database)
 // ═══════════════════════════════════════════════════════════
@@ -420,6 +443,7 @@ export const expensesSchema = {
   railwayCost: 'number',      // Railway server hosting
   vercelCost: 'number',       // Vercel frontend hosting
   domainCost: 'number',       // Custom domain
+  artlistCost: 'number',      // Artlist subscription (video generation assets)
   
   lastUpdated: 'Date'
 }
@@ -545,6 +569,10 @@ export const indexes = {
   
   shares: [
     { key: { expiresAt: 1 }, options: { expireAfterSeconds: 0 } },
+    { key: { userId: 1, createdAt: -1 } },
+  ],
+
+  agents: [
     { key: { userId: 1, createdAt: -1 } },
   ],
 }

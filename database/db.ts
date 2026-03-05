@@ -37,6 +37,7 @@ import type {
   ConversationDoc,
   MessageDoc,
   ShareDoc,
+  AgentDoc,
 } from './types.js'
 
 const log = createLogger('db')
@@ -125,6 +126,7 @@ const col = {
   conversations: async (): Promise<Collection<ConversationDoc>> => (await getDb()).collection<ConversationDoc>('conversations'),
   shares: async (): Promise<Collection<ShareDoc>> => (await getDb()).collection<ShareDoc>('shares'),
   messages: async (): Promise<Collection<MessageDoc>> => (await getDb()).collection<MessageDoc>('messages'),
+  agents: async (): Promise<Collection<AgentDoc>> => (await getDb()).collection<AgentDoc>('agents'),
 }
 
 // ============================================================================
@@ -375,6 +377,7 @@ const users = {
       db.collection('email_verifications').deleteMany({ userId }),
       db.collection('relationships').deleteMany({ $or: [{ fromUserId: userId }, { toUserId: userId }] }),
       db.collection('subscription_events').deleteMany({ userId }),
+      db.collection('agents').deleteMany({ userId }),
     ])
 
     log.info({ userId }, 'Deleted user and ALL associated data')
@@ -1375,6 +1378,58 @@ const shares = {
 }
 
 // ============================================================================
+// AGENT OPERATIONS (agents collection — OpenClaw integration)
+// ============================================================================
+
+const agents = {
+  async getByUserId(userId: string): Promise<Array<WithId<AgentDoc>>> {
+    const c = await col.agents()
+    return c.find({ userId } satisfies Filter<AgentDoc>).sort({ createdAt: -1 }).toArray()
+  },
+
+  async getById(agentId: string): Promise<WithId<AgentDoc> | null> {
+    const c = await col.agents()
+    return c.findOne({ _id: agentId } satisfies Filter<AgentDoc>)
+  },
+
+  async getByIdAndUser(agentId: string, userId: string): Promise<WithId<AgentDoc> | null> {
+    const c = await col.agents()
+    return c.findOne({ _id: agentId, userId } satisfies Filter<AgentDoc>)
+  },
+
+  async create(doc: AgentDoc): Promise<AgentDoc> {
+    const c = await col.agents()
+    await c.insertOne(doc)
+    return doc
+  },
+
+  async update(agentId: string, userId: string, updates: Partial<AgentDoc>): Promise<boolean> {
+    const c = await col.agents()
+    const result = await c.updateOne(
+      { _id: agentId, userId } satisfies Filter<AgentDoc>,
+      { $set: { ...updates, updatedAt: new Date() } } as UpdateFilter<AgentDoc>,
+    )
+    return result.matchedCount > 0
+  },
+
+  async delete(agentId: string, userId: string): Promise<boolean> {
+    const c = await col.agents()
+    const result = await c.deleteOne({ _id: agentId, userId } satisfies Filter<AgentDoc>)
+    return result.deletedCount > 0
+  },
+
+  async deleteAllForUser(userId: string): Promise<void> {
+    const c = await col.agents()
+    await c.deleteMany({ userId } satisfies Filter<AgentDoc>)
+  },
+
+  async countForUser(userId: string): Promise<number> {
+    const c = await col.agents()
+    return c.countDocuments({ userId } satisfies Filter<AgentDoc>)
+  },
+}
+
+// ============================================================================
 // EXPORT
 // ============================================================================
 
@@ -1404,6 +1459,7 @@ export default {
   notifications,
   conversations,
   messages,
+  agents,
 }
 
 export {
@@ -1428,4 +1484,5 @@ export {
   notifications,
   conversations,
   messages,
+  agents,
 }

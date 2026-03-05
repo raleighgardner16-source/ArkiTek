@@ -29,6 +29,7 @@ import profileRouter from './server/routes/profile.js'
 import adminRouter, { pricingRouter } from './server/routes/admin.js'
 import stripeRouter from './server/routes/stripe.js'
 import shareRouter from './server/routes/share.js'
+import agentsRouter from './server/routes/agents.js'
 
 const log = createLogger('server')
 const memLog = createLogger('memory')
@@ -206,6 +207,7 @@ v1.use('/history', requireAuth, historyRouter)
 v1.use('/leaderboard', requireAuth, leaderboardRouter)
 v1.use('/profile', requireAuth, profileRouter)
 v1.use('/admin', requireAuth, adminRouter)
+v1.use('/agents', requireAuth, agentsRouter)
 
 // Mount v1 at the canonical versioned path
 app.use(API_PREFIX, generalLimiter, v1)

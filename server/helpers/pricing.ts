@@ -124,10 +124,64 @@ const calculateSerperQueryCost = (queryCount: number): number => {
   return queryCount * 0.001
 }
 
+// ============================================================================
+// Agent pricing
+// ============================================================================
+
+const EXTRA_AGENT_PRICE_MONTHLY = 2.95
+
+const AGENT_LIMITS_BY_PLAN: Record<string, number> = {
+  premium: 10,
+  pro: 3,
+  free_trial: 0,
+}
+
+const MAX_AGENTS_ABSOLUTE = 20
+
+interface AgentLimitsResult {
+  included: number
+  max: number
+  extraAgentPrice: number
+  currentCount: number
+  paidExtras: number
+  extrasCost: number
+  canAddFree: boolean
+}
+
+const getIncludedAgents = (user: UserForPlan): number => {
+  const plan = user?.plan
+  const status = user?.subscriptionStatus
+  const hasStripe = !!user?.stripeSubscriptionId
+
+  if (plan === 'premium') return AGENT_LIMITS_BY_PLAN.premium
+  if (plan === 'pro' || (status === 'active' && hasStripe)) return AGENT_LIMITS_BY_PLAN.pro
+  return AGENT_LIMITS_BY_PLAN.free_trial
+}
+
+const getAgentLimits = (user: UserForPlan, currentAgentCount: number): AgentLimitsResult => {
+  const included = getIncludedAgents(user)
+  const paidExtras = Math.max(0, currentAgentCount - included)
+
+  return {
+    included,
+    max: MAX_AGENTS_ABSOLUTE,
+    extraAgentPrice: EXTRA_AGENT_PRICE_MONTHLY,
+    currentCount: currentAgentCount,
+    paidExtras,
+    extrasCost: paidExtras * EXTRA_AGENT_PRICE_MONTHLY,
+    canAddFree: currentAgentCount < included,
+  }
+}
+
 export {
   buildTokenBreakdown,
   getPlanAllocation,
   getPricingData,
   calculateModelCost,
   calculateSerperQueryCost,
+  getIncludedAgents,
+  getAgentLimits,
+  EXTRA_AGENT_PRICE_MONTHLY,
+  MAX_AGENTS_ABSOLUTE,
+  type AgentLimitsResult,
 }

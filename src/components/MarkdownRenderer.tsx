@@ -26,16 +26,32 @@ const getConsensusColor = (score: number): string => {
   return '#ef4444'
 }
 
+const extractHeadingText = (children: React.ReactNode): string => {
+  if (typeof children === 'string') return children
+  if (Array.isArray(children)) return children.map(c => (typeof c === 'string' ? c : '')).join('')
+  return ''
+}
+
 const extractConsensusScore = (children: React.ReactNode): number | null => {
-  const text = typeof children === 'string'
-    ? children
-    : Array.isArray(children)
-      ? children.map(c => (typeof c === 'string' ? c : '')).join('')
-      : ''
+  const text = extractHeadingText(children)
   const match = text.match(/^CONSENSUS[:\s-]*(\d+)\s*%?/i)
   if (!match) return null
   const score = parseInt(match[1], 10)
   return Number.isNaN(score) ? null : Math.max(0, Math.min(100, score))
+}
+
+const SECTION_HEADER_COLORS: Record<string, string> = {
+  agreements: '#00cc66',
+  contradictions: '#ff6b6b',
+  differences: '#88aaff',
+}
+
+const getSectionColor = (children: React.ReactNode): string | null => {
+  const text = extractHeadingText(children).trim().toLowerCase()
+  for (const [key, color] of Object.entries(SECTION_HEADER_COLORS)) {
+    if (text.startsWith(key)) return color
+  }
+  return null
 }
 
 const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1.7' }: Props) => {
@@ -91,14 +107,16 @@ const MarkdownRenderer = ({ content, theme, fontSize = '0.9rem', lineHeight = '1
           h2: ({ children }) => {
             const consensusScore = extractConsensusScore(children)
             const consensusColor = consensusScore !== null ? getConsensusColor(consensusScore) : null
+            const sectionColor = !consensusColor ? getSectionColor(children) : null
+            const headingColor = consensusColor || sectionColor || theme.text
             return (
               <h2 style={{
                 fontSize: '1.2em',
                 fontWeight: fontWeight.bold,
-                color: consensusColor || theme.text,
+                color: headingColor,
                 margin: `18px 0 ${spacing.md} 0`,
                 paddingBottom: spacing.xs,
-                borderBottom: `1px solid ${consensusColor ? `${consensusColor}40` : theme.borderLight}`,
+                borderBottom: `1px solid ${headingColor !== theme.text ? `${headingColor}40` : theme.borderLight}`,
               }}>{children}</h2>
             )
           },

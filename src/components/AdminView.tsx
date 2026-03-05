@@ -42,19 +42,29 @@ const AdminView = () => {
   const [loadingUserStats, setLoadingUserStats] = useState<Record<string, boolean>>({})
 
   const [userFilter, setUserFilter] = useState('all')
+  const expenseDefaults: Record<string, number> = {
+    googleWorkspaceCost: 27.00,
+    artlistCost: 21.48,
+  }
   const [expenses, setExpenses] = useState<Record<string, string>>({
     stripeFees: '',
     openaiCost: '',
     anthropicCost: '',
     googleCost: '',
     xaiCost: '',
+    metaCost: '',
+    deepseekCost: '',
+    mistralCost: '',
     serperCost: '',
     resendCost: '',
     mongoDbCost: '',
     vercelCost: '',
     domainCost: '',
     googleWorkspaceCost: '',
+    artlistCost: '',
   })
+  const [syncingExpenses, setSyncingExpenses] = useState(false)
+  const [lastSyncData, setLastSyncData] = useState<any>(null)
   const [expenseMonth, setExpenseMonth] = useState(() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -137,7 +147,7 @@ const AdminView = () => {
     loadPeriodData(timePeriod, newRef)
   }
 
-  const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'xaiCost']
+  const totalApiCost = ['openaiCost', 'anthropicCost', 'googleCost', 'xaiCost', 'metaCost', 'deepseekCost', 'mistralCost']
     .reduce((sum, key) => sum + (parseFloat(expenses[key]) || 0), 0)
 
   const grandTotal = Object.values(expenses)
@@ -155,18 +165,24 @@ const AdminView = () => {
       const response = await api.get('/admin/expenses', { params: adminParams })
       if (response.data.success && response.data.expenses) {
         const data = response.data.expenses
+        const withDefaults = (key: string) =>
+          data[key] ? String(data[key]) : (expenseDefaults[key] ? String(expenseDefaults[key]) : '')
         setExpenses({
           stripeFees: data.stripeFees ? String(data.stripeFees) : '',
           openaiCost: data.openaiCost ? String(data.openaiCost) : '',
           anthropicCost: data.anthropicCost ? String(data.anthropicCost) : '',
           googleCost: data.googleCost ? String(data.googleCost) : '',
           xaiCost: data.xaiCost ? String(data.xaiCost) : '',
+          metaCost: data.metaCost ? String(data.metaCost) : '',
+          deepseekCost: data.deepseekCost ? String(data.deepseekCost) : '',
+          mistralCost: data.mistralCost ? String(data.mistralCost) : '',
           serperCost: data.serperCost ? String(data.serperCost) : '',
           resendCost: data.resendCost ? String(data.resendCost) : '',
           mongoDbCost: data.mongoDbCost ? String(data.mongoDbCost) : '',
           vercelCost: data.vercelCost ? String(data.vercelCost) : '',
           domainCost: data.domainCost ? String(data.domainCost) : '',
-          googleWorkspaceCost: data.googleWorkspaceCost ? String(data.googleWorkspaceCost) : '',
+          googleWorkspaceCost: withDefaults('googleWorkspaceCost'),
+          artlistCost: withDefaults('artlistCost'),
         })
       }
       setExpensesLoaded(true)
@@ -234,6 +250,32 @@ const AdminView = () => {
       console.error('Error saving expenses:', error)
     } finally {
       setExpensesSaving(false)
+    }
+  }
+
+  const syncExpenses = async () => {
+    try {
+      setSyncingExpenses(true)
+      const response = await api.post('/admin/expenses/sync', { month: expenseMonth })
+      if (response.data.success) {
+        const data = response.data.expenses
+        setExpenses(prev => ({
+          ...prev,
+          openaiCost: data.openaiCost ? String(data.openaiCost) : '',
+          anthropicCost: data.anthropicCost ? String(data.anthropicCost) : '',
+          googleCost: data.googleCost ? String(data.googleCost) : '',
+          xaiCost: data.xaiCost ? String(data.xaiCost) : '',
+          metaCost: data.metaCost ? String(data.metaCost) : '',
+          deepseekCost: data.deepseekCost ? String(data.deepseekCost) : '',
+          mistralCost: data.mistralCost ? String(data.mistralCost) : '',
+          serperCost: data.serperCost ? String(data.serperCost) : '',
+        }))
+        setLastSyncData(response.data.synced)
+      }
+    } catch (error: any) {
+      console.error('Error syncing expenses:', error)
+    } finally {
+      setSyncingExpenses(false)
     }
   }
 
@@ -568,6 +610,9 @@ const AdminView = () => {
                 setRevenueListOpen={setRevenueListOpen}
                 revenueListVisible={revenueListVisible}
                 setRevenueListVisible={setRevenueListVisible}
+                syncExpenses={syncExpenses}
+                syncingExpenses={syncingExpenses}
+                lastSyncData={lastSyncData}
               />
             )}
 

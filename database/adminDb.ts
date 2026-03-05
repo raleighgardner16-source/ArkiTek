@@ -195,12 +195,16 @@ const expenses = {
       anthropicCost: parseFloat(String(expenseData.anthropicCost)) || 0,
       googleCost: parseFloat(String(expenseData.googleCost)) || 0,
       xaiCost: parseFloat(String(expenseData.xaiCost)) || 0,
+      metaCost: parseFloat(String(expenseData.metaCost)) || 0,
+      deepseekCost: parseFloat(String(expenseData.deepseekCost)) || 0,
+      mistralCost: parseFloat(String(expenseData.mistralCost)) || 0,
       serperCost: parseFloat(String(expenseData.serperCost)) || 0,
       resendCost: parseFloat(String(expenseData.resendCost)) || 0,
       mongoDbCost: parseFloat(String(expenseData.mongoDbCost)) || 0,
       vercelCost: parseFloat(String(expenseData.vercelCost)) || 0,
       domainCost: parseFloat(String(expenseData.domainCost)) || 0,
       googleWorkspaceCost: parseFloat(String(expenseData.googleWorkspaceCost)) || 0,
+      artlistCost: parseFloat(String(expenseData.artlistCost)) || 0,
       lastUpdated: new Date(),
     }
 

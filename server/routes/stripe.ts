@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import db from '../../database/db.js'
 import adminDb from '../../database/adminDb.js'
-import { stripe, STRIPE_PRICE_ID, STRIPE_PREMIUM_PRICE_ID, STRIPE_WEBHOOK_SECRET } from '../config/index.js'
+import { stripe, STRIPE_PRICE_ID, STRIPE_PREMIUM_PRICE_ID, STRIPE_EXTRA_AGENT_PRICE_ID, STRIPE_WEBHOOK_SECRET } from '../config/index.js'
 import env from '../config/env.js'
 import { syncSubscriptionFromStripe } from '../services/subscription.js'
 import { getPlanAllocation, getPricingData, calculateModelCost, calculateSerperQueryCost } from '../helpers/pricing.js'
@@ -875,6 +875,113 @@ router.post('/upgrade-to-premium', requireAuth, async (req: Request, res: Respon
   } catch (error: any) {
     console.error('[Stripe] Error upgrading to premium:', error)
     sendError(res, error.message || 'Failed to upgrade to Premium. Please try again.')
+  }
+})
+
+// POST /api/stripe/add-extra-agent
+router.post('/add-extra-agent', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId as string
+    const user = await db.users.get(userId) as any
+    if (!user) return sendError(res, 'User not found', 404)
+
+    if (!user.stripeSubscriptionId || !user.stripeCustomerId) {
+      return sendError(res, 'An active subscription is required to add extra agents. Please subscribe to Pro or Premium first.', 400)
+    }
+    if (!STRIPE_EXTRA_AGENT_PRICE_ID) {
+      return sendError(res, 'Extra agent pricing is not configured', 500)
+    }
+
+    const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId)
+    if (subscription.status !== 'active' && subscription.status !== 'trialing') {
+      return sendError(res, 'Your subscription must be active to add extra agents.', 400)
+    }
+
+    if (user.stripeAgentSubItemId) {
+      const existingItem = subscription.items.data.find(
+        (item: any) => item.id === user.stripeAgentSubItemId
+      )
+      if (existingItem) {
+        const newQty = (existingItem.quantity || 0) + 1
+        await stripe.subscriptionItems.update(user.stripeAgentSubItemId, {
+          quantity: newQty,
+          proration_behavior: 'create_prorations',
+        })
+        console.log(`[Stripe] Incremented extra agents to ${newQty} for user ${userId}`)
+        sendSuccess(res, { extraAgents: newQty, pricePerAgent: 4.95 })
+        return
+      }
+    }
+
+    const newItem = await stripe.subscriptionItems.create({
+      subscription: user.stripeSubscriptionId,
+      price: STRIPE_EXTRA_AGENT_PRICE_ID,
+      quantity: 1,
+      proration_behavior: 'create_prorations',
+    })
+
+    await db.users.update(userId, { stripeAgentSubItemId: newItem.id })
+    console.log(`[Stripe] Created extra agent subscription item ${newItem.id} for user ${userId}`)
+
+    sendSuccess(res, { extraAgents: 1, pricePerAgent: 4.95, subscriptionItemId: newItem.id })
+  } catch (error: any) {
+    console.error('[Stripe] Error adding extra agent:', error)
+    sendError(res, error.message || 'Failed to add extra agent billing')
+  }
+})
+
+// POST /api/stripe/remove-extra-agent
+router.post('/remove-extra-agent', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId as string
+    const user = await db.users.get(userId) as any
+    if (!user) return sendError(res, 'User not found', 404)
+
+    if (!user.stripeAgentSubItemId || !user.stripeSubscriptionId) {
+      sendSuccess(res, { extraAgents: 0, message: 'No extra agent billing to adjust' })
+      return
+    }
+
+    try {
+      const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId)
+      const agentItem = subscription.items.data.find(
+        (item: any) => item.id === user.stripeAgentSubItemId
+      )
+
+      if (!agentItem) {
+        await db.users.update(userId, { stripeAgentSubItemId: null })
+        sendSuccess(res, { extraAgents: 0 })
+        return
+      }
+
+      const currentQty = agentItem.quantity || 0
+
+      if (currentQty <= 1) {
+        await stripe.subscriptionItems.del(user.stripeAgentSubItemId, {
+          proration_behavior: 'create_prorations',
+        })
+        await db.users.update(userId, { stripeAgentSubItemId: null })
+        console.log(`[Stripe] Removed extra agent subscription item for user ${userId}`)
+        sendSuccess(res, { extraAgents: 0 })
+      } else {
+        await stripe.subscriptionItems.update(user.stripeAgentSubItemId, {
+          quantity: currentQty - 1,
+          proration_behavior: 'create_prorations',
+        })
+        console.log(`[Stripe] Decremented extra agents to ${currentQty - 1} for user ${userId}`)
+        sendSuccess(res, { extraAgents: currentQty - 1 })
+      }
+    } catch (stripeErr: any) {
+      if (stripeErr.code === 'resource_missing') {
+        await db.users.update(userId, { stripeAgentSubItemId: null })
+        sendSuccess(res, { extraAgents: 0 })
+        return
+      }
+      throw stripeErr
+    }
+  } catch (error: any) {
+    console.error('[Stripe] Error removing extra agent:', error)
+    sendError(res, error.message || 'Failed to remove extra agent billing')
   }
 })
 

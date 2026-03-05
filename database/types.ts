@@ -41,6 +41,7 @@ export interface UserDoc {
   isAnonymous: boolean
   isPrivate: boolean
   showOnLeaderboard: boolean
+  stripeAgentSubItemId?: string | null
   timezone?: string | null
   modelPreferences?: Record<string, unknown> | null
   followers?: string[]
@@ -448,6 +449,24 @@ export interface MessageDoc {
 }
 
 // ============================================================================
+// Agents (OpenClaw integration)
+// ============================================================================
+
+export interface AgentDoc {
+  _id: string
+  userId: string
+  name: string
+  gatewayUrl: string
+  gatewayToken: string
+  status: 'active' | 'offline' | 'error'
+  currentModel: string | null
+  currentProvider: string | null
+  createdAt: Date
+  updatedAt: Date
+  lastConnectedAt: Date | null
+}
+
+// ============================================================================
 // ADMIN DATABASE entities
 // ============================================================================
 
@@ -482,6 +501,7 @@ export interface ExpenseDoc {
   vercelCost: number
   domainCost: number
   googleWorkspaceCost?: number
+  artlistCost?: number
   metaCost?: number
   deepseekCost?: number
   mistralCost?: number
